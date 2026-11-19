@@ -26,7 +26,7 @@ export function Frame({ tab, onTab, title, intro, footer, children }: {
       {/* a faint grid, fading out toward the edges */}
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(ellipse_at_50%_35%,black_10%,transparent_70%)]"
         style={{ backgroundImage: 'linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
-      <div className="relative w-full max-w-[420px]">
+      <div className="relative w-full max-w-md">
         <span className="mb-3 block font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">CompanyFeatures</span>
         <div role="tablist" aria-label="Sign in or sign up" className="flex">
           {TABS.map(([t, label]) => (
