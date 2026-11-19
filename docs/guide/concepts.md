@@ -7,19 +7,11 @@ JSON or in the console's trace, comes from the same evaluator.
 
 This page walks through each part. The pages linked at the end go into detail.
 
-```text
-Settings → Dimensions:   company  ›  brand
-Entities:                acme ─── acme-kids          globex ─── lumen, bolt
+<IllusChain />
 
-One flag, in one environment, asked by a device of Acme Kids:
+One flag, in one environment, asked by a device of Acme Kids, is decided in this order:
 
-  1. Is the flag on?             off → nothing is sent; the app uses its code default
-  2. Overrides (locked rules)    for everyone; no entity's settings can change them
-  3. Acme Kids' own rules        ┐ an entity follows its parent's settings
-  4. Acme's own rules            ┘ until it has its own
-  5. Rules for everyone
-  6. A default                   the nearest own default, else everyone's
-```
+<IllusOrder />
 
 ## Environments
 
@@ -95,7 +87,7 @@ of three ways:
 | **Rules + own default** | Its rules, then the rules of each level above it and everyone's, then its own default. |
 | **Own settings only** | Only its rules and its default. Every level above it and the rules for everyone are skipped. |
 
-In the sample data, Globex has its own `api_base_url` (Rules + own default, serving `https://globex.api.example.com`),
+For example, Globex has its own `api_base_url` (Rules + own default, serving `https://globex.api.example.com`),
 so Lumen and Bolt get that address too, with no settings of their own.
 
 ## Overrides: locked rules that fail closed

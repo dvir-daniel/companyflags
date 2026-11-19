@@ -31,7 +31,6 @@ which one is missing.
 | `FF_DB_POOL` | `10` | The most connections this server opens to Postgres. Each instance has its own pool. |
 | `FF_DATA_DIR` | `./data` | Without `DATABASE_URL`: the folder of the embedded database (PGlite, Postgres compiled to run inside the process). The Docker image sets `/data/db`. |
 
-- `FF_DATA_DIR=:memory:` keeps everything in memory. It is gone when the server stops: use it only to try things.
 - Only one process may open an embedded database folder. The server writes a lock file next to the folder (`./data`
   gets `./data.lock`) with its process ID. A second server on the same folder refuses to start; a lock left by a
   process that has ended is taken over.
@@ -108,7 +107,6 @@ read-only. Without them an admin can set the zone and token in the console inste
 
 | Variable | Default | What it does |
 |---|---|---|
-| `FF_DEMO` | none | `FF_DEMO=1`: a new, empty database starts with sample data to explore. It does nothing to a database that already has data. `pnpm demo` sets it, with `FF_DATA_DIR=:memory:`. |
 
 For contributors: `FF_TEST_PG` points `pnpm test:pg` at a Postgres server for the test suite; the server itself
 never reads it.

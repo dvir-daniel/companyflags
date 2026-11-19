@@ -3,15 +3,16 @@
 // sections on the right, 1px rules, mono uppercase labels, square corners.
 import { computed, ref } from 'vue';
 import { withBase } from 'vitepress';
+import IllusHowItWorks from './IllusHowItWorks.vue';
 
 const repo = 'https://github.com/dvir-daniel/companyfeatures';
 
 const install: Record<string, string[]> = {
   Docker: [
-    'docker run --rm -p 8787:8787 \\',
+    'docker run -d -p 8787:8787 -v companyfeatures:/data \\',
     '  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \\',
     '  -e BETTER_AUTH_URL=http://localhost:8787 \\',
-    '  -e FF_DEMO=1 ghcr.io/dvir-daniel/companyfeatures',
+    '  ghcr.io/dvir-daniel/companyfeatures',
   ],
   Compose: [
     'curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml',
@@ -21,7 +22,7 @@ const install: Record<string, string[]> = {
   Source: [
     'git clone https://github.com/dvir-daniel/companyfeatures.git',
     'cd companyfeatures && corepack enable && pnpm install',
-    'pnpm demo',
+    'pnpm serve',
   ],
 };
 const installTab = ref('Docker');
@@ -144,7 +145,7 @@ const runIt = [
             <button class="copy" :aria-label="copied ? 'Copied' : 'Copy'" @click="copyInstall">{{ copied ? 'COPIED' : 'COPY' }}</button>
           </div>
         </div>
-        <p class="note">Then open <code>http://localhost:8787</code> and create the admin account. <code>FF_DEMO=1</code> adds sample data.</p>
+        <p class="note">Then open <code>http://localhost:8787</code> and create the admin account. The console walks you through four steps to your first flag.</p>
       </section>
 
       <section>
@@ -181,14 +182,10 @@ const runIt = [
 
       <section>
         <h2 class="title"><span>How it works</span></h2>
-        <pre class="diagram"><code>console ──► server (rules, approvals, history) ──► Postgres
-              │
-              ├── OFREP ──────────────► apps (web, iOS, Android)
-              ├── OFREP / flagd JSON ─► backends
-              └── app files ──► your CDN ──► very large fleets</code></pre>
+        <IllusHowItWorks />
         <p class="lead small">
           One evaluator decides every answer, and the console traces it step by step. A device gets its own answers only:
-          never the rules, a list of customers, or another customer’s values.
+          never the rules, a list of entities, or anyone else’s values.
         </p>
       </section>
 
@@ -208,7 +205,7 @@ const runIt = [
       </section>
 
       <section class="cta">
-        <h2>Start with the sample data, in one command.</h2>
+        <h2>From one command to your first flag in minutes.</h2>
         <div class="actions">
           <a class="btn primary" :href="withBase('/guide/quickstart')">Quickstart</a>
           <a class="btn ghost" :href="withBase('/guide/concepts')">How it fits together<i class="corner tl" /><i class="corner br" /></a>

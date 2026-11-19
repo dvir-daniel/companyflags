@@ -1,17 +1,22 @@
 # Quickstart
 
-Run CompanyFeatures with sample data, look around the console, then read a flag from an app.
+Run CompanyFeatures, set up your first flag, then read it the way an app does.
 
 ## 1. Start it
 
 ::: code-group
 
 ```bash [Docker]
-docker run --rm -p 8787:8787 \
+docker run -d -p 8787:8787 -v companyfeatures:/data \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
   -e BETTER_AUTH_URL=http://localhost:8787 \
-  -e FF_DEMO=1 \
   ghcr.io/dvir-daniel/companyfeatures
+```
+
+```bash [Docker Compose]
+curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml
+echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+docker compose up -d
 ```
 
 ```bash [From source]
@@ -19,71 +24,46 @@ git clone https://github.com/dvir-daniel/companyfeatures.git
 cd companyfeatures
 corepack enable          # gives you pnpm 11
 pnpm install
-pnpm demo                # builds the console and serves it with the sample data, in memory
+pnpm serve               # builds the console and serves it on http://localhost:8787
 ```
 
 :::
 
-`FF_DEMO=1` fills a new database with a made-up installation: Development and Production, the apps `web`, `ios`
-and `android`, a backend `api`, the dimensions **company › brand** with five companies and three brands, and six
-flags. Without it, CompanyFeatures starts empty and the console offers the same sample data with one click.
+Docker keeps the data in the `companyfeatures` volume; Compose runs Postgres beside it. See [Docker](/self-hosting/docker).
 
-The Docker command keeps nothing when it stops. To keep your data, add a volume (`-v companyfeatures:/data`) or use
-Postgres: see [Docker](/self-hosting/docker).
+## 2. Set it up
 
-## 2. Look around
+Open <http://localhost:8787> and **create the admin account**: the first person to sign up becomes the admin. The
+console then walks you through four steps in **Settings**:
 
-Open <http://localhost:8787> and **create the admin account**: the first person to sign up becomes the admin.
+1. **Environments.** Add Development, and Production with 1 approval needed.
+2. **Apps.** Add `web` (kind **App**). Add a backend later, with kind **Backend**.
+3. **Dimensions.** Say what config is served per: pick a preset such as `company`, or name your own levels.
+4. **Your first flag.** Add an entity on its dimension's page (for example the company `acme`), then **Flags → + New
+   flag**: `new_checkout`, on or off, sent to `web`.
 
-![The flags of the sample data](/screenshots/console-flags.png)
+![The flags list](/screenshots/console-flags.png)
 
-- **Flags** lists the six sample flags. Open **New checkout**: a release to 10% of devices, locked off for Android
-  below 5.0, with Acme Corp on it everywhere. The **Try it** panel answers for any company, brand, app and device, and
-  explains each step.
-- **Companies** and **Brands** are your dimensions' pages. Globex has its own API address, and its brands Lumen and
-  Bolt follow it. Lumen also has a theme of its own.
-- **Compare** shows two entities side by side, flag by flag.
-- **Settings → Environments**: Production needs one approval. Change a flag there and it becomes a request in
-  **Approvals**, which someone else must approve.
+Open the flag to give it rules: 10% of devices, everyone on app version 6 or later, or settings of its own for
+`acme`. The **Try it** panel answers for any entity, app and device, and explains each step.
 
-## 3. Read a flag from an app
+## 3. Read the flag
 
-Every entity has a secret **app link** per environment: open **Companies → Acme Corp → App link**. Its **App file**
-address is everything Acme's web app may know, in one file:
-
-```bash
-curl http://localhost:8787/client/v1/flags/dev/web/acme/<secret>
-```
-
-```json
-{
-  "environment": "dev",
-  "revision": 18,
-  "flags": {
-    "api_base_url": { "value": "https://api.example.com" },
-    "max_upload_mb": { "value": 1000 },
-    "new_checkout": { "value": true },
-    "payments_enabled": { "value": true },
-    "theme": { "value": { "accent": "#0a0a0a", "radius": 0 } },
-    "welcome_message": {
-      "codeDefault": true,
-      "when": [{ "if": [{ "field": "locale.language", "op": "in", "values": ["he"] }], "value": "ברוכים הבאים!" }]
-    }
-  }
-}
-```
-
-That file is everything Acme's web app gets: values, no rules about companies or apps, and nothing about any other
-company. The only line left is one the device checks itself: `welcome_message` keeps the text written in the app's
-code (`codeDefault`), except on a device whose language is Hebrew.
-
-Apps don't need the file: they use OpenFeature. The same drawer shows the **OpenFeature token**. Ask with it as an app
-would, with what the device knows about itself:
+Every entity has an app link per environment, and from it an **OpenFeature token** for each app: open the entity's
+page, then **App link**. Ask with it as an app would, with what the device knows about itself:
 
 ```bash
 curl -X POST http://localhost:8787/ofrep/v1/evaluate/flags \
   -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
-  -d '{"context": {"targetingKey": "device-1", "locale": {"language": "he"}}}'
+  -d '{"context": {"targetingKey": "device-1", "app": {"version": "6.0.0"}}}'
+```
+
+```json
+{
+  "flags": [{ "key": "new_checkout", "reason": "STATIC", "variant": "on", "value": true }],
+  "metadata": { "environment": "dev" },
+  "eventStreams": [{ "type": "sse", "endpoint": { "requestUri": "/ofrep/v1/events/dev/…" }, "inactivityDelaySec": 120 }]
+}
 ```
 
 In a web app that is OpenFeature's own OFREP provider (see [OpenFeature](/sdk/openfeature)):
@@ -96,12 +76,14 @@ await OpenFeature.setProviderAndWait(new OFREPWebProvider({
   baseUrl: 'http://localhost:8787',
   headers: [['Authorization', 'Bearer <token>']],
 }));
-OpenFeature.getClient().getNumberValue('max_upload_mb', 100);   // 1000
+OpenFeature.getClient().getBooleanValue('new_checkout', false);
 ```
+
+Change the flag in the console and the provider hears about it at once, through the answer's change events.
 
 ## Next
 
-- [How it fits together](/guide/concepts): the model behind what you just saw.
-- [Apps](/guide/apps): how your backend hands each app its link at sign-in.
+- [How it fits together](/guide/concepts): environments, apps, dimensions, flags and rules.
+- [Apps](/guide/apps): how your backend hands each app its token at sign-in.
 - [Docker](/self-hosting/docker) and the [production checklist](/self-hosting/production) when you're ready to run it
   for real.

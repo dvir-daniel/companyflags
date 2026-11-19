@@ -172,3 +172,36 @@ html { -webkit-font-smoothing: antialiased; }
 .VPContent.is-home, .VPPage:has(.cf-landing) { padding: 0 !important; }
 .VPContent:has(.cf-landing) { padding-top: var(--vp-nav-height) !important; }
 .VPContent:has(.cf-landing) .VPPage, .VPContent:has(.cf-landing) .container, .VPContent:has(.cf-landing) .content { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+
+/* ---- illustrations, in Better Auth's way: square icon tiles joined by thin lines, dashed "+" tiles, chips with a
+   status dot, a one-line terminal, mono labels, dotted backgrounds (Illus*.vue) */
+.cf-ill { --ok: #16a34a; --warn: #d97706; --bad: #dc2626; font-family: var(--vp-font-family-base); color: var(--cf-ink); }
+.dark .cf-ill { --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; }
+.cf-ill p { margin: 0; }
+.cf-ill .label { font-family: var(--vp-font-family-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); }
+.cf-ill .row { display: flex; align-items: center; flex-wrap: wrap; row-gap: 10px; }
+.cf-ill .tile { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--cf-rule-2); background: var(--cf-panel); color: var(--cf-ink-2); flex: none; }
+.cf-ill .tile svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.cf-ill .tile.on { color: var(--cf-ink); border-color: var(--cf-ink-3); }
+.cf-ill .tile.dashed { border-style: dashed; background: transparent; color: var(--cf-ink-3); font-family: var(--vp-font-family-mono); font-size: 12px; }
+.cf-ill .link { width: 18px; height: 1px; background: var(--cf-rule-2); flex: none; }
+.cf-ill .link.long { width: 36px; }
+.cf-ill .node { display: grid; justify-items: center; gap: 6px; }
+.cf-ill .node .label { font-size: 10px; }
+.cf-ill .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--cf-rule); background: var(--cf-page); font-family: var(--vp-font-family-mono); font-size: 11px; color: var(--cf-ink-2); white-space: nowrap; }
+.cf-ill .chip.dashed { border-style: dashed; color: var(--cf-ink-3); }
+.cf-ill .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cf-ink-3); }
+.cf-ill .chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.cf-ill .chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.cf-ill .chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.cf-ill .chip.ok .dot { background: var(--ok); } .cf-ill .chip.warn .dot { background: var(--warn); } .cf-ill .chip.bad .dot { background: var(--bad); }
+.cf-ill .term { display: block; padding: 8px 12px; border: 1px solid var(--cf-rule); background: var(--cf-panel); font-family: var(--vp-font-family-mono); font-size: 12px; color: var(--cf-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cf-ill .term .p { color: var(--cf-accent); } .cf-ill .term .ok { color: var(--ok); } .cf-ill .term .dim { color: var(--cf-ink-3); }
+.cf-ill .dots { background-image: radial-gradient(var(--cf-grid) 1px, transparent 1px); background-size: 10px 10px; }
+.cf-ill .rule-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--cf-rule); background: var(--cf-page); font-size: 13px; color: var(--cf-ink-2); }
+.cf-ill .rule-row + .rule-row { border-top: 0; }
+.cf-ill .rule-row b { color: var(--cf-ink); font-weight: 500; }
+.vp-doc .cf-ill { margin: 24px 0; }
+/* a line between tiles that carry a label below meets the tiles at their middle */
+.cf-ill .row:has(> .node) { align-items: flex-start; }
+.cf-ill .row:has(> .node) > .link { margin-top: 17.5px; }

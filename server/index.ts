@@ -24,7 +24,6 @@ import { createCdn, type CdnOptions } from './cdn.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
 import { startWorkers } from './workers.ts';
-import { addSampleData } from './demo.ts';
 
 export type AppOptions = {
   databaseUrl?: string;                  // a Postgres server; without it, embedded Postgres in dataDir (or in memory)
@@ -49,7 +48,7 @@ export async function createApp(opts: AppOptions = {}) {
   if (fresh && opts.setup) await opts.setup(store);          // before the app runs: nothing in memory to tell yet
   const plane = new DataPlane();
   for (const env of (await store.query<{ key: string }>(`select key from environment`)).rows) await plane.refresh(store, env.key);
-  // A new database's setup (tests, the sample data) is in the snapshots just built: nothing of it to publish. On a
+  // A new database's setup (tests) is in the snapshots just built: nothing of it to publish. On a
   // database in use, rows still waiting are left to the workers: another server on it may be publishing them right
   // now, and publishing one twice (a rebuild, a CDN purge) does no harm.
   if (fresh) await store.query(`update publish_queue set published_at = now() where published_at is null`);
@@ -186,7 +185,7 @@ function portFree(port: number, host: string) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const port = Number(process.env.PORT || 8787);              // an empty PORT is the default, not port 0
   const host = process.env.HOST || '0.0.0.0';
-  const dataDir = process.env.FF_DATA_DIR ?? './data';
+  const dataDir = process.env.FF_DATA_DIR || './data';
   const fail = (m: string): never => { console.error(`[ff] ${m}`); process.exit(1); };
   const log = (m: string) => console.log(`[ff] ${m}`);
   // the port first: a second copy started by mistake stops here, before it opens any data
@@ -197,11 +196,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try { signIn = signInFromEnv(); } catch (e) { fail((e as Error).message); }
   const ctx = await createApp({
     databaseUrl: process.env.DATABASE_URL || undefined,
-    dataDir: dataDir === ':memory:' ? undefined : dataDir,
+    dataDir,
     signIn: signIn!,
     cdn: { fetch: globalThis.fetch, server: { zoneId: process.env.CF_ZONE_ID, token: process.env.CF_API_TOKEN } },
-    // FF_DEMO=1: a new database starts with the sample data (pnpm demo)
-    setup: process.env.FF_DEMO === '1' ? async (db) => { await addSampleData(db); log('added the sample data'); } : undefined,
     log,
   }).catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError ? fail(e.message) : Promise.reject(e)));
   if (signIn!.kind === 'better-auth') {

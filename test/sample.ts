@@ -1,31 +1,18 @@
-// Sample data: a small, made-up installation to explore CompanyFeatures with. It is added through the same functions
-// the console uses, so it is ordinary data (History shows it as added by "Sample data"), and only to an empty
-// installation: `FF_DEMO=1` on a new database (pnpm demo), or the button on an empty console (POST /api/sample-data).
-//
-// Two environments (Development; Production, which needs an approval), three apps and a backend, the dimensions
-// company › brand with five companies and three brands, and flags that show each part of the model: a release with
-// a % of devices and group names, a kill switch, config per company that its brands follow, a value that stays in
-// the app's code unless a rule sets one, and an override nobody can change.
+// Test data: a small, made-up installation built through the console's own functions (the OpenFeature tests use it):
+// Development and Production (one approval), the apps web, ios and android and a backend api, the dimensions
+// company › brand with five companies and three brands, and six flags.
 
 import { randomUUID } from 'node:crypto';
-import { HttpError, one, type Db } from './db.ts';
-import { createEnvironment, createFlag, createProject, saveDimensions, updateEnvironment, upsertEntity } from './control.ts';
-import { applyItems, type Actor } from './layers.ts';
-import type { LayerDoc } from './checks.ts';
+import type { Db } from '../server/db.ts';
+import { createEnvironment, createFlag, createProject, saveDimensions, updateEnvironment, upsertEntity } from '../server/control.ts';
+import { applyItems, type Actor } from '../server/layers.ts';
+import type { LayerDoc } from '../server/checks.ts';
 
-const actor: Actor = { name: 'Sample data', type: 'system' };
+const actor: Actor = { name: 'test data', type: 'system' };
 const ENVS = ['dev', 'prod'];
 const APPS = ['web', 'ios', 'android'];
 
-/** Whether the installation is empty: no environment, app, dimension or flag yet. */
-export async function isEmpty(db: Pick<Db, 'query'>): Promise<boolean> {
-  const r = await one<{ n: number }>(db as Db, `select (select count(*) from environment) + (select count(*) from project)
-    + (select count(*) from dimension) + (select count(*) from flag) as n`);
-  return Number(r?.n ?? 0) === 0;
-}
-
-export async function addSampleData(db: Db): Promise<void> {
-  if (!(await isEmpty(db))) throw new HttpError(409, 'Sample data goes only into an empty installation: this one has environments, apps or flags already');
+export async function sampleInstallation(db: Db): Promise<void> {
 
   // prod starts without approvals so the sample flags can be switched on there; it needs one at the end
   await createEnvironment(db, { key: 'dev', name: 'Development', minApprovals: 0 }, actor);
@@ -119,7 +106,7 @@ export async function addSampleData(db: Db): Promise<void> {
   ];
   for (const env of ENVS) {
     for (const [flag, entity, doc] of own) {
-      await applyItems(db, env, [{ flag, entity, expectedLayerVersion: null, proposed: doc }], actor, { comment: 'Sample data' });
+      await applyItems(db, env, [{ flag, entity, expectedLayerVersion: null, proposed: doc }], actor, { comment: 'test data' });
     }
   }
   await updateEnvironment(db, 'prod', { minApprovals: 1 }, actor);

@@ -12,17 +12,6 @@
       "port": 5173
     },
     {
-      "name": "companyfeatures-fresh",
-      "runtimeExecutable": "env",
-      "runtimeArgs": [
-        "PORT=8787",
-        "FF_DATA_DIR=:memory:",
-        "pnpm",
-        "dev"
-      ],
-      "port": 5173
-    },
-    {
       "name": "companyfeatures-built",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
@@ -41,17 +30,6 @@
         "--strictPort"
       ],
       "port": 5200
-    },
-    {
-      "name": "companyfeatures-demo",
-      "runtimeExecutable": "env",
-      "runtimeArgs": [
-        "FF_DEMO=1",
-        "FF_DATA_DIR=:memory:",
-        "pnpm",
-        "serve"
-      ],
-      "port": 8787
     },
     {
       "name": "docs",

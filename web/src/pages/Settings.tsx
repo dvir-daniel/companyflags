@@ -347,43 +347,18 @@ const SETUP_STEPS: [string, string][] = [
   ['Your first flag', 'An on/off switch, a value that differs per entity, or a release that reaches a % of devices step by step.'],
 ];
 
-/** Shown on every page until there is an environment to work in: sample data to explore with, or the steps to set up. */
+/** Shown on every page until there is an environment to work in: the steps to set up. */
 export function GetStarted() {
-  const { meta, reload, toast } = useApp();
+  const { meta } = useApp();
   const admin = roleInfo(meta.me.role).changesSettings;
-  const [busy, setBusy] = useState(false);
-  const addSample = async () => {
-    setBusy(true);
-    try {
-      await api('POST', '/sample-data');
-      await reload();
-      toast('Sample data added: open a flag to see how it decides');
-      go('flags');
-    } catch (e) {
-      toast(e as Error, 'err');
-    } finally {
-      setBusy(false);
-    }
-  };
   return (
     <div className="grid max-w-[680px] content-start gap-8 p-12 max-sm:p-6">
       <div className="grid gap-3">
         <h1 className="m-0 text-[28px] leading-tight font-semibold text-ink">Welcome to CompanyFeatures</h1>
-        <p className="m-0 text-15 text-subtitle">Feature flags and remote config, served per region, store or whatever your business is made of.</p>
+        <p className="m-0 text-15 text-subtitle">Four steps, and your apps read their first flag.</p>
       </div>
       {admin ? <>
-        <section className="grid gap-3 border border-rule bg-panel p-5">
-          <h2 className="m-0 text-15 font-semibold text-ink">Explore with sample data</h2>
-          <p className="m-0 text-13 text-ink-2">
-            A made-up installation: Development and Production, three apps and a backend, two dimensions with eight
-            entities, and flags that show each part (a release to 10% of devices, a kill switch, a setting the entities
-            below follow).
-            It is ordinary data: change or delete any of it later.
-          </p>
-          <div><Button disabled={busy} onClick={addSample}>{busy ? 'Adding…' : 'Add sample data'}</Button></div>
-        </section>
         <section className="grid gap-3">
-          <h2 className="m-0 text-15 font-semibold text-ink">Or set it up yourself</h2>
           <ol className="m-0 grid list-none gap-0 p-0">
             {SETUP_STEPS.map(([title, text], i) => (
               <li key={title} className="grid grid-cols-[28px_1fr] gap-3 border-t border-rule py-3 last:border-b">
@@ -392,7 +367,7 @@ export function GetStarted() {
               </li>
             ))}
           </ol>
-          <div><Button variant="secondary" onClick={() => go('settings')}>Open settings</Button></div>
+          <div><Button onClick={() => go('settings')}>Open settings</Button></div>
         </section>
       </> : (
         <Callout>An admin needs to add the environments and apps first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>

@@ -2,8 +2,8 @@
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) first: it has the layout, the commands and the conventions. The short version:
 
-- **Commands.** `pnpm install`, `pnpm dev` (console :5173, API :8787), `pnpm demo` (built console with sample data, in
-  memory), `pnpm check` (types, lint, every test), `pnpm test:pg` (on a real Postgres), `pnpm docs:dev`.
+- **Commands.** `pnpm install`, `pnpm dev` (console :5173, API :8787), `pnpm serve` (the built console and the API on
+  :8787), `pnpm check` (types, lint, every test), `pnpm test:pg` (on a real Postgres), `pnpm docs:dev`.
 - **Node runs the TypeScript directly** (type stripping): no build step for the server. Use only erasable syntax (no
   enums, no parameter properties, no namespaces) and `.ts` extensions in imports.
 - **One evaluator.** `server/evaluator.ts` decides every answer; OFREP (`server/ofrep.ts`), app files

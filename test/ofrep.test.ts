@@ -9,7 +9,7 @@ import { OpenFeature as ServerOpenFeature } from '@openfeature/server-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 import { OFREPProvider } from '@openfeature/ofrep-provider';
 import { CSRF, startApp } from './helpers.ts';
-import { addSampleData } from '../server/demo.ts';
+import { sampleInstallation } from './sample.ts';
 import { createApiKey, rotateClientLink } from '../server/control.ts';
 import { contextFor, evaluate } from '../server/evaluator.ts';
 import { appToken } from '../server/delivery.ts';
@@ -17,7 +17,7 @@ import { appToken } from '../server/delivery.ts';
 let t: Awaited<ReturnType<typeof startApp>>;
 const system = { name: 'test', type: 'system' as const };
 before(async () => {
-  t = await startApp({ setup: addSampleData, signIn: { kind: 'test-header' } });
+  t = await startApp({ setup: sampleInstallation, signIn: { kind: 'test-header' } });
   await t.db.query(`insert into app_user (key, name, role) values ('admin', 'Admin', 'admin')`);
 });
 after(async () => { await t.stop(); });

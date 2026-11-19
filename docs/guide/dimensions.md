@@ -75,20 +75,9 @@ Once an entity has settings of its own on a flag, they combine with the rest in 
 This is the order the evaluator ([`server/evaluator.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/evaluator.ts),
 `entityChain` and `evaluate`) decides one flag in, for one entity, in one environment. The first match wins.
 
-```text
-1. Not sent to this app                 → the flag doesn't exist for it (FLAG_NOT_FOUND): it uses its code default
-2. The flag is off                      → nothing is sent: the app uses its code default (DISABLED)
-3. Overrides (locked rules)             → a value or a %. A missing or unreadable attribute counts as a match
-4. The entity's own rules               → a value or a %
-     it uses "Own settings only"        → its own default. Every level above and the rules for everyone are skipped
-5. Its parent's rules, and so on up     → a value or a %. One that uses "Own settings only" stops there, with its default
-6. Rules for everyone                   → a value or a %
-7. The default                          → the most specific own default of a level that isn't skipped
-                                          (the entity's, then its parent's, …), else everyone's default
+<IllusOrder />
 
-A % rule whose device has no ID to split by, or whose bucket is in no range → no match; the next rule decides.
 A paused rule is passed over.
-```
 
 A level is **skipped** when an entity below it, nearer the one asking, uses "Own settings only". The trace shows skipped
 rules and says whose choice skipped them. Only "Rules + own default" and "Own settings only" bring a default; "Rules
@@ -144,7 +133,7 @@ Anything else you target by stays an ordinary rule attribute: app, app version, 
 
 ## Examples
 
-**A company and its brands** (`company` › `brand`, the sample data). Acme Corp has the brand Acme Kids; Globex has Lumen
+**A company and its brands** (`company` › `brand`). Acme Corp has the brand Acme Kids; Globex has Lumen
 and Bolt; Initech, Umbrella Retail and Hooli have no brands. Globex sets its own `api_base_url`, and Lumen and Bolt follow
 it. Lumen sets its own `theme`, and Bolt keeps the standard one.
 

@@ -54,11 +54,6 @@ backups (see the [production checklist](/self-hosting/production)).
 
 Keep the same `BETTER_AUTH_SECRET` across restarts and upgrades: it signs sessions, so a new one signs everyone out.
 
-## Sample data
-
-`-e FF_DEMO=1` fills a **new** database with the sample installation (see [Quickstart](/guide/quickstart)). It does
-nothing to a database that already has data.
-
 ## Upgrading
 
 1. Back up the database.

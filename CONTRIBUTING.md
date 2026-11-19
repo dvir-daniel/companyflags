@@ -19,8 +19,8 @@ pnpm install
 pnpm dev          # the console on http://localhost:5173 with hot reload, the API on :8787 restarting on changes
 ```
 
-Data lives in `./data` (embedded Postgres, nothing to install). `FF_DATA_DIR=:memory: pnpm dev` starts empty every
-time, and `pnpm demo` builds the console and serves it on http://localhost:8787 with the sample data.
+Data lives in `./data` (embedded Postgres, nothing to install); delete the folder to start over. `pnpm serve` builds
+the console and serves it with the API on http://localhost:8787, as in production.
 
 ## What's where
 
