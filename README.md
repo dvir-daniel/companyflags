@@ -2,7 +2,7 @@
   <picture>
     <source srcset=".github/assets/banner-dark.png" media="(prefers-color-scheme: dark)">
     <source srcset=".github/assets/banner-light.png" media="(prefers-color-scheme: light)">
-    <img src=".github/assets/banner-light.png" alt="CompanyFeatures: feature flags for products made of customers">
+    <img src=".github/assets/banner-light.png" alt="CompanyFeatures: the most comprehensive feature flag framework">
   </picture>
 </p>
 
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  Open-source feature flags and remote config for products made of customers.
+  The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.
   <br>
   <a href="https://dvir-daniel.github.io/companyfeatures/"><strong>Learn more »</strong></a>
   <br>
@@ -30,9 +30,9 @@
 
 ## About the project
 
-CompanyFeatures serves feature flags and remote config per customer, brand, store or any dimension you define. Apps
-and backends read them with OpenFeature's own providers, and you run it yourself: one Node.js server, a web console,
-and Postgres.
+CompanyFeatures is everything feature flags and remote config need, in one server you run yourself: rules and %
+rollouts, releases, reviewed changes and a full history, settings for any part of your product, and OpenFeature for
+every app and backend.
 
 <p align="center">
   <img src=".github/assets/console.png" alt="The console: a release flag with an override, settings for one company, and a rule for 10% of devices">
@@ -40,22 +40,21 @@ and Postgres.
 
 ### Why CompanyFeatures?
 
-Most flag tools think in users and segments. If you sell to businesses, your config has a shape of its own: each
-customer needs its own API address, limits or branding; a company's brands should follow it unless they say
-otherwise; and some rules must hold for everyone, whatever a customer's settings say. CompanyFeatures is built around
-that shape.
+Feature flags start simple and grow. Some rules must hold for everyone, whatever else is set. Parts of your product
+need settings of their own. Production changes need a second pair of eyes and a way back. Every app and backend should
+get the same answer. CompanyFeatures covers all of it in one place, and your code reads it through OpenFeature.
 
-- **Your own dimensions.** Serve config per `customer`, per `company` › `brand`, per `region` › `chain` › `store`.
-  You name the levels, up to four; nothing in the product says "tenant".
-- **Settings per entity, rules for everyone.** Any customer, brand or store can have settings of its own on any flag,
+- **Your own dimensions.** Serve config per `region` › `store`, per `team`, per `customer` › `brand`, or whatever
+  your product is made of. You name the levels, up to four.
+- **Settings per entity, rules for everyone.** Any region, store or customer can have settings of its own on any flag,
   inherited down the chain. Locked rules apply to everyone, always. The console traces every answer step by step.
 - **OpenFeature, no SDK of ours.** Apps use OpenFeature's own OFREP providers (web, Android, iOS); backends use OFREP
   or flagd JSON, evaluated in-process. Your flag-reading code stays standard.
 - **Nothing private reaches a device.** An app asks as its own entity, with a token it can't change, and gets its own
-  answers only: no rules, no customer lists, no one else's values.
+  answers only: no rules, no lists of entities, no one else's values.
 - **Reviewed changes.** Production can require an approval for every change, with scheduling, break-glass for on
   call, an append-only history, restore, and side-by-side compare.
-- **Releases and version releases.** Roll a feature out to a few customers, then 1% → 5% → 25% → 50% of devices,
+- **Releases and version releases.** Give early access to a few, then 1% → 5% → 25% → 50% of devices,
   then everyone, then clean it up; or move devices from version 1.0.0 to 1.0.1 the same way, with rollback.
 - **Your sign-in.** Email and password, Google, GitHub or Microsoft, and single sign-on with SAML or OIDC, through
   [Better Auth](https://www.better-auth.com).

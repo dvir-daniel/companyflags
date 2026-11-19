@@ -1,19 +1,22 @@
 # Introduction
 
-CompanyFeatures is an open-source service for **feature flags and remote config** in products that serve many
-business customers. It decides what every app and backend gets, per customer (or per company and its brands, per
-store, whatever your business is made of), and hands each app a small file of values that a CDN caches.
+CompanyFeatures is the most comprehensive open-source framework for **feature flags and remote config**. It decides
+what every app and backend gets: rules for everyone, % rollouts and releases, settings for any part of your product
+(a region, a store, a team, a customer: you define the dimensions), with reviewed changes and a full history. Apps and
+backends read it through OpenFeature.
 
 You run it yourself: one Node.js server with a web console, and Postgres for the data.
 
 ## Who it's for
 
-- **B2B products** where customers need their own API address, limits, branding or features, without
-  a fork of your code or a config file per customer.
-- **Products with brands, franchises or stores** where a setting should apply to a company and everything under it,
-  unless one of them has its own.
-- **Teams with many devices** that don't want a bill that grows with every request, or rules and customer lists sent to
-  every phone.
+- **Teams that want flags they own**, run on their own servers and read with OpenFeature in every app and backend,
+  so the code that reads flags stays standard.
+- **Products whose config differs by part**: per region, store, team or customer, where a setting should follow a
+  chain (a region's stores, a company's brands) unless one of them has its own.
+- **Teams that need change control**: approvals in production, scheduled changes, break-glass for on call, an
+  append-only history and restore.
+- **Products with many devices** that don't want rules or lists of entities sent to every phone, or a bill that
+  grows with every request.
 
 ## How it works
 

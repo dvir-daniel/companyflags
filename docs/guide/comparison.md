@@ -1,14 +1,14 @@
 # Compared with others
 
 Feature-flag tools mostly differ in two things: **who decides the answer** (a service per request, the SDK with the
-rules, or a file per audience) and **what the model knows about your customers**. Here is where CompanyFeatures sits,
+rules, or a file per audience) and **what the model knows about how your product is organized**. Here is where CompanyFeatures sits,
 so you can tell quickly whether it fits.
 
 ## When CompanyFeatures fits
 
-- **You sell to businesses, and each needs its own settings.** Customers, brands, stores and regions are part of the
-  model: each entity has settings of its own on any flag, inherited down your chain, with locked rules on top.
-  Elsewhere this is usually a segment or a targeting rule per customer, which gets long at a few thousand customers.
+- **Parts of your product need their own settings.** Regions, stores, teams or customers are part of the model: each
+  entity has settings of its own on any flag, inherited down your chain, with locked rules on top. Elsewhere this is
+  usually a segment or a targeting rule per part, which gets long at a few thousand of them.
 - **You use OpenFeature.** Apps and backends read flags through OpenFeature's own providers (OFREP, flagd); there is
   no SDK of ours to adopt or to leave.
 - **You have very many devices.** Besides OFREP, each entity's values are one file your CDN caches, built once per
