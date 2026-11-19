@@ -150,7 +150,7 @@ Anywhere a value is served (a rule, a part of a %, a default, an entity's own de
 default (in-app)**. The flag then sends no value, and your app keeps the default written in its code. In the trace the
 answer is marked `codeDefault: true`; in flagd JSON it is a `null` variant, so the provider returns your code's default.
 
-The sample's `welcome_message` uses the code default for everyone, and a rule "Language is he" serves the Hebrew text.
+For example, `welcome_message` uses the code default for everyone, and a rule "Language is es" serves the Spanish text.
 
 ## What "off" sends
 

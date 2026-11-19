@@ -86,9 +86,9 @@ export const FIELDS: FieldDef[] = [
   { name: 'device.browser_engine', valueType: 'string', comesFrom: 'sdk', canSplitBy: false, group: 'Browser', label: 'Browser engine',
     knownValues: ['blink', 'webkit', 'gecko'], description: 'The browser’s engine' },
   // place and language
-  { name: 'geo.country', valueType: 'string', comesFrom: 'sdk', canSplitBy: false, group: 'Place and language', label: 'Country', description: 'Two-letter country (IL, US), as the app or your backend reports it' },
-  { name: 'locale.language', valueType: 'string', comesFrom: 'sdk', canSplitBy: false, group: 'Place and language', label: 'Language', description: 'Device language, e.g. he, en' },
-  { name: 'locale.timezone', valueType: 'string', comesFrom: 'sdk', canSplitBy: false, group: 'Place and language', label: 'Time zone', description: 'Device time zone, e.g. Asia/Jerusalem' },
+  { name: 'geo.country', valueType: 'string', comesFrom: 'sdk', canSplitBy: false, group: 'Place and language', label: 'Country', description: 'Two-letter country (US, CA), as the app or your backend reports it' },
+  { name: 'locale.language', valueType: 'string', comesFrom: 'sdk', canSplitBy: false, group: 'Place and language', label: 'Language', description: 'Device language, e.g. en, es' },
+  { name: 'locale.timezone', valueType: 'string', comesFrom: 'sdk', canSplitBy: false, group: 'Place and language', label: 'Time zone', description: 'Device time zone, e.g. America/Los_Angeles' },
 ];
 
 const BY_NAME = new Map(FIELDS.map((f) => [f.name, f]));

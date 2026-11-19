@@ -15,11 +15,11 @@ import { ICONS } from './icons.ts';
         </div>
         <div class="art">
           <div class="row">
-            <div class="node"><span class="tile on"><svg viewBox="0 0 16 16" v-html="ICONS.globe" /></span><span class="label">eu</span></div>
+            <div class="node"><span class="tile on"><svg viewBox="0 0 16 16" v-html="ICONS.globe" /></span><span class="label">us-west</span></div>
             <span class="link" />
-            <div class="node"><span class="tile on"><svg viewBox="0 0 16 16" v-html="ICONS.store" /></span><span class="label">tlv-12</span></div>
+            <div class="node"><span class="tile on"><svg viewBox="0 0 16 16" v-html="ICONS.store" /></span><span class="label">sf-01</span></div>
             <span class="link" />
-            <div class="node"><span class="tile"><svg viewBox="0 0 16 16" v-html="ICONS.store" /></span><span class="label">tlv-14</span></div>
+            <div class="node"><span class="tile"><svg viewBox="0 0 16 16" v-html="ICONS.store" /></span><span class="label">sf-02</span></div>
             <span class="link" />
             <div class="node"><span class="tile dashed">+</span><span class="label">&nbsp;</span></div>
           </div>
@@ -36,7 +36,7 @@ import { ICONS } from './icons.ts';
         <div class="art">
           <div class="rules">
             <div class="rule-row"><span class="chip bad"><span class="dot" />override</span><span class="t">app below 6.0</span><b>off</b></div>
-            <div class="rule-row"><span class="chip ok"><span class="dot" />tlv-12</span><span class="t">its own setting</span><b>on</b></div>
+            <div class="rule-row"><span class="chip ok"><span class="dot" />sf-01</span><span class="t">its own setting</span><b>on</b></div>
             <div class="rule-row"><span class="chip warn"><span class="dot" />10%</span><span class="t">of devices</span><b>on</b></div>
             <div class="rule-row"><span class="chip"><span class="dot" />default</span><span class="t">everyone else</span><b>off</b></div>
           </div>

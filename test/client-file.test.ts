@@ -16,7 +16,7 @@ after(async () => { await t.stop(); });
 const DEVICES: Record<string, unknown>[] = Array.from({ length: 60 }, (_, i) => ({
   'device.id': i % 7 ? `d-${i}` : undefined, 'app.version': ['4.9.0', '5.0.0', '6.2.0', '7.1.3', 'not-a-version'][i % 5], 'app.build': 100 + i,
   'device.platform': ['android', 'ios', 'web'][i % 3], 'device.os_version': ['13', '17.4', '10.15.7'][i % 3],
-  'device.browser': i % 5 ? 'chrome' : undefined, 'geo.country': ['IL', 'US', 'DE'][i % 3], 'session.id': i % 2 ? `s-${i}` : undefined,
+  'device.browser': i % 5 ? 'chrome' : undefined, 'geo.country': ['US', 'CA', 'DE'][i % 3], 'session.id': i % 2 ? `s-${i}` : undefined,
 }));
 
 function parity() {
@@ -72,13 +72,13 @@ test('the file has values only: no entity lists, nothing about other entities or
 test('country rules stay in the file; the device checks them with the CDN’s country header', async () => {
   const flag = Object.keys(t.plane.get('dev').flags).find((k) => t.plane.get('dev').flags[k].delivery.includes('web'))!;
   const serve = (await t.as('alice').get(`/flags/${flag}`)).json.variations.find((v: any) => v.key !== 'code_default');
-  const rule = { ruleKey: crypto.randomUUID(), name: 'Israel', locked: false, disabled: false,
-    conditions: [{ field: 'geo.country', op: 'in', values: ['IL'] }], serveVariation: serve.key, split: null };
+  const rule = { ruleKey: crypto.randomUUID(), name: 'Canada', locked: false, disabled: false,
+    conditions: [{ field: 'geo.country', op: 'in', values: ['CA'] }], serveVariation: serve.key, split: null };
   const r = await t.editBase(flag, 'dev', (layer) => ({ ...layer, rules: [rule, ...layer.rules] }));
   assert.equal(r.status, 200, JSON.stringify(r.json));
   const file = (await t.appFile('dev', 'web', 'acme')).json;
   assert.ok(file.flags[flag].when.some((l: any) => l.if.some((c: any) => c.field === 'geo.country')));
-  assert.deepEqual(readClientFile(file, flag, { 'geo.country': 'IL' }).value, serve.value);
+  assert.deepEqual(readClientFile(file, flag, { 'geo.country': 'CA' }).value, serve.value);
 });
 
 test('the link: cacheable for a CDN, tagged with its environment, 304 on the same ETag, gzipped', async () => {

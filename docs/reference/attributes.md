@@ -62,9 +62,9 @@ The **Label** is what the rule editor shows. **Split** says whether a % of devic
 
 | Name | Label | Type | Source | Split | Known values |
 |---|---|---|---|---|---|
-| `geo.country` | Country | text | app | no | two letters, such as `US`, `IL` |
+| `geo.country` | Country | text | app | no | two letters, such as `US`, `CA` |
 | `locale.language` | Language | text | app | no | such as `he`, `en` |
-| `locale.timezone` | Time zone | text | app | no | such as `Asia/Jerusalem` |
+| `locale.timezone` | Time zone | text | app | no | such as `America/Los_Angeles` |
 
 Known values are suggestions in the editor. Any value works, and text is compared exactly as written: `US` is not `us`.
 Which comparisons each type allows is in [Flags and rules → Operators](/guide/flags-and-rules#operators).

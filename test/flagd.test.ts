@@ -27,7 +27,7 @@ const snapOf = (flags: Record<string, FlagDef>, o: { environment?: string; revis
   ({ environment: o.environment ?? 'dev', revision: o.revision ?? 1, builtAt: '', flags, entities: ENTITIES, dimensions: DIMS, fields: FIELDS });
 const VERSIONS = ['4.9.1', '5.0.0', '5.0.0-beta.1', '5.0.0-beta.10', '6.0.0', '10.2.0'];
 const TEXT: Record<string, string[]> = {
-  'device.platform': ['android', 'ios', 'web'], 'locale.language': ['en', 'he', 'de', 'en-GB'],
+  'device.platform': ['android', 'ios', 'web'], 'locale.language': ['en', 'es', 'de', 'en-GB'],
   entity: Object.keys(ENTITIES), company: ['microsoft', 'google', 'unilever'], brand: ['dove', 'axe'],
   'customer.id': Object.keys(ENTITIES), 'customer.company': ['microsoft', 'google', 'unilever'],
   project: ['server-ds', 'web'], environment: ['dev', 'prod'],
