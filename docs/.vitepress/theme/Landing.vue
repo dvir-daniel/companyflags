@@ -114,7 +114,7 @@ const runIt = [
       </div>
       <div class="hero-body">
         <a class="pill" :href="withBase('/guide/introduction')"><span class="tri">▲</span> Open source <b>| MIT licensed, self-hosted</b> <span>→</span></a>
-        <h1>Feature flags for products made of customers</h1>
+        <h1>The most comprehensive feature flag framework</h1>
         <div class="actions">
           <a class="btn primary" :href="withBase('/guide/quickstart')">Get Started</a>
           <a class="btn ghost" :href="repo">GitHub<i class="corner tl" /><i class="corner br" /></a>
@@ -131,8 +131,8 @@ const runIt = [
       <section>
         <h2 class="label"><span>README</span></h2>
         <p class="lead">
-          Config that follows <b>your business</b>: served per customer, brand, store or any dimension you define,
-          read with <b>OpenFeature</b>, and run on <b>your own servers</b>, one Node.js server and Postgres.
+          Everything feature flags need in <b>one server</b>: rules and releases, reviewed changes and history, settings
+          per any dimension you define, read with <b>OpenFeature</b>, and run on <b>your own servers</b>.
         </p>
         <div class="code">
           <div class="tabs" role="tablist">

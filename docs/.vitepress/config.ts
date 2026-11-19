@@ -4,7 +4,7 @@ const repo = 'https://github.com/dvir-daniel/companyfeatures';
 
 export default defineConfig({
   title: 'CompanyFeatures',
-  description: 'Open-source feature flags and remote config, served per customer, brand or any dimension you define, from files a CDN caches.',
+  description: 'The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.',
   base: process.env.DOCS_BASE || '/',
   cleanUrls: true,
   appearance: true,

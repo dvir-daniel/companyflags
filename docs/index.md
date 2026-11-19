@@ -3,7 +3,7 @@ layout: page
 sidebar: false
 aside: false
 title: CompanyFeatures
-titleTemplate: Feature flags for products made of customers
+titleTemplate: The most comprehensive feature flag framework
 ---
 
 <Landing />
