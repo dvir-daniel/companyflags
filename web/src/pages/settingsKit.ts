@@ -1,0 +1,20 @@
+// What Settings shares with People and the other admin pages (keys, single sign-on, CDN): the roles to pick from, the
+// selects' size, and the refresh after a change. Apart from Settings.tsx so that an edit to its components swaps in place
+// in `pnpm dev` (React Fast Refresh); an edit here reloads the page.
+import { useApp } from '../app.ts';
+import { roleInfo, ROLES } from '../../../server/policy.ts';
+
+/** The roles to choose from (policy.ts): "On call: also turns flags off in an emergency". */
+export const ROLE_OPTIONS: [string, string][] = ROLES.map((r) => [r, `${roleInfo(r).label}: ${roleInfo(r).does}`]);
+export const roleName = (r: string) => roleInfo(r).label;
+/** A native select in a form row of these pages. */
+export const selectField = 'w-full [&_select]:h-[34px] [&_select]:text-13';
+
+/**
+ * After a change that worked: the page's data again. Its result is already shown (an invite link only shows once),
+ * so a reload that fails only says so.
+ */
+export function useRefresh() {
+  const { reload, toast } = useApp();
+  return () => reload().catch(() => toast('Saved. This page couldn’t refresh: reload it to see the change.', 'err'));
+}

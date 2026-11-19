@@ -1,0 +1,10 @@
+# The server and console live at the root; packages/ holds the console's UI library and the SDK, docs/ the docs site,
+# examples/ the sample apps. One lockfile for all of them.
+packages:
+  - packages/*
+  - docs
+  - examples/*
+
+# Install scripts that may run (pnpm runs none it isn't told about): esbuild, which VitePress uses, checks its binary.
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,5 @@
+# Restore undoes flag settings only
+
+The Versions tab lists every kind of change, but restore only ever rolled back flag settings, so restoring the version before a brand moved out of its company answered "Nothing to roll back" although the brand had changed. We keep restore to flag settings and say so: the change journal (`server/journal.ts`) declares for each kind of change whether restore undoes it, the versions list marks the changes it doesn't, and a restore lists the later changes it left as they are (a 422 when those are all there is). Customer edits such as moving a brand apply to every environment at once, so restoring one environment can't undo them cleanly; widening restore to delivery and variants as well was considered and rejected as more surprising than a clear "not rolled back".
+
+Considered options: restore every kind of change (rejected: customer edits span environments); restore flag settings, delivery and variants (rejected: more surprising, still not customers); restore flag settings only and list the rest (chosen).

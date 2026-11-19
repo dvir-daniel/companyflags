@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "react",
+    "import"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "error",
+    "react/jsx-key": "error",
+    "no-unused-vars": "error",
+    "react/set-state-in-effect": "warn",
+    "react/refs": "warn",
+    "react/purity": "warn"
+  },
+  "ignorePatterns": [
+    "web/dist/**",
+    "node_modules/**",
+    "packages/*/dist/**",
+    "docs/.vitepress/cache/**",
+    "docs/.vitepress/dist/**"
+  ]
+}

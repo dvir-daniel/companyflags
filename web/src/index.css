@@ -1,0 +1,38 @@
+/* CompanyFeatures console. Everything visual comes from the UI library
+   (@companyfeatures/ui, packages/ui: tokens for both themes, fonts, the Tailwind theme, components)
+   and Tailwind classes in the components, following the recipes in packages/ui/DESIGN.md.
+   There is no app stylesheet; add a rule here only for what classes can't express. */
+@import "tailwindcss";
+@import "@companyfeatures/ui/styles.css";
+
+@layer base {
+  /* the window doesn't scroll; the main pane does. Its scrollbar always has room kept for it, so a page that
+     scrolls is as wide as one that doesn't (no sideways jump between pages where scrollbars take space) */
+  body { overflow: hidden; }
+  [data-slot="main-pane"] { scrollbar-gutter: stable; }
+}
+
+/* a page that takes a moment to load: a thin line along the top of the main pane, only after 120ms */
+@keyframes nav-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(0.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-nav-progress] { animation: none !important; transform: scaleX(0.8); }
+}
+
+/* a placeholder for what's loading (loading.tsx Bone): hidden for its first 180ms, so a load that finishes sooner
+   flashes nothing, then a slow pulse (rows start one after another: --bone-delay). No pulse for reduced motion. */
+@keyframes bone-in {
+  from { visibility: hidden; }
+  to { visibility: visible; }
+}
+@keyframes bone-pulse {
+  50% { opacity: 0.45; }
+}
+.bone {
+  animation: bone-in 0s linear 180ms both, bone-pulse 1.8s ease-in-out calc(180ms + var(--bone-delay, 0ms)) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bone { animation: bone-in 0s linear 180ms both; }
+}

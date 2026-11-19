@@ -1,0 +1,40 @@
+# CompanyFeatures with Postgres.
+#   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+#   docker compose up -d
+# then open http://localhost:8787 and create the admin account. Settings: .env.example.
+services:
+  companyfeatures:
+    image: ghcr.io/dvir-daniel/companyfeatures:latest
+    build: .
+    ports:
+      - "8787:8787"
+    # every setting in .env reaches the server (.env.example lists them); these two are set here
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgres://companyfeatures:companyfeatures@postgres:5432/companyfeatures
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (openssl rand -base64 32)}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8787}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: companyfeatures
+      POSTGRES_PASSWORD: companyfeatures
+      POSTGRES_DB: companyfeatures
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U companyfeatures -d companyfeatures"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres:
