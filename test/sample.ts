@@ -76,12 +76,12 @@ export async function sampleInstallation(db: Db): Promise<void> {
 
   await createFlag(db, {
     key: 'welcome_message', name: 'Welcome message', tags: ['onboarding'], valueType: 'string', kind: 'config', owner: 'growth',
-    description: 'The app keeps the text in its code, unless a rule sets one: people who speak Hebrew get theirs.',
-    variations: [{ key: 'hebrew', value: 'ברוכים הבאים!' }],
+    description: 'The app keeps the text in its code, unless a rule sets one: people who speak Spanish get theirs.',
+    variations: [{ key: 'spanish', value: '¡Te damos la bienvenida!' }],
     delivery: both(APPS),
     base: {
       enabled: true, defaultVariation: 'code_default',
-      rules: [{ ruleKey: randomUUID(), name: 'Hebrew speakers', conditions: [{ field: 'locale.language', op: 'in', values: ['he'] }], serveVariation: 'hebrew' }],
+      rules: [{ ruleKey: randomUUID(), name: 'Spanish speakers', conditions: [{ field: 'locale.language', op: 'in', values: ['es'] }], serveVariation: 'spanish' }],
     },
   }, actor);
 

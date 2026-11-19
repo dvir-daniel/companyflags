@@ -39,7 +39,7 @@ The context is what the device or the request knows about itself, by the names r
   "targetingKey": "3f9c…",
   "app": { "version": "6.0.0", "build": 412 },
   "device": { "platform": "web", "os": "macos" },
-  "locale": { "language": "he" }
+  "locale": { "language": "es" }
 }
 ```
 

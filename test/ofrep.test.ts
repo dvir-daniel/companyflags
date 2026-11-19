@@ -48,10 +48,10 @@ describe('an app with the OFREP web provider and its app link', () => {
       baseUrl: BASE, fetchImplementation: fetchApp, headers: [['Authorization', `Bearer ${token}`]],
       changeDetection: 'none', cacheMode: 'disabled', disableVisibilityRefresh: true,
     });
-    await WebOpenFeature.setContext({ targetingKey: 'd-1', app: { version: '6.0.0' }, locale: { language: 'he' } });
+    await WebOpenFeature.setContext({ targetingKey: 'd-1', app: { version: '6.0.0' }, locale: { language: 'es' } });
     await WebOpenFeature.setProviderAndWait(provider);
     const client = WebOpenFeature.getClient();
-    const attrs = { 'device.id': 'd-1', 'app.version': '6.0.0', 'locale.language': 'he' };
+    const attrs = { 'device.id': 'd-1', 'app.version': '6.0.0', 'locale.language': 'es' };
 
     assert.equal(client.getStringValue('api_base_url', 'x'), 'https://globex.api.example.com', 'a brand follows its company');
     assert.deepEqual(client.getObjectValue('theme', {}), { accent: '#f59e0b', radius: 12 });
@@ -59,7 +59,7 @@ describe('an app with the OFREP web provider and its app link', () => {
       const got = typeof d === 'boolean' ? client.getBooleanValue(key, d) : typeof d === 'number' ? client.getNumberValue(key, d) : client.getStringValue(key, d);
       assert.deepEqual(got, expected('dev', 'web', 'lumen', attrs, key, d), key);
     }
-    assert.equal(client.getStringValue('welcome_message', 'code'), 'ברוכים הבאים!');
+    assert.equal(client.getStringValue('welcome_message', 'code'), '¡Te damos la bienvenida!');
 
     await WebOpenFeature.setContext({ targetingKey: 'd-2', locale: { language: 'en' } });
     assert.equal(client.getStringValue('welcome_message', 'from the app'), 'from the app', 'the code default: no value sent');
