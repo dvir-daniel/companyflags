@@ -25,7 +25,6 @@
     "serve": "vite build && node server/index.ts",
     "server": "node --watch server/index.ts",
     "build": "vite build",
-    "demo": "FF_DEMO=1 FF_DATA_DIR=${FF_DATA_DIR:-:memory:} pnpm serve",
     "test": "node --test --test-timeout=120000 \"test/*.test.ts\"",
     "test:pg": "FF_TEST_PG=${FF_TEST_PG:-postgres://postgres:postgres@localhost:55432/postgres} node --test --test-timeout=120000 --test-concurrency=4 \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",

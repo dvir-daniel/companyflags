@@ -53,7 +53,7 @@ checks applies to every request. Rules are tried in order, and the first one tha
 the chain (overrides, each entity's own rules, the rules for everyone) is in
 [Dimensions → Evaluation order](/guide/dimensions#evaluation-order).
 
-From the sample data, on `max_upload_mb`:
+For example, on `max_upload_mb`:
 
 ```text
 Rule "Enterprise companies"   Company is Acme Corp or Globex   → enterprise (1000)

@@ -29,13 +29,7 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
    their entity's token; backends use an API key, or download their entity's rules as [flagd](https://flagd.dev) JSON
    and evaluate them in-process. For very large fleets, each entity's values are also one file your CDN caches.
 
-```text
-console ──► server (rules, approvals, history) ──► Postgres
-              │
-              ├── OFREP ──────────────► apps (web, iOS, Android) with OpenFeature's providers
-              ├── flagd JSON / OFREP ─► backends with OpenFeature
-              └── app files ──► your CDN ──► very large fleets, no request reaches the server
-```
+<IllusHowItWorks />
 
 ![The console: a release flag, with an override for old Android builds, Acme Corp's own setting, and 10% of devices](/screenshots/console-flag.png)
 
@@ -62,6 +56,6 @@ CompanyFeatures is before 1.0. It is tested (about 370 tests, on embedded and re
 
 ## Next
 
-- [Quickstart](/guide/quickstart): run it with sample data in one command.
+- [Quickstart](/guide/quickstart): run it and read your first flag.
 - [How it fits together](/guide/concepts): environments, apps, dimensions, flags and rules.
 - [Compared with others](/guide/comparison): when CompanyFeatures fits, and when it doesn't.

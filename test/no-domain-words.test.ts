@@ -158,7 +158,6 @@ test('no string or JSX text in the console or the server says those words', () =
     for (const { line, text } of texts(file)) {
       if (!WORD.test(text.replace(PRODUCT, '')) || KEPT.has(text)) continue;
       if (file.endsWith('dimensions.ts') && presets.has(text)) continue;
-      if (file.endsWith('demo.ts')) continue;           // the sample data: one installation's own words (company › brand)
       hits.push(`${file}:${line}: ${text.trim().slice(0, 120)}`);
     }
   }

@@ -24,5 +24,5 @@ The first public release.
   roles, password reset links made by an admin. Only admins manage API keys. Sign-in rate limits read the connection's
   address, or a header you trust behind a proxy (`FF_CLIENT_IP_HEADER`, `FF_TRUSTED_PROXIES`).
 - **Running it.** A Docker image and a Compose file with Postgres; several instances on one database; `/healthz` and
-  `/readyz`; security headers and a strict Content-Security-Policy on the console; sample data (`FF_DEMO=1`, or one
-  click in an empty console).
+  `/readyz`; security headers and a strict Content-Security-Policy on the console; a first screen that walks an admin
+  through setting up.

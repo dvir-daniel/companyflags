@@ -12,7 +12,6 @@ import { may, mustBeAllowed, type Access, type Person } from './access.ts';
 import { serviceProvider, type SingleSignOn } from './sso.ts';
 import type { Cdn } from './cdn.ts';
 import { appToken, clientLink } from './delivery.ts';
-import { addSampleData } from './demo.ts';
 import { notRolledBack, RESTORABLE } from './journal.ts';
 import { HISTORY_CSV_HEADER, historyBatches, historyCsv, historyFilter, historyPage } from './history.ts';
 import {
@@ -753,13 +752,6 @@ export function consoleApi({ db, plane, hub, identity, access, sso, cdn }: Deps)
   });
 
   // ------------------------------------------------------------ settings (admins): environments, apps
-  // A made-up installation to explore with (demo.ts): only into an empty one.
-  app.post('/sample-data', async (c) => {
-    adminOnly(c.get('user'));
-    await addSampleData(db);
-    return c.json({ ok: true }, 201);
-  });
-
   app.post('/environments', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await createEnvironment(db, await c.req.json(), actor(c.get('user'))), 201);   // its app files are served at once

@@ -89,7 +89,7 @@ Break-glass works on the flag's defaults only, never on an entity's own settings
 with the change. History and the Versions list mark it as an **emergency**. Sending a request for review instead is
 always possible.
 
-The sample data's `payments_enabled` is a kill switch: on call can turn payments off in Production without waiting.
+A kill switch such as `payments_enabled`: on call can turn payments off in Production without waiting.
 
 ## History
 

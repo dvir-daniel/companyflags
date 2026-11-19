@@ -64,18 +64,16 @@ get the same answer. CompanyFeatures covers all of it in one place, and your cod
 ## Quickstart
 
 ```bash
-docker run --rm -p 8787:8787 \
+docker run -d -p 8787:8787 -v companyfeatures:/data \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
   -e BETTER_AUTH_URL=http://localhost:8787 \
-  -e FF_DEMO=1 \
   ghcr.io/dvir-daniel/companyfeatures
 ```
 
-Open <http://localhost:8787> and create the admin account. `FF_DEMO=1` adds sample data: two environments, three
-apps and a backend, five companies with three brands, and six flags. Without it you start empty, and the console
-offers the same sample data with one click.
+Open <http://localhost:8787>, create the admin account, and the console walks you through four steps: environments,
+apps, dimensions, and your first flag.
 
-To keep your data, run it with Postgres:
+For production, run it with Postgres:
 
 ```bash
 curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml
@@ -88,7 +86,7 @@ Or from source (Node.js 22.18+, pnpm 11):
 ```bash
 git clone https://github.com/dvir-daniel/companyfeatures.git && cd companyfeatures
 corepack enable && pnpm install
-pnpm demo            # the console and API on http://localhost:8787, with the sample data, in memory
+pnpm serve           # builds the console and serves it with the API on http://localhost:8787
 ```
 
 ## Read flags with OpenFeature
@@ -121,13 +119,13 @@ flag in memory. See [OpenFeature](https://dvir-daniel.github.io/companyfeatures/
 
 ## How it works
 
-```text
-console ──► server (rules, approvals, history) ──► Postgres
-              │
-              ├── OFREP ──────────────► apps (web, iOS, Android) with OpenFeature's providers
-              ├── OFREP / flagd JSON ─► backends with OpenFeature
-              └── app files ──► your CDN ──► very large fleets: no request reaches the server
-```
+<p align="center">
+  <picture>
+    <source srcset=".github/assets/how-it-works-dark.png" media="(prefers-color-scheme: dark)">
+    <source srcset=".github/assets/how-it-works-light.png" media="(prefers-color-scheme: light)">
+    <img src=".github/assets/how-it-works-light.png" width="720" alt="How it works: describe your dimensions, decide with rules then defaults, read with OpenFeature; a change goes from draft to approved, published, a change event, and every device">
+  </picture>
+</p>
 
 One evaluator decides every answer: OFREP's, the app files', the backends' flagd JSON and the console's trace. The
 tests check each against it, with OpenFeature's own providers and flagd's own logic, for many entities and devices
