@@ -88,8 +88,8 @@ async function copyInstall() {
 }
 
 const features = [
-  { title: 'Your own dimensions.', text: 'Serve config per customer, per company and its brands, per region › chain › store. Up to four levels, in your words.', chips: ['customer', 'company › brand', 'region › store'] },
-  { title: 'Settings per entity.', text: 'Any customer, brand or store can have settings of its own, inherited down the chain, under rules for everyone.', chips: ['inherit', 'own settings'] },
+  { title: 'Your own dimensions.', text: 'Serve config per region › store, per team, per customer, or whatever your product is made of. Up to four levels, in your words.', chips: ['region › store', 'team', 'customer'] },
+  { title: 'Settings per entity.', text: 'Any region, store or team can have settings of its own, inherited down the chain, under rules for everyone.', chips: ['inherit', 'own settings'] },
   { title: 'Locked rules.', text: 'Overrides apply to everyone, always, and fail closed when a value is missing. No entity can change them.', chips: ['override', 'fail closed'] },
   { title: 'OpenFeature, no SDK of ours.', text: 'OFREP for OpenFeature’s web, Android, iOS and server providers; flagd JSON for in-process backends.', chips: ['OFREP', 'flagd', 'React'] },
   { title: 'Releases.', text: 'Early access for some customers, then 1% → 5% → 25% → 50% of devices, then everyone, then clean up.', chips: ['1%', '5%', '25%', '50%'] },
