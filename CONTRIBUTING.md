@@ -1,0 +1,81 @@
+# Contributing to CompanyFeatures
+
+Thanks for helping. Bug reports, docs fixes, tests and features are all welcome. For anything bigger than a small fix,
+open an issue or a discussion first, so we can agree on the shape before you spend time on it.
+
+By contributing you agree that your work is released under the project's [MIT license](LICENSE.md), and you follow our
+[code of conduct](CODE_OF_CONDUCT.md). Security problems go to **Security → Report a vulnerability**, never to a public
+issue ([SECURITY.md](SECURITY.md)).
+
+## Set up
+
+You need Node.js 22.18 or later (24 recommended; Node runs the TypeScript directly) and pnpm 11 (`corepack enable`
+gives you the right one).
+
+```bash
+git clone https://github.com/dvir-daniel/companyfeatures.git
+cd companyfeatures
+pnpm install
+pnpm dev          # the console on http://localhost:5173 with hot reload, the API on :8787 restarting on changes
+```
+
+Data lives in `./data` (embedded Postgres, nothing to install). `FF_DATA_DIR=:memory: pnpm dev` starts empty every
+time, and `pnpm demo` builds the console and serves it on http://localhost:8787 with the sample data.
+
+## What's where
+
+| Path | What it is |
+|---|---|
+| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `delivery.ts` serves app files and backend downloads; `ofrep.ts` answers OpenFeature's providers; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
+| `web/` | The console: React 19, Vite, Tailwind 4 |
+| `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
+| `test/` | The server's and console's tests (`node --test`) |
+| `docs/` | The documentation site (VitePress); `docs/design/` holds design notes and decision records |
+| `examples/` | Small apps that use CompanyFeatures |
+
+## Checks
+
+```bash
+pnpm check        # types (server and console), lint (oxlint), and every test
+pnpm test         # just the tests: about 20 seconds, on an in-memory database
+pnpm test:pg      # the same tests on a real Postgres server (each test file in its own new database)
+```
+
+For `pnpm test:pg`, start a Postgres server first:
+
+```bash
+docker run -d -p 55432:5432 -e POSTGRES_PASSWORD=postgres postgres:18
+```
+
+CI runs all of these on every pull request.
+
+## How we build
+
+- **One evaluator.** `server/evaluator.ts` decides every answer. App files (`clientFile.ts`), OpenFeature's OFREP
+  answers (`ofrep.ts`), backends' flagd JSON (`flagd.ts`) and the console's trace all come from it, and tests check each
+  of them against it, with OpenFeature's own providers and flagd's own logic, for many devices and entities.
+- **No SDK of our own.** Apps and backends use OpenFeature's providers (OFREP, flagd). A new delivery feature fits one of
+  those protocols, or it isn't built.
+- **The schema only moves forward.** A schema change is the next numbered file in `server/migrations/`. Never edit a
+  file a real database has applied: the server refuses to start if an applied file changed.
+- **No fixed business words.** Each installation names its own dimensions (customer, company › brand, region ›
+  store), so nothing a console user or rule author reads may say "customer", "tenant" or "brand" on its own.
+  `test/no-domain-words.test.ts` checks it; use the installation's words (`server/words.ts`, `web/src/dimWords.ts`).
+- **Console files.** A `.tsx` file exports only components, so React Fast Refresh can swap it in place. Hooks, class
+  strings and helpers go in a `.ts` file beside it (`uiKit.ts`, `pages/settingsKit.ts`).
+- **Plain words.** Console text and docs say what happens in short, plain sentences: "Production needs an approval",
+  not "Approval workflow is enforced for protected environments".
+- **Tests come with the change.** Anything about who may do what (sign-in, roles, API keys, links) or about what a
+  device gets needs a test that would fail without your change.
+
+## Pull requests
+
+- Keep each pull request to one change, with a title that says what changes for people using CompanyFeatures.
+- Fill in the template: what changes, how you tested it.
+- A maintainer reviews within a few days. We may ask for changes; that's normal, not a rejection.
+
+## Releases
+
+Maintainers release with a `vX.Y.Z` tag: it builds and publishes the Docker image
+(`ghcr.io/dvir-daniel/companyfeatures`) and a GitHub release with that version's notes from
+[CHANGELOG.md](CHANGELOG.md). Add your change to the "Unreleased" section of CHANGELOG.md.

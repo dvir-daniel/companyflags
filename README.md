@@ -1,0 +1,165 @@
+<p align="center">
+  <img src=".github/assets/banner.png" alt="CompanyFeatures: feature flags for products made of customers">
+</p>
+
+<h2 align="center">CompanyFeatures</h2>
+
+<p align="center">
+  Open-source feature flags and remote config for products made of customers.
+  <br>
+  <a href="https://dvir-daniel.github.io/companyfeatures/"><strong>Learn more »</strong></a>
+  <br>
+  <br>
+  <a href="https://dvir-daniel.github.io/companyfeatures/guide/quickstart">Quickstart</a>
+  ·
+  <a href="https://dvir-daniel.github.io/companyfeatures/">Docs</a>
+  ·
+  <a href="https://github.com/dvir-daniel/companyfeatures/issues">Issues</a>
+  ·
+  <a href="https://github.com/dvir-daniel/companyfeatures/discussions">Discussions</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/dvir-daniel/companyfeatures/actions/workflows/ci.yml"><img src="https://github.com/dvir-daniel/companyfeatures/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <a href="https://openfeature.dev"><img src="https://img.shields.io/badge/OpenFeature-OFREP%20%7C%20flagd-6b46c1" alt="OpenFeature"></a>
+  <a href="https://github.com/dvir-daniel/companyfeatures/stargazers"><img src="https://img.shields.io/github/stars/dvir-daniel/companyfeatures?style=flat" alt="GitHub stars"></a>
+</p>
+
+## About the project
+
+CompanyFeatures serves feature flags and remote config per customer, brand, store or any dimension you define. Apps
+and backends read them with OpenFeature's own providers, and you run it yourself: one Node.js server, a web console,
+and Postgres.
+
+<p align="center">
+  <img src=".github/assets/console.png" alt="The console: a release flag with an override, settings for one company, and a rule for 10% of devices">
+</p>
+
+### Why CompanyFeatures?
+
+Most flag tools think in users and segments. If you sell to businesses, your config has a shape of its own: each
+customer needs its own API address, limits or branding; a company's brands should follow it unless they say
+otherwise; and some rules must hold for everyone, whatever a customer's settings say. CompanyFeatures is built around
+that shape.
+
+- **Your own dimensions.** Serve config per `customer`, per `company` › `brand`, per `region` › `chain` › `store`.
+  You name the levels, up to four; nothing in the product says "tenant".
+- **Settings per entity, rules for everyone.** Any customer, brand or store can have settings of its own on any flag,
+  inherited down the chain. Locked rules apply to everyone, always. The console traces every answer step by step.
+- **OpenFeature, no SDK of ours.** Apps use OpenFeature's own OFREP providers (web, Android, iOS); backends use OFREP
+  or flagd JSON, evaluated in-process. Your flag-reading code stays standard.
+- **Nothing private reaches a device.** An app asks as its own entity, with a token it can't change, and gets its own
+  answers only: no rules, no customer lists, no one else's values.
+- **Reviewed changes.** Production can require an approval for every change, with scheduling, break-glass for on
+  call, an append-only history, restore, and side-by-side compare.
+- **Releases and version releases.** Roll a feature out to a few customers, then 1% → 5% → 25% → 50% of devices,
+  then everyone, then clean it up; or move devices from version 1.0.0 to 1.0.1 the same way, with rollback.
+- **Your sign-in.** Email and password, Google, GitHub or Microsoft, and single sign-on with SAML or OIDC, through
+  [Better Auth](https://www.better-auth.com).
+- **Cheap at any scale.** Every entity's values are also one file your CDN caches, rebuilt once per publish, for
+  fleets where no request should reach the server.
+
+## Quickstart
+
+```bash
+docker run --rm -p 8787:8787 \
+  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+  -e BETTER_AUTH_URL=http://localhost:8787 \
+  -e FF_DEMO=1 \
+  ghcr.io/dvir-daniel/companyfeatures
+```
+
+Open <http://localhost:8787> and create the admin account. `FF_DEMO=1` adds sample data: two environments, three
+apps and a backend, five companies with three brands, and six flags. Without it you start empty, and the console
+offers the same sample data with one click.
+
+To keep your data, run it with Postgres:
+
+```bash
+curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml
+echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+docker compose up -d
+```
+
+Or from source (Node.js 22.18+, pnpm 11):
+
+```bash
+git clone https://github.com/dvir-daniel/companyfeatures.git && cd companyfeatures
+corepack enable && pnpm install
+pnpm demo            # the console and API on http://localhost:8787, with the sample data, in memory
+```
+
+## Read flags with OpenFeature
+
+Your backend gets each app's token when someone signs in (`GET /sdk/v1/links/<dimension>/<entity>?app=web`, with an
+API key). The app uses OpenFeature's own OFREP provider:
+
+```ts
+import { OpenFeature } from '@openfeature/web-sdk';
+import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
+
+await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' } });
+await OpenFeature.setProviderAndWait(new OFREPWebProvider({
+  baseUrl: 'https://flags.example.com',
+  headers: [['Authorization', `Bearer ${session.flagsToken}`]],
+}));
+
+OpenFeature.getClient().getBooleanValue('new_checkout', false);
+```
+
+A backend uses its API key and names the entity by its dimension, as the rules do:
+
+```ts
+const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme', targetingKey: userId });
+```
+
+Or it runs [flagd](https://flagd.dev) next to it, which downloads the entity's rules as flagd JSON, and evaluates every
+flag in memory. See [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) and
+[Backends](https://dvir-daniel.github.io/companyfeatures/guide/backends).
+
+## How it works
+
+```text
+console ──► server (rules, approvals, history) ──► Postgres
+              │
+              ├── OFREP ──────────────► apps (web, iOS, Android) with OpenFeature's providers
+              ├── OFREP / flagd JSON ─► backends with OpenFeature
+              └── app files ──► your CDN ──► very large fleets: no request reaches the server
+```
+
+One evaluator decides every answer: OFREP's, the app files', the backends' flagd JSON and the console's trace. The
+tests check each against it, with OpenFeature's own providers and flagd's own logic, for many entities and devices
+(about 370 tests, on embedded and real Postgres). Several server instances can share one Postgres database.
+
+## Documentation
+
+| | |
+|---|---|
+| [Introduction](https://dvir-daniel.github.io/companyfeatures/guide/introduction) | What it is, who it's for, what it doesn't do yet |
+| [Concepts](https://dvir-daniel.github.io/companyfeatures/guide/concepts) | Environments, apps, dimensions, flags, rules |
+| [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) | Web, React, Android, iOS and backends |
+| [Self-hosting](https://dvir-daniel.github.io/companyfeatures/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
+| [HTTP API](https://dvir-daniel.github.io/companyfeatures/reference/http-api) | OFREP, app files, flagd JSON, links, health |
+
+The docs are in [`docs/`](docs) and run locally with `pnpm docs:dev`.
+
+## Status
+
+CompanyFeatures is before 1.0: tested and usable, but young, and the console's own API may change. Not built yet:
+experiment statistics, your own attributes beyond the built-in list, sending email (invite and password reset links
+are sent by hand), SCIM provisioning, and secret values (don't put secrets in flags). See
+[the introduction](https://dvir-daniel.github.io/companyfeatures/guide/introduction#what-it-doesn-t-do-yet).
+
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to set up (`pnpm dev`), how the
+code is organised and what we check (`pnpm check`). Please read the [code of conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Please report vulnerabilities privately, as described in [SECURITY.md](SECURITY.md). Never in a public issue.
+
+## License
+
+[MIT](LICENSE.md)

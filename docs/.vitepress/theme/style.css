@@ -1,0 +1,174 @@
+/* The docs in the console's look (packages/ui/DESIGN.md), which follows better-auth.com: pure black or white,
+   Geist and Geist Mono, 1px rules, square corners, small uppercase mono labels, color only for meaning. */
+
+:root {
+  --cf-page: #ffffff;
+  --cf-panel: #fafafa;
+  --cf-panel-2: #f5f5f5;
+  --cf-ink: #0a0a0a;
+  --cf-ink-1: rgba(10, 10, 10, 0.8);
+  --cf-ink-nav: rgba(10, 10, 10, 0.6);
+  --cf-ink-2: #525252;
+  --cf-ink-3: #737373;
+  --cf-subtitle: #666666;
+  --cf-rule: #e5e5e5;
+  --cf-rule-2: #d4d4d4;
+  --cf-grid: rgba(10, 10, 10, 0.08);
+  --cf-wash: rgba(10, 10, 10, 0.04);
+  --cf-accent: #7c3aed;
+
+  --vp-font-family-base: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --vp-font-family-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --vp-c-bg: var(--cf-page);
+  --vp-c-bg-alt: var(--cf-page);
+  --vp-c-bg-elv: var(--cf-page);
+  --vp-c-bg-soft: var(--cf-panel);
+  --vp-c-text-1: var(--cf-ink);
+  --vp-c-text-2: var(--cf-ink-2);
+  --vp-c-text-3: var(--cf-ink-3);
+  --vp-c-divider: var(--cf-rule);
+  --vp-c-border: var(--cf-rule);
+  --vp-c-gutter: var(--cf-rule);
+  --vp-c-default-soft: var(--cf-wash);
+
+  --vp-c-brand-1: var(--cf-ink);
+  --vp-c-brand-2: var(--cf-ink-1);
+  --vp-c-brand-3: var(--cf-ink);
+  --vp-c-brand-soft: var(--cf-wash);
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-text: var(--cf-page);
+  --vp-button-brand-bg: var(--cf-ink);
+  --vp-button-brand-hover-text: var(--cf-page);
+  --vp-button-brand-hover-bg: #262626;
+  --vp-button-brand-active-text: var(--cf-page);
+  --vp-button-brand-active-bg: #404040;
+  --vp-button-alt-bg: transparent;
+  --vp-button-alt-border: var(--cf-rule-2);
+
+  --vp-code-block-bg: var(--cf-panel);
+  --vp-code-bg: var(--cf-wash);
+  --vp-code-color: var(--cf-ink);
+  --vp-custom-block-tip-bg: var(--cf-panel);
+  --vp-custom-block-tip-border: var(--cf-rule);
+  --vp-custom-block-info-bg: var(--cf-panel);
+  --vp-custom-block-warning-bg: var(--cf-panel);
+  --vp-custom-block-warning-border: var(--cf-rule);
+  --vp-local-search-bg: var(--cf-page);
+  --vp-local-search-result-bg: var(--cf-page);
+  --vp-local-search-highlight-bg: var(--cf-ink);
+  --vp-local-search-highlight-text: var(--cf-page);
+
+  --vp-nav-height: 48px;
+  --vp-sidebar-width: 280px;
+  --vp-layout-max-width: 1440px;
+}
+
+.dark {
+  --cf-page: #000000;
+  --cf-panel: #0a0a0a;
+  --cf-panel-2: #121212;
+  --cf-ink: #fafafa;
+  --cf-ink-1: rgba(250, 250, 250, 0.8);
+  --cf-ink-nav: rgba(250, 250, 250, 0.65);
+  --cf-ink-2: #a3a3a3;
+  --cf-ink-3: #737373;
+  --cf-subtitle: #999999;
+  --cf-rule: #262626;
+  --cf-rule-2: #363636;
+  --cf-grid: rgba(255, 255, 255, 0.08);
+  --cf-wash: rgba(250, 250, 250, 0.05);
+  --cf-accent: #a78bfa;
+  --vp-button-brand-hover-bg: #e5e5e5;
+  --vp-button-brand-active-bg: #d4d4d4;
+}
+
+html { -webkit-font-smoothing: antialiased; }
+::selection { background: var(--cf-ink); color: var(--cf-page); }
+
+/* ---- square everything */
+.VPButton, .VPFeature, .custom-block, div[class*='language-'], .vp-code-group .tabs, .VPLocalSearchBox .shell,
+.VPNavBarSearchButton, .DocSearch-Button, .VPLink.VPSocialLink, .VPMenu, .VPFlyout .menu, .vp-doc table,
+.vp-doc :not(pre) > code, .VPSidebarItem .item, .VPDocFooter .pager-link, .VPLocalSearchBox .result {
+  border-radius: 0 !important;
+}
+
+/* ---- the bar: a logo cell, then cells with mono uppercase labels, divided by 1px rules */
+.VPNavBar, .VPNavBar.has-sidebar .content, .VPNavBar .divider-line { background: var(--cf-page) !important; }
+.VPNavBar { border-bottom: 1px solid var(--cf-rule); }
+.VPNavBar .divider { display: none; }
+.VPNavBarTitle .title { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; text-transform: uppercase; border-bottom: 0 !important; }
+.VPNavBarTitle .title::after { content: '.'; }
+.VPNavBarTitle .logo { height: 18px; }
+.VPNavBarMenu { height: var(--vp-nav-height); align-self: stretch; }
+.VPNavBarMenuLink, .VPNavBarMenuGroup .button {
+  font-family: var(--vp-font-family-mono) !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--cf-ink-nav) !important;
+  height: var(--vp-nav-height);
+  display: flex; align-items: center;
+  padding: 0 22px !important;
+  border-left: 1px solid var(--cf-rule);
+}
+.VPNavBarMenuLink:hover { color: var(--cf-ink) !important; background: var(--cf-wash); }
+.VPNavBarMenuLink[href^="https://github.com"] { background: var(--cf-ink); color: var(--cf-page) !important; }
+.VPNavBarMenuLink[href^="https://github.com"]:hover { background: var(--cf-ink-1); }
+.VPNavBarMenuLink.vp-external-link-icon::after { display: none; }
+.VPNavBarMenuLink.active { color: var(--cf-ink) !important; box-shadow: inset 0 -2px 0 var(--cf-ink-nav); }
+.VPNavBarSearchButton, .DocSearch-Button { background: transparent !important; border: 1px solid var(--cf-rule) !important; }
+.VPNavBarSearch .DocSearch-Button-Keys, .VPNavBarSearchButton .keys { font-family: var(--vp-font-family-mono); }
+
+/* ---- the sidebar: same page color, a rule on its right, quiet groups */
+.VPSidebar { background: var(--cf-page) !important; border-right: 1px solid var(--cf-rule); }
+.VPSidebarItem.level-0 > .item > .text, .VPSidebarItem.level-0 > .item h2 {
+  font-family: var(--vp-font-family-mono); font-size: 11px !important; font-weight: 400 !important;
+  letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3) !important;
+}
+.VPSidebarItem.level-0 { padding-bottom: 16px; }
+.VPSidebarItem .link .text { font-size: 14px; color: var(--cf-ink-2); }
+.VPSidebarItem .link:hover .text { color: var(--cf-ink); }
+.VPSidebarItem.is-active > .item .link > .text { color: var(--cf-ink); font-weight: 500; }
+.VPSidebarItem.is-active > .item { background: var(--cf-wash); }
+.VPSidebarItem .item { padding-left: 8px; }
+.VPSidebarItem .indicator { display: none; }
+.group + .group { border-top: 1px solid var(--cf-rule) !important; }
+
+/* ---- pages */
+.vp-doc h1 { font-size: 30px; line-height: 1.2; font-weight: 600; letter-spacing: -0.02em; }
+.vp-doc h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; border-top: 0; margin-top: 48px; padding-top: 0; }
+.vp-doc h3 { font-size: 17px; font-weight: 600; }
+.vp-doc p, .vp-doc li { font-size: 15px; line-height: 1.75; color: var(--cf-ink-1); }
+.vp-doc strong { color: var(--cf-ink); font-weight: 600; }
+.vp-doc a { color: var(--cf-ink); text-decoration: underline; text-decoration-color: var(--cf-rule-2); text-underline-offset: 3px; font-weight: 500; }
+.vp-doc a:hover { text-decoration-color: var(--cf-ink); }
+.vp-doc :not(pre) > code { font-size: 0.86em; padding: 2px 5px; border: 1px solid var(--cf-rule); background: var(--cf-panel); color: var(--cf-ink); }
+.vp-doc div[class*='language-'] { border: 1px solid var(--cf-rule); background: var(--cf-panel); }
+.vp-doc table { display: table; width: 100%; border-collapse: collapse; }
+.vp-doc tr { background: transparent !important; border-top: 1px solid var(--cf-rule); }
+.vp-doc th { font-family: var(--vp-font-family-mono); font-size: 11px; font-weight: 400; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); background: var(--cf-panel); }
+.vp-doc th, .vp-doc td { border: 1px solid var(--cf-rule); font-size: 14px; }
+.vp-doc .custom-block { border: 1px solid var(--cf-rule); border-left: 2px solid var(--cf-ink); background: var(--cf-panel); }
+.vp-doc .custom-block.warning { border-left-color: #d97706; }
+.vp-doc .custom-block-title { font-family: var(--vp-font-family-mono); font-size: 11px; font-weight: 400; letter-spacing: 0.6px; text-transform: uppercase; }
+.vp-doc img { border: 1px solid var(--cf-rule); margin: 24px 0; }
+.vp-doc hr { border-top: 1px solid var(--cf-rule); }
+.vp-code-group .tabs { border: 1px solid var(--cf-rule); border-bottom: 0; background: var(--cf-panel); }
+.vp-code-group .tabs label { font-family: var(--vp-font-family-mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px; }
+
+/* ---- "On this page" and the page footer */
+.VPDocAsideOutline .outline-title { font-family: var(--vp-font-family-mono); font-size: 11px; font-weight: 400; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); }
+.VPDocAsideOutline .content { border-left: 1px solid var(--cf-rule); }
+.VPDocAsideOutline .outline-marker { background: var(--cf-ink); border-radius: 0; }
+.VPDocFooter .pager-link { border: 1px solid var(--cf-rule) !important; }
+.VPDocFooter .pager-link:hover { border-color: var(--cf-ink-3) !important; }
+.VPDocFooter .desc { font-family: var(--vp-font-family-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; }
+.VPFooter { border-top: 1px solid var(--cf-rule) !important; background: var(--cf-page) !important; }
+.VPFooter .message, .VPFooter .copyright { font-family: var(--vp-font-family-mono); font-size: 12px; }
+
+/* the landing page runs edge to edge */
+.VPContent.is-home, .VPPage:has(.cf-landing) { padding: 0 !important; }
+.VPContent:has(.cf-landing) { padding-top: var(--vp-nav-height) !important; }
+.VPContent:has(.cf-landing) .VPPage, .VPContent:has(.cf-landing) .container, .VPContent:has(.cf-landing) .content { max-width: none !important; padding: 0 !important; margin: 0 !important; }

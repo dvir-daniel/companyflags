@@ -1,0 +1,368 @@
+/* @companyfeatures/ui: the look of the CompanyFeatures console.
+   Visual language follows better-auth.com: pure black, Geist + Geist Mono, square corners,
+   1px lines, color only for meaning. The rules behind these values are in ../DESIGN.md.
+   Light and dark themes, both measured from better-auth.com (see "Two themes" below).
+
+   Use it from an app's entry stylesheet, after Tailwind:
+     @import "tailwindcss";
+     @import "@companyfeatures/ui/styles.css";                                                  */
+
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Tailwind only scans the app by default; this adds the classes the shared components use. */
+@source "./components";
+
+/* Two themes, light and dark, measured from better-auth.com. <html data-theme="light|dark"> picks one;
+   src/lib/theme.ts sets it from the person's choice (System, Light or Dark) before the first paint. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---- light (the default until the theme script runs) */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --page: #ffffff;
+  --panel: #fafafa;
+  --panel-2: #f5f5f5;
+  --hover-wash: rgba(10, 10, 10, 0.04);
+  --ink: #0a0a0a;
+  --ink-1: rgba(10, 10, 10, 0.8);
+  --ink-nav: rgba(10, 10, 10, 0.6);
+  --ink-2: #525252;
+  --ink-3: #737373;
+  --ink-4: #a3a3a3;
+  --subtitle: #666666;
+  --rule: #e5e5e5;
+  --rule-2: #d4d4d4;
+  --grid: rgba(10, 10, 10, 0.08);
+  --sep: rgba(10, 10, 10, 0.06);
+  --underline: rgba(10, 10, 10, 0.6);
+  --primary-hover: #262626;
+  --overlay: rgba(10, 10, 10, 0.25);
+  --shadow-strong: rgba(0, 0, 0, 0.12);
+  --selection: rgba(10, 10, 10, 0.12);
+
+  /* Meaning colors: darker in light so they read on white. */
+  --person-ana: #0f766e;
+  --person-kai: #c2410c;
+  --person-ben: #7e22ce;
+  --person-dana: #1d4ed8;
+  --person-5: #a16207;
+  --person-6: #be185d;
+  --person-7: #15803d;
+  --person-8: #78716c;
+  --person-ink: #ffffff; /* initials on a person's color */
+  --live: #dc2626;
+  --flag: #b45309;
+  --flag-bg: #fffbeb;
+  --flag-rule: #fde68a;
+  --ok: #15803d;
+  --tool: #7c3aed;
+}
+
+/* ---- dark: pure black */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page: #000000;
+  --panel: #0a0a0a;
+  --panel-2: #121212;
+  --hover-wash: rgba(255, 255, 255, 0.06);
+  --ink: #fafafa;
+  --ink-1: rgba(250, 250, 250, 0.8);
+  --ink-nav: rgba(250, 250, 250, 0.65);
+  --ink-2: #a3a3a3;
+  --ink-3: #737373;
+  --ink-4: #4d4d4d;
+  --subtitle: #999999;
+  --rule: #262626;
+  --rule-2: #363636;
+  --grid: rgba(255, 255, 255, 0.08);
+  --sep: rgba(255, 255, 255, 0.06);
+  --underline: rgba(250, 250, 250, 0.6);
+  --primary-hover: #e5e5e5;
+  --overlay: rgba(0, 0, 0, 0.7);
+  --shadow-strong: rgba(0, 0, 0, 0.7);
+  --selection: rgba(250, 250, 250, 0.2);
+
+  --person-ana: #6fd0c0;
+  --person-kai: #eba672;
+  --person-ben: #cda4e0;
+  --person-dana: #9db6f4;
+  --person-5: #e6d37a;
+  --person-6: #f29bb4;
+  --person-7: #8fd694;
+  --person-8: #c9b39a;
+  --person-ink: #000000;
+  --live: #ff5a4e;
+  --flag: #e8b864;
+  --flag-bg: #17120a;
+  --flag-rule: #3a2d12;
+  --ok: #7ee0a8;
+  --tool: #b48cf5;
+}
+
+/* ---- shadcn/ui semantic tokens, the same in both themes */
+:root {
+  --black: var(--page); /* older name for the page color */
+  --background: var(--page);
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--panel);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--page);
+  --secondary: var(--rule);
+  --secondary-foreground: var(--ink);
+  --muted: var(--panel);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--hover-wash);
+  --accent-foreground: var(--ink);
+  --destructive: var(--live);
+  --border: var(--rule);
+  --input: var(--rule-2);
+  --ring: var(--ink);
+  --chart-1: var(--ink);
+  --chart-2: var(--ink-2);
+  --chart-3: var(--ink-3);
+  --chart-4: var(--ink-4);
+  --chart-5: var(--rule-2);
+  --radius: 0rem;
+  --sidebar: var(--page);
+  --sidebar-foreground: var(--ink-nav);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--page);
+  --sidebar-accent: var(--hover-wash);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--rule);
+  --sidebar-ring: var(--ink);
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-heading: var(--font-sans);
+
+  /* Type scale: 11 / 12 / 13 / 14 / 15 / 16 / 18 / 28, line height 1.5.
+     text-xs (12), text-sm (14), text-base (16) and text-lg (18) keep Tailwind's names. */
+  --text-11: 11px;
+  --text-11--line-height: 1.5;
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-13: 13px;
+  --text-13--line-height: 1.5;
+  --text-sm: 14px;
+  --text-sm--line-height: 1.5;
+  --text-15: 15px;
+  --text-15--line-height: 1.5;
+  --text-base: 16px;
+  --text-base--line-height: 1.5;
+  --text-lg: 18px;
+  --text-lg--line-height: 1.5;
+  --text-28: 28px;
+  --text-28--line-height: 1.2;
+
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-subtitle: var(--subtitle);
+  --color-underline: var(--underline);
+  --color-overlay: var(--overlay);
+  --color-primary-hover: var(--primary-hover);
+  --color-person-ink: var(--person-ink);
+  --color-wash: var(--hover-wash);
+  --color-ink: var(--ink);
+  --color-ink-1: var(--ink-1);
+  --color-ink-nav: var(--ink-nav);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-ink-4: var(--ink-4);
+  --color-rule: var(--rule);
+  --color-rule-2: var(--rule-2);
+  --color-grid: var(--grid);
+  --color-sep: var(--sep);
+  --color-person-ana: var(--person-ana);
+  --color-person-kai: var(--person-kai);
+  --color-person-ben: var(--person-ben);
+  --color-person-dana: var(--person-dana);
+  --color-person-5: var(--person-5);
+  --color-person-6: var(--person-6);
+  --color-person-7: var(--person-7);
+  --color-person-8: var(--person-8);
+  --color-live: var(--live);
+  --color-flag: var(--flag);
+  --color-flag-bg: var(--flag-bg);
+  --color-flag-rule: var(--flag-rule);
+  --color-ok: var(--ok);
+  --color-tool: var(--tool);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --animate-pulse-live: pulse-live 1.6s ease-in-out infinite;
+  @keyframes pulse-live {
+    50% {
+      opacity: 0.3;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background font-sans text-sm text-foreground antialiased;
+  }
+  b,
+  strong {
+    font-weight: 500;
+  }
+  :focus-visible {
+    outline: 1px solid var(--ink);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--selection);
+  }
+}
+
+@layer utilities {
+  /* Mono label: Geist Mono, uppercase. Used for kinds, times, section labels. */
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    text-transform: uppercase;
+    letter-spacing: 0.55px;
+  }
+  /* Selectable text, in apps that turn selection off for the window. */
+  .selectable {
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+  /* Dithered pixel texture, as decoration on the right of a panel. */
+  .dither {
+    position: relative;
+    overflow: hidden;
+  }
+  .dither::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: 45%;
+    pointer-events: none;
+    background: repeating-conic-gradient(color-mix(in srgb, var(--ink) 7%, transparent) 0 25%, transparent 0 50%) 0 0 / 4px 4px;
+    mask-image: linear-gradient(90deg, transparent, #000 85%);
+  }
+  .dither-fill {
+    background: repeating-conic-gradient(color-mix(in srgb, var(--ink) 3.5%, transparent) 0 25%, transparent 0 50%) 0 0 / 4px 4px;
+  }
+  /* "+" marks where grid lines meet, at the bottom corners of a cell stack. Drawn as two 1px lines
+     rather than a "+" glyph: a glyph's ink sits wherever the font's metrics put it, so it never lands
+     exactly on the corner. A 9px square with its middle row and column filled, offset by 4px, puts
+     both lines on the frame's 1px border at any font or zoom. */
+  .crosshairs {
+    position: relative;
+  }
+  .crosshairs::before,
+  .crosshairs::after {
+    content: "";
+    position: absolute;
+    bottom: -4px;
+    width: 9px;
+    height: 9px;
+    background:
+      linear-gradient(currentColor, currentColor) center / 1px 100% no-repeat,
+      linear-gradient(currentColor, currentColor) center / 100% 1px no-repeat;
+    color: var(--ink-4);
+    pointer-events: none;
+  }
+  .crosshairs::before {
+    left: -4px;
+  }
+  .crosshairs::after {
+    right: -4px;
+  }
+}
+
+/* Narrow windows (a phone, a small browser preview): the sidebar of an AppFrame becomes a row of
+   links under the title bar. Desktop windows never get this narrow. */
+@media (max-width: 767px) {
+  @layer utilities {
+    [data-slot="app-frame"] [data-slot="sidebar"] {
+      flex-direction: row;
+      gap: 0;
+      padding: 0 4px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      border-right: 0;
+      border-bottom: 1px solid var(--rule);
+      scrollbar-width: none;
+    }
+    [data-slot="app-frame"] [data-slot="sidebar"] :is([data-slot="sidebar-search"], [data-slot="sidebar-label"], [data-slot="sidebar-foot"]) {
+      display: none;
+    }
+    [data-slot="app-frame"] [data-slot="sidebar"] > a {
+      height: 40px;
+      width: auto;
+      padding-block: 0;
+      white-space: nowrap;
+    }
+    [data-slot="app-frame"] [data-slot="sidebar"] > a[aria-current="page"] {
+      background: transparent;
+      box-shadow: inset 0 -2px 0 var(--underline);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-live {
+    animation: none;
+  }
+}

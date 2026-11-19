@@ -1,0 +1,71 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "companyfeatures",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=8787",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "companyfeatures-fresh",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "PORT=8787",
+        "FF_DATA_DIR=:memory:",
+        "pnpm",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "companyfeatures-built",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "serve"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "console-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "exec",
+        "vite",
+        "--port",
+        "5200",
+        "--strictPort"
+      ],
+      "port": 5200
+    },
+    {
+      "name": "companyfeatures-demo",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "FF_DEMO=1",
+        "FF_DATA_DIR=:memory:",
+        "pnpm",
+        "serve"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "docs",
+        "exec",
+        "vitepress",
+        "preview",
+        "--port",
+        "4173"
+      ],
+      "port": 4173
+    }
+  ]
+}

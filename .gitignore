@@ -1,0 +1,17 @@
+node_modules
+/data
+/data-*
+web/dist
+packages/*/dist
+docs/.vitepress/cache
+docs/.vitepress/dist
+.DS_Store
+/data*.lock
+.archify
+.claude/settings.local.json
+.turbo
+.env
+.env.*
+!.env.example
+coverage
+*.log

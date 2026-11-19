@@ -1,0 +1,74 @@
+name: Bug report
+description: Something doesn't work as the docs say it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. **Security problems go to Security → Report a vulnerability, never here.**
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. Screenshots of the console help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest set of steps from a new installation, or the request and response (remove secrets, links and API keys).
+      placeholder: |
+        1. Settings → Dimensions: company › brand
+        2. Add a flag with …
+        3. GET /client/v1/flags/dev/web/…
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The release, Docker image tag or commit (shown at the bottom of the console).
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: runs
+    attributes:
+      label: How it runs
+      options:
+        - Docker image
+        - Docker Compose
+        - From source (pnpm)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - Postgres (DATABASE_URL)
+        - Embedded (data folder)
+        - In memory
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Console
+        - Flags, rules and dimensions
+        - Releases
+        - Approvals and history
+        - Sign-in and single sign-on
+        - App files and CDN
+        - Backends (flagd, OpenFeature)
+        - OpenFeature (OFREP)
+        - Docs
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server log
+      description: Lines starting with [ff] around the problem.
+      render: text

@@ -1,0 +1,26 @@
+{
+  // The console runs in the browser through Vite: bundler resolution and DOM types, no Node types.
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    // @companyfeatures/ui (packages/ui) has its own node_modules: point React's types at this app's copy so the
+    // library and the console type-check against one React (Vite's resolve.dedupe does the same for the bundle).
+    "paths": {
+      "react": ["../node_modules/@types/react"],
+      "react/*": ["../node_modules/@types/react/*"],
+      "react-dom": ["../node_modules/@types/react-dom"],
+      "react-dom/*": ["../node_modules/@types/react-dom/*"]
+    }
+  },
+  "include": ["src"]
+}
