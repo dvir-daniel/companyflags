@@ -1,8 +1,17 @@
 <p align="center">
-  <img src=".github/assets/banner.png" alt="CompanyFeatures: feature flags for products made of customers">
+  <picture>
+    <source srcset=".github/assets/banner-dark.png" media="(prefers-color-scheme: dark)">
+    <source srcset=".github/assets/banner-light.png" media="(prefers-color-scheme: light)">
+    <img src=".github/assets/banner-light.png" alt="CompanyFeatures: feature flags for products made of customers">
+  </picture>
 </p>
 
-<h2 align="center">CompanyFeatures</h2>
+<p align="center">
+  <a href="https://github.com/dvir-daniel/companyfeatures/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/dvir-daniel/companyfeatures/ci.yml?branch=main&style=flat&colorA=000000&colorB=000000&label=CI" alt="CI"></a>
+  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat&colorA=000000&colorB=000000" alt="MIT license"></a>
+  <a href="https://openfeature.dev"><img src="https://img.shields.io/badge/OpenFeature-OFREP%20%7C%20flagd-000000?style=flat&colorA=000000&colorB=000000" alt="OpenFeature"></a>
+  <a href="https://github.com/dvir-daniel/companyfeatures/stargazers"><img src="https://img.shields.io/github/stars/dvir-daniel/companyfeatures?style=flat&colorA=000000&colorB=000000" alt="GitHub stars"></a>
+</p>
 
 <p align="center">
   Open-source feature flags and remote config for products made of customers.
@@ -17,13 +26,6 @@
   <a href="https://github.com/dvir-daniel/companyfeatures/issues">Issues</a>
   ·
   <a href="https://github.com/dvir-daniel/companyfeatures/discussions">Discussions</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/dvir-daniel/companyfeatures/actions/workflows/ci.yml"><img src="https://github.com/dvir-daniel/companyfeatures/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
-  <a href="https://openfeature.dev"><img src="https://img.shields.io/badge/OpenFeature-OFREP%20%7C%20flagd-6b46c1" alt="OpenFeature"></a>
-  <a href="https://github.com/dvir-daniel/companyfeatures/stargazers"><img src="https://img.shields.io/github/stars/dvir-daniel/companyfeatures?style=flat" alt="GitHub stars"></a>
 </p>
 
 ## About the project
