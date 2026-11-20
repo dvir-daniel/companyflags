@@ -8,6 +8,8 @@ Every release of the server and console. The Docker image's tags follow these ve
   Targeting, Connect (API keys, webhooks, migration) and Settings. Settings is one page per subject, with its own menu:
   Environments, Dimensions, Services, People, Single sign-on, Appearance and CDN (`#/settings/<page>`). Webhooks have
   a page of their own (`#/webhooks`) instead of a section of Migration.
+- **Docs site:** page transitions, a circle for light and dark, and an animated landing page (the mark builds in, a
+  live answer types out, a marquee of OpenFeature's languages, sections that rise in). None of it with reduced motion.
 
 ## 0.7.0 (2026-11-20)
 

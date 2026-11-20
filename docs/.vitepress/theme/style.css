@@ -205,3 +205,87 @@ html { -webkit-font-smoothing: antialiased; }
 /* a line between tiles that carry a label below meets the tiles at their middle */
 .cf-ill .row:has(> .node) { align-items: flex-start; }
 .cf-ill .row:has(> .node) > .link { margin-top: 17.5px; }
+
+/* ---- motion (motion.ts, Layout.vue): short and quiet, in better-auth.com's easing */
+:root { --cf-ease: cubic-bezier(0.22, 1, 0.36, 1); }
+
+@keyframes cf-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes cf-fade-out { to { opacity: 0; } }
+@keyframes cf-fade-in { from { opacity: 0; } }
+
+/* between pages: only the content moves; the bar and the sidebar stay */
+.VPContent { view-transition-name: cf-page; }
+::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+::view-transition-old(cf-page) { animation: cf-fade-out 120ms ease-in both; }
+::view-transition-new(cf-page) { animation: cf-rise 320ms var(--cf-ease) 60ms both; }
+.VPContent.cf-rise { animation: cf-rise 320ms var(--cf-ease) both; }
+
+/* light ↔ dark: the new look grows as a circle from the switch, over the old one */
+.cf-theme-switch .VPContent { view-transition-name: none; }
+.cf-theme-switch::view-transition-old(root), .cf-theme-switch::view-transition-new(root) { mix-blend-mode: normal; }
+.cf-theme-switch::view-transition-old(root) { z-index: 1; }
+.cf-theme-switch::view-transition-new(root) { z-index: 2; }
+.VPSwitchAppearance .check { transition: transform 300ms var(--cf-ease) !important; }
+
+/* a section that rises the first time it's seen (v-reveal) */
+.cf-reveal { opacity: 0; transform: translateY(10px); }
+.cf-reveal.cf-in { opacity: 1; transform: none; transition: opacity 500ms var(--cf-ease) var(--cf-delay, 0ms), transform 600ms var(--cf-ease) var(--cf-delay, 0ms); }
+
+/* the bar: a line grows under a link as it's pointed at */
+.VPNavBarMenuLink, .VPNavBarMenuGroup .button { position: relative; transition: color 160ms, background-color 160ms !important; }
+.VPNavBarMenuLink::before {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--cf-ink-nav);
+  transform: scaleX(0); transition: transform 240ms var(--cf-ease);
+}
+.VPNavBarMenuLink:hover::before { transform: scaleX(1); }
+.VPNavBarMenuLink.active { box-shadow: none !important; }
+.VPNavBarMenuLink.active::before { transform: scaleX(1); }
+.VPNavBarMenuLink[href^="https://github.com"]::before { display: none; }
+.VPNavBarTitle .logo { transition: transform 300ms var(--cf-ease); }
+.VPNavBarTitle .title:hover .logo { transform: translateX(-2px) rotate(-4deg); }
+
+/* the sidebar: the chosen page's wash slides in, a link moves a hair toward you */
+.VPSidebarItem .item { transition: background-color 180ms ease; }
+.VPSidebarItem .link .text { display: inline-block; transition: color 150ms, transform 200ms var(--cf-ease); }
+.VPSidebarItem .link:hover .text { transform: translateX(2px); }
+.VPSidebarItem.is-active > .item { box-shadow: inset 2px 0 0 var(--cf-ink); }
+
+/* pages: the next/previous links lean toward where they go, anchors fade in, code blocks show their copy button */
+.VPDocFooter .pager-link { transition: border-color 200ms, background-color 200ms !important; }
+.VPDocFooter .pager-link:hover { background: var(--cf-wash); }
+.VPDocFooter .pager-link .title { display: inline-block; transition: transform 250ms var(--cf-ease); }
+.VPDocFooter .pager-link.next:hover .title { transform: translateX(3px); }
+.VPDocFooter .pager-link.prev:hover .title { transform: translateX(-3px); }
+.vp-doc .header-anchor { transition: opacity 150ms, color 150ms; }
+.vp-doc a { transition: text-decoration-color 180ms; }
+.vp-doc div[class*='language-'] { transition: border-color 200ms; }
+.vp-doc div[class*='language-']:hover { border-color: var(--cf-rule-2); }
+.vp-doc div[class*='language-'] > button.copy { transition: opacity 200ms, transform 200ms var(--cf-ease) !important; }
+.vp-doc div[class*='language-'] > button.copy.copied { transform: scale(1.06); }
+.VPDocAsideOutline .outline-marker { transition: top 300ms var(--cf-ease), opacity 200ms !important; }
+.VPDocAsideOutline .outline-link { transition: color 150ms !important; }
+
+/* illustrations: a dot runs along each line between tiles, as data does */
+@keyframes cf-flow { from { transform: translate(-4px, -50%); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } to { transform: translate(var(--cf-run, 18px), -50%); opacity: 0; } }
+.cf-ill .link { position: relative; overflow: visible; }
+.cf-ill .link::after {
+  content: ''; position: absolute; top: 50%; left: 0; width: 4px; height: 4px; background: var(--cf-ink-3);
+  animation: cf-flow 2.4s linear infinite;
+}
+.cf-ill .link.long { --cf-run: 36px; }
+.cf-ill .row > .link:nth-of-type(2)::after { animation-delay: 0.6s; }
+.cf-ill .row > .link:nth-of-type(3)::after { animation-delay: 1.2s; }
+.cf-ill .row > .link:nth-of-type(4)::after { animation-delay: 1.8s; }
+.cf-ill .tile { transition: border-color 200ms, color 200ms, transform 250ms var(--cf-ease); }
+.cf-ill .node:hover .tile { transform: translateY(-2px); border-color: var(--cf-ink-3); color: var(--cf-ink); }
+.cf-ill .chip .dot { transition: transform 200ms; }
+.cf-ill .chip.ok .dot, .cf-ill .chip.warn .dot { animation: cf-pulse 2.4s ease-in-out infinite; }
+@keyframes cf-pulse { 50% { opacity: 0.45; } }
+
+/* less motion asked for: nothing moves */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
+  }
+  .cf-reveal { opacity: 1; transform: none; }
+}
