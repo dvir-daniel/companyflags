@@ -120,7 +120,7 @@ function Row({ r, env }: { r: ReleaseRow; env: string }) {
       </span>
       <span role="cell" className="min-w-0">
         {s ? <>
-          <span className="block truncate text-sm text-ink" title={s.text}>{s.sent ? s.text : <span className="text-ink-3">Not sent to any app</span>}</span>
+          <span className="block truncate text-sm text-ink" title={s.text}>{s.sent ? s.text : <span className="text-ink-3">In no flag set</span>}</span>
           <StepBar state={s} className="mt-2 h-2 max-w-[240px]" />
           {s.waiting && <span className="mt-1.5 block text-xs text-flag">Waiting · request #{s.waiting.id}</span>}
           {r.ready && <UIBadge variant="ok" className="mt-1.5" title="Everyone has it wherever it’s sent: remove it from the code, then archive it">Ready to clean up</UIBadge>}
@@ -216,8 +216,8 @@ function CreateRelease({ onClose, owners }: { onClose: () => void; owners: strin
       <Field label="Tags" hint={tagError ? <span className="text-live">{tagError}</span> : 'To group releases by team or area. Press Enter after each.'}>
         <ChipInput label="Tags" values={tags} onChange={(v) => setTags(v.map(normalizeTag))} placeholder="checkout, web" invalid={!!tagError} />
       </Field>
-      <div className="grid gap-1.5" role="group" aria-label="Sent to">
-        <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">Sent to</span>
+      <div className="grid gap-1.5" role="group" aria-label="Flag sets">
+        <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">Flag sets</span>
         <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
           {meta.projects.map((p) => (
             <Switch key={p.key} label={p.key} checked={apps.includes(p.key)} onChange={(on) => setApps(on ? [...apps, p.key] : apps.filter((x) => x !== p.key))}>

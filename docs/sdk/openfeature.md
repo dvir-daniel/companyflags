@@ -17,17 +17,18 @@ version 0.4: `POST /ofrep/v1/evaluate/flags` (every flag, for client providers) 
 
 Each request carries a credential in `Authorization: Bearer …` (or OFREP's `X-API-Key` header):
 
-- **An app** sends its **app token**, made from its entity's app link for that app: `ffl_<environment>.<app>.<entity>.<secret>`. Your backend
-  gets it when someone signs in, with its API key: `GET /sdk/v1/links/<dimension>/<entity>?app=<app>` returns
-  `{ path, token }` (see [Apps](/guide/apps#give-the-app-its-link-at-sign-in)). The console shows it too, on the entity's
-  page under **App link**. The token reads that entity, for that app, only, and replacing the link replaces it at once. Apps never hold
-  an API key.
+- **An app** sends its **app token**, made from its entity's app link for its flag set:
+  `ffl_<environment>.<flag set>.<entity>.<secret>`. Your backend gets it when someone signs in, with its API key:
+  `GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>` returns `{ environment, flagSet, entity, path, token }` (see
+  [Flag sets](/guide/flag-sets#give-the-app-its-credential-at-sign-in)). The console shows it too, on the entity's page
+  under **App link**. The token reads that entity, in that flag set, only, and replacing the link replaces it at once.
+  Apps never hold an API key.
 - **A backend** sends its **API key** (console: **API keys**). It names the entity in the evaluation context by its
   dimension, as rules name it: `{ "company": "acme" }`, `{ "brand": "lumen" }`. Its key's scope limits whom it may ask
   about: its own entity, the ones below it, or any.
 
-The server works out everything else about who is asking: the environment and the app come from the credential, and
-the levels above an entity come from its own data. What a request says about them is ignored.
+The server works out everything else about who is asking: the environment and the flag set come from the credential,
+and the levels above an entity come from its own data. What a request says about them is ignored.
 
 ## The evaluation context
 
@@ -136,7 +137,7 @@ entity's rules and answers in memory.
 | The flag's default | `reason: DEFAULT` or `STATIC` |
 | The flag is off | `reason: DISABLED`, no value: the app's own default |
 | The flag uses the code default | no value: the provider returns the default written in your app |
-| The flag isn't sent to this app | `FLAG_NOT_FOUND` (404 for one flag; left out of the bulk answer) |
+| The flag isn't in this flag set | `FLAG_NOT_FOUND` (404 for one flag; left out of the bulk answer) |
 | An entity that doesn't exist, or a chain that doesn't match | `400 INVALID_CONTEXT` |
 | An entity outside the credential's reach | `403` |
 | No credential, or a wrong or replaced one | `401` |

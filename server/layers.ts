@@ -16,14 +16,14 @@ import { audit, change, notRolledBack, RESTORABLE, type Entry, type NotRolledBac
 export type { LayerDoc, RuleDoc } from './checks.ts';
 export type Actor = { name: string; type: 'user' | 'service_token' | 'scheduler' | 'bypass' | 'system' };
 export type Item = {
-  kind?: 'layer' | 'delivery';             // what it changes: a layer (the default), or the apps the flag is sent to
+  kind?: 'layer' | 'delivery';             // what it changes: a layer (the default), or the flag sets the flag is in
   flag: string;
   entity: string | null;                   // whose own settings (null: the defaults)
   expectedLayerVersion: number | null;     // null = layer must not exist yet
   expectedBaseVersion?: number | null;     // an entity's items only
   proposed: LayerDoc | null;               // null = remove the entity's own settings
   allowReshuffle?: boolean;
-  delivery?: { before: string[]; projects: string[] };   // delivery items: the apps it is sent to now, and after
+  delivery?: { before: string[]; projects: string[] };   // delivery items: the flag sets it is in now, and after
 };
 
 type FlagRow = { id: string; key: string; kind: string; value_type: string; archived_at: string | null };
@@ -145,7 +145,7 @@ export async function deliveredTo(q: Queryable, flagId: string, envId: number): 
 
 /** The ids of these apps (each once, A to Z); 422 for one that doesn't exist. */
 export async function projectIds(q: Queryable, keys: string[]): Promise<{ id: number; key: string }[]> {
-  if (!Array.isArray(keys) || keys.some((k) => typeof k !== 'string')) throw new HttpError(422, 'projects: a list of app keys');
+  if (!Array.isArray(keys) || keys.some((k) => typeof k !== 'string')) throw new HttpError(422, 'projects: a list of flag set keys');
   const wanted = [...new Set(keys)].sort();
   const found = await all<{ id: number; key: string }>(q, `select id, key from project where key = any($1::text[]) order by key`, [wanted]);
   const missing = wanted.find((k) => !found.some((p) => p.key === k));
@@ -213,10 +213,10 @@ async function applyItemsIn(tx: Tx, envKey: string, items: Item[], actor: Actor,
 
 // A delivery item: the flag is sent to exactly these apps from now on, if what it was sent to hasn't changed since.
 async function applyDelivery(tx: Tx, env: { id: number; key: string }, flag: FlagRow, it: Item): Promise<Entry> {
-  if (!it.delivery) throw new HttpError(422, `${it.flag}: a delivery change needs the apps it is sent to before and after`);
+  if (!it.delivery) throw new HttpError(422, `${it.flag}: a delivery change needs the flag sets it is in before and after`);
   const before = await deliveredTo(tx, flag.id, env.id);
   if (!sameApps(before, it.delivery.before)) {
-    throw new HttpError(409, `the apps ${it.flag} is sent to in ${env.key} changed after this request was made — reload to see them`, { flag: it.flag, delivery: before }, 'conflict');
+    throw new HttpError(409, `the flag sets ${it.flag} is in, in ${env.key}, changed after this request was made — reload to see them`, { flag: it.flag, delivery: before }, 'conflict');
   }
   const projects = await projectIds(tx, it.delivery.projects);
   await tx.query(`delete from flag_delivery where flag_id = $1 and environment_id = $2`, [flag.id, env.id]);
@@ -242,10 +242,10 @@ export async function createChangeSet(db: Db, envKey: string, items: Item[], aut
     for (const it of items) {
       const flag = await flagRow(tx, it.flag);
       if (it.kind === 'delivery') {
-        if (!it.delivery) throw new HttpError(422, `${it.flag}: a delivery change needs the apps it is sent to before and after`);
+        if (!it.delivery) throw new HttpError(422, `${it.flag}: a delivery change needs the flag sets it is in before and after`);
         const now = await deliveredTo(tx, flag.id, env.id);
         if (!sameApps(now, it.delivery.before)) {
-          throw new HttpError(409, `the apps ${it.flag} is sent to in ${envKey} were changed by someone else — reload to see them`, { flag: it.flag, delivery: now }, 'conflict');
+          throw new HttpError(409, `the flag sets ${it.flag} is in, in ${envKey}, were changed by someone else — reload to see them`, { flag: it.flag, delivery: now }, 'conflict');
         }
         const projects = (await projectIds(tx, it.delivery.projects)).map((p) => p.key);
         const delivery = { before: now, projects };

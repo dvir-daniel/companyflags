@@ -192,7 +192,7 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
       <div className="border-b border-rule px-6 max-sm:px-4" onPointerEnter={warmTabs} onFocus={warmTabs}>
         <Tabs<FlagTab> label="Flag sections" value={tab === 'values' && flag.valueType === 'bool' ? 'targeting' : tab} onChange={setTab}
           className="overflow-x-auto border-b-0 [scrollbar-width:none] [&>button]:shrink-0 [&>button]:whitespace-nowrap"
-          items={([['targeting', 'Rules'], ['values', flag.freeValues ? 'Variants · off' : `Variants · ${flag.variations.filter((v) => !isHidden(v.key)).length}`], ['history', 'History'], ['apps', 'Settings'], ['debug', 'Debug']] as const)
+          items={([['targeting', 'Rules'], ['values', flag.freeValues ? 'Variants · off' : `Variants · ${flag.variations.filter((v) => !isHidden(v.key)).length}`], ['history', 'History'], ['settings', 'Settings'], ['debug', 'Debug']] as const)
             .filter(([k]) => !(k === 'values' && flag.valueType === 'bool')).map(([k, label]) => ({ value: k, label }))} />
       </div>
       </>}
@@ -205,7 +205,7 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
         {/* Variants and Settings stay mounted, so switching tabs never drops what you typed there; the editor is keyed by
             flag and environment (FlagPage), so nothing typed carries over into another flag */}
         {flag.valueType !== 'bool' && <div hidden={tab !== 'values'} className="mt-6"><ValuesPanel flag={flag} onSaved={reloadFlag} /></div>}
-        <div hidden={tab !== 'apps'}><SettingsTab flag={flag} onSaved={reload} /></div>
+        <div hidden={tab !== 'settings'}><SettingsTab flag={flag} onSaved={reload} /></div>
         {tab === 'debug' && <DebugTab flag={flag} env={env} draft={draft} dirty={dirty} initialEntity={check.entity || undefined} initialProject={check.project || undefined} />}
         {/* the history table runs edge to edge like every other list (cancels this column's gutter) */}
         {tab === 'history' && (
@@ -243,7 +243,7 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
   );
 }
 
-type FlagTab = 'targeting' | 'values' | 'history' | 'apps' | 'debug';
+type FlagTab = 'targeting' | 'values' | 'history' | 'settings' | 'debug';
 
 // ---------------------------------------------------------------- the Rules tab: check who gets what, then the cascade
 // Pick an entity and an app to see what they get and which row decides it (Stripe-style "test it").
@@ -316,7 +316,7 @@ function RulesTab({ flag, env, draft, dirty, setDraft, setLines, actions, onFlag
               <EntityPicker value={check.entity} onChange={(c) => checkEntity({ ...check, entity: c })} allowNone placeholder="Check who gets what…" />
             </span>
             {meta.projects.length > 1 && (
-              <NativeSelect size="sm" aria-label="App" value={project} onChange={(e) => checkEntity({ ...check, project: e.target.value })}>
+              <NativeSelect size="sm" aria-label="Flag set" value={project} onChange={(e) => checkEntity({ ...check, project: e.target.value })}>
                 {meta.projects.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
               </NativeSelect>
             )}
@@ -688,7 +688,7 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
     if (saved) { setEdits({}); toast(`Saved the settings of ${f.name.trim() || flag.key}`); }
   };
   const archive = async () => {
-    const r = await ask({ title: `Archive ${flag.key}?`, body: <><p>The flag stops being sent to every app in every environment, right away and without a review. Apps fall back to the default in their code.</p><p className="text-ink-3">Its history is kept.</p></>,
+    const r = await ask({ title: `Archive ${flag.key}?`, body: <><p>The flag leaves every flag set in every environment, right away and without a review. Apps and backends fall back to the default in their code.</p><p className="text-ink-3">Its history is kept.</p></>,
       actions: [{ id: 'c', label: 'Cancel' }, { id: 'a', label: 'Archive flag', tone: 'danger' }] });
     if (r.action !== 'a') return;
     try {
@@ -747,11 +747,11 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
         </Actions>
       </div>
 
-      <SectionLabel className={cn('mb-2', label)}>Sent to</SectionLabel>
+      <SectionLabel className={cn('mb-2', label)}>Flag sets</SectionLabel>
       <DeliveryPanel flag={flag} onSaved={() => void onSaved()} />
 
       <SectionLabel className={cn('mb-1', label)}>Archive</SectionLabel>
-      <SettingRow name="Archive this flag" desc="Stops sending it to every app in every environment.">
+      <SettingRow name="Archive this flag" desc="Takes it out of every flag set in every environment.">
         <Button variant="stop" onClick={archive}>Archive flag</Button>
       </SettingRow>
     </div>
@@ -1113,7 +1113,7 @@ function DebugTab({ flag, env, draft, dirty, initialEntity, initialProject }: {
         </div>
         {meta.dimensions.length > 0 && <Field label={listWords(meta.dimensions) ? capital(listWords(meta.dimensions)) : 'Who'}><EntityPicker value={entity} onChange={setEntity} allowNone /></Field>}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="App">
+          <Field label="Flag set">
             <NativeSelect size="sm" className="w-full" value={project} onChange={(e) => setProject(e.target.value)}>{meta.projects.map((p) => <option key={p.key}>{p.key}</option>)}</NativeSelect>
           </Field>
           <Field label="App version"><input value={version} placeholder="not sent" onChange={(e) => setVersion(e.target.value)} spellCheck={false} className={cn(dense, 'font-mono')} /></Field>

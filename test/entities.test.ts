@@ -273,7 +273,7 @@ test('a backend asking for a brand gets its company’s settings too, and answer
   const res = await t.call('GET', '/sdk/v1/flagd', undefined, { authorization: `Bearer ${key}` });
   assert.equal(res.status, 200, JSON.stringify(res.json));
   const doc = res.json as FlagdDoc;
-  assert.equal(doc.metadata.flagSetId, 'dev/dove');
+  assert.equal(doc.metadata.flagSetId, 'dev/server-ds/dove');
   const snap = t.plane.get('dev');
   for (const lang of LANGS) {
     const attrs = { 'locale.language': lang };
@@ -283,6 +283,6 @@ test('a backend asking for a brand gets its company’s settings too, and answer
   // a shared backend names the entity in the path, by its dimension
   const shared = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
   const axe = (await t.call('GET', '/sdk/v1/flagd/brand/axe', undefined, { authorization: `Bearer ${shared}` })).json as FlagdDoc;
-  assert.equal(axe.metadata.flagSetId, 'dev/axe');
+  assert.equal(axe.metadata.flagSetId, 'dev/server-ds/axe');
   assert.equal(same(flagdEvaluate(axe, 'brand_matrix', nest({ 'locale.language': 'de' }))), same(ours(snap, 'brand_matrix', 'server-ds', 'axe', { 'locale.language': 'de' })));
 });

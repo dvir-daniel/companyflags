@@ -2,14 +2,14 @@
 //
 // Apps (android, ios, web): one file per environment, app and entity, values only (clientFile.ts).
 //   GET /client/v1/flags/:env/:app                     before login: what everyone gets
-//   GET /client/v1/flags/:env/:app/:entity/:secret     the entity's file; the console gives each entity its link
+//   GET /client/v1/flags/:env/:app/:entity/:secret     the entity's file (:app is the flag set); the console gives each entity its link
 // The CDN caches by path, so this server only builds a file when the CDN doesn't have it, and keeps it in
 // memory until the next publish. Each response is tagged with its environment (Cache-Tag), so a publish can
 // purge them all at once (purge.ts). The device checks the rest itself: its model, OS, browser, app version,
 // the country (the CDN's cf-ipcountry response header), and its own id for a % of devices.
 //
 // Backend servers, with an API key: GET /sdk/v1/flagd/:dimension/:entity, one entity's flags as flagd JSON (flagd.ts),
-// for flagd or an OpenFeature flagd provider evaluating in-process; GET /sdk/v1/links/:dimension/:entity?app=<app>, the
+// for flagd or an OpenFeature flagd provider evaluating in-process; GET /sdk/v1/links/:dimension/:entity?flagSet=<key>, the
 // entity's app link, to hand to the app at sign-in. The entity is named by its dimension in the path, as the rules name
 // it ("Store is acme-12"): headers carry only the key.
 
@@ -120,7 +120,7 @@ export async function clientLink(db: Db, env: string, entity: string, app?: stri
   const row = await one<{ secret: string; v: number }>(db, `select e.link_secret as secret, c.client_link_version as v
     from environment e, entity c where e.key = $1 and c.key = $2 and c.archived_at is null`, [env, entity]);
   if (!row) throw new HttpError(404, 'entity or environment not found');
-  return `/client/v1/flags/${env}/${app ?? ':app'}/${encodeURIComponent(entity)}/${clientSecret(row.secret, entity, row.v)}`;
+  return `/client/v1/flags/${env}/${app ?? ':flagSet'}/${encodeURIComponent(entity)}/${clientSecret(row.secret, entity, row.v)}`;
 }
 
 // An app's credential for OpenFeature's providers (OFREP, ofrep.ts): `ffl_<environment>.<app>.<entity>.<secret>`, its
@@ -199,7 +199,7 @@ export function deliveryApi({ db, plane, links, keys, apps }: { db: Db; plane: P
     return send(c, await clientDownload(snap, appKey, entity), CDN_CACHE, `env-${env}`);
   });
 
-  // Backend servers hand each app its entity's link at sign-in: GET /sdk/v1/links/<dimension>/<entity>?app=<app>, with
+  // Backend servers hand each app its entity's link at sign-in: GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>, with
   // the backend's API key, within its scope, for the key's environment. The answer is the link's path (the app file, from
   // the address apps use) and the same link as a token for OpenFeature's OFREP providers. Never cached: it is a secret.
   app.get('/sdk/v1/links/:dimension/:entity', async (c) => {
@@ -209,11 +209,11 @@ export function deliveryApi({ db, plane, links, keys, apps }: { db: Db; plane: P
     const info = Object.hasOwn(snap.entities, entity) ? snap.entities[entity] : null;
     if (!info || info.dimension !== dimension) throw new HttpError(404, `no ${dimension} "${entity}"`);
     if (!mayAsk(p, entity, info.path)) throw new HttpError(403, `this key can’t ask about "${entity}"`);
-    const appKey = c.req.query('app');
-    if (!appKey) throw new HttpError(400, 'name the app the link is for: ?app=<key>, e.g. ?app=web');
+    const appKey = c.req.query('flagSet');
+    if (!appKey) throw new HttpError(400, 'name the flag set the link is for: ?flagSet=<key>, e.g. ?flagSet=web');
     await ensureClientApp(db, apps, appKey);
     c.header('Cache-Control', 'no-store');
-    return c.json({ environment: p.environment, app: appKey, entity, path: await clientLink(db, p.environment, entity, appKey),
+    return c.json({ environment: p.environment, flagSet: appKey, entity, path: await clientLink(db, p.environment, entity, appKey),
       token: await appToken(db, p.environment, entity, appKey) });
   });
 
@@ -247,11 +247,11 @@ function ownEntity(p: Principal, legacyHeader: string | undefined): string {
 export async function ensureClientApp(db: Db, apps: AppCache, appKey: string) {
   if (apps.known.has(appKey)) return;
   const missed = apps.unknown.get(appKey);
-  if (missed !== undefined && Date.now() - missed < NOT_APP_TTL_MS) throw new HttpError(404, `app "${appKey}" not found`);
+  if (missed !== undefined && Date.now() - missed < NOT_APP_TTL_MS) throw new HttpError(404, `flag set "${appKey}" not found`);
   const p = await one<{ kind: string }>(db, `select kind from project where key = $1`, [appKey]);
   if (!p || p.kind !== 'client') {
     apps.unknown.set(appKey, Date.now());
-    throw new HttpError(404, `app "${appKey}" not found`);
+    throw new HttpError(404, `flag set "${appKey}" not found`);
   }
   apps.known.add(appKey);
 }

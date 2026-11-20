@@ -194,7 +194,7 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
   const archive = async (list = chosen) => {
     const r = await ask({
       title: `Archive ${plural(list.length, 'flag')}?`,
-      body: <p>They stop being sent to every app in every environment, right away and without a review; apps fall back to the defaults in their code. Their history is kept.</p>,
+      body: <p>They leave every flag set in every environment, right away and without a review; apps and backends fall back to the defaults in their code. Their history is kept.</p>,
       actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'go', label: 'Archive', tone: 'danger' }],
     });
     if (r.action !== 'go') return;
@@ -480,8 +480,8 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
         </Field>
       </>}
 
-      <div className="grid gap-1.5" role="group" aria-label="Sent to">
-        <span className={monoLabel}>Sent to</span>
+      <div className="grid gap-1.5" role="group" aria-label="Flag sets">
+        <span className={monoLabel}>Flag sets</span>
         <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
           {meta.projects.map((p) => (
             <Switch key={p.key} label={p.key} checked={delivery.includes(p.key)}
@@ -490,7 +490,7 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
             </Switch>
           ))}
         </div>
-        <span className="text-13 text-ink-3">Apps that get this flag, in every environment.</span>
+        <span className="text-13 text-ink-3">The flag sets this flag is in, in every environment.</span>
       </div>
       <ErrorList error={error} />
     </Modal>

@@ -137,7 +137,7 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
 
   // every app file: the same link (same secret), the same values, the same ETag
   for (const c of CUSTOMERS) {
-    const link = (await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}/link?environment=prod`, { as: 'dana' })).json.path.replace(':app', 'web');
+    const link = (await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}/link?environment=prod`, { as: 'dana' })).json.path.replace(':flagSet', 'web');
     assert.equal(link, golden.links[c], `${c}’s link`);
     const file = await call('GET', link);
     assert.equal(file.status, 200, c);
@@ -149,12 +149,14 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
 
   // flagd JSON: Dove's own key (now scope entity) and the shared one (now all), by path and by the old header
   const flagd = (key: string, path = '', headers: Record<string, string> = {}) => call('GET', `/sdk/v1/flagd${path}`, { headers: { authorization: `Bearer ${key}`, ...headers } });
+  // the same flags and ETags; only flagSetId differs, as it names the flag set since 0.1.0 (<env>/<flag set>/<entity>)
+  const now = (c: string) => { const d = golden.flagd[c].doc; return { ...d, metadata: { ...d.metadata, flagSetId: `prod/backend/${c}` } }; };
   const own = await flagd(KEYS.dove);
-  assert.deepEqual([own.status, own.json, own.headers.get('etag')], [200, golden.flagd.dove.doc, golden.flagd.dove.etag]);
+  assert.deepEqual([own.status, own.json, own.headers.get('etag')], [200, now('dove'), golden.flagd.dove.etag]);
   for (const c of CUSTOMERS) {
-    assert.deepEqual((await flagd(KEYS.shared, `/${DIMENSION_OF[c]}/${c}`)).json, golden.flagd[c].doc, `${c} by path`);
+    assert.deepEqual((await flagd(KEYS.shared, `/${DIMENSION_OF[c]}/${c}`)).json, now(c), `${c} by path`);
     const legacy = await flagd(KEYS.shared, '', { 'x-customer-id': c });
-    assert.deepEqual([legacy.json, legacy.headers.get('etag')], [golden.flagd[c].doc, golden.flagd[c].etag], `${c} by X-Customer-Id`);
+    assert.deepEqual([legacy.json, legacy.headers.get('etag')], [now(c), golden.flagd[c].etag], `${c} by X-Customer-Id`);
   }
   assert.deepEqual((await app.db.query(`select scope from api_key order by id`)).rows.map((r: any) => r.scope), ['entity', 'all']);
 

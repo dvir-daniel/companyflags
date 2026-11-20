@@ -20,7 +20,7 @@ import { needsReview, roleInfo, ROLES } from '../../../server/policy.ts';
 
 /*
  * Settings: what an admin sets up once. Environments (each flag has its own settings in each one),
- * apps (what flags are delivered to), dimensions (what config is served per: dimensions.tsx, #/settings/dimensions
+ * flag sets (the groups flags are sent in), dimensions (what config is served per: dimensions.tsx, #/settings/dimensions
  * scrolls to it) and people: who may sign in, and their roles. Everyone can see it; only admins change it.
  * People have a page of their own (People.tsx, #/settings/people): with single sign-on there can be hundreds.
  */
@@ -68,7 +68,7 @@ export function Settings({ section }: { section?: string }) {
           )}
         </section>
 
-        <AppsSection admin={admin} />
+        <FlagSetsSection admin={admin} />
 
         <DimensionsSection admin={admin} focus={section === 'dimensions'} />
 
@@ -233,15 +233,15 @@ function EnvironmentDrawer({ env, onClose }: { env: Env | null; onClose: () => v
 }
 
 type App = Meta['projects'][number];
-const kindName = (k: App['kind']) => (k === 'client' ? 'an app' : 'a backend');
-/** What has to be true before an app changes kind or goes (server/control.ts appUse): said before an admin tries. */
-const IN_USE = 'no flag is sent to it, no API key for it still works, and no request waiting to go out would send it a flag';
+const kindName = (k: App['kind']) => (k === 'client' ? 'for apps' : 'for backends');
+/** What has to be true before a flag set changes kind or goes (server/control.ts appUse): said before an admin tries. */
+const IN_USE = 'no flag is in it, no API key for it still works, and no request waiting to go out would put a flag in it';
 
 /**
- * The apps flags are sent to. An admin adds one, changes its kind or deletes it; the server refuses the last two,
- * saying why, while anything uses the app. The key never changes: installed apps ask for their file with it.
+ * The flag sets flags are sent in. An admin adds one, changes its kind or deletes it; the server refuses the last two,
+ * saying why, while anything uses the flag set. The key never changes: installed apps ask for their file with it.
  */
-function AppsSection({ admin }: { admin: boolean }) {
+function FlagSetsSection({ admin }: { admin: boolean }) {
   const { meta, toast, ask } = useApp();
   const refresh = useRefresh();
   const [drawer, setDrawer] = useState<{ app: App | null } | null>(null);
@@ -252,35 +252,35 @@ function AppsSection({ admin }: { admin: boolean }) {
     const { action } = await ask({
       title: `Delete ${p.key}?`,
       body: <>
-        <p>An app can only go once {IN_USE}. If something still uses it, nothing is deleted and you’ll see what to change first.</p>
+        <p>A flag set can only go once {IN_USE}. If something still uses it, nothing is deleted and you’ll see what to change first.</p>
         <p>{p.kind === 'client' ? 'An installed app that still asks for its file gets “not found”. ' : ''}Its revoked API keys go with it. History keeps every change to it.</p>
       </>,
-      actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'delete', label: 'Delete app', tone: 'danger' }],
+      actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'delete', label: 'Delete flag set', tone: 'danger' }],
     });
     if (action !== 'delete') return;
-    if (!(await run(() => api('DELETE', `/apps/${encodeURIComponent(p.key)}`)))) return;
+    if (!(await run(() => api('DELETE', `/flag-sets/${encodeURIComponent(p.key)}`)))) return;
     toast(`${p.key} deleted`);
     void refresh();
   };
 
   return (
-    <section aria-labelledby="s-apps" className="grid gap-3">
-      <Heading id="s-apps" title="Apps" action={admin && <Button onClick={() => setDrawer({ app: null })}>+ Add app</Button>}>
-        What flags are sent to. Apps (Android, iOS, web) read a values-only file at their app link; backends download the rules with an API key.
-        Use the same key in the app’s SDK.
+    <section aria-labelledby="s-flag-sets" className="grid gap-3">
+      <Heading id="s-flag-sets" title="Flag sets" action={admin && <Button onClick={() => setDrawer({ app: null })}>+ Add flag set</Button>}>
+        The groups flags are sent in. Apps (Android, iOS, web) read a flag set’s values at their app link; backends download its rules
+        with an API key.
       </Heading>
       <ErrorList error={error} />
       {meta.projects.length === 0 ? (
-        <Empty action={admin ? <Button onClick={() => setDrawer({ app: null })}>+ Add app</Button> : undefined}>No apps yet.</Empty>
+        <Empty action={admin ? <Button onClick={() => setDrawer({ app: null })}>+ Add flag set</Button> : undefined}>No flag sets yet.</Empty>
       ) : (
-        <div role="table" aria-label="Apps">
+        <div role="table" aria-label="Flag sets">
           <div role="row" className={cn(APP_COLS, tableHeadClass)}>
             <span role="columnheader">Key</span><span role="columnheader" className={MD}>Kind</span><span />
           </div>
           {meta.projects.map((p) => (
             <div key={p.key} role="row" className={cn(APP_COLS, tableRowClass)}>
               <code role="cell" className="truncate font-mono text-13 font-medium">{p.key}</code>
-              <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{p.kind === 'client' ? 'App: reads its file at an app link' : 'Backend: uses an API key'}</span>
+              <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{p.kind === 'client' ? 'For apps: each reads its file at an app link' : 'For backends: each uses an API key'}</span>
               <span role="cell" className="flex justify-end gap-2">
                 {admin && <>
                   <Button variant="secondary" aria-label={`Edit ${p.key}`} onClick={() => { setError(null); setDrawer({ app: p }); }}>Edit</Button>
@@ -291,13 +291,13 @@ function AppsSection({ admin }: { admin: boolean }) {
           ))}
         </div>
       )}
-      {/* mounted only while open (keyed by the app), so each opening starts fresh */}
+      {/* mounted only while open (keyed by the flag set), so each opening starts fresh */}
       {drawer && <AppDrawer key={drawer.app?.key ?? 'new'} app={drawer.app} onClose={() => setDrawer(null)} />}
     </section>
   );
 }
 
-/** An app's form, new or to edit (its kind: the key can't change). Mounted only while open, so it starts fresh. */
+/** A flag set's form, new or to edit (its kind: the key can't change). Mounted only while open, so it starts fresh. */
 function AppDrawer({ app, onClose }: { app: App | null; onClose: () => void }) {
   const { toast } = useApp();
   const refresh = useRefresh();
@@ -309,29 +309,29 @@ function AppDrawer({ app, onClose }: { app: App | null; onClose: () => void }) {
   const save = async () => {
     if (app && kind === app.kind) { onClose(); return; }
     const r = await run(() => app
-      ? api<App>('PUT', `/apps/${encodeURIComponent(app.key)}`, { kind })
-      : api<App>('POST', '/apps', { key, kind }));
+      ? api<App>('PUT', `/flag-sets/${encodeURIComponent(app.key)}`, { kind })
+      : api<App>('POST', '/flag-sets', { key, kind }));
     if (!r) return;
     toast(app ? `${r.key} is now ${kindName(r.kind)}` : `${r.key} added`);
     onClose();
     void refresh();
   };
   return (
-    <Drawer open onClose={onClose} title={app ? `Edit ${app.key}` : 'New app'} initialFocus={app ? kindSelect : first}
+    <Drawer open onClose={onClose} title={app ? `Edit ${app.key}` : 'New flag set'} initialFocus={app ? kindSelect : first}
       footer={<>
-        <Button disabled={busy || !key} onClick={save}>{busy ? 'Saving…' : app ? 'Save' : 'Add app'}</Button>
+        <Button disabled={busy || !key} onClick={save}>{busy ? 'Saving…' : app ? 'Save' : 'Add flag set'}</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </>}>
       <div className="grid gap-4">
         <Field label="Key" required hint={app
-          ? 'The key can’t change: installed apps ask for their file with it, and API keys are made for it. To use another key, add a new app.'
+          ? 'The key can’t change: installed apps ask for their file with it, and API keys are made for it. To use another key, add a new flag set.'
           : 'Lowercase letters, digits and dashes, e.g. android, ios, web, checkout-api.'}>
           <Input ref={first} className="h-[34px] font-mono text-13" value={key} disabled={!!app} onChange={(e) => setKey(e.target.value.toLowerCase())} placeholder="android" />
         </Field>
         <Field label="Kind" hint={app ? `The kind can change only while ${IN_USE}.` : undefined}>
           <NativeSelect ref={kindSelect} className={selectField} value={kind} onChange={(e) => setKind(e.target.value as App['kind'])}>
-            <option value="client">App (Android, iOS, web): reads its file at an app link</option>
-            <option value="server">Backend: downloads the rules with an API key</option>
+            <option value="client">For apps (Android, iOS, web): each reads its file at an app link</option>
+            <option value="server">For backends: each downloads the rules with an API key</option>
           </NativeSelect>
         </Field>
         <ErrorList error={error} />
@@ -342,7 +342,7 @@ function AppDrawer({ app, onClose }: { app: App | null; onClose: () => void }) {
 
 const SETUP_STEPS: [string, string][] = [
   ['Environments', 'Where flags live, such as Development and Production. Production can require an approval for every change.'],
-  ['Apps', 'What reads flags: your web, iOS and Android apps (each reads its file), and backends (each with an API key).'],
+  ['Flag sets', 'The groups flags are sent in: one for each of your web, iOS and Android apps (each reads its file), and one for each backend (with an API key).'],
   ['Dimensions', 'What config is served per, in your own words: one level, or a chain such as region › chain › store.'],
   ['Your first flag', 'An on/off switch, a value that differs per entity, or a release that reaches a % of devices step by step.'],
 ];
@@ -370,7 +370,7 @@ export function GetStarted() {
           <div><Button onClick={() => go('settings')}>Open settings</Button></div>
         </section>
       </> : (
-        <Callout>An admin needs to add the environments and apps first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>
+        <Callout>An admin needs to add the environments and flag sets first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>
       )}
     </div>
   );

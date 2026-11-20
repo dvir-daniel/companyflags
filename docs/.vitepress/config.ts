@@ -49,7 +49,7 @@ export default defineConfig({
       {
         text: 'Delivering flags',
         items: [
-          { text: 'Apps', link: '/guide/apps' },
+          { text: 'Flag sets', link: '/guide/flag-sets' },
           { text: 'Backends', link: '/guide/backends' },
           { text: 'OpenFeature (web, mobile, servers)', link: '/sdk/openfeature' },
           { text: 'The app file', link: '/sdk/app-file' },

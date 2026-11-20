@@ -151,7 +151,7 @@ describe('data plane', () => {
   test('revoked keys stop working', async () => {
     const k = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'netflix' })).json;
     const doc = await t.call('GET', '/sdk/v1/flagd', undefined, { authorization: `Bearer ${k.key}` });
-    assert.equal(doc.json.metadata.flagSetId, 'dev/netflix');                           // an entity’s key gets only its entity
+    assert.equal(doc.json.metadata.flagSetId, 'dev/server-ds/netflix');                           // an entity’s key gets only its entity
     await t.as('dana').post(`/api-keys/${k.id}/revoke`);
     assert.equal((await t.call('GET', '/sdk/v1/flagd', undefined, { authorization: `Bearer ${k.key}` })).status, 401);
   });

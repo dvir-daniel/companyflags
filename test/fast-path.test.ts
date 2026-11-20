@@ -47,7 +47,7 @@ test('backend download (flagd JSON): gzipped, 304 when its flags are unchanged, 
   assert.equal(r.status, 200);
   assert.equal(r.headers.get('content-encoding'), 'gzip');
   const doc = JSON.parse(gunzipSync(Buffer.from(await r.arrayBuffer())).toString());
-  assert.ok(Object.keys(doc.flags).length > 0 && doc.metadata.flagSetId === 'dev/acme' && typeof doc.metadata.revision === 'number');
+  assert.ok(Object.keys(doc.flags).length > 0 && doc.metadata.flagSetId === 'dev/server-ds/acme' && typeof doc.metadata.revision === 'number');
   const etag = r.headers.get('etag')!;
   assert.equal((await get({ 'if-none-match': etag })).status, 304);
 

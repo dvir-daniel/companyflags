@@ -29,15 +29,15 @@ import { useEnvs } from './envs.ts';
 
 const CHANGE_LABEL: Record<string, string> = {
   'layer.create': 'added own settings', 'layer.update': 'changed rules', 'layer.delete': 'removed own settings',
-  'flag.create': 'created the flag', 'flag.update': 'changed settings', 'flag.archive': 'archived the flag', 'delivery.update': 'changed Sent to',
+  'flag.create': 'created the flag', 'flag.update': 'changed settings', 'flag.archive': 'archived the flag', 'delivery.update': 'changed its flag sets',
   'variations.update': 'changed variants', 'entity.create': 'added an entry', 'entity.update': 'changed an entry', 'entity.link_replaced': 'replaced an app link',
   // from before dimensions
   'customer.create': 'added an entry', 'customer.update': 'changed an entry', 'customer.link_replaced': 'replaced an app link',
   'dimensions.update': 'changed the dimensions',
   'api_key.create': 'created an API key', 'api_key.revoke': 'revoked an API key', 'change_set.create': 'requested approval',
   'change_set.approve': 'approved', 'change_set.reject': 'rejected', 'change_set.schedule': 'scheduled a request',
-  'environment.create': 'added an environment', 'environment.update': 'changed an environment', 'app.create': 'added an app',
-  'app.update': 'changed an app’s kind', 'app.delete': 'deleted an app',
+  'environment.create': 'added an environment', 'environment.update': 'changed an environment', 'app.create': 'added a flag set',
+  'app.update': 'changed a flag set’s kind', 'app.delete': 'deleted a flag set',
   'person.role': 'changed someone’s role', 'person.add': 'added someone', 'person.invite': 'made an invite link', 'person.password_reset': 'made a password reset link',
   'person.remove': 'removed someone’s access', 'sso.add': 'added single sign-on', 'sso.update': 'changed single sign-on',
   'sso.remove': 'removed single sign-on', 'cdn.update': 'set up the Cloudflare purge', 'cdn.remove': 'removed the Cloudflare purge',
@@ -58,9 +58,9 @@ const options = (values: string[], current: string, name: (v: string) => string 
  *  dimensions' entities, named by the installation's words ("Companies and brands"); their changes from before
  *  dimensions were `customer.*`. */
 const subjects = (dims: Dimensions): [string, string][] => [
-  ['layer', 'Rules and defaults'], ['flag', 'Flag details'], ['variations', 'Variants'], ['delivery', 'Sent to'],
+  ['layer', 'Rules and defaults'], ['flag', 'Flag details'], ['variations', 'Variants'], ['delivery', 'Flag sets of a flag'],
   ['entity,customer', capital(listWords(dims, 'and', true)) || 'Entries'], ['dimensions', 'Dimensions'], ['change_set', 'Requests and reviews'],
-  ['environment', 'Environments'], ['app', 'Apps'], ['api_key', 'API keys'], ['person', 'People'], ['sso', 'Single sign-on'], ['cdn', 'CDN'],
+  ['environment', 'Environments'], ['app', 'Flag sets'], ['api_key', 'API keys'], ['person', 'People'], ['sso', 'Single sign-on'], ['cdn', 'CDN'],
 ];
 const WHEN: [string, string][] = [['', 'Any time'], ['today', 'Today'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'],
   ['365', 'Last 12 months'], ['custom', 'Between dates']];

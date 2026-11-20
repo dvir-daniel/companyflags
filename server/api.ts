@@ -708,16 +708,16 @@ export function consoleApi({ db, plane, hub, identity, access, sso, cdn }: Deps)
     return c.json({ entity, children, environment: env, revision: snap.revision, differing, ...page });
   });
 
-  // The entity's app link in an environment: its backend gives it to the app at login (":app" = android / ios / web).
+  // The entity's app link in an environment: its backend gives it to the app at login (":flagSet" = android / ios / web).
   // The link is a secret (anyone with it reads the entity's file): editors and above, not viewers.
   app.get('/dimensions/:dimension/:key/link', async (c) => {
     notViewer(c.get('user'), 'app links');
     const env = c.req.query('environment') ?? await firstEnv();
     entityIn(snapshot(env), c.req.param('dimension'), c.req.param('key'));
-    // with ?app=: the link for that app, and the same link as a token for OpenFeature's OFREP providers (ofrep.ts)
-    const appKey = c.req.query('app');
+    // with ?flagSet=: the link for that flag set, and the same link as a token for OpenFeature's OFREP providers (ofrep.ts)
+    const appKey = c.req.query('flagSet');
     if (appKey && (await one<{ kind: string }>(db, `select kind from project where key = $1`, [appKey]))?.kind !== 'client') {
-      throw new HttpError(404, `no app "${appKey}"`);
+      throw new HttpError(404, `no flag set for apps "${appKey}"`);
     }
     const path = await clientLink(db, env, c.req.param('key'), appKey);
     return c.json({ path, ...(appKey ? { token: await appToken(db, env, c.req.param('key'), appKey) } : {}) });
@@ -762,19 +762,19 @@ export function consoleApi({ db, plane, hub, identity, access, sso, cdn }: Deps)
     return c.json(await updateEnvironment(db, c.req.param('env'), await c.req.json(), actor(c.get('user'))));
   });
 
-  app.post('/apps', async (c) => {
+  app.post('/flag-sets', async (c) => {
     adminOnly(c.get('user'));
-    // an app key asked for before it existed is answered again once this commits (journal.ts)
+    // a flag set's key asked for before it existed is answered again once this commits (journal.ts)
     return c.json(await createProject(db, await c.req.json(), actor(c.get('user'))), 201);
   });
 
-  // an app's kind; its key can't change. Both this and a delete are refused (409, saying what) while anything uses it
-  app.put('/apps/:key', async (c) => {
+  // a flag set's kind; its key can't change. Both this and a delete are refused (409, saying what) while anything uses it
+  app.put('/flag-sets/:key', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await updateProject(db, c.req.param('key'), await c.req.json(), actor(c.get('user'))));
   });
 
-  app.delete('/apps/:key', async (c) => {
+  app.delete('/flag-sets/:key', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await deleteProject(db, c.req.param('key'), actor(c.get('user'))));
   });

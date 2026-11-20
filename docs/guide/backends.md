@@ -11,11 +11,11 @@ them:
 A backend also hands each signed-in user's app its entity's secret link and token (see
 [below](#hand-links-to-apps)). Apps never get an API key.
 
-## Create a backend app and an API key
+## Create a flag set and an API key
 
-1. **Settings → Apps → + Add app** (admins): a key such as `api`, kind **Backend**.
-2. **API keys → + Create key** (admins): the environment, the backend app, what it **asks about**, and a
-   label.
+1. **Settings → Flag sets → + Add flag set** (admins): a key such as `api`, and the kind **For backends**. Then put
+   flags in it, on each flag's **Settings** tab (see [Flag sets](/guide/flag-sets)).
+2. **API keys → + Create key** (admins): the environment, the flag set, what it **asks about**, and a label.
 
 | Scope | Asks about |
 |---|---|
@@ -23,7 +23,7 @@ A backend also hands each signed-in user's app its entity's secret link and toke
 | `below` | one entity and every entity under it, e.g. Globex and its brands Lumen and Bolt |
 | `all` | any entity, for a backend shared by all of them |
 
-The key is shown once. It looks like `ff_prod_api_…`: one environment, one backend app. Send it as
+The key is shown once. It looks like `ff_prod_api_…`: one environment, one flag set. Send it as
 `Authorization: Bearer <key>`. A request about an entity outside the key's scope gets `403`. See
 [Security model](/guide/security#api-keys).
 
@@ -38,12 +38,13 @@ The entity is named in the path by its dimension, as rules name it: `/sdk/v1/fla
 `/sdk/v1/flagd/brand/lumen`. A key scoped to one entity (or `below` one, asking about its own) may leave the path off:
 `GET /sdk/v1/flagd`.
 
-The answer is one flag set, with `flagSetId` `<environment>/<entity>`:
+The answer is the key's flag set for that entity, as one flagd flag set, with `flagSetId`
+`<environment>/<flag set>/<entity>`:
 
 ```json
 {
   "$schema": "https://flagd.dev/schema/v0/flags.json",
-  "metadata": { "flagSetId": "prod/acme", "environment": "prod", "revision": 42 },
+  "metadata": { "flagSetId": "prod/api/acme", "environment": "prod", "revision": 42 },
   "flags": {
     "new_checkout": {
       "state": "ENABLED",
@@ -59,12 +60,12 @@ The answer is one flag set, with `flagSetId` `<environment>/<entity>`:
 }
 ```
 
-The server settles everything it knows for this backend (the environment, the app, the entity and the entities above
-it). What depends on the request stays as a flat JsonLogic `if`, one branch per rule, in the order the server
+The server settles everything it knows for this backend (the environment, the flag set, the entity and the entities
+above it). What depends on the request stays as a flat JsonLogic `if`, one branch per rule, in the order the server
 evaluates them. It holds that entity's values only.
 
 - `ETag` and `If-None-Match` → `304`. `Cache-Control: private, no-cache`.
-- A flag that isn't sent to this backend isn't in the JSON (`FLAG_NOT_FOUND`). A flag switched off is `DISABLED`, and
+- A flag that isn't in the key's flag set isn't in the JSON (`FLAG_NOT_FOUND`). A flag switched off is `DISABLED`, and
   "use the code default" is a `null` variant: in both cases the provider returns the default in your code.
 - `401` without a key or with an unknown or revoked one, `403` outside the key's scope, `404` for an entity or
   dimension that doesn't exist, `400` for an `all` key with no entity in the path.
@@ -105,8 +106,8 @@ The flagd provider evaluates in-process in Go, Java, Node.js, .NET, Python and R
 ### One flagd for many entities
 
 A backend shared by many entities can run one flagd with one source per entity, each at its own address
-(`/sdk/v1/flagd/company/acme`, `/sdk/v1/flagd/company/globex`, …), using an `all` or `below` key. Pick the entity's
-flag set on each request with flagd's selector, the `Flagd-Selector` header: `Flagd-Selector: flagSetId=prod/acme`.
+(`/sdk/v1/flagd/company/acme`, `/sdk/v1/flagd/company/globex`, …), using an `all` or `below` key. Pick the entity on
+each request with flagd's selector, the `Flagd-Selector` header: `Flagd-Selector: flagSetId=prod/api/acme`.
 Check that the flagd version you run supports flag set selectors.
 
 ### The evaluation context
@@ -156,11 +157,11 @@ Name the entity in the evaluation context by its dimension key. The server fills
   every device gets before sign-in.
 - **The rest of the context** is what the request knows about itself, nested or dotted (`{"app": {"version":
   "6.0.0"}}` or `{"app.version": "6.0.0"}`). `targetingKey` is the device ID a % of devices is decided by, unless the
-  context has `device.id`. Anything it says about the app or the environment is ignored: those come from the key.
+  context has `device.id`. Anything it says about the flag set or the environment is ignored: those come from the key.
 - **Code defaults.** A flag that uses the code default answers with a reason and no `value`, so the provider returns
   the default in your code.
 - **Group names** of a % rule come back in the answer's `metadata.group`.
-- The bulk evaluation (every flag sent to the key's app) answers with a weak `ETag`; asking again with
+- The bulk evaluation (every flag in the key's flag set) answers with a weak `ETag`; asking again with
   `If-None-Match` gets `304` while nothing changed.
 
 The endpoints are in the [HTTP API reference](/reference/http-api#openfeature-remote-evaluation-ofrep). OFREP
@@ -169,31 +170,32 @@ requests go to the server on every evaluation: a CDN doesn't cache them.
 ## Hand links to apps
 
 Apps read their entity's file at a secret link, or ask with OpenFeature's OFREP provider using the same link as a
-token (see [Apps](/guide/apps)). Your backend knows which entity a user belongs to, so it asks for both when the user
-signs in and hands them to the app:
+token (see [Flag sets](/guide/flag-sets)). Your backend knows which entity a user belongs to, so it asks for both when
+the user signs in, naming the app's flag set, and hands them to the app:
 
 ```http
-GET /sdk/v1/links/<dimension>/<entity>?app=<app>
+GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>
 Authorization: Bearer ff_prod_api_…
 ```
 
 ```json
 {
   "environment": "prod",
-  "app": "ios",
+  "flagSet": "ios",
   "entity": "lumen",
   "path": "/client/v1/flags/prod/ios/lumen/k3J9xW2mQ7vR1tY5uP8sLa",
   "token": "ffl_prod.ios.lumen.k3J9xW2mQ7vR1tY5uP8sLa"
 }
 ```
 
-- The link is for the key's environment. `app` is an app's key (`web`, `ios`, `android`); a backend has no file.
+- The link is for the key's environment. `flagSet` is the key of a flag set for apps (`web`, `ios`, `android`); a
+  flag set for backends has no file.
 - For the app file, the app reads `path` from the address apps use, usually the CDN in front of your server:
   `https://flags.example.com/client/v1/flags/prod/ios/lumen/…`.
 - For OFREP, the app's provider sends `Authorization: Bearer <token>`. The token asks as that entity only.
 - The answer has `Cache-Control: no-store`: both are secrets. See [Security model](/guide/security#app-tokens).
-- `401` without a valid key, `403` for an entity outside the key's scope, `400` without `?app=`, `404` for an entity,
-  dimension or app that doesn't exist.
+- `401` without a valid key, `403` for an entity outside the key's scope, `400` without `?flagSet=`, `404` for an
+  entity, dimension or flag set for apps that doesn't exist.
 
 When an entity's link is replaced, the old link and token stop working; the backend gets the new ones the next time
 it asks.

@@ -34,7 +34,7 @@ type HistoryRow = { id: number; changeType: string; flag: string | null; entity:
 
 const KIND_TEXT: Record<string, string> = {
   'layer.update': 'Changed settings', 'layer.create': 'Added settings', 'layer.delete': 'Removed settings',
-  'flag.create': 'Created the flag', 'flag.archive': 'Archived the flag', 'flag.update': 'Changed the details', 'delivery.update': 'Changed which apps get it',
+  'flag.create': 'Created the flag', 'flag.archive': 'Archived the flag', 'flag.update': 'Changed the details', 'delivery.update': 'Changed its flag sets',
   'variations.update': 'Changed the variants', 'flag.meta': 'Changed the details',
   'entity.create': 'Added an entry', 'entity.update': 'Changed an entry', 'entity.link_replaced': 'Replaced an app link',
   // from before dimensions

@@ -96,16 +96,16 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
   if (!flag || !env) throw new HttpError(404, 'flag or environment not found');
   const changed = (now: string[]) => {
     if (opts.before && canonical([...opts.before].sort()) !== canonical(now)) {
-      throw new HttpError(409, `the apps ${flagKey} is sent to in ${envKey} were changed by someone else — reload to see them`, { delivery: now }, 'conflict');
+      throw new HttpError(409, `the flag sets ${flagKey} is in, in ${envKey}, were changed by someone else — reload to see them`, { delivery: now }, 'conflict');
     }
   };
   if (needsReview(env)) {
     const now = await deliveredTo(db, flag.id, env.id);
     changed(now);
     const projects = (await projectIds(db, projectKeys)).map((p) => p.key);
-    if (canonical(projects) === canonical(now)) throw new HttpError(422, `${flagKey} is already sent to exactly these apps in ${envKey}`);
-    const apps = (l: string[]) => (l.length ? l.join(', ') : 'no apps');
-    const reason = opts.reason?.trim() || `Send ${flagKey} to ${apps(projects)} (now: ${apps(now)})`;
+    if (canonical(projects) === canonical(now)) throw new HttpError(422, `${flagKey} is already in exactly these flag sets in ${envKey}`);
+    const sets = (l: string[]) => (l.length ? `flag sets ${l.join(', ')}` : 'no flag set');
+    const reason = opts.reason?.trim() || `Put ${flagKey} in ${sets(projects)} (now: ${sets(now)})`;
     const cs = await createChangeSet(db, envKey, [{ kind: 'delivery', flag: flagKey, entity: null, expectedLayerVersion: null, proposed: null,
       delivery: { before: now, projects } }], actor.name, reason);
     return { applied: false, changeSetId: cs.id };
@@ -208,7 +208,7 @@ export async function archiveFlag(db: Db, flagKey: string, actor: Actor) {
       where e.id = any($2::int[]) and (coalesce(l.enabled, false) or exists (select 1 from flag_delivery d where d.flag_id = $1 and d.environment_id = e.id))
       order by e.id limit 1`, [f.id, reviewed]) : undefined;
     if (live?.enabled) throw new HttpError(409, `turn ${flagKey} off in ${live.env} first (that change is reviewed)`, { environment: live.env });
-    if (live) throw new HttpError(409, `stop sending ${flagKey} to apps in ${live.env} first (that change is reviewed)`, { environment: live.env });
+    if (live) throw new HttpError(409, `take ${flagKey} out of its flag sets in ${live.env} first (that change is reviewed)`, { environment: live.env });
     await changeEverywhere(tx, actor, { kind: 'flag.archive', flag: flagKey });
   });
 }
@@ -385,11 +385,11 @@ export async function upsertEntity(db: Db, dimension: string, key: string, doc: 
 export async function createApiKey(db: Db, p: { environment: string; project: string; scope: string; entity?: string | null; label?: string }, actor: Actor) {
   return db.transaction(async (tx) => {
     const env = await one<EnvRow>(tx, `select id, key from environment where key = $1`, [p.environment]);
-    // shared: the app can't change kind or be deleted until this key is made (updateProject, deleteProject)
+    // shared: the flag set can't change kind or be deleted until this key is made (updateProject, deleteProject)
     const proj = await one<{ id: number; kind: string }>(tx, `select id, kind from project where key = $1 for share`, [p.project]);
-    if (!env || !proj) throw new HttpError(404, 'environment or project not found');
+    if (!env || !proj) throw new HttpError(404, 'environment or flag set not found');
     // apps don't use keys: they read their entity's file at its link
-    if (proj.kind !== 'server') throw new HttpError(422, 'API keys are for backend servers; apps use their app link');
+    if (proj.kind !== 'server') throw new HttpError(422, 'API keys are for flag sets for backends; apps read theirs at an app link');
     if (!KEY_SCOPES.includes(p.scope as KeyScope)) throw new HttpError(422, `scope must be ${KEY_SCOPES.join(', ')}`);
     const ent = p.entity ? await one<{ id: string }>(tx, `select id from entity where key = $1 and archived_at is null`, [p.entity]) : null;
     if (p.scope !== 'all' && !ent) throw new HttpError(422, p.entity ? `“${p.entity}” not found` : 'say whose key it is: the entity it’s for');
@@ -480,36 +480,36 @@ export async function updateEnvironment(db: Db, key: string, input: EnvironmentI
 
 type AppKind = 'client' | 'server';
 const isAppKind = (k: unknown): k is AppKind => k === 'client' || k === 'server';
-const APP_KIND = 'kind: "client" (android, ios, web apps) or "server" (backends)';
+const APP_KIND = 'kind: "client" (for apps: android, ios, web) or "server" (for backends)';
 
-/** A new app or backend that flags can be delivered to: 'client' apps read files, 'server' backends use API keys. */
+/** A new flag set (a `project` row): for 'client' apps, which read files, or for 'server' backends, which use API keys. */
 export async function createProject(db: Db, input: { key?: string; kind?: string }, actor: Actor) {
   const key = String(input.key ?? '').trim();
-  const problem = keyProblem('app', key);
+  const problem = keyProblem('flag set', key);
   if (problem) throw new HttpError(422, problem);
   if (!isAppKind(input.kind)) throw new HttpError(422, APP_KIND);
   return db.transaction(async (tx) => {
-    if (await one(tx, `select 1 from project where key = $1`, [key])) throw new HttpError(409, `there is already an app "${key}"`);
+    if (await one(tx, `select 1 from project where key = $1`, [key])) throw new HttpError(409, `there is already a flag set "${key}"`);
     await tx.query(`insert into project (key, kind) values ($1, $2)`, [key, input.kind]);
     await audit(tx, actor, { kind: 'app.create', after: { key, kind: input.kind } });
     return { key, kind: input.kind };
   });
 }
 
-// An app's key never changes: it is in every app file address (/client/v1/flags/<env>/<app>/…), in its API keys, in
-// rules that check the app, and in the history. What an admin can change is its kind, and only while nothing uses it
-// (appUse): a backend's flags in an app's file would be public, and an app made a backend stops getting its file.
-// Deleting an app has the same condition. Neither changes what any environment serves, so both are history only.
+// A flag set's key never changes: it is in every app file address (/client/v1/flags/<env>/<flag set>/…), in its API
+// keys, in rules that check the flag set, and in the history. What an admin can change is its kind, and only while
+// nothing uses it (appUse): a backend's flags in an app's file would be public, and a flag set made for backends stops
+// being served as files. Deleting a flag set has the same condition. Neither changes what any environment serves, so both are history only.
 
-/** What still uses an app: the flags sent to it (archived ones aren't served, so they don't count), its API keys that
- *  still work, and the requests still to go out (in review, approved or scheduled) that would send a flag to it. */
+/** What still uses a flag set: the flags in it (archived ones aren't served, so they don't count), its API keys that
+ *  still work, and the requests still to go out (in review, approved or scheduled) that would put a flag in it. */
 export type AppUse = { flags: { flag: string; environments: string[] }[]; apiKeys: number; requests: { id: number; environment: string }[] };
 
-/** The app, its row locked: a flag sent to it or a key made for it meanwhile waits until this transaction ends (and
- *  then fails if the app is gone), so what appUse sees stays true until the change commits. */
+/** The flag set, its row locked: a flag put in it or a key made for it meanwhile waits until this transaction ends
+ *  (and then fails if the flag set is gone), so what appUse sees stays true until the change commits. */
 async function lockApp(tx: Tx, key: string) {
   const app = await one<{ id: number; key: string; kind: AppKind }>(tx, `select id, key, kind from project where key = $1 for update`, [key]);
-  if (!app) throw new HttpError(404, `no app "${key}"`);
+  if (!app) throw new HttpError(404, `no flag set "${key}"`);
   return app;
 }
 
@@ -525,25 +525,25 @@ async function appUse(tx: Tx, app: { id: number; key: string }): Promise<AppUse>
   return { flags, apiKeys: keys?.n ?? 0, requests };
 }
 
-/** Refuses (409) while anything uses the app: what does, each with what to do about it. */
+/** Refuses (409) while anything uses the flag set: what does, each with what to do about it. */
 function refuseInUse(appKey: string, use: AppUse, what: string) {
   const some = <T,>(list: T[], text: (x: T) => string) =>
     `${list.slice(0, 5).map(text).join(', ')}${list.length > 5 ? ` and ${list.length - 5} more` : ''}`;
   const { flags, apiKeys, requests } = use;
   const errors = [
-    flags.length && `${flags.length === 1 ? 'A flag is' : `${flags.length} flags are`} still sent to it: ${some(flags, (f) => `${f.flag} (${f.environments.join(', ')})`)}. ` +
-      `Take ${appKey} out of Sent to on ${flags.length === 1 ? 'that flag' : 'each one'} first.`,
+    flags.length && `${flags.length === 1 ? 'A flag is' : `${flags.length} flags are`} still in it: ${some(flags, (f) => `${f.flag} (${f.environments.join(', ')})`)}. ` +
+      `Take ${flags.length === 1 ? 'that flag' : 'each one'} out of ${appKey} first (the flag’s Settings tab).`,
     apiKeys && `${apiKeys === 1 ? 'An API key for it still works' : `${apiKeys} API keys for it still work`}: revoke ${apiKeys === 1 ? 'it' : 'them'} on the API keys page first.`,
-    requests.length && `${requests.length === 1 ? 'A request' : `${requests.length} requests`} waiting to go out would send a flag to it: ` +
+    requests.length && `${requests.length === 1 ? 'A request' : `${requests.length} requests`} waiting to go out would put a flag in it: ` +
       `${some(requests, (r) => `#${r.id} in ${r.environment}`)}. Cancel or reject ${requests.length === 1 ? 'it' : 'them'} in Approvals first.`,
   ].filter((e): e is string => !!e);
   if (errors.length) throw new HttpError(409, `${appKey} ${what} while it’s in use`, { errors, inUse: use });
 }
 
-/** Changes an app's kind (its key can't change). Only while nothing uses it; audited. */
+/** Changes a flag set's kind (its key can't change). Only while nothing uses it; audited. */
 export async function updateProject(db: Db, key: string, input: { key?: unknown; kind?: unknown }, actor: Actor) {
   if (input.key !== undefined && input.key !== key) {
-    throw new HttpError(422, `an app’s key can’t change: its app files and API keys use "${key}". Add a new app instead, and delete this one once nothing uses it.`);
+    throw new HttpError(422, `a flag set’s key can’t change: its app files and API keys use "${key}". Add a new flag set instead, and delete this one once nothing uses it.`);
   }
   if (!isAppKind(input.kind)) throw new HttpError(422, APP_KIND);
   const kind = input.kind;
@@ -557,7 +557,7 @@ export async function updateProject(db: Db, key: string, input: { key?: unknown;
   });
 }
 
-/** Deletes an app nothing uses any more. Its revoked API keys and its place in archived flags' Sent to go with it
+/** Deletes a flag set nothing uses any more. Its revoked API keys and the archived flags' places in it go with it
  *  (nothing serves them); the history keeps them. Audited. */
 export async function deleteProject(db: Db, key: string, actor: Actor) {
   return db.transaction(async (tx) => {

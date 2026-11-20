@@ -1,6 +1,6 @@
 # CompanyFeatures
 
-Feature flags and remote config: one set of rules for everyone, optional settings per entity of the installation's own dimensions, reviewed changes in protected environments, and answers read with OpenFeature (OFREP, flagd) or from a values-only file per entity and app.
+Feature flags and remote config: one set of rules for everyone, optional settings per entity of the installation's own dimensions, reviewed changes in protected environments, and answers read with OpenFeature (OFREP, flagd) or from a values-only file per entity and flag set.
 
 ## Dimensions
 
@@ -55,27 +55,31 @@ The explanation of one decision: each level, what it decided, and why any level 
 _Avoid_: debug log
 
 **App file**:
-The values-only file one entity's devices read for one app in one environment.
+The values-only file one entity's devices read for one flag set in one environment.
 _Avoid_: config file, client snapshot
 
 ## Reading flags
+
+**Flag set**:
+A group of flags sent together, read by an app or a backend, such as `web`, `ios` or `api`; the name is OpenFeature's (flagd and GO Feature Flag use it too). Each has a key that never changes and a kind: for apps (Android, iOS and web, which read it at an app link) or for backends (which read it with an API key). Each flag says which flag sets it is in, per environment. It is `project` in the database, the rule attribute and the console API's JSON; the public addresses say `flagSet`.
+_Avoid_: app (for the flag set itself), project (in the console)
 
 **App link**:
 An entity's secret in one environment, which lets an app read that entity's flags and nothing else; replacing it stops the old one at once. It comes as an app token or an app file address.
 _Avoid_: client key, SDK key
 
 **App token**:
-An app's credential for OFREP, `ffl_<environment>.<app>.<entity>.<secret>`, made from its entity's app link for that one app: replacing the link replaces it.
+An app's credential for OFREP, `ffl_<environment>.<flag set>.<entity>.<secret>`, made from its entity's app link for one flag set: replacing the link replaces it.
 
 **API key**:
-A backend's key in one environment: it may ask about its own entity, those below it, or any. Apps never hold one.
+A backend's key for one flag set for backends in one environment: it may ask about its own entity, those below it, or any. Apps never hold one.
 _Avoid_: server key, secret
 
 **OFREP**:
 OpenFeature's remote evaluation protocol: the server answers every flag for a credential and an evaluation context. How apps read flags.
 
 **flagd JSON**:
-One entity's rules as a flagd flag set, for a backend that evaluates them in-process.
+One entity's rules in one flag set, as a flagd document (`flagSetId` `<environment>/<flag set>/<entity>`), for a backend that evaluates them in-process.
 
 ## Changing flags
 
@@ -118,7 +122,7 @@ The entities a release gives the new feature to on every device, whatever its % 
 _Avoid_: beta, canary, targeted customers
 
 **Clean up**:
-Finishing a release: it is removed from the code, no longer sent to apps, and archived.
+Finishing a release: it is removed from the code, taken out of every flag set, and archived.
 _Avoid_: delete, retire
 
 ## People and access

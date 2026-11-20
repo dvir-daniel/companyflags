@@ -126,10 +126,10 @@ Two dimensions with settings of their own side by side (say `customer` and `regi
 - **Which wins?** A device of Acme in the EU would get both, so one must come first on every flag. That order is a chain.
 - **A file per combination.** Each customer × region pair would need its own file. Files multiply and the CDN's hit
   rate drops, and that cache is why delivery stays cheap with many devices. With one chain, there is **one file per
-  environment, app and entity**.
+  environment, flag set and entity**.
 - **"Why it gets this"** stays a list of levels instead of a grid.
 
-Anything else you target by stays an ordinary rule attribute: app, app version, country, language.
+Anything else you target by stays an ordinary rule attribute: flag set, app version, country, language.
 
 ## Examples
 
@@ -156,7 +156,7 @@ A request names the entity by its dimension, the same key the rules read, and ne
 An API key limits which entities a request may name: only its own entity (`entity`), its entity and every one under
 it (`below`), or any (`all`). Anything outside the key's scope is refused. Moving an entity out from under another
 takes it out of that one's `below` keys at once. Every entity also has a secret app link per environment. See
-[Apps](/guide/apps), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
+[Flag sets](/guide/flag-sets), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
 
 ## Not built yet
 

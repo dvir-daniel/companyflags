@@ -19,7 +19,7 @@ There are two kinds:
 ## Create one
 
 **Releases → + New release** asks **What does it release?**: **A feature, on or off** or **Versions**. Then a name, a
-key, an owner, tags and the apps it is sent to. An on/off release needs a remove-by date (90 days ahead by default); a
+key, an owner, tags and the flag sets it is in. An on/off release needs a remove-by date (90 days ahead by default); a
 version release asks for its **First version** instead and has none.
 
 A new release starts at the first step in every environment, and switched off in every protected environment. Its first
@@ -31,7 +31,7 @@ step there turns it on.
 |---|---|---|
 | **Not started** | Nobody | The default is false (or the code default). None of the release's rules exist. |
 | **Early access** | These entities, on every device, whatever the % | A rule for everyone, "Company or brand is one of …", serving true |
-| **% of devices** | Early access, plus N% of devices | A rule serving true to one range from 0 to N%, by device ID. It may be limited to some apps. |
+| **% of devices** | Early access, plus N% of devices | A rule serving true to one range from 0 to N%, by device ID. It may be limited to some flag sets. |
 | **Everyone** | Every device, with a device ID or without | The default is true, and the release's rules are gone |
 | **Paused** | Nobody new | The release's rules are kept but paused, so resuming brings back the same devices |
 | **Off** | Nobody gets a value | The flag's switch: apps use the default in their code |
@@ -48,7 +48,8 @@ right under it.
   shrinks the same range: the devices that keep the feature are the ones that had it longest.
 - **Everyone sets the default, not a 100% rule.** A device without an ID never matches a % rule, but the default reaches
   it.
-- **Back from everyone goes to 50%**, the same half of devices as before. A % limited to some apps isn't brought back.
+- **Back from everyone goes to 50%**, the same half of devices as before. A % limited to some flag sets isn't brought
+  back.
 - **Rules are recognised by their shape, not their names.** Overrides and any other rules stay where they are; every step
   leaves them alone.
 
@@ -74,11 +75,11 @@ Every step is one save of the flag's defaults, made against the version the page
 
 ## Clean up
 
-Once everyone has it in every environment it is sent to, the list marks it **Ready to clean up** and the page shows
-**Clean up**:
+Once everyone has it in every environment where it is in a flag set, the list marks it **Ready to clean up** and the
+page shows **Clean up**:
 
 1. **Remove the flag from your code** and ship it. On mobile, keep sending it until old app versions are gone.
-2. **Stop sending it.** In each protected environment, one request turns it off and sends it to no app.
+2. **Stop sending it.** In each protected environment, one request turns it off and takes it out of every flag set.
 3. **Archive it.** It leaves every environment and the list; its history stays.
 
 The Releases list filters by **Rolling out**, **Not started**, **Ready to clean up** and **Overdue** (past its
