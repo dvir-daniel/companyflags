@@ -18,7 +18,7 @@ export type WebhookList = { reachable: boolean; webhooks: WebhookOut[]; incoming
 export const WEBHOOKS_PATH = '/webhooks';
 
 export const FORMATS_IN: [string, string][] = [
-  ['kv', 'Key-value JSON'], ['flagd', 'flagd (OpenFeature)'], ['values', 'CompanyFeatures values'], ['jsonata', 'Any JSON, with JSONata'],
+  ['kv', 'Key-value JSON'], ['flagd', 'flagd (OpenFeature)'], ['values', 'CompanyFlags values'], ['jsonata', 'Any JSON, with JSONata'],
 ];
 export const FORMAT_HINT: Record<string, string> = {
   kv: '{ "max_upload_mb": 100, "new_checkout": true }: each flag’s value for everyone.',
@@ -38,7 +38,7 @@ export const EVENT_NAMES: Record<string, string> = { changes: 'Changes', reviews
 export const SAMPLE_IN = '{ "flags": settings{ name: { "value": value } } }';
 export const SAMPLE_OUT = 'type = "changes" ? { "settings": data.changes.{ "name": flag, "environment": environment } }';
 
-/** The Multi-Provider set-up shown on the page: CompanyFeatures first, the old system for what isn't here yet. */
+/** The Multi-Provider set-up shown on the page: CompanyFlags first, the old system for what isn't here yet. */
 export const SIDE_BY_SIDE = `import { OpenFeature, MultiProvider, FirstMatchStrategy } from '@openfeature/web-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 

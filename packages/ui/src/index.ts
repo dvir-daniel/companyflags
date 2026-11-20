@@ -1,5 +1,5 @@
-// Everything in one import: import { Button, Dialog, PageHeader } from "@companyfeatures/ui"
-// Or one file at a time:    import { Button } from "@companyfeatures/ui/components/button"
+// Everything in one import: import { Button, Dialog, PageHeader } from "@companyflags/ui"
+// Or one file at a time:    import { Button } from "@companyflags/ui/components/button"
 export * from "./components/app-frame.tsx"
 export * from "./components/badge.tsx"
 export * from "./components/button.tsx"

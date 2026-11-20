@@ -1,11 +1,11 @@
-/* @companyfeatures/ui: the look of the CompanyFeatures console.
+/* @companyflags/ui: the look of the CompanyFlags console.
    Visual language follows better-auth.com: pure black, Geist + Geist Mono, square corners,
    1px lines, color only for meaning. The rules behind these values are in ../DESIGN.md.
    Light and dark themes, both measured from better-auth.com (see "Two themes" below).
 
    Use it from an app's entry stylesheet, after Tailwind:
      @import "tailwindcss";
-     @import "@companyfeatures/ui/styles.css";                                                  */
+     @import "@companyflags/ui/styles.css";                                                  */
 
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";

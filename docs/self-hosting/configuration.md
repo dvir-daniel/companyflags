@@ -1,23 +1,23 @@
 # Configuration
 
-CompanyFeatures reads its settings from two places when it starts:
+CompanyFlags reads its settings from two places when it starts:
 
-1. **`companyfeatures.config.ts`**, a typed file in the folder it runs in (optional);
+1. **`companyflags.config.ts`**, a typed file in the folder it runs in (optional);
 2. **environment variables**, for whatever the file doesn't set.
 
 Then come the defaults. Without a config file, the environment variables decide everything, as in the Docker image.
-CompanyFeatures doesn't read a `.env` file itself: set the variables in your container, your process manager or your
-shell. The repository's [`.env.example`](https://github.com/dvir-daniel/companyfeatures/blob/main/.env.example)
+CompanyFlags doesn't read a `.env` file itself: set the variables in your container, your process manager or your
+shell. The repository's [`.env.example`](https://github.com/dvir-daniel/companyflags/blob/main/.env.example)
 lists the ones you are most likely to need.
 
 ## The config file
 
-One file says how the server runs, the way Better Auth has its `auth.ts`. `companyfeatures init` writes one:
+One file says how the server runs, the way Better Auth has its `auth.ts`. `companyflags init` writes one:
 
 ```ts
-// companyfeatures.config.ts
-import { defineConfig } from 'companyfeatures/config';
-import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
+// companyflags.config.ts
+import { defineConfig } from 'companyflags/config';
+import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   database: { url: process.env.DATABASE_URL },          // or { dataDir: './data' }
@@ -39,8 +39,8 @@ export default defineConfig({
   the environment.
 - A setting the file leaves out, or sets to `undefined`, comes from its environment variable.
 - The server looks for the file in the folder it starts in. `FF_CONFIG` names another one.
-- In Docker, mount it at `/app/companyfeatures.config.ts`: `-v ./companyfeatures.config.ts:/app/companyfeatures.config.ts:ro`.
-  It imports `companyfeatures/config` and `companyfeatures/plugins` from the server itself, so it stays in `/app`.
+- In Docker, mount it at `/app/companyflags.config.ts`: `-v ./companyflags.config.ts:/app/companyflags.config.ts:ro`.
+  It imports `companyflags/config` and `companyflags/plugins` from the server itself, so it stays in `/app`.
 - The server says which file it read, and which plugins run, when it starts.
 
 ::: warning Docker Compose passes only what it names
@@ -90,7 +90,7 @@ So going back to an older version means restoring the backup you took before upg
 [Production checklist](/self-hosting/production).
 
 To migrate before the new version starts, for example as a step of a deploy, run
-[`companyfeatures migrate`](/reference/cli#migrate). `companyfeatures migrate --check` lists what an upgrade would
+[`companyflags migrate`](/reference/cli#migrate). `companyflags migrate --check` lists what an upgrade would
 apply, and exits with 1 when something is pending.
 
 ## Server

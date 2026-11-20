@@ -1,4 +1,4 @@
-# Contributing to CompanyFeatures
+# Contributing to CompanyFlags
 
 Thanks for helping. Bug reports, docs fixes, tests and features are all welcome. For anything bigger than a small fix,
 open an issue or a discussion first, so we can agree on the shape before you spend time on it.
@@ -13,8 +13,8 @@ You need Node.js 22.18 or later (24 recommended; Node runs the TypeScript direct
 gives you the right one).
 
 ```bash
-git clone https://github.com/dvir-daniel/companyfeatures.git
-cd companyfeatures
+git clone https://github.com/dvir-daniel/companyflags.git
+cd companyflags
 pnpm install
 pnpm dev          # the console on http://localhost:5173 with hot reload, the API on :8787 restarting on changes
 ```
@@ -26,12 +26,12 @@ the console and serves it with the API on http://localhost:8787, as in productio
 
 | Path | What it is |
 |---|---|
-| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, app files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` reads `companyfeatures.config.ts`; `cli.ts` is the `companyfeatures` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
+| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, app files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` reads `companyflags.config.ts`; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
 | `web/` | The console: React 19, Vite, Tailwind 4 |
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
 | `test/` | The server's and console's tests (`node --test`) |
 | `docs/` | The documentation site (VitePress); `docs/design/` holds design notes and decision records |
-| `examples/` | Small apps that use CompanyFeatures |
+| `examples/` | Small apps that use CompanyFlags |
 
 ## Checks
 
@@ -70,12 +70,12 @@ CI runs all of these on every pull request.
 
 ## Pull requests
 
-- Keep each pull request to one change, with a title that says what changes for people using CompanyFeatures.
+- Keep each pull request to one change, with a title that says what changes for people using CompanyFlags.
 - Fill in the template: what changes, how you tested it.
 - A maintainer reviews within a few days. We may ask for changes; that's normal, not a rejection.
 
 ## Releases
 
 Maintainers release with a `vX.Y.Z` tag: it builds and publishes the Docker image
-(`ghcr.io/dvir-daniel/companyfeatures`) and a GitHub release with that version's notes from
+(`ghcr.io/dvir-daniel/companyflags`) and a GitHub release with that version's notes from
 [CHANGELOG.md](CHANGELOG.md). Add your change to the "Unreleased" section of CHANGELOG.md.

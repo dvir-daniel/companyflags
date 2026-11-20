@@ -146,7 +146,7 @@ export function buildMessage(rows: readonly HistoryRow[], n: Names, o: { baseURL
 const slackText = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 /** The message as Slack's incoming webhooks take it (Discord takes it too, at its webhook address + /slack). */
 export function slackMessage(m: Message, n: Names): { text: string } {
-  if (m.type === 'ping') return { text: `CompanyFeatures can reach this webhook${m.data.webhook ? ` (${slackText(m.data.webhook)})` : ''}.` };
+  if (m.type === 'ping') return { text: `CompanyFlags can reach this webhook${m.data.webhook ? ` (${slackText(m.data.webhook)})` : ''}.` };
   const changes = m.data.changes ?? [];
   const envs = [...new Set(changes.map((c) => c.environment).filter((e): e is string => !!e))].map((e) => `*${slackText(n.environment.get(e) ?? e)}*`);
   const lines = [...new Set(changes.map((c) => c.text))];
@@ -154,7 +154,7 @@ export function slackMessage(m: Message, n: Names): { text: string } {
   if (lines.length > shown.length) shown.push(`• and ${lines.length - shown.length} more`);
   const comments = [...new Set(changes.map((c) => c.comment).filter((c): c is string => !!c))].map((c) => `> ${slackText(c)}`);
   const head = `*${slackText(m.data.by?.name ?? 'Someone')}*${envs.length ? ` in ${envs.join(', ')}` : ''}`;
-  const link = m.data.url ? `<${m.data.url}|Open in CompanyFeatures>` : '';
+  const link = m.data.url ? `<${m.data.url}|Open in CompanyFlags>` : '';
   return { text: [head, ...shown, ...comments, link].filter(Boolean).join('\n') };
 }
 
@@ -255,7 +255,7 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
         method: h.method,
         headers: {
           ...(isObject(h.headers) ? h.headers : {}),
-          'content-type': out.type, 'user-agent': 'CompanyFeatures-Webhooks',
+          'content-type': out.type, 'user-agent': 'CompanyFlags-Webhooks',
           'webhook-id': id, 'webhook-timestamp': String(timestamp), 'webhook-signature': sign(h.secret, id, timestamp, out.body),
         },
         body: out.body,
@@ -401,7 +401,7 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
       if (entries.length > 10) throw new HttpError(422, 'At most 10 headers.');
       for (const [k, v] of entries) {
         if (!/^[A-Za-z0-9-]{1,64}$/.test(k)) throw new HttpError(422, `“${k}” isn’t a header name: letters, digits and dashes.`);
-        if (RESERVED_HEADERS.has(k.toLowerCase())) throw new HttpError(422, `${k} is set by CompanyFeatures: leave it out.`);
+        if (RESERVED_HEADERS.has(k.toLowerCase())) throw new HttpError(422, `${k} is set by CompanyFlags: leave it out.`);
         if (typeof v !== 'string' || v.length > 2000 || /[\r\n]/.test(v)) throw new HttpError(422, `${k}: the value is one line of text.`);
       }
       out.headers = Object.fromEntries(entries) as Record<string, string>;
@@ -640,7 +640,7 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
       const record = (status: number, result: string) => db.query(`update webhook_in set last_received_at = now(), last_status = $2, last_result = $3 where id = $1`,
         [row.id, status, result.slice(0, 500)]).catch(() => {});
       const answer = async (status: number, json: Record<string, unknown>, result: string) => { await record(status, result); return { status, json }; };
-      if (!row.enabled) return answer(409, { error: 'This webhook is switched off in CompanyFeatures.' }, 'Refused: switched off');
+      if (!row.enabled) return answer(409, { error: 'This webhook is switched off in CompanyFlags.' }, 'Refused: switched off');
       if (body.length > BODY_MAX) return answer(413, { error: `The body is larger than ${BODY_MAX / 1_000_000} MB.` }, 'Refused: too large');
       let input: unknown;
       try { input = JSON.parse(body); } catch { return answer(400, { error: 'The body isn’t JSON.' }, 'Refused: not JSON'); }

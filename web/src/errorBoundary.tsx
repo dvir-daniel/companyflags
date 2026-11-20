@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
+import { Button } from '@companyflags/ui/components/button';
 
 /*
  * A crash in one page shows a message in its place instead of blanking the whole console. main.tsx keys the

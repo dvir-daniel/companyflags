@@ -1,10 +1,10 @@
 // Shared pieces of the flag editor (values, delivery, on/off, entity search, the change summary).
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Input } from '@companyfeatures/ui/components/input';
-import { NativeSelect } from '@companyfeatures/ui/components/native-select';
-import { Switch as UISwitch } from '@companyfeatures/ui/components/switch';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Input } from '@companyflags/ui/components/input';
+import { NativeSelect } from '@companyflags/ui/components/native-select';
+import { Switch as UISwitch } from '@companyflags/ui/components/switch';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, capital, CODE_DEFAULT, dimensionOf, entityIndex, entityLabel, fmtValue, joined, one, type Entity, type FlagDetail } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { Actions, ErrorList, Field, InAppDefault, Modal, Switch, Val } from '../ui.tsx';

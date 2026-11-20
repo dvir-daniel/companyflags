@@ -1,6 +1,6 @@
 # Architecture
 
-CompanyFeatures is built the way Better Auth is: a small core, plugins for everything around it, one typed config
+CompanyFlags is built the way Better Auth is: a small core, plugins for everything around it, one typed config
 file, and a CLI that reads it. Unlike Better Auth, it runs as a server of its own rather than inside your app. Flags
 are read by many apps and backends at once, so they need one place that decides, publishes and keeps history.
 
@@ -26,13 +26,13 @@ reading its app file all get the same answer for the same entity and context.
 
 ## One config file
 
-[`companyfeatures.config.ts`](/self-hosting/configuration#the-config-file) says which database, which sign-in and
+[`companyflags.config.ts`](/self-hosting/configuration#the-config-file) says which database, which sign-in and
 which plugins. It's TypeScript, typed by `defineConfig`, and optional: without it, environment variables decide, as
 in the Docker image.
 
 ## The CLI
 
-[`companyfeatures`](/reference/cli) starts the server, writes the config file, migrates the database and keeps your
+[`companyflags`](/reference/cli) starts the server, writes the config file, migrates the database and keeps your
 [flags as code](/guide/flags-as-code). It reads the same config file as the server and goes through the same
 functions as the console, so its changes are checked, recorded and reviewed the same way.
 
@@ -40,7 +40,7 @@ functions as the console, so its changes are checked, recorded and reviewed the 
 
 - **No SDK of our own.** Apps and backends read flags with OpenFeature's own providers (OFREP, flagd). A new way to
   read flags is a plugin that speaks one of their protocols.
-- **No database adapters.** Better Auth supports many databases because it lives in your app's. CompanyFeatures
+- **No database adapters.** Better Auth supports many databases because it lives in your app's. CompanyFlags
   brings its own: Postgres, or embedded Postgres for a single server.
 - **Not a library inside your app.** One server decides for every app and backend, and keeps the history in one
   place.

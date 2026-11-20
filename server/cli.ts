@@ -1,15 +1,15 @@
 #!/usr/bin/env node
-// The companyfeatures command, like Better Auth's CLI: it reads companyfeatures.config.ts (config.ts) and works on the
+// The companyflags command, like Better Auth's CLI: it reads companyflags.config.ts (config.ts) and works on the
 // database the server uses. With embedded Postgres (no DATABASE_URL) the server must be stopped first: its files can
 // be open in one process at a time.
 //
-//   companyfeatures start                 run the server
-//   companyfeatures init                  write companyfeatures.config.ts
-//   companyfeatures secret                print a secret for BETTER_AUTH_SECRET
-//   companyfeatures migrate [--check]     apply the database migrations (or list what's pending)
-//   companyfeatures flags pull [file]     write the flags to a file (flags.json)
-//   companyfeatures flags plan [file]     what a push would change
-//   companyfeatures flags push [file]     make CompanyFeatures match the file
+//   companyflags start                 run the server
+//   companyflags init                  write companyflags.config.ts
+//   companyflags secret                print a secret for BETTER_AUTH_SECRET
+//   companyflags migrate [--check]     apply the database migrations (or list what's pending)
+//   companyflags flags pull [file]     write the flags to a file (flags.json)
+//   companyflags flags plan [file]     what a push would change
+//   companyflags flags push [file]     make CompanyFlags match the file
 
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -21,26 +21,26 @@ import { CONFIG_FILE, ConfigError, loadConfig, resolveConfig } from './config.ts
 import { journaled } from './journal.ts';
 import { describe, planFlags, pullFlags, pushFlags, type Done, type Plan } from './flagsAsCode.ts';
 
-const HELP = `companyfeatures: the feature flag server, its database and your flags as code
+const HELP = `companyflags: the feature flag server, its database and your flags as code
 
 Usage:
-  companyfeatures start                 Run the server (the console, the API and the plugins)
-  companyfeatures init                  Write ${CONFIG_FILE} in this folder
-  companyfeatures secret                Print a random secret for BETTER_AUTH_SECRET
-  companyfeatures migrate [--check]     Apply the database's migrations; --check only lists them (exit 1 if any)
-  companyfeatures flags pull [file]     Write every flag to a file (default flags.json)
-  companyfeatures flags plan [file]     Show what a push would change
-  companyfeatures flags push [file]     Make CompanyFeatures match the file [--as <name>]
+  companyflags start                 Run the server (the console, the API and the plugins)
+  companyflags init                  Write ${CONFIG_FILE} in this folder
+  companyflags secret                Print a random secret for BETTER_AUTH_SECRET
+  companyflags migrate [--check]     Apply the database's migrations; --check only lists them (exit 1 if any)
+  companyflags flags pull [file]     Write every flag to a file (default flags.json)
+  companyflags flags plan [file]     Show what a push would change
+  companyflags flags push [file]     Make CompanyFlags match the file [--as <name>]
 
 It reads ${CONFIG_FILE} from this folder (or FF_CONFIG), then the environment (DATABASE_URL, FF_DATA_DIR, …).
 With embedded Postgres (no DATABASE_URL), stop the server first: one process at a time can open its files.
-Docs: https://dvir-daniel.github.io/companyfeatures/reference/cli`;
+Docs: https://dvir-daniel.github.io/companyflags/reference/cli`;
 
-const CONFIG_TEMPLATE = `// How this CompanyFeatures server runs. Every setting is optional: what isn't set here comes from the environment
+const CONFIG_TEMPLATE = `// How this CompanyFlags server runs. Every setting is optional: what isn't set here comes from the environment
 // variables (DATABASE_URL, BETTER_AUTH_SECRET, …), then the defaults.
-// Docs: https://dvir-daniel.github.io/companyfeatures/self-hosting/configuration
-import { defineConfig } from 'companyfeatures/config';
-import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
+// Docs: https://dvir-daniel.github.io/companyflags/self-hosting/configuration
+import { defineConfig } from 'companyflags/config';
+import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   database: {
@@ -88,7 +88,7 @@ export async function main(argv: string[], o: { cwd?: string; env?: NodeJS.Proce
         if (existsSync(file) && !has('--force')) throw new UsageError(`${CONFIG_FILE} is already here (--force writes over it)`);
         writeFileSync(file, CONFIG_TEMPLATE);
         out(`wrote ${file}`);
-        out('next: set BETTER_AUTH_SECRET (companyfeatures secret makes one), then companyfeatures start');
+        out('next: set BETTER_AUTH_SECRET (companyflags secret makes one), then companyflags start');
         return 0;
       }
       case 'secret':
@@ -120,7 +120,7 @@ export async function main(argv: string[], o: { cwd?: string; env?: NodeJS.Proce
           });
         }
         if (sub !== 'plan' && sub !== 'push') throw new UsageError('flags: pull, plan or push');
-        if (!existsSync(file)) throw new UsageError(`no ${file}: companyfeatures flags pull writes one`);
+        if (!existsSync(file)) throw new UsageError(`no ${file}: companyflags flags pull writes one`);
         let parsed: unknown;
         try { parsed = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} isn’t valid JSON: ${(e as Error).message}`); }
         return await withDb(cwd, env, true, async (db) => {
@@ -140,11 +140,11 @@ export async function main(argv: string[], o: { cwd?: string; env?: NodeJS.Proce
         });
       }
       default:
-        throw new UsageError(`unknown command "${command}": see companyfeatures help`);
+        throw new UsageError(`unknown command "${command}": see companyflags help`);
     }
   } catch (e) {
     if (e instanceof UsageError || e instanceof ConfigError || e instanceof FolderInUseError || e instanceof MigrationError) {
-      err(`companyfeatures: ${e.message}`);
+      err(`companyflags: ${e.message}`);
       return 1;
     }
     throw e;
@@ -160,7 +160,7 @@ async function withDb(cwd: string, env: NodeJS.ProcessEnv, current: boolean, run
   try {
     if (current) {
       const pending = await pendingMigrations(store);
-      if (pending.length) throw new UsageError(`the database is missing migrations (${pending.join(', ')}): run companyfeatures migrate first`);
+      if (pending.length) throw new UsageError(`the database is missing migrations (${pending.join(', ')}): run companyflags migrate first`);
       const known = new Set(readMigrations().map((m) => m.name));
       const newer = (await store.query<{ name: string }>(`select name from schema_migration`)).rows.map((r) => r.name).filter((n) => !known.has(n));
       if (newer.length) throw new UsageError(`the database has migrations this version doesn’t know (${newer.join(', ')}): use the CLI of the version the server runs`);
@@ -179,7 +179,7 @@ function printPlan(plan: Plan, out: Print) {
   for (const p of plan.problems) out(`! ${p}`);
   for (const s of plan.steps) out(`${s.do === 'create' ? '+' : '~'} ${describe(s)}`);
   if (plan.unchanged.length) out(`= ${plan.unchanged.length} unchanged`);
-  if (plan.onlyHere.length) out(`? only in CompanyFeatures, left as they are: ${plan.onlyHere.join(', ')}`);
+  if (plan.onlyHere.length) out(`? only in CompanyFlags, left as they are: ${plan.onlyHere.join(', ')}`);
   if (!plan.steps.length && !plan.problems.length) out('nothing to change');
 }
 
@@ -187,7 +187,7 @@ function printDone(done: Done[], out: Print) {
   for (const d of done) out(d.result === 'request' ? `→ request #${d.request}: ${describe(d.step)}` : `✓ ${describe(d.step)}`);
 }
 
-// run as a command (node server/cli.ts, or the companyfeatures bin, which may be a link to this file)
+// run as a command (node server/cli.ts, or the companyflags bin, which may be a link to this file)
 if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const code = await main(process.argv.slice(2));
   if (code >= 0) process.exit(code);

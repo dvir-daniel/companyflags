@@ -178,7 +178,7 @@ async function request(method: string, path: string, body?: unknown, headers: Re
     res = await fetch(`/api${path}`, {
       method,
       // the server refuses changes without this header, so another site can't make them with your cookie (CSRF)
-      headers: { 'content-type': 'application/json', ...(method === 'GET' ? {} : { 'x-requested-with': 'companyfeatures' }), ...headers },
+      headers: { 'content-type': 'application/json', ...(method === 'GET' ? {} : { 'x-requested-with': 'companyflags' }), ...headers },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {

@@ -1,6 +1,6 @@
 ## What this changes
 
-<!-- One or two sentences: what someone using CompanyFeatures will notice. Link the issue: "Closes #123". -->
+<!-- One or two sentences: what someone using CompanyFlags will notice. Link the issue: "Closes #123". -->
 
 ## How it was tested
 

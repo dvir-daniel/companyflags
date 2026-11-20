@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { CaretDownIcon, CaretRightIcon } from '@phosphor-icons/react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, below, capital, count, one, type Dimension } from '../api.ts';
 import { useApp } from '../app.ts';
 import { entityHref, treeLevelPath } from '../paths.ts';

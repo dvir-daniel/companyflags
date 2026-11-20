@@ -1,4 +1,4 @@
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { cn } from '@companyflags/ui/lib/utils';
 import { conditionText, entityIndex, fmtValue, STAGE_LABEL, vocabOf, type EvalResult, type TraceStep } from '../api.ts';
 import { useApp } from '../app.ts';
 import { InAppDefault, ReasonBadge, SplitBar, Val } from '../ui.tsx';

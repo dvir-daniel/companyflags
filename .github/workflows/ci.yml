@@ -76,13 +76,13 @@ jobs:
         with:
           context: .
           load: true
-          tags: companyfeatures:ci
+          tags: companyflags:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Start it and wait until it's ready
         run: |
           docker run -d --name cf -p 8787:8787 -e BETTER_AUTH_SECRET=ci-only-secret-0123456789abcdefghij \
-            -e BETTER_AUTH_URL=http://localhost:8787 companyfeatures:ci
+            -e BETTER_AUTH_URL=http://localhost:8787 companyflags:ci
           for _ in $(seq 1 30); do curl -sf http://localhost:8787/readyz && exit 0; sleep 1; done
           docker logs cf
           exit 1

@@ -1,10 +1,10 @@
 # Docker
 
-CompanyFeatures is one image: the server, the console and the app files. It needs Postgres for real use, and runs on
+CompanyFlags is one image: the server, the console and the app files. It needs Postgres for real use, and runs on
 its own embedded database for trying it.
 
 ```text
-ghcr.io/dvir-daniel/companyfeatures:<version>     e.g. 0.1.0, 0.1, latest
+ghcr.io/dvir-daniel/companyflags:<version>     e.g. 0.1.0, 0.1, latest
 ```
 
 Images are built for `linux/amd64` and `linux/arm64`. The container listens on port 8787, runs as the unprivileged
@@ -12,11 +12,11 @@ Images are built for `linux/amd64` and `linux/arm64`. The container listens on p
 
 ## Docker Compose with Postgres
 
-The repository's [docker-compose.yml](https://github.com/dvir-daniel/companyfeatures/blob/main/docker-compose.yml)
-runs CompanyFeatures with Postgres 18:
+The repository's [docker-compose.yml](https://github.com/dvir-daniel/companyflags/blob/main/docker-compose.yml)
+runs CompanyFlags with Postgres 18:
 
 ```bash
-curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 docker compose up -d
 ```
@@ -32,19 +32,19 @@ address people open the console at, such as `https://flags.example.com`.
 With your own Postgres:
 
 ```bash
-docker run -d --name companyfeatures -p 8787:8787 \
+docker run -d --name companyflags -p 8787:8787 \
   -e DATABASE_URL="postgres://user:password@db.example.com:5432/flags?sslmode=verify-full" \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
   -e BETTER_AUTH_URL=https://flags.example.com \
-  ghcr.io/dvir-daniel/companyfeatures:0.1
+  ghcr.io/dvir-daniel/companyflags:0.1
 ```
 
 Without `DATABASE_URL`, data goes to an embedded Postgres in `/data/db`. Mount a volume there to keep it:
 
 ```bash
-docker run -d -p 8787:8787 -v companyfeatures:/data \
+docker run -d -p 8787:8787 -v companyflags:/data \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" -e BETTER_AUTH_URL=http://localhost:8787 \
-  ghcr.io/dvir-daniel/companyfeatures:0.1
+  ghcr.io/dvir-daniel/companyflags:0.1
 ```
 
 ::: warning The embedded database is for trying it and small setups
@@ -65,9 +65,9 @@ together. The schema only moves forward: to go back a version, restore the backu
 ## Building the image yourself
 
 ```bash
-git clone https://github.com/dvir-daniel/companyfeatures.git
-cd companyfeatures
-docker build -t companyfeatures .
+git clone https://github.com/dvir-daniel/companyflags.git
+cd companyflags
+docker build -t companyflags .
 ```
 
 ## Health checks

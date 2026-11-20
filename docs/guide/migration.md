@@ -1,7 +1,7 @@
 # Moving from another system
 
-You don't switch on one day. CompanyFeatures runs next to the config system you have now, and flags move over one at
-a time. Apps ask CompanyFeatures first and the old system for everything not moved yet, so nothing changes for anyone
+You don't switch on one day. CompanyFlags runs next to the config system you have now, and flags move over one at
+a time. Apps ask CompanyFlags first and the old system for everything not moved yet, so nothing changes for anyone
 on the day you start, and any flag can stay behind as long as it needs to.
 
 Everything here is on the console's **Migration** page (admins import and set up webhooks; everyone can export).
@@ -10,7 +10,7 @@ Everything here is on the console's **Migration** page (admins import and set up
 
 1. **Import** the old system's flags, with **Create missing flags** on. They're created as config flags in no
    [flag set](/guide/flag-sets) yet, so apps still read the old system.
-2. **Put OpenFeature's Multi-Provider in each app**: CompanyFeatures first, the old system second. A flag
+2. **Put OpenFeature's Multi-Provider in each app**: CompanyFlags first, the old system second. A flag
    that isn't in the app's flag set is "not found", and the old system answers instead.
 3. **Move a flag** by adding it to the app's flag set (the flag's page, **Flag sets**). From then on the app reads it
    here.
@@ -22,7 +22,7 @@ Everything here is on the console's **Migration** page (admins import and set up
 
 OpenFeature's [Multi-Provider](https://openfeature.dev/specification/appendix-a#multi-provider) asks several providers
 in turn. With `FirstMatchStrategy`, a provider that answers `FLAG_NOT_FOUND` passes the question to the next one; any
-other answer is the app's. CompanyFeatures answers `FLAG_NOT_FOUND` for every flag that isn't in the app's flag set.
+other answer is the app's. CompanyFlags answers `FLAG_NOT_FOUND` for every flag that isn't in the app's flag set.
 
 ```ts
 import { OpenFeature, MultiProvider, FirstMatchStrategy } from '@openfeature/web-sdk';
@@ -59,7 +59,7 @@ Flag keys here are lowercase letters, digits and underscores. A flag the old sys
 |---|---|---|
 | Key-value JSON | `{ "max_upload_mb": 100, "new_checkout": true }` | each flag's value for everyone |
 | flagd (OpenFeature) | [flagd's flag file](https://flagd.dev/reference/flag-definitions/) | each flag's default, on/off and variants; not its targeting |
-| CompanyFeatures values | see below | value for everyone, on/off, variants, entities' own values |
+| CompanyFlags values | see below | value for everyone, on/off, variants, entities' own values |
 | Any JSON, with JSONata | anything | what your [JSONata](https://jsonata.org) expression makes of it |
 
 **Preview** shows every change and every problem before anything is saved. Nothing is imported while there's a
@@ -69,7 +69,7 @@ History. Where the environment needs approval, the changes become one request in
 An import never touches rules or %: the old system has none to bring. Flags it doesn't name, and entities it doesn't
 name, stay as they are.
 
-### CompanyFeatures values
+### CompanyFlags values
 
 The one shape everything is read into and written from:
 
@@ -106,7 +106,7 @@ An expression can't read files or the network. It stops after a second, or 500 l
 
 ## Export
 
-**Migration → Export** gives one environment in the same formats: CompanyFeatures values (which imports back
+**Migration → Export** gives one environment in the same formats: CompanyFlags values (which imports back
 unchanged), key-value JSON, one flag set's flagd file, or your JSONata expression's shape. It has each flag's value for
 everyone, on/off, variants and entities' own values. Rules and % aren't in it: the server decides those for each
 device.

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
-# CompanyFeatures: the server, the console and the app files in one image.
-#   docker build -t companyfeatures .
-#   docker run -p 8787:8787 -e BETTER_AUTH_SECRET=… -e BETTER_AUTH_URL=http://localhost:8787 -v companyfeatures:/data companyfeatures
+# CompanyFlags: the server, the console and the app files in one image.
+#   docker build -t companyflags .
+#   docker run -p 8787:8787 -e BETTER_AUTH_SECRET=… -e BETTER_AUTH_URL=http://localhost:8787 -v companyflags:/data companyflags
 
 ARG NODE_VERSION=24
 
@@ -21,7 +21,7 @@ WORKDIR /app
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/ui/package.json packages/ui/
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile --prod --filter companyfeatures
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile --prod --filter companyflags
 
 # ---- runtime --------------------------------------------------------------------------------------------------------
 FROM node:${NODE_VERSION}-alpine
@@ -35,9 +35,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY server ./server
 COPY --from=build /app/web/dist ./web/dist
-# the companyfeatures command (server/cli.ts): docker compose exec companyfeatures companyfeatures migrate --check.
-# A config file goes at /app/companyfeatures.config.ts (or set FF_CONFIG); without one, the environment decides.
-RUN ln -s /app/server/cli.ts /usr/local/bin/companyfeatures && chmod +x /app/server/cli.ts \
+# the companyflags command (server/cli.ts): docker compose exec companyflags companyflags migrate --check.
+# A config file goes at /app/companyflags.config.ts (or set FF_CONFIG); without one, the environment decides.
+RUN ln -s /app/server/cli.ts /usr/local/bin/companyflags && chmod +x /app/server/cli.ts \
   && mkdir -p /data && chown node:node /data
 USER node
 VOLUME ["/data"]

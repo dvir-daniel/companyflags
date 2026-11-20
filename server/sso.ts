@@ -139,7 +139,7 @@ async function addConnection(db: Db, o: SsoOptions, { headers, base }: { headers
     const clientSecret = str(input.clientSecret);
     if (!/^https?:\/\//.test(issuer)) throw new HttpError(422, 'issuer: the identity provider’s address, e.g. https://example.okta.com');
     if (o.production && !issuer.startsWith('https://')) throw new HttpError(422, 'issuer: must be an https address');
-    if (!clientId || !clientSecret) throw new HttpError(422, 'client ID and client secret: from the app you made for CompanyFeatures in the identity provider');
+    if (!clientId || !clientSecret) throw new HttpError(422, 'client ID and client secret: from the app you made for CompanyFlags in the identity provider');
     const doc = await discover(o.discover, issuer);
     body = {
       providerId: id, issuer: doc.issuer, domain: domains.join(','),

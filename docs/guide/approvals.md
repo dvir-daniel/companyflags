@@ -1,6 +1,6 @@
 # Approvals and history
 
-Every change in CompanyFeatures is recorded, and in a protected environment it is reviewed before it applies. This page
+Every change in CompanyFlags is recorded, and in a protected environment it is reviewed before it applies. This page
 covers who may do what, how a change goes through, the emergency path for on call, and how to look back and undo.
 
 ## Roles
@@ -18,7 +18,7 @@ Each person has one role, set by an admin in **Settings → People**:
 Viewers can look (app links aside), run the Debug tab and Compare, and change nothing. Settings (environments, flag
 sets, dimensions, people, single sign-on, the CDN) are for admins. Beyond that, roles only decide who reviews and who
 may use break-glass. The rules live in one module the server and the console share,
-[`server/policy.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/policy.ts).
+[`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts).
 
 ## Protected environments
 

@@ -6,7 +6,7 @@ The session is a cookie. Accounts, sessions and password hashes are kept in your
 next to them, and the two meet on the email.
 
 Who may join, what each role may do and what removing access takes away are decided in one place,
-[`server/access.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/access.ts).
+[`server/access.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/access.ts).
 
 ## The first account
 
@@ -74,7 +74,7 @@ the identity provider's side before you save.
 
 ### OIDC
 
-On your side: the issuer URL, client ID and client secret of an app you make for CompanyFeatures in the identity
+On your side: the issuer URL, client ID and client secret of an app you make for CompanyFlags in the identity
 provider (Okta, Entra ID, Google Workspace, Auth0, Keycloak and others).
 
 On the identity provider's side, the sign-in redirect URI:
@@ -150,7 +150,7 @@ back. You can't remove yourself, and there is always at least one admin.
 | Admin | `admin` | Everything, including Settings (environments, flag sets, dimensions, people, single sign-on, the CDN) and API keys. |
 
 Nobody approves their own request. The roles are defined in
-[`server/policy.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/policy.ts); see
+[`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts); see
 [Approvals and history](/guide/approvals).
 
 ## Not built yet

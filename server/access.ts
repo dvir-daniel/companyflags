@@ -113,9 +113,9 @@ const PEOPLE_LOCK = 727002;
 const PERSON = `select key, name, role, removed_at is not null as removed from app_user where key = $1`;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const REMOVED: Refusal = { code: 'access_removed', message: 'An admin removed your access to CompanyFeatures.' };
+const REMOVED: Refusal = { code: 'access_removed', message: 'An admin removed your access to CompanyFlags.' };
 const SSO_REQUIRED: Refusal = { code: 'sso_required', message: 'Your organization signs in with single sign-on: use “Sign in with SSO”.' };
-const INVITE_REQUIRED: Refusal = { code: 'invite_required', message: 'Ask an admin of CompanyFeatures for an invite link.' };
+const INVITE_REQUIRED: Refusal = { code: 'invite_required', message: 'Ask an admin of CompanyFlags for an invite link.' };
 const OUTSIDE_SSO: Refusal = {
   code: 'invite_required', message: 'Your identity provider signed you in, but this email isn’t one of its email domains. Ask an admin for an invite.',
 };
@@ -178,7 +178,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
     async signedIn(who: Who | null): Promise<Person> {
       if (!who) throw new HttpError(401, 'not signed in');
       const p = await person(who);
-      if (p.removed) throw new HttpError(403, 'an admin removed your access to CompanyFeatures');
+      if (p.removed) throw new HttpError(403, 'an admin removed your access to CompanyFlags');
       return p;
     },
 

@@ -1,7 +1,7 @@
 # Dimensions
 
 A **dimension** is what your installation serves config per. You define them, in your own words: one installation
-serves per `customer`, another per `company` › `brand`, another per `region` › `chain` › `store`. CompanyFeatures has
+serves per `customer`, another per `company` › `brand`, another per `region` › `chain` › `store`. CompanyFlags has
 no fixed business word of its own. The generic thing is an **entity** of a dimension, and the console always shows
 your words instead ("Brands", "Add store", "Company is Globex").
 
@@ -72,7 +72,7 @@ Once an entity has settings of its own on a flag, they combine with the rest in 
 
 ## Evaluation order
 
-This is the order the evaluator ([`server/evaluator.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/evaluator.ts),
+This is the order the evaluator ([`server/evaluator.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/evaluator.ts),
 `entityChain` and `evaluate`) decides one flag in, for one entity, in one environment. The first match wins.
 
 <IllusOrder />

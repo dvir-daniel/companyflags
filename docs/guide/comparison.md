@@ -1,10 +1,10 @@
 # Compared with others
 
 Feature-flag tools mostly differ in two things: **who decides the answer** (a service per request, the SDK with the
-rules, or a file per audience) and **what the model knows about how your product is organized**. Here is where CompanyFeatures sits,
+rules, or a file per audience) and **what the model knows about how your product is organized**. Here is where CompanyFlags sits,
 so you can tell quickly whether it fits.
 
-## When CompanyFeatures fits
+## When CompanyFlags fits
 
 - **Parts of your product need their own settings.** Regions, stores, teams or customers are part of the model: each
   entity has settings of its own on any flag, inherited down your chain, with locked rules on top. Elsewhere this is
@@ -20,12 +20,12 @@ so you can tell quickly whether it fits.
 
 ## When something else fits better
 
-- **Experiments with statistics.** CompanyFeatures splits devices into named % groups and leaves the analysis to your
+- **Experiments with statistics.** CompanyFlags splits devices into named % groups and leaves the analysis to your
   own analytics. Tools built for experimentation compute results for you.
 - **Targeting by each user's own profile** (their plan, their sign-up date). Rules here check entities and what a
   device reports about itself, from a fixed list of [attributes](/reference/attributes); your own per-user attributes
   aren't in it yet.
-- **A hosted service.** CompanyFeatures has no hosted version.
+- **A hosted service.** CompanyFlags has no hosted version.
 
 ## How the answer is decided
 
@@ -33,8 +33,8 @@ so you can tell quickly whether it fits.
 |---|---|---|---|
 | A service evaluating per request | The service | One answer per request | Requests |
 | SDKs with the rule set | The device | Every rule, often with the lists in them | Devices × checks (mostly cached) |
-| **CompanyFeatures, OFREP** | The server, per request, in memory | Its entity's answers for its context | Requests (small, mostly 304s) |
-| **CompanyFeatures, app file** | The server, once per publish; device facts on the device | Its entity's values, plus checks on its own facts | Publishes and cache misses |
+| **CompanyFlags, OFREP** | The server, per request, in memory | Its entity's answers for its context | Requests (small, mostly 304s) |
+| **CompanyFlags, app file** | The server, once per publish; device facts on the device | Its entity's values, plus checks on its own facts | Publishes and cache misses |
 
 ## Standards
 
@@ -45,6 +45,6 @@ so you can tell quickly whether it fits.
 
 ## Moving from another tool
 
-There is no importer yet. A flag maps to a CompanyFeatures flag with variants; a segment of customers usually maps to
+There is no importer yet. A flag maps to a CompanyFlags flag with variants; a segment of customers usually maps to
 a rule on a dimension ("Company is one of …") or to settings on each entity; a percentage rollout maps to a % of
 devices.

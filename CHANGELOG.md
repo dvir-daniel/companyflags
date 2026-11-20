@@ -25,18 +25,18 @@ The first public release.
   roles, password reset links made by an admin. Only admins manage API keys. Sign-in rate limits read the connection's
   address, or a header you trust behind a proxy (`FF_CLIENT_IP_HEADER`, `FF_TRUSTED_PROXIES`).
 - **Plugins and one config file.** A small core, and a plugin for each way flags are read (`ofrep()`, `flagd()`,
-  `appFiles()`) and for the Cloudflare purge (`cloudflare()`), listed in a typed `companyfeatures.config.ts`
+  `appFiles()`) and for the Cloudflare purge (`cloudflare()`), listed in a typed `companyflags.config.ts`
   (`defineConfig`), or all on without one. Write your own with `definePlugin`: routes, console routes, after-publish
   hooks.
-- **The `companyfeatures` CLI.** `start`, `init`, `secret`, `migrate [--check]`, and flags as code: `flags pull`,
-  `flags plan` and `flags push` keep a `flags.json` and CompanyFeatures in step, through the console's own checks
+- **The `companyflags` CLI.** `start`, `init`, `secret`, `migrate [--check]`, and flags as code: `flags pull`,
+  `flags plan` and `flags push` keep a `flags.json` and CompanyFlags in step, through the console's own checks
   and approvals.
 - **Running it.** A Docker image and a Compose file with Postgres; several instances on one database; `/healthz` and
   `/readyz`; security headers and a strict Content-Security-Policy on the console; a first screen that walks an admin
   through setting up.
-- **Migration.** Run CompanyFeatures next to the config system you have now and move flags one at a time: import its
-  values (key-value JSON, flagd, CompanyFeatures values, or any JSON through a JSONata expression), with a preview of
-  every change first; export in the same formats. Apps ask CompanyFeatures first and the old system for the rest,
+- **Migration.** Run CompanyFlags next to the config system you have now and move flags one at a time: import its
+  values (key-value JSON, flagd, CompanyFlags values, or any JSON through a JSONata expression), with a preview of
+  every change first; export in the same formats. Apps ask CompanyFlags first and the old system for the rest,
   with OpenFeature's Multi-Provider; a flag moves when it's added to their flag set.
 - **Webhooks out** (the `webhooks()` plugin). After each change, a signed message (Standard Webhooks), a Slack
   message, or your own JSON made with JSONata, with what the changed flags are set to now. In order, once each,

@@ -28,7 +28,7 @@ export type CdnOptions = { fetch?: typeof fetch; server?: Partial<CloudflareZone
 
 const ZONE_ID = /^[0-9a-f]{32}$/;
 /** A tag no app file carries: purging it checks the zone and the token's permission without dropping anything. */
-const CHECK_TAG = 'companyfeatures-check';
+const CHECK_TAG = 'companyflags-check';
 
 export function createCdn(db: Db, o: CdnOptions = {}) {
   const log = o.log ?? (() => {});

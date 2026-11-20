@@ -1,4 +1,4 @@
-// JSONata (https://jsonata.org): the one way to reshape JSON in and out of CompanyFeatures, for imports, exports and
+// JSONata (https://jsonata.org): the one way to reshape JSON in and out of CompanyFlags, for imports, exports and
 // webhooks (values.ts, webhooks.ts). An expression reads its input and makes a new value; it can't read files, the
 // network or anything else on the server, and it gets a time and depth limit here, so a slow or endless one stops.
 

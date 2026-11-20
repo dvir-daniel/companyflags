@@ -2,35 +2,35 @@
   <picture>
     <source srcset=".github/assets/banner-dark.png" media="(prefers-color-scheme: dark)">
     <source srcset=".github/assets/banner-light.png" media="(prefers-color-scheme: light)">
-    <img src=".github/assets/banner-light.png" alt="CompanyFeatures: the most comprehensive feature flag framework">
+    <img src=".github/assets/banner-light.png" alt="CompanyFlags: the most comprehensive feature flag framework">
   </picture>
 </p>
 
 <p align="center">
-  <a href="https://github.com/dvir-daniel/companyfeatures/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/dvir-daniel/companyfeatures/ci.yml?branch=main&style=flat&colorA=000000&colorB=000000&label=CI" alt="CI"></a>
+  <a href="https://github.com/dvir-daniel/companyflags/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/dvir-daniel/companyflags/ci.yml?branch=main&style=flat&colorA=000000&colorB=000000&label=CI" alt="CI"></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-000000?style=flat&colorA=000000&colorB=000000" alt="MIT license"></a>
   <a href="https://openfeature.dev"><img src="https://img.shields.io/badge/OpenFeature-OFREP%20%7C%20flagd-000000?style=flat&colorA=000000&colorB=000000" alt="OpenFeature"></a>
-  <a href="https://github.com/dvir-daniel/companyfeatures/stargazers"><img src="https://img.shields.io/github/stars/dvir-daniel/companyfeatures?style=flat&colorA=000000&colorB=000000" alt="GitHub stars"></a>
+  <a href="https://github.com/dvir-daniel/companyflags/stargazers"><img src="https://img.shields.io/github/stars/dvir-daniel/companyflags?style=flat&colorA=000000&colorB=000000" alt="GitHub stars"></a>
 </p>
 
 <p align="center">
   The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.
   <br>
-  <a href="https://dvir-daniel.github.io/companyfeatures/"><strong>Learn more »</strong></a>
+  <a href="https://dvir-daniel.github.io/companyflags/"><strong>Learn more »</strong></a>
   <br>
   <br>
-  <a href="https://dvir-daniel.github.io/companyfeatures/guide/quickstart">Quickstart</a>
+  <a href="https://dvir-daniel.github.io/companyflags/guide/quickstart">Quickstart</a>
   ·
-  <a href="https://dvir-daniel.github.io/companyfeatures/">Docs</a>
+  <a href="https://dvir-daniel.github.io/companyflags/">Docs</a>
   ·
-  <a href="https://github.com/dvir-daniel/companyfeatures/issues">Issues</a>
+  <a href="https://github.com/dvir-daniel/companyflags/issues">Issues</a>
   ·
-  <a href="https://github.com/dvir-daniel/companyfeatures/discussions">Discussions</a>
+  <a href="https://github.com/dvir-daniel/companyflags/discussions">Discussions</a>
 </p>
 
 ## About the project
 
-CompanyFeatures is everything feature flags and remote config need, in one server you run yourself: rules and %
+CompanyFlags is everything feature flags and remote config need, in one server you run yourself: rules and %
 rollouts, releases, reviewed changes and a full history, settings for any part of your product, and OpenFeature for
 every app and backend.
 
@@ -38,11 +38,11 @@ every app and backend.
   <img src=".github/assets/console.png" alt="The console: a release flag with an override, settings for one company, and a rule for 10% of devices">
 </p>
 
-### Why CompanyFeatures?
+### Why CompanyFlags?
 
 Feature flags start simple and grow. Some rules must hold for everyone, whatever else is set. Parts of your product
 need settings of their own. Production changes need a second pair of eyes and a way back. Every app and backend should
-get the same answer. CompanyFeatures covers all of it in one place, and your code reads it through OpenFeature.
+get the same answer. CompanyFlags covers all of it in one place, and your code reads it through OpenFeature.
 
 - **Your own dimensions.** Serve config per `region` › `store`, per `team`, per `customer` › `brand`, or whatever
   your product is made of. You name the levels, up to four.
@@ -64,15 +64,15 @@ get the same answer. CompanyFeatures covers all of it in one place, and your cod
 - **Cheap at any scale.** Every entity's values are also one file your CDN caches, rebuilt once per publish, for
   fleets where no request should reach the server.
 - **Plugins, one config file, a CLI.** Built the way Better Auth is: a small core, plugins for each way flags are read,
-  one typed `companyfeatures.config.ts`, and a `companyfeatures` command that migrates and keeps your flags as code.
+  one typed `companyflags.config.ts`, and a `companyflags` command that migrates and keeps your flags as code.
 
 ## Quickstart
 
 ```bash
-docker run -d -p 8787:8787 -v companyfeatures:/data \
+docker run -d -p 8787:8787 -v companyflags:/data \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
   -e BETTER_AUTH_URL=http://localhost:8787 \
-  ghcr.io/dvir-daniel/companyfeatures
+  ghcr.io/dvir-daniel/companyflags
 ```
 
 Open <http://localhost:8787>, create the admin account, and the console walks you through four steps: environments,
@@ -81,7 +81,7 @@ flag sets, dimensions, and your first flag.
 For production, run it with Postgres:
 
 ```bash
-curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 docker compose up -d
 ```
@@ -89,7 +89,7 @@ docker compose up -d
 Or from source (Node.js 22.18+, pnpm 11):
 
 ```bash
-git clone https://github.com/dvir-daniel/companyfeatures.git && cd companyfeatures
+git clone https://github.com/dvir-daniel/companyflags.git && cd companyflags
 corepack enable && pnpm install
 pnpm serve           # builds the console and serves it with the API on http://localhost:8787
 ```
@@ -119,8 +119,8 @@ const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme
 ```
 
 Or it runs [flagd](https://flagd.dev) next to it, which downloads the entity's rules as flagd JSON, and evaluates every
-flag in memory. See [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) and
-[Backends](https://dvir-daniel.github.io/companyfeatures/guide/backends).
+flag in memory. See [OpenFeature](https://dvir-daniel.github.io/companyflags/sdk/openfeature) and
+[Backends](https://dvir-daniel.github.io/companyflags/guide/backends).
 
 ## Configure it
 
@@ -128,9 +128,9 @@ Everything is optional: without a file, environment variables decide. With one, 
 `auth.ts`:
 
 ```ts
-// companyfeatures.config.ts (companyfeatures init writes one)
-import { defineConfig } from 'companyfeatures/config';
-import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
+// companyflags.config.ts (companyflags init writes one)
+import { defineConfig } from 'companyflags/config';
+import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   database: { url: process.env.DATABASE_URL },
@@ -142,13 +142,13 @@ export default defineConfig({
 Keep the flags your code reads in a file next to it, and push it from CI:
 
 ```bash
-companyfeatures flags plan     # what would change
-companyfeatures flags push     # new flags, details, variants, flag sets; reviewed where production needs it
+companyflags flags plan     # what would change
+companyflags flags push     # new flags, details, variants, flag sets; reviewed where production needs it
 ```
 
-See [Plugins](https://dvir-daniel.github.io/companyfeatures/reference/plugins),
-[CLI](https://dvir-daniel.github.io/companyfeatures/reference/cli) and
-[Architecture](https://dvir-daniel.github.io/companyfeatures/guide/architecture).
+See [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins),
+[CLI](https://dvir-daniel.github.io/companyflags/reference/cli) and
+[Architecture](https://dvir-daniel.github.io/companyflags/guide/architecture).
 
 ## How it works
 
@@ -168,22 +168,22 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 
 | | |
 |---|---|
-| [Introduction](https://dvir-daniel.github.io/companyfeatures/guide/introduction) | What it is, who it's for, what it doesn't do yet |
-| [Concepts](https://dvir-daniel.github.io/companyfeatures/guide/concepts) | Environments, flag sets, dimensions, flags, rules |
-| [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) | Web, React, Android, iOS and backends |
-| [Migration](https://dvir-daniel.github.io/companyfeatures/guide/migration) | Moving from another system, import, export, webhooks |
-| [Self-hosting](https://dvir-daniel.github.io/companyfeatures/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
-| [Plugins](https://dvir-daniel.github.io/companyfeatures/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyfeatures/reference/cli) | The built-in plugins, writing your own, and the `companyfeatures` command |
-| [HTTP API](https://dvir-daniel.github.io/companyfeatures/reference/http-api) | OFREP, app files, flagd JSON, links, health |
+| [Introduction](https://dvir-daniel.github.io/companyflags/guide/introduction) | What it is, who it's for, what it doesn't do yet |
+| [Concepts](https://dvir-daniel.github.io/companyflags/guide/concepts) | Environments, flag sets, dimensions, flags, rules |
+| [OpenFeature](https://dvir-daniel.github.io/companyflags/sdk/openfeature) | Web, React, Android, iOS and backends |
+| [Migration](https://dvir-daniel.github.io/companyflags/guide/migration) | Moving from another system, import, export, webhooks |
+| [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
+| [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyflags/reference/cli) | The built-in plugins, writing your own, and the `companyflags` command |
+| [HTTP API](https://dvir-daniel.github.io/companyflags/reference/http-api) | OFREP, app files, flagd JSON, links, health |
 
 The docs are in [`docs/`](docs) and run locally with `pnpm docs:dev`.
 
 ## Status
 
-CompanyFeatures is before 1.0: tested and usable, but young, and the console's own API may change. Not built yet:
+CompanyFlags is before 1.0: tested and usable, but young, and the console's own API may change. Not built yet:
 experiment statistics, your own attributes beyond the built-in list, sending email (invite and password reset links
 are sent by hand), SCIM provisioning, and secret values (don't put secrets in flags). See
-[the introduction](https://dvir-daniel.github.io/companyfeatures/guide/introduction#what-it-doesn-t-do-yet).
+[the introduction](https://dvir-daniel.github.io/companyflags/guide/introduction#what-it-doesn-t-do-yet).
 
 ## Contributing
 

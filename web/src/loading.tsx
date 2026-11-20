@@ -1,9 +1,9 @@
 import { use, type CSSProperties, type ReactNode } from 'react';
 import { ArrowLeftIcon, CaretLeftIcon } from '@phosphor-icons/react';
-import { tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { Panel } from '@companyfeatures/ui/components/panel';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { Panel } from '@companyflags/ui/components/panel';
+import { cn } from '@companyflags/ui/lib/utils';
 import { dimensionOf, title as titleOf, type Meta } from './api.ts';
 import { AppContext, go } from './app.ts';
 import { perWho } from './dimWords.ts';

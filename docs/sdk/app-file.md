@@ -4,10 +4,10 @@ Most apps read flags with [OpenFeature](/sdk/openfeature). The **app file** is t
 app needs from its flag set, as one JSON file your CDN caches, so no request reaches the server. There is no OpenFeature
 provider for it; this page describes it completely, so you can read it in any language. The server's own reference is
 about 100 lines:
-`readClientFile` in [server/clientFile.ts](https://github.com/dvir-daniel/companyfeatures/blob/main/server/clientFile.ts),
-with `testCondition` in [server/evaluator.ts](https://github.com/dvir-daniel/companyfeatures/blob/main/server/evaluator.ts),
-[server/semver.ts](https://github.com/dvir-daniel/companyfeatures/blob/main/server/semver.ts) and
-[server/hash.ts](https://github.com/dvir-daniel/companyfeatures/blob/main/server/hash.ts).
+`readClientFile` in [server/clientFile.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/clientFile.ts),
+with `testCondition` in [server/evaluator.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/evaluator.ts),
+[server/semver.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/semver.ts) and
+[server/hash.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/hash.ts).
 
 ## Getting it
 
@@ -133,5 +133,5 @@ with their known values, is in [Attributes](/reference/attributes).
 
 Your reader is right when it gives the same answer as the server for every device. The server's tests do this for
 the reference reader across thousands of combinations
-([test/client-file.test.ts](https://github.com/dvir-daniel/companyfeatures/blob/main/test/client-file.test.ts));
+([test/client-file.test.ts](https://github.com/dvir-daniel/companyflags/blob/main/test/client-file.test.ts));
 the console's **Try it** panel shows the server's answer for any entity, flag set and device, to compare by hand.

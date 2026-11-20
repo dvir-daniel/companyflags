@@ -9,7 +9,7 @@ import { fixtures } from './fixtures.ts';
 if (process.env.NODE_ENV === 'production') process.env.NODE_ENV = 'development';
 
 /** The header the console sends with every change (server/api.ts CSRF_HEADER). */
-export const CSRF = { 'x-requested-with': 'companyfeatures' } as const;
+export const CSRF = { 'x-requested-with': 'companyflags' } as const;
 
 // Tests use an in-memory database. With FF_TEST_PG set to a Postgres server (pnpm test:pg), each boot
 // gets its own new database on that server instead, dropped again by stop().

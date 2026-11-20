@@ -1,12 +1,12 @@
 {
-  "name": "companyfeatures",
+  "name": "companyflags",
   "version": "0.1.0",
   "description": "The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.",
   "private": true,
   "license": "MIT",
   "type": "module",
   "bin": {
-    "companyfeatures": "./server/cli.ts"
+    "companyflags": "./server/cli.ts"
   },
   "exports": {
     "./config": "./server/config.ts",
@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@base-ui/react": "^1.9.0",
-    "@companyfeatures/ui": "workspace:*",
+    "@companyflags/ui": "workspace:*",
     "@openfeature/core": "^1.12.0",
     "@openfeature/ofrep-provider": "^0.2.5",
     "@openfeature/ofrep-web-provider": "^0.4.3",

@@ -1,12 +1,12 @@
 import { useRef, useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { Drawer } from '@companyfeatures/ui/components/drawer';
-import { Input } from '@companyfeatures/ui/components/input';
-import { NativeSelect } from '@companyfeatures/ui/components/native-select';
-import { PageBar } from '@companyfeatures/ui/components/page-bar';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { Drawer } from '@companyflags/ui/components/drawer';
+import { Input } from '@companyflags/ui/components/input';
+import { NativeSelect } from '@companyflags/ui/components/native-select';
+import { PageBar } from '@companyflags/ui/components/page-bar';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, type Meta, type User } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { plural } from '../text.ts';
@@ -355,7 +355,7 @@ export function GetStarted() {
   return (
     <div className="grid max-w-[680px] content-start gap-8 p-12 max-sm:p-6">
       <div className="grid gap-3">
-        <h1 className="m-0 text-[28px] leading-tight font-semibold text-ink">Welcome to CompanyFeatures</h1>
+        <h1 className="m-0 text-[28px] leading-tight font-semibold text-ink">Welcome to CompanyFlags</h1>
         <p className="m-0 text-15 text-subtitle">Four steps, and your apps read their first flag.</p>
       </div>
       {admin ? <>

@@ -1,7 +1,7 @@
 # CDN (Cloudflare)
 
 Apps read one file per environment, flag set and entity. Every device of an entity reads the same file, so a CDN in
-front of CompanyFeatures can answer almost all of those requests. This page sets up Cloudflare; another CDN works the
+front of CompanyFlags can answer almost all of those requests. This page sets up Cloudflare; another CDN works the
 same way if it honours `Cache-Control` and can purge by tag.
 
 ## What a CDN can cache
@@ -48,7 +48,7 @@ Match only that path. Don't use "Cache Everything" on the whole host: the consol
 ## Purge on publish
 
 Without a purge, a change reaches apps once the CDN's copy is a minute old and the CDN asks again (usually a `304`).
-With a purge, CompanyFeatures drops the environment's files from Cloudflare right after each publish, so apps get the
+With a purge, CompanyFlags drops the environment's files from Cloudflare right after each publish, so apps get the
 change in seconds.
 
 The purge is the [`cloudflare()` plugin](/reference/plugins#cloudflare-options). It runs unless your config file
@@ -67,7 +67,7 @@ Content-Type: application/json
 Set it up in one of two ways:
 
 - **Settings → CDN** (admins): the domain's Zone ID (on its Overview page in Cloudflare, under API) and an API token.
-  Saving checks both with Cloudflare first by purging a tag no file carries (`companyfeatures-check`). The token stays
+  Saving checks both with Cloudflare first by purging a tag no file carries (`companyflags-check`). The token stays
   on the server; the console and History show only its last 4 characters.
 - **On the server**: `CF_ZONE_ID` and `CF_API_TOKEN`. These win over the console, which shows them read-only.
 

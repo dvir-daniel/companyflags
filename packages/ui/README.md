@@ -1,6 +1,6 @@
-# @companyfeatures/ui
+# @companyflags/ui
 
-The look of the CompanyFeatures console: design tokens for the light and dark themes, the Tailwind theme, and the
+The look of the CompanyFlags console: design tokens for the light and dark themes, the Tailwind theme, and the
 components (shadcn on Base UI, Phosphor icons). The rules behind it are in [DESIGN.md](DESIGN.md).
 
 - `src/styles.css`: tokens, the Tailwind theme, base styles, fonts (Geist, Geist Mono) and utilities.
@@ -13,11 +13,11 @@ It is private to this repository and has no build step: the console (`web/`) com
 TypeScript, and uses its own copies of the peer dependencies, so there is only ever one React.
 
 ```ts
-import { Button } from '@companyfeatures/ui/components/button';   // one file at a time (keeps Fast Refresh precise)
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';   // one file at a time (keeps Fast Refresh precise)
+import { cn } from '@companyflags/ui/lib/utils';
 ```
 
 ```css
 @import "tailwindcss";
-@import "@companyfeatures/ui/styles.css";
+@import "@companyflags/ui/styles.css";
 ```

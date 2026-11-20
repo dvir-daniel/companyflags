@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { ColumnHead, tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { ColumnHead, tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
 import { SkeletonRows } from '../loading.tsx';
 import { pagerRow } from '../loadingKit.ts';
-import { barTextButton, FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { SearchField } from '@companyfeatures/ui/components/search-field';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { barTextButton, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { SearchField } from '@companyflags/ui/components/search-field';
+import { cn } from '@companyflags/ui/lib/utils';
 import { fmtValue, many, one, type Dimension, type Section } from '../api.ts';
 import { useApp } from '../app.ts';
 import { childrenGridPath, entityHref } from '../paths.ts';

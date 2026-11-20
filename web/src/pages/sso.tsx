@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { Drawer } from '@companyfeatures/ui/components/drawer';
-import { Input } from '@companyfeatures/ui/components/input';
-import { NativeSelect } from '@companyfeatures/ui/components/native-select';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { Drawer } from '@companyflags/ui/components/drawer';
+import { Input } from '@companyflags/ui/components/input';
+import { NativeSelect } from '@companyflags/ui/components/native-select';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, peek } from '../api.ts';
 import { Bone } from '../loading.tsx';
 import { SSO_PATH } from '../paths.ts';

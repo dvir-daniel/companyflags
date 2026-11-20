@@ -1,5 +1,5 @@
 // Flags as code (the CLI's `flags pull`, `flags plan` and `flags push`, cli.ts): the flags a codebase uses, written in
-// a JSON file next to it, and kept in step with CompanyFeatures.
+// a JSON file next to it, and kept in step with CompanyFlags.
 //
 //   {
 //     "flags": {
@@ -14,7 +14,7 @@
 // The file says what flags exist and what they are: their details, their variants and the flag sets they are in.
 // Their rules stay in the console, where each change is reviewed where it must be. A push goes through the same
 // functions the console does (control.ts), so every check holds; in an environment that needs approval, a change of
-// flag sets becomes a request there, as in the console. A flag that is only in CompanyFeatures is listed and left as
+// flag sets becomes a request there, as in the console. A flag that is only in CompanyFlags is listed and left as
 // it is: archiving one is done in the console.
 
 import { all, type Db } from './db.ts';
@@ -55,7 +55,7 @@ export type Step =
 export type Plan = {
   steps: Step[];
   unchanged: string[];
-  /** flags in CompanyFeatures that the file doesn't have: left as they are */
+  /** flags in CompanyFlags that the file doesn't have: left as they are */
   onlyHere: string[];
   /** what's wrong with the file: nothing is pushed while there is any */
   problems: string[];
@@ -86,7 +86,7 @@ export async function readFlags(db: Db): Promise<Here[]> {
   }));
 }
 
-/** The file for what CompanyFeatures has now (`flags pull`). */
+/** The file for what CompanyFlags has now (`flags pull`). */
 export async function pullFlags(db: Db): Promise<FlagsFile> {
   const flags: Record<string, FlagSpec> = {};
   for (const f of await readFlags(db)) {
@@ -109,7 +109,7 @@ export async function pullFlags(db: Db): Promise<FlagsFile> {
 const isOnOff = (v: Record<string, unknown>) => Object.keys(v).length === 2 && v.on === true && v.off === false;
 const variantsOf = (s: FlagSpec): Record<string, unknown> => s.variants ?? (s.type === 'bool' && !s.freeValues ? { on: true, off: false } : {});
 
-/** What a push would do (`flags plan`), and what's wrong with the file, against what CompanyFeatures has now. */
+/** What a push would do (`flags plan`), and what's wrong with the file, against what CompanyFlags has now. */
 export async function planFlags(db: Db, file: unknown): Promise<Plan> {
   const problems: string[] = [];
   const spec = readFile(file, problems);
@@ -182,7 +182,7 @@ function readFile(file: unknown, problems: string[]): Record<string, FlagSpec> {
 
 export type Done = { step: Step; result: 'done' | 'request'; request?: number };
 
-/** Applies a plan (`flags push`), step by step, as `actor`. It stops at the first step CompanyFeatures refuses, with
+/** Applies a plan (`flags push`), step by step, as `actor`. It stops at the first step CompanyFlags refuses, with
  *  what was done before it (each step is its own change, as in the console). */
 export async function pushFlags(db: Db, plan: Plan, actor: Actor): Promise<Done[]> {
   if (plan.problems.length) throw new Error(`the file has problems:\n${plan.problems.map((p) => `  ${p}`).join('\n')}`);

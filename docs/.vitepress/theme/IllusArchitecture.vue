@@ -21,7 +21,7 @@ const plugins: { call: string; icon: string; where: string; who: string }[] = [
 <template>
   <div class="cf-ill arch">
     <div class="head dots">
-      <p class="label">companyfeatures.config.ts</p>
+      <p class="label">companyflags.config.ts</p>
       <code class="term"><span class="p">export default</span> defineConfig({ database, auth, plugins: [<span class="dim">ofrep(), flagd(), appFiles(), cloudflare()</span>] })</code>
     </div>
     <div class="core">
@@ -48,7 +48,7 @@ const plugins: { call: string; icon: string; where: string; who: string }[] = [
       </div>
     </div>
     <div class="foot">
-      <code class="term"><span class="p">$</span> companyfeatures flags push <span class="dim">→</span> ✓ create dark_mode <span class="dim">·</span> → request #12 in prod <span class="ok">✓</span></code>
+      <code class="term"><span class="p">$</span> companyflags flags push <span class="dim">→</span> ✓ create dark_mode <span class="dim">·</span> → request #12 in prod <span class="ok">✓</span></code>
     </div>
   </div>
 </template>

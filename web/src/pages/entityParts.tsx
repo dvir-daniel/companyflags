@@ -1,14 +1,14 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowSquareOutIcon, CaretLeftIcon, CopyIcon } from '@phosphor-icons/react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { BulkBar, ColumnHead, KeyHints, RowCheck, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyfeatures/ui/components/data-table';
-import { Drawer, DrawerRow, DrawerSection } from '@companyfeatures/ui/components/drawer';
-import { Input } from '@companyfeatures/ui/components/input';
-import { NativeSelect } from '@companyfeatures/ui/components/native-select';
-import { BAR_CONTROLS, barTextButton, FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { SearchField } from '@companyfeatures/ui/components/search-field';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { BulkBar, ColumnHead, KeyHints, RowCheck, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyflags/ui/components/data-table';
+import { Drawer, DrawerRow, DrawerSection } from '@companyflags/ui/components/drawer';
+import { Input } from '@companyflags/ui/components/input';
+import { NativeSelect } from '@companyflags/ui/components/native-select';
+import { BAR_CONTROLS, barTextButton, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { SearchField } from '@companyflags/ui/components/search-field';
+import { cn } from '@companyflags/ui/lib/utils';
 import {
   above as dimAbove, api, capital, CHOICE_NAME, choiceText, CODE_DEFAULT, entityIndex, entityWordsOf, fmtValue, getsWithoutOwn, levelOf, one, sameAs,
   sourceText, whenText, type AnswerPick, type Dimension, type EntityWords,

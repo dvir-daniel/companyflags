@@ -92,7 +92,7 @@ function lockFolder(dataDir: string): () => void {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
       const pid = Number(readFileSync(file, 'utf8'));
       if (pid && running(pid)) {                              // this process too: it has the folder open already
-        throw new FolderInUseError(`another CompanyFeatures server (process ${pid}) is using ${dataDir}. `
+        throw new FolderInUseError(`another CompanyFlags server (process ${pid}) is using ${dataDir}. `
           + 'Stop it first: the embedded database can only be open in one process at a time.');
       }
       try { unlinkSync(file); } catch { /* someone else took it over: try again */ }

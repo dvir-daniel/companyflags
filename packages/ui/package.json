@@ -1,8 +1,8 @@
 {
-  "name": "@companyfeatures/ui",
+  "name": "@companyflags/ui",
   "version": "0.1.0",
   "private": true,
-  "description": "The CompanyFeatures console's design tokens, Tailwind theme and components (shadcn on Base UI).",
+  "description": "The CompanyFlags console's design tokens, Tailwind theme and components (shadcn on Base UI).",
   "license": "MIT",
   "type": "module",
   "exports": {

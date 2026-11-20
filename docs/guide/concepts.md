@@ -1,6 +1,6 @@
 # How it fits together
 
-CompanyFeatures has a few parts that build on each other. You set up **environments**, **flag sets** and your
+CompanyFlags has a few parts that build on each other. You set up **environments**, **flag sets** and your
 **dimensions** once. Then you create **flags**, give them **values** and **rules**, and let any **entity** (a customer,
 a company and its brands, a store) have settings of its own. Every answer, whether over OFREP, in a backend's flagd
 JSON or in the console's trace, comes from the same evaluator.
@@ -119,7 +119,7 @@ flagd JSON has no place for group names.
 
 ## One evaluator
 
-[`server/evaluator.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/evaluator.ts) is the only
+[`server/evaluator.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/evaluator.ts) is the only
 place the order above is written. It is behind:
 
 - **OFREP answers.** The server evaluates each flag for the entity and the attributes in the request.

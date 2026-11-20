@@ -102,7 +102,7 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
 
 The session is a cookie, which a browser sends with any request to your server, whoever made the page. So every
 change to the console's API (any method but `GET`, `HEAD` and `OPTIONS`) must carry the header
-`X-Requested-With: companyfeatures`, which a page on another site can't add without the server's permission. A request
+`X-Requested-With: companyflags`, which a page on another site can't add without the server's permission. A request
 the browser marks `Sec-Fetch-Site: cross-site` is refused too, and a change's body must be JSON. The console's API
 sends no CORS headers, so no other site gets that permission.
 
@@ -153,4 +153,4 @@ with its stack, and the request gets `500 {"error":"internal error"}`, which giv
 
 Please don't open a public issue. Report it privately on GitHub: **Security → Report a vulnerability** on the
 repository. What to include and what to expect is in
-[SECURITY.md](https://github.com/dvir-daniel/companyfeatures/blob/main/SECURITY.md).
+[SECURITY.md](https://github.com/dvir-daniel/companyflags/blob/main/SECURITY.md).

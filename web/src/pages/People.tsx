@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { NativeSelect } from '@companyfeatures/ui/components/native-select';
-import { barTextButton, FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { SearchField } from '@companyfeatures/ui/components/search-field';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { NativeSelect } from '@companyflags/ui/components/native-select';
+import { barTextButton, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { SearchField } from '@companyflags/ui/components/search-field';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, type User } from '../api.ts';
 import { useApp } from '../app.ts';
 import { CountSlot } from '../loading.tsx';

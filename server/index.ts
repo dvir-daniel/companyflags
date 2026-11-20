@@ -214,7 +214,7 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
   const { port, host, signIn } = resolved;
   // the port first: a second copy started by mistake stops here, before it opens any data
   if (!(await portFree(port, host))) {
-    fail(`port ${port} is already in use: CompanyFeatures may already be running (open http://localhost:${port}), or start this one with PORT=<another port>`);
+    fail(`port ${port} is already in use: CompanyFlags may already be running (open http://localhost:${port}), or start this one with PORT=<another port>`);
   }
   if (file) log(`config: ${file}`);
   const ctx = await createApp({ databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, log })

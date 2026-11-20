@@ -1,9 +1,9 @@
-/* CompanyFeatures console. Everything visual comes from the UI library
-   (@companyfeatures/ui, packages/ui: tokens for both themes, fonts, the Tailwind theme, components)
+/* CompanyFlags console. Everything visual comes from the UI library
+   (@companyflags/ui, packages/ui: tokens for both themes, fonts, the Tailwind theme, components)
    and Tailwind classes in the components, following the recipes in packages/ui/DESIGN.md.
    There is no app stylesheet; add a rule here only for what classes can't express. */
 @import "tailwindcss";
-@import "@companyfeatures/ui/styles.css";
+@import "@companyflags/ui/styles.css";
 
 @layer base {
   /* the window doesn't scroll; the main pane does. Its scrollbar always has room kept for it, so a page that

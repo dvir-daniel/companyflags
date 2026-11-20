@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Button, buttonVariants } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { BulkBar, KeyHints, RowCheck, SortHeader, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyfeatures/ui/components/data-table';
-import { Drawer, DrawerRow, DrawerSection } from '@companyfeatures/ui/components/drawer';
-import { BAR_CONTROLS, barTextButton, FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { SearchField } from '@companyfeatures/ui/components/search-field';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button, buttonVariants } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { BulkBar, KeyHints, RowCheck, SortHeader, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyflags/ui/components/data-table';
+import { Drawer, DrawerRow, DrawerSection } from '@companyflags/ui/components/drawer';
+import { BAR_CONTROLS, barTextButton, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { SearchField } from '@companyflags/ui/components/search-field';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, capital, entityIndex, peek, type Dimensions, type Entity, type Layer } from '../api.ts';
 import { listWords } from '../dimWords.ts';
 import { downloadCsv } from '../csv.ts';

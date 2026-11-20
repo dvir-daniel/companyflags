@@ -12,7 +12,7 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) first: it has the layout, the commands a
 - **No SDK of our own.** Apps and backends use OpenFeature's providers (OFREP, flagd). Don't add a client library or
   custom headers; fit the feature into those protocols.
 - **Core and plugins.** A new way to read flags, or something to do after a publish, is a plugin (`server/plugin.ts`,
-  `server/plugins/`), listed in `companyfeatures.config.ts` (`server/config.ts`). The CLI is `server/cli.ts`.
+  `server/plugins/`), listed in `companyflags.config.ts` (`server/config.ts`). The CLI is `server/cli.ts`.
 - **The schema only moves forward.** Add the next file in `server/migrations/`; never edit one (the server checks their
   checksums).
 - **No fixed business words.** Installations name their own dimensions; nothing users read may say "customer",

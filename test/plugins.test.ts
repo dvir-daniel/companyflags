@@ -1,4 +1,4 @@
-// Plugins (server/plugin.ts, server/plugins/) and companyfeatures.config.ts (server/config.ts): an installation runs the
+// Plugins (server/plugin.ts, server/plugins/) and companyflags.config.ts (server/config.ts): an installation runs the
 // plugins it lists, and only those; a plugin of its own can serve routes, console routes and run after a publish; the
 // config file wins over the environment, which wins over the defaults.
 
@@ -104,17 +104,17 @@ test('the config: the file’s settings, else the environment’s, else the defa
   assert.equal(cloudflare().id, 'cloudflare');
 });
 
-test('the config file: found in the folder (importing companyfeatures/config and /plugins), or named by FF_CONFIG', async () => {
-  // inside the repository, so 'companyfeatures/…' resolves to this package, as it does for a config in the app's folder
+test('the config file: found in the folder (importing companyflags/config and /plugins), or named by FF_CONFIG', async () => {
+  // inside the repository, so 'companyflags/…' resolves to this package, as it does for a config in the app's folder
   const dir = mkdtempSync(join(import.meta.dirname, '.config-'));
   try {
     assert.deepEqual(await loadConfig({ cwd: dir, env: {} }), { config: {}, file: null });
-    writeFileSync(join(dir, 'companyfeatures.config.ts'), `import { defineConfig } from 'companyfeatures/config';
-import { flagd, ofrep } from 'companyfeatures/plugins';
+    writeFileSync(join(dir, 'companyflags.config.ts'), `import { defineConfig } from 'companyflags/config';
+import { flagd, ofrep } from 'companyflags/plugins';
 export default defineConfig({ server: { port: 9200 }, plugins: [ofrep(), flagd()] });
 `);
     const { config, file } = await loadConfig({ cwd: dir, env: {} });
-    assert.equal(file, join(dir, 'companyfeatures.config.ts'));
+    assert.equal(file, join(dir, 'companyflags.config.ts'));
     assert.deepEqual([config.server?.port, ids(config.plugins ?? [])], [9200, ['ofrep', 'flagd']]);
     writeFileSync(join(dir, 'other.config.ts'), `export default { server: { port: 9300 } };\n`);
     assert.equal((await loadConfig({ cwd: dir, env: { FF_CONFIG: 'other.config.ts' } })).config.server?.port, 9300);

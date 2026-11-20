@@ -238,7 +238,7 @@ test('a % of devices is saved with hash version 2; a file that failed to build i
 });
 
 test('errors: bad JSON is a 400, the schema’s rules a 422 with their words, and anything else a logged 500 that says nothing', async () => {
-  const raw = await t.app.request('/api/dimensions/company', { method: 'POST', headers: { 'content-type': 'application/json', 'x-user': 'alice', 'x-requested-with': 'companyfeatures' }, body: '{"key": "acme",' });
+  const raw = await t.app.request('/api/dimensions/company', { method: 'POST', headers: { 'content-type': 'application/json', 'x-user': 'alice', 'x-requested-with': 'companyflags' }, body: '{"key": "acme",' });
   assert.equal(raw.status, 400);
   assert.deepEqual(await raw.json(), { error: 'the request body isn’t valid JSON' });
 

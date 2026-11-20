@@ -1,5 +1,5 @@
 // Pieces the Releases list and a release's page share: what GET /releases sends, and a release's step drawn small.
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { cn } from '@companyflags/ui/lib/utils';
 import type { ReleaseState } from '../../../server/release.ts';
 import type { Paged } from '../uiKit.ts';
 

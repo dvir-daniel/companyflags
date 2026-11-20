@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitepress';
 
-const repo = 'https://github.com/dvir-daniel/companyfeatures';
+const repo = 'https://github.com/dvir-daniel/companyflags';
 
 export default defineConfig({
-  title: 'CompanyFeatures',
+  title: 'CompanyFlags',
   description: 'The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.',
   base: process.env.DOCS_BASE || '/',
   cleanUrls: true,
@@ -17,8 +17,8 @@ export default defineConfig({
     logo: '/logo.svg',
     search: { provider: 'local' },
     editLink: { pattern: `${repo}/edit/main/docs/:path`, text: 'Edit this page on GitHub' },
-    footer: { message: 'Released under the MIT License.', copyright: 'CompanyFeatures contributors' },
-    siteTitle: 'CompanyFeatures',
+    footer: { message: 'Released under the MIT License.', copyright: 'CompanyFlags contributors' },
+    siteTitle: 'CompanyFlags',
     nav: [
       { text: 'Readme', link: '/', activeMatch: '^/$' },
       { text: 'Docs', link: '/guide/introduction', activeMatch: '/guide/' },

@@ -4,14 +4,14 @@
 //   #/releases/<env>         this list, in one environment (the last one used when none is given)
 //   #/release/<key>/<env>    one release (ReleasePage.tsx)
 import { useEffect, useRef, useState } from 'react';
-import { Badge as UIBadge } from '@companyfeatures/ui/components/badge';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { ColumnHead, tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { Input } from '@companyfeatures/ui/components/input';
-import { barTextButton, FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { SearchField } from '@companyfeatures/ui/components/search-field';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Badge as UIBadge } from '@companyflags/ui/components/badge';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { ColumnHead, tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { Input } from '@companyflags/ui/components/input';
+import { barTextButton, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { SearchField } from '@companyflags/ui/components/search-field';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, prefetch } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { CountSlot, SkeletonRows } from '../loading.tsx';

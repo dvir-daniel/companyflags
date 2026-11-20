@@ -3,11 +3,11 @@
 // Restore undoes flag settings only: changes of other kinds (an entity moved, delivery, variants) are marked
 // "not rolled back by restore", and a restore lists the ones it left as they are.
 import { useEffect, useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { ColumnHead, KeyHints, tableHeadClass, tableRowClass, useListKeys } from '@companyfeatures/ui/components/data-table';
-import { Drawer, DrawerRow, DrawerSection } from '@companyfeatures/ui/components/drawer';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { ColumnHead, KeyHints, tableHeadClass, tableRowClass, useListKeys } from '@companyflags/ui/components/data-table';
+import { Drawer, DrawerRow, DrawerSection } from '@companyflags/ui/components/drawer';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, conditionText, entityIndex, vocabOf } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { plural } from '../text.ts';

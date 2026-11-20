@@ -1,9 +1,9 @@
-// companyfeatures.config.ts: one typed file for how a server runs, the way Better Auth has its auth.ts. Every
+// companyflags.config.ts: one typed file for how a server runs, the way Better Auth has its auth.ts. Every
 // setting is optional. What the file doesn't set comes from the environment variables (docs/self-hosting/
 // configuration.md), then the defaults, so a server with no file runs as before and the Docker image needs none.
 //
-//   import { defineConfig } from 'companyfeatures/config';
-//   import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
+//   import { defineConfig } from 'companyflags/config';
+//   import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
 //
 //   export default defineConfig({
 //     database: { url: process.env.DATABASE_URL },
@@ -44,11 +44,11 @@ export type Config = {
 /** Types a config file's default export. */
 export const defineConfig = (config: Config): Config => config;
 
-export const CONFIG_FILE = 'companyfeatures.config.ts';
+export const CONFIG_FILE = 'companyflags.config.ts';
 
 export class ConfigError extends Error {}
 
-/** The config file, from FF_CONFIG or companyfeatures.config.ts in `cwd`: its default export, or {} when there is
+/** The config file, from FF_CONFIG or companyflags.config.ts in `cwd`: its default export, or {} when there is
  *  none. A file that is named but missing, or doesn't export a config, is an error. */
 export async function loadConfig(o: { cwd?: string; env?: NodeJS.ProcessEnv; file?: string } = {}): Promise<{ config: Config; file: string | null }> {
   const cwd = o.cwd ?? process.cwd();

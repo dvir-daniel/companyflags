@@ -1,4 +1,4 @@
-// Import and export (server/values.ts): another system's values in, ours out, in CompanyFeatures values, key-value
+// Import and export (server/values.ts): another system's values in, ours out, in CompanyFlags values, key-value
 // JSON, flagd and JSONata. An import shows what it would change first, refuses everything while anything is wrong,
 // creates missing flags only when asked (in no flag set, so apps keep reading the old system), sets entities' own
 // values, and asks for review where approval is needed. An export imports back unchanged, and the values it gives for an

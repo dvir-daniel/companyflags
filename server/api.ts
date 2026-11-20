@@ -1,7 +1,7 @@
 // Console (control-plane) API. The sign-in (identity.ts: a Better Auth session cookie) says which email is asking;
 // the access module (access.ts) says who that person is and what their role lets them do: viewers can look but not
 // change anything, and settings (environments, flag sets, people, single sign-on) are for admins.
-// Every change (any method but GET) must carry X-Requested-With: companyfeatures, which a page on another site can't
+// Every change (any method but GET) must carry X-Requested-With: companyflags, which a page on another site can't
 // send without the server's permission (CORS), and isn't accepted from a cross-site request at all (CSRF).
 
 import { Hono } from 'hono';
@@ -46,7 +46,7 @@ type User = Person;
 const LOOK_ONLY = new Set(['POST /api/trace', 'POST /api/compare']);
 /** The header the console sends with every change; a cross-site page can't add it (see the top of this file). */
 export const CSRF_HEADER = 'x-requested-with';
-export const CSRF_VALUE = 'companyfeatures';
+export const CSRF_VALUE = 'companyflags';
 const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 // Per snapshot (a new publish makes a new one): what doesn't depend on who asks is worked out once.

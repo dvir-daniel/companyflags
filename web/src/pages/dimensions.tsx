@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { Input } from '@companyfeatures/ui/components/input';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { Input } from '@companyflags/ui/components/input';
+import { cn } from '@companyflags/ui/lib/utils';
 import {
   api, capital, checkDimensions, count, joined, MAX_DIMENSIONS, one, PRESETS, suggestKey, title, type Dimension, type DimensionInfo,
 } from '../api.ts';

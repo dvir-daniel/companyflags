@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question or idea to discuss
-    url: https://github.com/dvir-daniel/companyfeatures/discussions
+    url: https://github.com/dvir-daniel/companyflags/discussions
     about: Ask how to do something, or talk an idea through before opening an issue.
   - name: Security problem
-    url: https://github.com/dvir-daniel/companyfeatures/security/advisories/new
+    url: https://github.com/dvir-daniel/companyflags/security/advisories/new
     about: Report a vulnerability privately. Please don't open a public issue.

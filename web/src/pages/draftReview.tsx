@@ -2,12 +2,12 @@
 // (or sent as one request where the environment needs review). The draft session (draftSession.ts) decides all of
 // it: what changed, whether a flag is stale, the rebase, and the order publishing goes in.
 import { useEffect, useMemo, useState } from 'react';
-import { StatusMark } from '@companyfeatures/ui/components/badge';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { Checkbox } from '@companyfeatures/ui/components/checkbox';
-import { BAR_CONTROLS, barTextButton } from '@companyfeatures/ui/components/page-bar';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { StatusMark } from '@companyflags/ui/components/badge';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { Checkbox } from '@companyflags/ui/components/checkbox';
+import { BAR_CONTROLS, barTextButton } from '@companyflags/ui/components/page-bar';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, entityIndex, entityLabel } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { followingText } from '../dimWords.ts';

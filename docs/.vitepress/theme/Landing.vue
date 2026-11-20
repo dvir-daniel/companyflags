@@ -5,23 +5,23 @@ import { computed, ref } from 'vue';
 import { withBase } from 'vitepress';
 import IllusHowItWorks from './IllusHowItWorks.vue';
 
-const repo = 'https://github.com/dvir-daniel/companyfeatures';
+const repo = 'https://github.com/dvir-daniel/companyflags';
 
 const install: Record<string, string[]> = {
   Docker: [
-    'docker run -d -p 8787:8787 -v companyfeatures:/data \\',
+    'docker run -d -p 8787:8787 -v companyflags:/data \\',
     '  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \\',
     '  -e BETTER_AUTH_URL=http://localhost:8787 \\',
-    '  ghcr.io/dvir-daniel/companyfeatures',
+    '  ghcr.io/dvir-daniel/companyflags',
   ],
   Compose: [
-    'curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml',
+    'curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml',
     'echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env',
     'docker compose up -d',
   ],
   Source: [
-    'git clone https://github.com/dvir-daniel/companyfeatures.git',
-    'cd companyfeatures && corepack enable && pnpm install',
+    'git clone https://github.com/dvir-daniel/companyflags.git',
+    'cd companyflags && corepack enable && pnpm install',
     'pnpm serve',
   ],
 };

@@ -3,7 +3,7 @@
 An attribute is what a rule's check reads: "App version is below 5.0.0", "Company is Globex". This page lists every
 attribute a rule can check, its type, where its value comes from, and whether a % of devices can be split by it.
 
-The built-in list is in [`server/fields.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/fields.ts)
+The built-in list is in [`server/fields.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/fields.ts)
 (`FIELDS`). Your dimensions add one attribute each, plus `entity`.
 
 ## Where values come from

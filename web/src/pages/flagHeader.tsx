@@ -2,8 +2,8 @@
 // environment as a place (used by a customer's page).
 import type { ReactNode } from 'react';
 import { CaretRightIcon } from '@phosphor-icons/react';
-import { HelpTip } from '@companyfeatures/ui/components/tooltip';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { HelpTip } from '@companyflags/ui/components/tooltip';
+import { cn } from '@companyflags/ui/lib/utils';
 import { KIND_INFO, type FlagDetail } from '../api.ts';
 import { fmtDate } from '../uiKit.ts';
 

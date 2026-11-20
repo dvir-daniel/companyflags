@@ -1,6 +1,6 @@
 # HTTP API
 
-These are the public endpoints of a CompanyFeatures server: the app files, the backends' endpoints, OpenFeature
+These are the public endpoints of a CompanyFlags server: the app files, the backends' endpoints, OpenFeature
 remote evaluation and the health checks. All of them answer JSON. The examples use `https://flags.example.com`.
 
 | Endpoint | Who calls it | Auth |
@@ -195,5 +195,5 @@ console's own API. It is for the console, not a stable public API yet: its addre
 release.
 
 It needs a signed-in session (the cookie) and, for every change (any method but `GET`, `HEAD` and `OPTIONS`), the
-header `X-Requested-With: companyfeatures` and a JSON body. A request without the header, or one the browser marks
+header `X-Requested-With: companyflags` and a JSON body. A request without the header, or one the browser marks
 `Sec-Fetch-Site: cross-site`, gets `403`. See [Security model](/guide/security#changes-from-the-console).

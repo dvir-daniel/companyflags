@@ -1,12 +1,12 @@
 # Flags as code
 
 The flags your code reads can live in a file next to it, reviewed in pull requests with the code that uses them. The
-[CLI](/reference/cli) keeps CompanyFeatures in step with the file.
+[CLI](/reference/cli) keeps CompanyFlags in step with the file.
 
 ```bash
-companyfeatures flags pull     # write what CompanyFeatures has to flags.json
-companyfeatures flags plan     # see what a push would change
-companyfeatures flags push     # make CompanyFeatures match flags.json
+companyflags flags pull     # write what CompanyFlags has to flags.json
+companyflags flags plan     # see what a push would change
+companyflags flags push     # make CompanyFlags match flags.json
 ```
 
 ## The file
@@ -49,9 +49,9 @@ companyfeatures flags push     # make CompanyFeatures match flags.json
 
 The file says which flags exist and what they are. A push:
 
-- **makes** the flags the file has and CompanyFeatures doesn't, with their variants, flag sets and default;
+- **makes** the flags the file has and CompanyFlags doesn't, with their variants, flag sets and default;
 - **changes** the details, adds variants and changes their values, and changes flag sets;
-- **lists** the flags only CompanyFeatures has, and leaves them as they are. Archive a flag in the console.
+- **lists** the flags only CompanyFlags has, and leaves them as they are. Archive a flag in the console.
 
 It goes through the same checks as the console. Where changes need approval, changing a flag's flag sets makes a
 request, as the console does, and the push prints its number. A new flag starts switched off there. A value that is
@@ -59,7 +59,7 @@ served where changes need approval can't change: add a new variant and point the
 
 Rules stay in the console: they are where most changes happen, and each one is reviewed where it must be.
 
-A file with a problem pushes nothing: `plan` and `push` list every problem and exit with 1. A step CompanyFeatures
+A file with a problem pushes nothing: `plan` and `push` list every problem and exit with 1. A step CompanyFlags
 refuses stops the push. What was done before it is listed, and the next push goes on from there.
 
 ## In CI
@@ -72,13 +72,13 @@ Plan on every pull request, push when it merges. The CLI works on the database d
 - name: Plan
   run: |
     docker run --rm -e DATABASE_URL="$DATABASE_URL" -v "$PWD/flags.json:/app/flags.json:ro" \
-      ghcr.io/dvir-daniel/companyfeatures companyfeatures flags plan
+      ghcr.io/dvir-daniel/companyflags companyflags flags plan
   env: { DATABASE_URL: "${{ secrets.FLAGS_DATABASE_URL }}" }
 - name: Push
   if: github.ref == 'refs/heads/main'
   run: |
     docker run --rm -e DATABASE_URL="$DATABASE_URL" -v "$PWD/flags.json:/app/flags.json:ro" \
-      ghcr.io/dvir-daniel/companyfeatures companyfeatures flags push --as "$GITHUB_ACTOR"
+      ghcr.io/dvir-daniel/companyflags companyflags flags push --as "$GITHUB_ACTOR"
   env: { DATABASE_URL: "${{ secrets.FLAGS_DATABASE_URL }}" }
 ```
 

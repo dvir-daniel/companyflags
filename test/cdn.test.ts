@@ -55,7 +55,7 @@ test('Cloudflare is asked first: a token it refuses isn’t saved, and the page 
   assert.equal(r.status, 422);
   assert.match(r.json.error, /Zone → Cache Purge → Purge/);
   assert.match(r.json.error, /Authentication error/);
-  assert.deepEqual(calls.at(-1)!.tags, ['companyfeatures-check'], 'the check purges a tag no file carries');
+  assert.deepEqual(calls.at(-1)!.tags, ['companyflags-check'], 'the check purges a tag no file carries');
   assert.equal((await t.as('alice').get('/cdn')).json.source, null, 'nothing saved');
   ok();
 });

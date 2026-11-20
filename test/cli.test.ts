@@ -1,4 +1,4 @@
-// The companyfeatures command (server/cli.ts): help, init, secret, migrate, and flags as code (server/flagsAsCode.ts)
+// The companyflags command (server/cli.ts): help, init, secret, migrate, and flags as code (server/flagsAsCode.ts)
 // pull, plan and push, on the database the config names. A push goes through the console's own functions: where
 // changes need approval it makes a request, and a file with problems changes nothing.
 
@@ -24,12 +24,12 @@ async function run(args: string[], cwd: string, env: NodeJS.ProcessEnv) {
 test('help, secret and init', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'ff-cli-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  assert.match((await run(['help'], dir, {})).text, /companyfeatures flags push/);
+  assert.match((await run(['help'], dir, {})).text, /companyflags flags push/);
   const secret = (await run(['secret'], dir, {})).text.trim();
   assert.ok(secret.length >= 32 && /^[A-Za-z0-9_-]+$/.test(secret), secret);
   assert.notEqual((await run(['secret'], dir, {})).text.trim(), secret);
   assert.equal((await run(['init'], dir, {})).code, 0);
-  assert.match(readFileSync(join(dir, 'companyfeatures.config.ts'), 'utf8'), /defineConfig\(\{[\s\S]*ofrep\(\)/);
+  assert.match(readFileSync(join(dir, 'companyflags.config.ts'), 'utf8'), /defineConfig\(\{[\s\S]*ofrep\(\)/);
   const again = await run(['init'], dir, {});
   assert.deepEqual([again.code, /already here/.test(again.text)], [1, true]);
   assert.equal((await run(['init', '--force'], dir, {})).code, 0);
@@ -51,10 +51,10 @@ test('migrate: --check lists what’s pending, then migrate applies it', async (
   // flags need the current schema: on an empty folder they say to migrate first
   const other = mkdtempSync(join(tmpdir(), 'ff-cli-'));
   t.after(() => rmSync(other, { recursive: true, force: true }));
-  if (!tdb.url) assert.match((await run(['flags', 'pull'], other, { FF_DATA_DIR: join(other, 'data') })).text, /run companyfeatures migrate first/);
+  if (!tdb.url) assert.match((await run(['flags', 'pull'], other, { FF_DATA_DIR: join(other, 'data') })).text, /run companyflags migrate first/);
 });
 
-test('flags as code: pull writes the flags; plan and push make CompanyFeatures match the file', async (t) => {
+test('flags as code: pull writes the flags; plan and push make CompanyFlags match the file', async (t) => {
   const tdb = await testDatabase();
   const dir = mkdtempSync(join(tmpdir(), 'ff-cli-'));
   t.after(async () => { rmSync(dir, { recursive: true, force: true }); await tdb.drop(); });

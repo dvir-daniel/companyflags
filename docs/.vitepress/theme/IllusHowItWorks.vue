@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// How CompanyFeatures works, in three steps and the path of one change, drawn the way better-auth.com draws its
+// How CompanyFlags works, in three steps and the path of one change, drawn the way better-auth.com draws its
 // features: icon tiles joined by thin lines, status chips, a one-line terminal, mono labels.
 import { ICONS } from './icons.ts';
 </script>

@@ -1,9 +1,9 @@
 # OpenFeature
 
-CompanyFeatures has no SDK of its own. Apps and backends use [OpenFeature](https://openfeature.dev), the open standard
+CompanyFlags has no SDK of its own. Apps and backends use [OpenFeature](https://openfeature.dev), the open standard
 API for feature flags, with OpenFeature's own providers:
 
-| Who | Provider | What CompanyFeatures serves |
+| Who | Provider | What CompanyFlags serves |
 |---|---|---|
 | Web apps, React | `@openfeature/ofrep-web-provider` | OFREP: every flag for the app's context, in one request |
 | Android, iOS | OpenFeature's OFREP providers for Kotlin and Swift | OFREP, the same way |
@@ -104,7 +104,7 @@ function Checkout() {
 
 Use OpenFeature's Kotlin or Swift SDK with its OFREP provider (find them on the
 [OpenFeature ecosystem page](https://openfeature.dev/ecosystem)). Configure it the same way: the base URL of
-CompanyFeatures, and the `Authorization: Bearer <token>` header with the token your backend gave the app.
+CompanyFlags, and the `Authorization: Bearer <token>` header with the token your backend gave the app.
 
 ## Backends
 
@@ -130,7 +130,7 @@ entity's rules and answers in memory.
 
 ## What comes back
 
-| CompanyFeatures | OFREP answer |
+| CompanyFlags | OFREP answer |
 |---|---|
 | A rule decided | `reason: TARGETING_MATCH`, the value and its variant |
 | A % of devices decided | `reason: SPLIT`; the % group's name, when it has one, in `metadata.group` |
@@ -144,7 +144,7 @@ entity's rules and answers in memory.
 
 The answers are the server's own evaluator's, the same as the console's **Try it** and the backends' flagd JSON. The
 server's tests check this with OpenFeature's own web and server OFREP providers
-([test/ofrep.test.ts](https://github.com/dvir-daniel/companyfeatures/blob/main/test/ofrep.test.ts)).
+([test/ofrep.test.ts](https://github.com/dvir-daniel/companyflags/blob/main/test/ofrep.test.ts)).
 
 ## Cost
 

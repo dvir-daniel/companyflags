@@ -7,15 +7,15 @@ import { signOut } from './session.ts';
 import {
   Avatar, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, SidebarLabel, SidebarSearch,
   TitleBar as Top, TitleBarBrand, TitleBarStatus, WindowLights, Wordmark,
-} from '@companyfeatures/ui/components/app-frame';
-import { ThemeToggle } from '@companyfeatures/ui/components/theme-toggle';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Drawer } from '@companyfeatures/ui/components/drawer';
-import { Popover, PopoverContent, PopoverTrigger } from '@companyfeatures/ui/components/popover';
-import { cn } from '@companyfeatures/ui/lib/utils';
+} from '@companyflags/ui/components/app-frame';
+import { ThemeToggle } from '@companyflags/ui/components/theme-toggle';
+import { Button } from '@companyflags/ui/components/button';
+import { Drawer } from '@companyflags/ui/components/drawer';
+import { Popover, PopoverContent, PopoverTrigger } from '@companyflags/ui/components/popover';
+import { cn } from '@companyflags/ui/lib/utils';
 import { roleInfo } from '../../server/policy.ts';
 
-/* This console's window, built from the shared Company OS frame (@companyfeatures/ui, app-frame.tsx):
+/* This console's window, built from the shared Company OS frame (@companyflags/ui, app-frame.tsx):
    the title bar, the sidebar and the mono footer with who is signed in. On a phone the sidebar and the footer
    give way to a tab bar at the bottom (MobileNav), whose More opens the whole sidebar as a panel.
    Before the console knows who is signed in (`meta` null, the first load), they draw in the same shape with
@@ -95,9 +95,9 @@ export function TitleBar({ synced }: { synced: boolean }) {
     <Top>
       <TitleBarBrand>
         <WindowLights className="max-sm:hidden" />
-        <a href="#/flags" className="flex items-center gap-2.5 text-ink hover:no-underline" aria-label="CompanyFeatures, go to flags">
+        <a href="#/flags" className="flex items-center gap-2.5 text-ink hover:no-underline" aria-label="CompanyFlags, go to flags">
           <BrandMark />
-          <Wordmark>COMPANYFEATURES.</Wordmark>
+          <Wordmark>COMPANYFLAGS.</Wordmark>
         </a>
       </TitleBarBrand>
       <span className="flex-1" />
@@ -114,7 +114,7 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
   const me = meta?.me;
   const ahead = (href: string) => { if (meta) void preload(href, meta); };
   return (
-    <Nav aria-label="CompanyFeatures" className={className}>
+    <Nav aria-label="CompanyFlags" className={className}>
       <SidebarSearch onClick={onSearch} icon={<Icon name="search" />} shortcut={isMac ? '⌘K' : 'Ctrl K'}>Search flags</SidebarSearch>
       {navOf(meta).map((g) => (
         <SidebarGroup key={g.group} label={g.group}>
@@ -187,7 +187,7 @@ export function Footer({ meta }: { meta: Meta | null }) {
   const me = meta?.me;
   return (
     <Bar className="max-md:hidden">
-      <span>CompanyFeatures {__APP_VERSION__}</span>
+      <span>CompanyFlags {__APP_VERSION__}</span>
       <span className="contents max-md:hidden">
         <FooterSlash />
         {me ? <span className="min-w-0 truncate">Signed in as {me.key}, {roleInfo(me.role).label.toLowerCase()}</span> : <Bone className="w-48" />}
@@ -227,7 +227,7 @@ export function MobileNav({ meta, page, sub, pending, onSearch }: { meta: Meta |
   const marker = <span aria-hidden className="absolute inset-x-4 top-0 h-0.5 bg-ink" />;
   return (
     <>
-      <nav aria-label="CompanyFeatures" className="hidden shrink-0 grid-cols-5 border-t border-rule bg-sidebar pb-[env(safe-area-inset-bottom)] max-md:grid">
+      <nav aria-label="CompanyFlags" className="hidden shrink-0 grid-cols-5 border-t border-rule bg-sidebar pb-[env(safe-area-inset-bottom)] max-md:grid">
         {tabs.map((t) => {
           const current = t.current(page, sub);
           const href = t.href ?? `#/${t.key}`;

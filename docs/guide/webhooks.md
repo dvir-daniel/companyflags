@@ -1,6 +1,6 @@
 # Webhooks
 
-Webhooks go both ways. **Out**: after each change, CompanyFeatures posts what changed to an address: Slack, CI, or the
+Webhooks go both ways. **Out**: after each change, CompanyFlags posts what changed to an address: Slack, CI, or the
 system you're [moving from](/guide/migration). **In**: another system posts its values, and they're imported.
 
 Admins set both up on the console's **Migration** page. Each one's history (added, changed, deleted, new secret) is in
@@ -55,7 +55,7 @@ The address and the header's value are kept on the server and never shown again;
 - `changes[]`: each history entry of the save, with its `kind` (as in History's export), in words (`text`), and its
   `before` and `after`.
 - `values`: for `changes`, what the flags it changed are set to **now**, per environment, as
-  [CompanyFeatures values](/guide/migration#companyfeatures-values). Use it to keep another system the same.
+  [CompanyFlags values](/guide/migration#companyflags-values). Use it to keep another system the same.
 - `url`: the console's page for it, when `BETTER_AUTH_URL` is set.
 
 ### Signatures

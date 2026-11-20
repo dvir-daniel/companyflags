@@ -1,6 +1,6 @@
 # Introduction
 
-CompanyFeatures is the most comprehensive open-source framework for **feature flags and remote config**. It decides
+CompanyFlags is the most comprehensive open-source framework for **feature flags and remote config**. It decides
 what every app and backend gets: rules for everyone, % rollouts and releases, settings for any part of your product
 (a region, a store, a team, a customer: you define the dimensions), with reviewed changes and a full history. Apps and
 backends read it through OpenFeature.
@@ -40,7 +40,7 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 - **Settings that follow the chain.** A brand follows its company's settings until it has its own; a company follows
   the rules for everyone. Each answer can be traced step by step in the console.
 - **OpenFeature, no SDK of ours.** Apps and backends use OpenFeature's own providers (OFREP, flagd), so you can switch
-  to or from CompanyFeatures without touching the code that reads flags.
+  to or from CompanyFlags without touching the code that reads flags.
 - **Privacy by construction.** A device asks as its own entity, with a token it can't change. Checks on dimensions, flag
   sets and environments are settled on the server, so a device never receives a list of customers, another customer's
   value, or a rule.
@@ -49,7 +49,7 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 
 ## What it doesn't do (yet)
 
-CompanyFeatures is before 1.0. It is tested (about 370 tests, on embedded and real Postgres) but young. Not built yet:
+CompanyFlags is before 1.0. It is tested (about 370 tests, on embedded and real Postgres) but young. Not built yet:
 
 - experiment statistics (name your % groups and send them to your own analytics instead);
 - sending email: invite and password reset links are made by an admin and sent by hand; SCIM provisioning;
@@ -59,4 +59,4 @@ CompanyFeatures is before 1.0. It is tested (about 370 tests, on embedded and re
 
 - [Quickstart](/guide/quickstart): run it and read your first flag.
 - [How it fits together](/guide/concepts): environments, flag sets, dimensions, flags and rules.
-- [Compared with others](/guide/comparison): when CompanyFeatures fits, and when it doesn't.
+- [Compared with others](/guide/comparison): when CompanyFlags fits, and when it doesn't.

@@ -1,7 +1,7 @@
-// Values documents: what CompanyFeatures takes in from another config system and gives out to one, during a
+// Values documents: what CompanyFlags takes in from another config system and gives out to one, during a
 // migration (docs/guide/migration.md). One shape in the middle, read and written in a few formats:
 //
-//   values   CompanyFeatures' own:  { "flags": { "max_upload_mb": { "value": 50, "on": true,
+//   values   CompanyFlags' own:  { "flags": { "max_upload_mb": { "value": 50, "on": true,
 //                                     "variants": { … }, "entities": { "acme": 100, "globex": null } } } }
 //   kv       plain key-value JSON:  { "max_upload_mb": 50, "new_checkout": true }
 //   flagd    OpenFeature's flag file (https://flagd.dev/reference/flag-definitions/): each flag's default and on/off
@@ -41,7 +41,7 @@ export const FORMATS_OUT = ['values', 'kv', 'flagd', 'jsonata'] as const;
 export type FormatIn = (typeof FORMATS_IN)[number];
 export type FormatOut = (typeof FORMATS_OUT)[number];
 export const FORMAT_NAMES: Record<FormatIn, string> = {
-  values: 'CompanyFeatures values', kv: 'Key-value JSON', flagd: 'flagd (OpenFeature)', jsonata: 'Any JSON, with JSONata',
+  values: 'CompanyFlags values', kv: 'Key-value JSON', flagd: 'flagd (OpenFeature)', jsonata: 'Any JSON, with JSONata',
 };
 
 const FLAG_KEY = /^[a-z][a-z0-9_]*$/;

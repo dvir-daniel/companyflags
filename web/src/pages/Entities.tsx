@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowUpIcon, CaretRightIcon } from '@phosphor-icons/react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { BulkBar, ColumnHead, KeyHints, RowCheck, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyfeatures/ui/components/data-table';
-import { barTextButton, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { SearchField } from '@companyfeatures/ui/components/search-field';
-import { Tabs } from '@companyfeatures/ui/components/tabs';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { BulkBar, ColumnHead, KeyHints, RowCheck, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyflags/ui/components/data-table';
+import { barTextButton, PageBar } from '@companyflags/ui/components/page-bar';
+import { SearchField } from '@companyflags/ui/components/search-field';
+import { Tabs } from '@companyflags/ui/components/tabs';
+import { cn } from '@companyflags/ui/lib/utils';
 import { above as dimAbove, api, ApiError, below, capital, count, entityIndex, getsWithoutOwn, many, one, peek, title } from '../api.ts';
 import { CountSlot, SkeletonRows } from '../loading.tsx';
 import { pagerRow } from '../loadingKit.ts';

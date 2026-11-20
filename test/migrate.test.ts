@@ -246,7 +246,7 @@ test('an embedded data folder opens in one server only; a lock left by a crash i
   const dir = mkdtempSync(join(tmpdir(), 'ff-lock-'));
   try {
     const first = await connectDb({ dataDir: dir });
-    await assert.rejects(connectDb({ dataDir: dir }), (e: Error) => e instanceof FolderInUseError && /another CompanyFeatures server/.test(e.message));
+    await assert.rejects(connectDb({ dataDir: dir }), (e: Error) => e instanceof FolderInUseError && /another CompanyFlags server/.test(e.message));
     await first.close();
     assert.ok(!existsSync(`${dir}.lock`), 'closing releases it');
     const second = await connectDb({ dataDir: dir });

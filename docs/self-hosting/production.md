@@ -15,7 +15,7 @@ details.
   Protect the backups like those secrets.
 - `FF_DB_POOL` (default 10) is per instance. Make sure the server allows that many connections for every instance.
 
-The embedded database (no `DATABASE_URL`) is for trying CompanyFeatures and for small setups. It lives in one folder
+The embedded database (no `DATABASE_URL`) is for trying CompanyFlags and for small setups. It lives in one folder
 (`FF_DATA_DIR`, `/data/db` in the Docker image), and only one process may open it: the server keeps a lock file next
 to the folder (`/data/db.lock`) and a second server refuses to start. Keep the folder on a persistent volume and back
 it up while the server is stopped.

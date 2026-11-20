@@ -1,6 +1,6 @@
 # Console design rules
 
-The look of the CompanyFeatures console.
+The look of the CompanyFlags console.
 `src/styles.css` holds these values as tokens; the components in `src/components` apply them.
 Change a rule here and in the tokens, and every app picks it up on its next build.
 

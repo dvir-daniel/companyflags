@@ -5,17 +5,17 @@ import {
   type ReactNode, type Ref,
 } from 'react';
 import { ArrowLeftIcon, ArrowsClockwiseIcon, CaretDownIcon, CaretRightIcon, CaretUpIcon, CopyIcon, XIcon } from '@phosphor-icons/react';
-import { Badge as UIBadge, StatusMark } from '@companyfeatures/ui/components/badge';
-import { Button } from '@companyfeatures/ui/components/button';
-import { NativeSelect } from '@companyfeatures/ui/components/native-select';
-import { SectionLabel } from '@companyfeatures/ui/components/page';
-import { BAR_CONTROLS, FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { useBottomReserve } from '@companyfeatures/ui/components/toast';
-import { Tooltip } from '@companyfeatures/ui/components/tooltip';
-import { Panel } from '@companyfeatures/ui/components/panel';
-import { SearchField } from '@companyfeatures/ui/components/search-field';
-import { Tabs } from '@companyfeatures/ui/components/tabs';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Badge as UIBadge, StatusMark } from '@companyflags/ui/components/badge';
+import { Button } from '@companyflags/ui/components/button';
+import { NativeSelect } from '@companyflags/ui/components/native-select';
+import { SectionLabel } from '@companyflags/ui/components/page';
+import { BAR_CONTROLS, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { useBottomReserve } from '@companyflags/ui/components/toast';
+import { Tooltip } from '@companyflags/ui/components/tooltip';
+import { Panel } from '@companyflags/ui/components/panel';
+import { SearchField } from '@companyflags/ui/components/search-field';
+import { Tabs } from '@companyflags/ui/components/tabs';
+import { cn } from '@companyflags/ui/lib/utils';
 import {
   api, capital, CODE_DEFAULT, dimensionOf, entityIndex, entityLabel, entityWordsOf, KIND_INFO, fieldLabel, fmtValue, getsWithoutOwn, groupLabel, levelOf,
   noValueOp, OPS_BY_TYPE, sameAs, sourceText, title as titleOf, uuid, vocabOf, whenText, withoutOwn, type Condition, type FlagDetail, type Meta, type Split,

@@ -1,12 +1,12 @@
 import { Children, cloneElement, Fragment, isValidElement, use, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { Badge as UIBadge } from '@companyfeatures/ui/components/badge';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@companyfeatures/ui/components/dialog';
-import { Empty as UIEmpty, EmptyContent, EmptyDescription } from '@companyfeatures/ui/components/empty';
-import { Switch as UISwitch } from '@companyfeatures/ui/components/switch';
-import { BAR_CONTROLS } from '@companyfeatures/ui/components/page-bar';
-import { SectionLabel } from '@companyfeatures/ui/components/page';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Badge as UIBadge } from '@companyflags/ui/components/badge';
+import { Callout } from '@companyflags/ui/components/callout';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@companyflags/ui/components/dialog';
+import { Empty as UIEmpty, EmptyContent, EmptyDescription } from '@companyflags/ui/components/empty';
+import { Switch as UISwitch } from '@companyflags/ui/components/switch';
+import { BAR_CONTROLS } from '@companyflags/ui/components/page-bar';
+import { SectionLabel } from '@companyflags/ui/components/page';
+import { cn } from '@companyflags/ui/lib/utils';
 import { CODE_DEFAULT, conditionText, fieldLabel, fmtValue, reasonLabel, vocabOf, type Rule, type Variation } from './api.ts';
 import { AppContext } from './app.ts';
 import { unitPlural } from './dimWords.ts';
@@ -14,12 +14,12 @@ import { PAGE_SIZE, readPersistent } from './persist.ts';
 import { monoLabel } from './uiKit.ts';
 
 /*
- * This console's small UI kit: the shared Company OS components (@companyfeatures/ui) behind the console's own
+ * This console's small UI kit: the shared Company OS components (@companyflags/ui) behind the console's own
  * props, plus a few pieces only a flag console needs (rules, splits, values). Everything is Tailwind with
  * the shared tokens; the recipes are in packages/ui/DESIGN.md.
  */
 
-export { Segmented } from '@companyfeatures/ui/components/segmented';
+export { Segmented } from '@companyflags/ui/components/segmented';
 // kept here for the pages that import them from the UI kit; they live in persist.ts, which needs no DOM
 export { PAGE_SIZE, readPersistent };
 

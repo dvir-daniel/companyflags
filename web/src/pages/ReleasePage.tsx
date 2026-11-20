@@ -9,15 +9,15 @@
 // moving to it, and rollback; its bar has + New version (NewVersion), and it's never cleaned up.
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { ArrowLeftIcon, LockSimpleIcon } from '@phosphor-icons/react';
-import { StatusMark } from '@companyfeatures/ui/components/badge';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { Input } from '@companyfeatures/ui/components/input';
-import { SectionLabel } from '@companyfeatures/ui/components/page';
-import { FilterSelect, PageBar } from '@companyfeatures/ui/components/page-bar';
-import { Tabs } from '@companyfeatures/ui/components/tabs';
-import { Tooltip } from '@companyfeatures/ui/components/tooltip';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { StatusMark } from '@companyflags/ui/components/badge';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { Input } from '@companyflags/ui/components/input';
+import { SectionLabel } from '@companyflags/ui/components/page';
+import { FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { Tabs } from '@companyflags/ui/components/tabs';
+import { Tooltip } from '@companyflags/ui/components/tooltip';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api, entityLabel, peek, type FlagDetail, type Layer } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { flagPath, flagRequestsPath, pageEnv } from '../paths.ts';

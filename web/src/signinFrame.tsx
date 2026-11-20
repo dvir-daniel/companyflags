@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from 'react';
 import { BuildingsIcon, EyeIcon, EyeSlashIcon, GithubLogoIcon, GoogleLogoIcon, WindowsLogoIcon } from '@phosphor-icons/react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Input } from '@companyfeatures/ui/components/input';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Input } from '@companyflags/ui/components/input';
+import { cn } from '@companyflags/ui/lib/utils';
 import { Bone } from './loading.tsx';
 import { field, type Provider } from './signinKit.ts';
 
@@ -27,7 +27,7 @@ export function Frame({ tab, onTab, title, intro, footer, children }: {
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(ellipse_at_50%_35%,black_10%,transparent_70%)]"
         style={{ backgroundImage: 'linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
       <div className="relative w-full max-w-md">
-        <span className="mb-3 block font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">CompanyFeatures</span>
+        <span className="mb-3 block font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">CompanyFlags</span>
         <div role="tablist" aria-label="Sign in or sign up" className="flex">
           {TABS.map(([t, label]) => (
             <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => onTab?.(t)} disabled={!onTab && tab !== t}
@@ -113,7 +113,7 @@ export function SignInSkeleton() {
 /** An invite link's page before the invite is in: who it's for is a bone, the fields wait. */
 export function JoinSkeleton() {
   return (
-    <Frame tab="signup" title="Join CompanyFeatures" intro={<>You’re invited as <Bone className="w-40" />.</>}>
+    <Frame tab="signup" title="Join CompanyFlags" intro={<>You’re invited as <Bone className="w-40" />.</>}>
       <form aria-busy className="grid gap-4" onSubmit={(e) => e.preventDefault()}>
         <Labeled id="sk-name" label="Your name"><Input id="sk-name" className={field} disabled placeholder="Sam Lee" /></Labeled>
         <Labeled id="sk-new" label="Choose a password" hint="At least 10 characters."><PasswordInput id="sk-new" disabled /></Labeled>

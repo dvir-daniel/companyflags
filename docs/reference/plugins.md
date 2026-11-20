@@ -1,13 +1,13 @@
 # Plugins
 
-The core of CompanyFeatures is the console and its API, sign-in, the evaluator, approvals, history and publishing.
+The core of CompanyFlags is the console and its API, sign-in, the evaluator, approvals, history and publishing.
 Everything that reads flags besides the console is a **plugin**, and so is anything that runs after a publish. You
-list the ones you want in [`companyfeatures.config.ts`](/self-hosting/configuration#the-config-file), as you do with
+list the ones you want in [`companyflags.config.ts`](/self-hosting/configuration#the-config-file), as you do with
 Better Auth's plugins:
 
 ```ts
-import { defineConfig } from 'companyfeatures/config';
-import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
+import { defineConfig } from 'companyflags/config';
+import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()],
@@ -55,7 +55,7 @@ options:
 ```ts
 // audit-feed.ts
 import { Hono } from 'hono';
-import { consoleRoutes, definePlugin } from 'companyfeatures/plugins';
+import { consoleRoutes, definePlugin } from 'companyflags/plugins';
 
 export const auditFeed = (o: { webhook: string }) => definePlugin({
   id: 'audit-feed',
@@ -102,7 +102,7 @@ All are optional.
 |---|---|
 | `routes` | A Hono app, mounted at the root. Pick addresses of your own: `/api`, `/client`, `/sdk`, `/ofrep` and `/hooks` are taken. |
 | `prefixes` | Its address prefixes. An unknown address under one answers a JSON 404 instead of the console's page. |
-| `console` | A function that gets `{ actor, adminOnly }` and returns routes made with `consoleRoutes()`. They're mounted under `/api`, behind the console's sign-in: `c.get('user')` is the person asking. A change needs the console's `X-Requested-With: companyfeatures` header. |
+| `console` | A function that gets `{ actor, adminOnly }` and returns routes made with `consoleRoutes()`. They're mounted under `/api`, behind the console's sign-in: `c.get('user')` is the person asking. A change needs the console's `X-Requested-With: companyflags` header. |
 | `onPublish` | Runs after each publish of an environment, once per publish, with its key. A failure is logged and shown with the publish in Settings, and never undoes the publish. Return `'off'` when it had nothing to do. |
 | `worker` | Work it does on its own, in the background: `{ wake, stop, drain }`. It runs from `setup`; `stop` is called before the database closes. `webhooks()` sends with one. |
 

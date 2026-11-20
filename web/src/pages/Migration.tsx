@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { Checkbox } from '@companyfeatures/ui/components/checkbox';
-import { tableHeadClass, tableRowClass } from '@companyfeatures/ui/components/data-table';
-import { Drawer } from '@companyfeatures/ui/components/drawer';
-import { Input } from '@companyfeatures/ui/components/input';
-import { NativeSelect } from '@companyfeatures/ui/components/native-select';
-import { PageBar } from '@companyfeatures/ui/components/page-bar';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { Checkbox } from '@companyflags/ui/components/checkbox';
+import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
+import { Drawer } from '@companyflags/ui/components/drawer';
+import { Input } from '@companyflags/ui/components/input';
+import { NativeSelect } from '@companyflags/ui/components/native-select';
+import { PageBar } from '@companyflags/ui/components/page-bar';
+import { cn } from '@companyflags/ui/lib/utils';
 import { api } from '../api.ts';
 import { useApp } from '../app.ts';
 import { Actions, Badge, Empty, ErrorList, Field, Heading, Modal, Switch, When } from '../ui.tsx';
@@ -19,7 +19,7 @@ import {
 } from './migrationKit.ts';
 
 /*
- * Migration: moving to CompanyFeatures from another config system, with both running side by side until the last flag
+ * Migration: moving to CompanyFlags from another config system, with both running side by side until the last flag
  * has moved (docs/guide/migration.md). Import the old system's values (server/values.ts), export these, and keep
  * both the same with webhooks out and in (server/webhooks.ts). Everyone can see it and export; admins do the rest.
  */
@@ -49,11 +49,11 @@ function SideBySide() {
   return (
     <section aria-labelledby="m-side" className="grid gap-3">
       <Heading id="m-side" title="Run both side by side">
-        Move one flag at a time. Apps ask CompanyFeatures first and the old system for everything not moved yet, so nothing changes for anyone on the day you start.
+        Move one flag at a time. Apps ask CompanyFlags first and the old system for everything not moved yet, so nothing changes for anyone on the day you start.
       </Heading>
       <ol className="m-0 grid max-w-[760px] list-decimal gap-2 pl-5 text-13 text-ink-2 marker:text-ink-3">
         <li><b className="font-medium text-ink">Import</b> the old system’s flags below, with “Create missing flags” on. They’re in no flag set yet, so apps still read the old system.</li>
-        <li><b className="font-medium text-ink">Put OpenFeature’s Multi-Provider</b> in each app: CompanyFeatures first, the old system second. A flag that isn’t in the app’s flag set is “not found” here, so the old system answers.</li>
+        <li><b className="font-medium text-ink">Put OpenFeature’s Multi-Provider</b> in each app: CompanyFlags first, the old system second. A flag that isn’t in the app’s flag set is “not found” here, so the old system answers.</li>
         <li><b className="font-medium text-ink">Move a flag</b> by adding it to the app’s flag set, on the flag’s page. From then on the app reads it here.</li>
         <li><b className="font-medium text-ink">Keep both the same</b> meanwhile: a webhook out tells the old system each change made here, and a webhook in takes the old system’s changes.</li>
       </ol>

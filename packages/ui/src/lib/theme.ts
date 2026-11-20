@@ -12,7 +12,7 @@ import { useSyncExternalStore } from "react"
 
 export type Theme = "light" | "dark"
 
-export const THEME_STORAGE_KEY = "companyfeatures-theme"
+export const THEME_STORAGE_KEY = "companyflags-theme"
 
 const deviceTheme = (): Theme =>
   typeof window !== "undefined" && window.matchMedia && !window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark"

@@ -1,4 +1,4 @@
-# CompanyFeatures
+# CompanyFlags
 
 Feature flags and remote config: one set of rules for everyone, optional settings per entity of the installation's own dimensions, reviewed changes in protected environments, and answers read with OpenFeature (OFREP, flagd) or from a values-only file per entity and flag set.
 
@@ -173,8 +173,8 @@ _Avoid_: restore user, reactivate
 ## Running it
 
 **Config file**:
-`companyfeatures.config.ts`, the optional typed file (`defineConfig`) that says which database, sign-in and plugins a server runs with; what it leaves out comes from environment variables, then the defaults. The server and the CLI read it.
-_Avoid_: settings file, .env (CompanyFeatures doesn't read one)
+`companyflags.config.ts`, the optional typed file (`defineConfig`) that says which database, sign-in and plugins a server runs with; what it leaves out comes from environment variables, then the defaults. The server and the CLI read it.
+_Avoid_: settings file, .env (CompanyFlags doesn't read one)
 
 **Plugin**:
 A part of the server an installation turns on in its config file: a way to read flags (`ofrep()`, `flagd()`, `appFiles()`) or something that runs after a publish or a change (`cloudflare()`, `webhooks()`). Made with `definePlugin`; all the built-in ones run when the config doesn't list any.
@@ -184,7 +184,7 @@ _Avoid_: extension, add-on, integration
 What every server runs, plugins or not: the console and its API, sign-in, the evaluator, approvals, the change journal, publishing and app links.
 
 **CLI**:
-The `companyfeatures` command: `start`, `init`, `secret`, `migrate`, and `flags pull`, `plan` and `push`.
+The `companyflags` command: `start`, `init`, `secret`, `migrate`, and `flags pull`, `plan` and `push`.
 
 **Flags file**:
 The JSON file of flags as code (`flags.json`): each flag's details, variants and flag sets per environment, kept in step by `flags push`. Rules stay in the console.

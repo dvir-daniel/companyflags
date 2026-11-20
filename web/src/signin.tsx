@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Callout } from '@companyfeatures/ui/components/callout';
-import { Checkbox } from '@companyfeatures/ui/components/checkbox';
-import { Input } from '@companyfeatures/ui/components/input';
+import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
+import { Checkbox } from '@companyflags/ui/components/checkbox';
+import { Input } from '@companyflags/ui/components/input';
 import { authClient } from './authClient.ts';
 import { Frame, JoinSkeleton, Labeled, PasswordInput, SignInSkeleton, WayButton, type Tab } from './signinFrame.tsx';
 import { field, lastSignInInfo, rememberSignedIn, signInInfo, type Provider, type SignInInfo } from './signinKit.ts';
@@ -16,8 +16,8 @@ import { field, lastSignInInfo, rememberSignedIn, signInInfo, type Provider, typ
 
 // what a refused sign-in comes back with (a provider sign-in returns to /?error=<code>)
 const REFUSED: Record<string, string> = {
-  invite_required: 'You need an invite to join. Ask an admin of CompanyFeatures for an invite link.',
-  access_removed: 'An admin removed your access to CompanyFeatures.',
+  invite_required: 'You need an invite to join. Ask an admin of CompanyFlags for an invite link.',
+  access_removed: 'An admin removed your access to CompanyFlags.',
   INVALID_EMAIL_OR_PASSWORD: 'That email and password don’t match.',
   USER_ALREADY_EXISTS: 'There is already an account for this email. Sign in instead.',
   USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL: 'There is already an account for this email. Sign in instead.',
@@ -32,7 +32,7 @@ const sentence = (m: string) => (m ? `${m.charAt(0).toUpperCase()}${m.slice(1)}$
 const explain = (e: { code?: string; message?: string } | null | undefined) =>
   (e?.code && REFUSED[e.code]) || sentence(e?.message ?? '') || 'Something went wrong. Try again.';
 /** A sign-in call that never got an answer (offline, the server down): said so, instead of spinning forever. */
-const UNREACHABLE = 'Can’t reach the CompanyFeatures server. Check your connection, then try again.';
+const UNREACHABLE = 'Can’t reach the CompanyFlags server. Check your connection, then try again.';
 const INVITE_ONLY = 'New here? Ask an admin for an invite link.';
 
 /** Where a sign-in goes back to: the page that was open (not an invite link). */
@@ -65,7 +65,7 @@ function useSignInInfo() {
   const [info, setInfo] = useState<SignInInfo | null>(lastSignInInfo);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    signInInfo().then(setInfo, (e) => setError(`Can’t reach the CompanyFeatures server. Check that it’s running, then reload. (${e.message})`));
+    signInInfo().then(setInfo, (e) => setError(`Can’t reach the CompanyFlags server. Check that it’s running, then reload. (${e.message})`));
   }, []);
   return { info, error };
 }
@@ -145,7 +145,7 @@ export function SignInPage() {
       <Frame tab="signup" onTab={switchTo} title="Sign up" intro="Accounts here are by invite."
         footer={<>Have an account? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-ink underline" onClick={() => switchTo('signin')}>Sign in</button></>}>
         <p className="m-0 text-sm text-ink-2">
-          Ask an admin of CompanyFeatures to add you in Settings → People. They send you an invite link, where you choose your password.
+          Ask an admin of CompanyFlags to add you in Settings → People. They send you an invite link, where you choose your password.
         </p>
         {(info.providers.length > 0 || info.sso) && <>
           <p className="m-0 text-sm text-ink-2">
@@ -184,7 +184,7 @@ export function SignInPage() {
         </Labeled>
         {forgot && !signup && (
           <Callout role="status">
-            Ask an admin of CompanyFeatures for a password reset link: they make one from your row in Settings → People.
+            Ask an admin of CompanyFlags for a password reset link: they make one from your row in Settings → People.
             It works once, for a day. {info.sso ? 'Or sign in with SSO below.' : ''}
           </Callout>
         )}
@@ -255,7 +255,7 @@ export function JoinPage({ token }: { token: string }) {
   const providers = info?.kind === 'better-auth' ? info.providers : [];
   const sso = info?.kind === 'better-auth' && info.sso;
   return (
-    <Frame tab="signup" onTab={toSignIn} title="Join CompanyFeatures" intro={<>You’re invited as <strong className="font-medium text-ink">{invite.email}</strong>.</>}>
+    <Frame tab="signup" onTab={toSignIn} title="Join CompanyFlags" intro={<>You’re invited as <strong className="font-medium text-ink">{invite.email}</strong>.</>}>
       <form className="grid gap-4" onSubmit={submit}>
         <Labeled id="jn-name" label="Your name">
           <Input id="jn-name" className={field} value={name} autoComplete="name" autoFocus onChange={(e) => setName(e.target.value)} placeholder="Sam Lee" />

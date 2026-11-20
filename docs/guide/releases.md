@@ -1,12 +1,12 @@
 # Releases
 
-A **release** turns a new feature on step by step, then goes away. In CompanyFeatures a release is an ordinary flag
+A **release** turns a new feature on step by step, then goes away. In CompanyFlags a release is an ordinary flag
 with the purpose **Release**: the same rules, evaluator, approvals and history as any other flag. It also gets its own
 page under **Releases**, built around three questions: where is it, what's next, and when can the flag go?
 
 Nothing extra is stored. Where a release is in an environment is read from the flag's defaults there, and each step
 writes the next defaults, saved like any other change to them
-([`server/release.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/release.ts)).
+([`server/release.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/release.ts)).
 
 There are two kinds:
 

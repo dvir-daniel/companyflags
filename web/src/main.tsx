@@ -14,10 +14,10 @@ import { EnvChip, RouteSkeleton } from './loading.tsx';
 import { writePersistent } from './persist.ts';
 import { JoinSkeleton, SignInSkeleton } from './signinFrame.tsx';
 import { lastSignedIn, rememberSignedIn, signInInfo } from './signinKit.ts';
-import { Button } from '@companyfeatures/ui/components/button';
-import { AppFrame, MainPane } from '@companyfeatures/ui/components/app-frame';
-import { Toaster, notify } from '@companyfeatures/ui/components/toast';
-import { initTheme } from '@companyfeatures/ui/lib/theme';
+import { Button } from '@companyflags/ui/components/button';
+import { AppFrame, MainPane } from '@companyflags/ui/components/app-frame';
+import { Toaster, notify } from '@companyflags/ui/components/toast';
+import { initTheme } from '@companyflags/ui/lib/theme';
 import './index.css';
 
 // Each page is its own chunk, fetched the first time it's opened (or when a link to it is hovered: paths.ts).
@@ -110,7 +110,7 @@ function titleFor([page, a, b]: string[], meta: Meta | null): string {
     : page === 'settings' && a === 'people' ? 'People · Settings'
     : page === 'settings' && a === 'dimensions' ? 'Dimensions · Settings'
     : name[page] ?? 'Page not found';
-  return `${title} · CompanyFeatures`;
+  return `${title} · CompanyFlags`;
 }
 
 function useGuardedRoute(isDirty: () => boolean, confirmLeave: () => Promise<boolean>, load: (hash: string) => Promise<unknown>) {
@@ -349,11 +349,11 @@ function App() {
   // an invite link opens its own page, signed in or not; while their code downloads, the sign-in pages show their shape
   if (page === 'join' && route[1]) return <Suspense fallback={<JoinSkeleton />}>{title}<JoinPage token={route[1]} /></Suspense>;
   // a password reset link too: it works signed in or not
-  if (page === 'reset' && route[1]) return <Suspense fallback={<JoinSkeleton />}><title>New password · CompanyFeatures</title><ResetPage token={route[1]} /></Suspense>;
-  if (!meta && bootError?.status === 401) return <Suspense fallback={<SignInSkeleton />}><title>Sign in · CompanyFeatures</title><SignInPage /></Suspense>;
+  if (page === 'reset' && route[1]) return <Suspense fallback={<JoinSkeleton />}><title>New password · CompanyFlags</title><ResetPage token={route[1]} /></Suspense>;
+  if (!meta && bootError?.status === 401) return <Suspense fallback={<SignInSkeleton />}><title>Sign in · CompanyFlags</title><SignInPage /></Suspense>;
   if (!meta && bootError) return (
     <div role="alert" className="grid max-w-[560px] gap-3 p-12 text-sm text-ink-1">
-      <p className="m-0 text-base font-medium text-ink">{bootError.status === 403 ? 'You don’t have access.' : 'Can’t reach the CompanyFeatures server.'}</p>
+      <p className="m-0 text-base font-medium text-ink">{bootError.status === 403 ? 'You don’t have access.' : 'Can’t reach the CompanyFlags server.'}</p>
       <p className="m-0 text-ink-2">{bootError.status === 403 ? `${bootError.message.charAt(0).toUpperCase()}${bootError.message.slice(1)}.` : `Check that it’s running, then reload. (${bootError.message})`}</p>
       <div>{bootError.status === 403 ? <Button variant="secondary" onClick={() => void signOut()}>Sign out</Button> : <Button onClick={() => location.reload()}>Reload</Button>}</div>
     </div>
@@ -361,7 +361,7 @@ function App() {
   // While /meta answers (the first load): someone who was signed out last time most likely signs in now, so the
   // sign-in page's shape; someone who was signed in gets the console's frame with the page's shape in it (loading.tsx).
   // A browser that hasn't opened the console yet shows nothing until the server says which.
-  if (!meta && signedInBefore === false) return <><title>Sign in · CompanyFeatures</title><SignInSkeleton /></>;
+  if (!meta && signedInBefore === false) return <><title>Sign in · CompanyFlags</title><SignInSkeleton /></>;
   if (!meta && signedInBefore === null) return title;
   // nothing is set up yet: every page needs an environment, so Settings comes first
   const setUp = !meta || meta.environments.length > 0 || page === 'settings';

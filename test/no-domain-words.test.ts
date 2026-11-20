@@ -149,7 +149,7 @@ const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
 // entries. Product and package names aren't the word either.
 const KEPT = new Set(["'customer.id'", "'customer.company'", "'customer.create'", "'customer.update'", "'customer.link_replaced'",
   "'customers'", "'customer'", "'brands'", "'x-customer-id'", "'history.customer'", "'entity,customer'"]);
-const PRODUCT = /companyfeatures|company-os/i;
+const PRODUCT = /companyflags|company-os/i;
 
 test('no string or JSX text in the console or the server says those words', () => {
   const presets = new Set(PRESETS.flatMap((p) => [p.name, ...p.dimensions.flatMap((d) => [d.key, d.singular, d.plural])]).map((w) => `'${w}'`));

@@ -1,9 +1,9 @@
 // Type-aware editing of a flag's values, so nobody has to type raw JSON. The text ⇄ value rules are in valueText.ts.
 import { useId, type ChangeEvent } from 'react';
 import { XIcon } from '@phosphor-icons/react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Input } from '@companyfeatures/ui/components/input';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Input } from '@companyflags/ui/components/input';
+import { cn } from '@companyflags/ui/lib/utils';
 import { Segmented } from './ui.tsx';
 import { denseField, textareaField } from './uiKit.ts';
 import { isTrue, nameError, valueError, type ValueRow } from './valueText.ts';

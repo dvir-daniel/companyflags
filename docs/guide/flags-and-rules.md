@@ -65,7 +65,7 @@ Acme Kids and Lumen get 1000 too: "Company is …" covers each company's brands.
 ### Operators
 
 Each attribute has a type, and the type decides which comparisons the rule editor offers. The checks are in
-[`server/evaluator.ts`](https://github.com/dvir-daniel/companyfeatures/blob/main/server/evaluator.ts) (`testCondition`).
+[`server/evaluator.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/evaluator.ts) (`testCondition`).
 
 | Type | Editor wording | Operator | Passes when |
 |---|---|---|---|

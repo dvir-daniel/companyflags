@@ -104,7 +104,7 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
   const microsoft = s.microsoft && { clientId: s.microsoft.clientId, clientSecret: s.microsoft.clientSecret, tenantId: s.microsoft.tenantId ?? 'common' };
 
   const auth = betterAuth({
-    appName: 'CompanyFeatures',
+    appName: 'CompanyFlags',
     basePath: '/api/auth',
     // locally the console may be on another port (the Vite dev server proxies /api): any localhost address works
     baseURL: s.baseURL ?? {

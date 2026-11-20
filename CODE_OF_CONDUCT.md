@@ -1,6 +1,6 @@
 # Code of conduct
 
-CompanyFeatures is built in the open, by people with different backgrounds, experience and ways of working. We want
+CompanyFlags is built in the open, by people with different backgrounds, experience and ways of working. We want
 taking part to be a good experience for every one of them.
 
 We follow the [Contributor Covenant, version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).

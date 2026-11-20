@@ -1,6 +1,6 @@
 # Security policy
 
-CompanyFeatures decides what every app and backend of an installation receives, and it keeps sign-in accounts, API
+CompanyFlags decides what every app and backend of an installation receives, and it keeps sign-in accounts, API
 keys and secret app links. We take reports about it seriously and thank everyone who reports responsibly.
 
 ## Reporting a vulnerability
@@ -12,7 +12,7 @@ maintainers can read the report. Include:
 
 - what an attacker can do, and what they need first (an account, a role, an API key, network access);
 - the steps or a request that shows it, against a current version of `main` or the latest release;
-- the version or commit, and how CompanyFeatures runs (Docker image, from source, which database).
+- the version or commit, and how CompanyFlags runs (Docker image, from source, which database).
 
 What to expect:
 
@@ -25,7 +25,7 @@ Please give us a reasonable time to release a fix before you publish anything.
 
 ## Supported versions
 
-CompanyFeatures is before 1.0: only the **latest release** gets security fixes.
+CompanyFlags is before 1.0: only the **latest release** gets security fixes.
 
 ## What's in scope
 
@@ -37,7 +37,7 @@ CompanyFeatures is before 1.0: only the **latest release** gets security fixes.
 Out of scope: problems that need a server admin's own credentials or host access, denial of service by sheer volume
 (put a CDN or rate limiter in front, as the docs describe), and reports from automated scanners with no shown impact.
 
-## How CompanyFeatures protects an installation
+## How CompanyFlags protects an installation
 
 The [security model](docs/guide/security.md) describes it in full. In short:
 

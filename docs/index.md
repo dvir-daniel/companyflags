@@ -2,7 +2,7 @@
 layout: page
 sidebar: false
 aside: false
-title: CompanyFeatures
+title: CompanyFlags
 titleTemplate: The most comprehensive feature flag framework
 ---
 

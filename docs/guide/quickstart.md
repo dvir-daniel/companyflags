@@ -1,27 +1,27 @@
 # Quickstart
 
-Run CompanyFeatures, set up your first flag, then read it the way an app does.
+Run CompanyFlags, set up your first flag, then read it the way an app does.
 
 ## 1. Start it
 
 ::: code-group
 
 ```bash [Docker]
-docker run -d -p 8787:8787 -v companyfeatures:/data \
+docker run -d -p 8787:8787 -v companyflags:/data \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
   -e BETTER_AUTH_URL=http://localhost:8787 \
-  ghcr.io/dvir-daniel/companyfeatures
+  ghcr.io/dvir-daniel/companyflags
 ```
 
 ```bash [Docker Compose]
-curl -O https://raw.githubusercontent.com/dvir-daniel/companyfeatures/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 docker compose up -d
 ```
 
 ```bash [From source]
-git clone https://github.com/dvir-daniel/companyfeatures.git
-cd companyfeatures
+git clone https://github.com/dvir-daniel/companyflags.git
+cd companyflags
 corepack enable          # gives you pnpm 11
 pnpm install
 pnpm serve               # builds the console and serves it on http://localhost:8787
@@ -29,7 +29,7 @@ pnpm serve               # builds the console and serves it on http://localhost:
 
 :::
 
-Docker keeps the data in the `companyfeatures` volume; Compose runs Postgres beside it. See [Docker](/self-hosting/docker).
+Docker keeps the data in the `companyflags` volume; Compose runs Postgres beside it. See [Docker](/self-hosting/docker).
 
 ## 2. Set it up
 

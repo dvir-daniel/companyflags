@@ -1,8 +1,8 @@
 import { use, useState, type ReactNode } from 'react';
 import { InfoIcon } from '@phosphor-icons/react';
-import { Button } from '@companyfeatures/ui/components/button';
-import { Drawer, DrawerSection } from '@companyfeatures/ui/components/drawer';
-import { cn } from '@companyfeatures/ui/lib/utils';
+import { Button } from '@companyflags/ui/components/button';
+import { Drawer, DrawerSection } from '@companyflags/ui/components/drawer';
+import { cn } from '@companyflags/ui/lib/utils';
 import { capital, CHOICE_NAME, CHOICES, choiceText, type Dimensions } from './api.ts';
 import { AppContext } from './app.ts';
 import { listWords, perWho } from './dimWords.ts';

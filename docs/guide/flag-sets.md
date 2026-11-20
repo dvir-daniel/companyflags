@@ -13,7 +13,7 @@ A flag set has a key, which never changes, and a kind:
 | **For backends** | Your servers | With an API key, as flagd JSON or with OFREP. See [Backends](/guide/backends) |
 
 The rest of this page is about flag sets for apps. Apps read their flags with [OpenFeature](/sdk/openfeature):
-OpenFeature's SDK for the platform, with its OFREP provider pointed at CompanyFeatures. There is no SDK of ours to
+OpenFeature's SDK for the platform, with its OFREP provider pointed at CompanyFlags. There is no SDK of ours to
 install.
 
 Each app reads as **one entity** (a region, a store, a team), with a credential your backend hands it at sign-in. It
@@ -38,7 +38,7 @@ Each entity has a secret **app link** per environment. An app uses it in one of 
 | OpenFeature token | `ffl_prod.web.acme.Vx8…` | OpenFeature's OFREP providers: `Authorization: Bearer <token>`. One per flag set: a `web` token can't read `ios` |
 | App file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [app file](/sdk/app-file) from your CDN |
 
-Your backend knows which entity someone belongs to. When they sign in, it asks CompanyFeatures for the entity's link
+Your backend knows which entity someone belongs to. When they sign in, it asks CompanyFlags for the entity's link
 with its API key, naming the app's flag set, and returns the token with the session:
 
 ```ts
