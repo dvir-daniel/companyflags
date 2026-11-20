@@ -14,6 +14,14 @@ export function parseSemver(raw: unknown): SemVer | null {
   };
 }
 
+/** A version as three numbers, as strict semver readers (flagd's sem_ver in some languages) need it: "6" → "6.0.0",
+ *  "v6.1" → "6.1.0", "6.0-beta.1" → "6.0.0-beta.1". The build part goes: comparing ignores it. Null when it isn't
+ *  a version. */
+export function fullVersion(raw: unknown): string | null {
+  const v = parseSemver(raw);
+  return v ? `${v.major}.${v.minor}.${v.patch}${v.pre.length ? `-${v.pre.join('.')}` : ''}` : null;
+}
+
 export function compareSemver(a: SemVer, b: SemVer): number {
   for (const k of ['major', 'minor', 'patch'] as const) {
     if (a[k] !== b[k]) return a[k] < b[k] ? -1 : 1;

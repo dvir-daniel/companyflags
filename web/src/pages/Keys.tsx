@@ -8,7 +8,7 @@ import { NativeSelect } from '@companyflags/ui/components/native-select';
 import { BAR_CONTROLS, barTextButton, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
 import { SearchField } from '@companyflags/ui/components/search-field';
 import { cn } from '@companyflags/ui/lib/utils';
-import { api, capital, entityIndex, joined, peek, title, type Meta } from '../api.ts';
+import { api, capital, entityLabel, joined, peek, type Meta } from '../api.ts';
 import { CountSlot, SkeletonRows } from '../loading.tsx';
 import { downloadCsv } from '../csv.ts';
 import { KEYS_PATH } from '../paths.ts';
@@ -17,6 +17,7 @@ import { plural } from '../text.ts';
 import { Badge, Empty, ErrorList, Field, When } from '../ui.tsx';
 import { copyText, useAsync, usePersistentState, useSlashFocus } from '../uiKit.ts';
 import { useEnvs } from './envs.ts';
+import { EntityPicker } from './flagParts.tsx';
 import { roleInfo } from '../../../server/policy.ts';
 
 /*
@@ -42,7 +43,7 @@ const SCOPE_HINT: Record<string, string> = {
 };
 /** What a key may ask about, in words: "Only Acme", "Acme and everything under it", "Any". */
 function scopeText(k: Pick<KeyRow, 'scope' | 'entity'>, meta: Meta) {
-  const name = k.entity ? entityIndex(meta.entities).get(k.entity)?.name ?? k.entity : '';
+  const name = k.entity ? entityLabel(meta.entities, k.entity) : '';
   return k.scope === 'entity' ? `Only ${name}` : k.scope === 'below' ? `${name} and everything under it` : 'Any';
 }
 /** Where a backend downloads its flagd JSON with this key: the entity named in the address, by its dimension. */
@@ -363,14 +364,7 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
           </Field>
           {scope !== 'all' && (
             <Field label={capital(joined(meta.dimensions, 'or')) || 'Entry'} required>
-              <NativeSelect className={selectField} value={entity} onChange={(e) => setEntity(e.target.value)}>
-                <option value="">Pick one</option>
-                {meta.dimensions.map((d) => (
-                  <optgroup key={d.key} label={title(d)}>
-                    {meta.entities.filter((c) => c.dimension === d.key).map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
-                  </optgroup>
-                ))}
-              </NativeSelect>
+              <EntityPicker value={entity} onChange={setEntity} placeholder="Pick one" className="h-[34px]" />
             </Field>
           )}
           <Field label="Label">

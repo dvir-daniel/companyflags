@@ -43,8 +43,9 @@ After the first account, nobody makes an account on their own. A person can join
   one; the old one stops working.
 - **they sign in with Google, GitHub or Microsoft** and the provider confirms their email, and that email is one an
   admin added, or is at a domain in `FF_SIGNUP_DOMAINS` (exact domain, subdomains not included).
-- **they sign in with single sign-on** and their email is at one of the connection's domains (subdomains included),
-  or an admin added them.
+- **they sign in with single sign-on** and their email is at one of the connection's domains (subdomains included).
+  A connection vouches only for emails at its own domains: someone an admin added at another domain joins with their
+  invite link, while it works.
 
 People who join without an invite start as viewers; an admin gives them a role. People an admin added keep the role
 the admin chose, however they sign in.
@@ -102,7 +103,9 @@ On the identity provider's side, the sign-in redirect URI:
 ```
 
 When you save, the server reads the issuer's `/.well-known/openid-configuration` and checks that it names the same
-issuer. It asks for the `openid`, `email` and `profile` scopes and uses PKCE. In production the issuer must be
+issuer. The issuer must be on the public internet unless its origin is in `BETTER_AUTH_TRUSTED_ORIGINS`: the address
+is checked as the connection is made, and redirects aren't followed. If something is wrong, the message says so
+without repeating what the address answered. It asks for the `openid`, `email` and `profile` scopes and uses PKCE. In production the issuer must be
 `https`. The client secret stays on the server and is never shown again.
 
 ### SAML 2.0
@@ -126,6 +129,7 @@ SAML answers must be signed. They are checked against the request they answer, a
 
 People type their work email on the sign-in page and choose **Sign in with SSO**. Everyone at the connection's
 domains can sign in and joins as a viewer. Someone with a password account at that email becomes the same person.
+Nobody at another domain joins through it, even someone an admin added.
 
 A domain can belong to only one connection. Only admins add, change or remove connections: Better Auth's own endpoints
 for managing them are switched off.

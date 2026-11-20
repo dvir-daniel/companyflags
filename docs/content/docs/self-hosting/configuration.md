@@ -134,9 +134,12 @@ apply, and exits with 1 when something is pending.
 | `NODE_ENV` | none | `production` for real use (see above). Anything else is development mode. `development` and `test` also turn off sign-in rate limits. |
 | `FF_TRUSTED_PROXIES` | none | Your proxies' addresses or ranges, comma-separated (`10.0.0.0/8`). For sign-in rate limits, a connection from one of them is believed about the client's address: `X-Forwarded-For`, read from the right past the proxies, or `FF_CLIENT_IP_HEADER`. Any other connection counts as its own address. |
 | `FF_CLIENT_IP_HEADER` | none | A header your proxy or CDN sets to the client's address (`cf-connecting-ip`, `x-real-ip`), read instead of `X-Forwarded-For`. Needs `FF_TRUSTED_PROXIES`: without it the server refuses to start. |
+| `FF_EVENT_STREAMS_PER_ENVIRONMENT` | `10000` | The most change-event streams (OFREP's server-sent events) this server keeps open for one environment. One more gets `429`, and its provider polls instead. Each instance counts its own. |
+| `FF_EVENT_STREAMS_PER_CLIENT` | `100` | The most it keeps open for one client address: the connection's, or what `FF_TRUSTED_PROXIES` says, as for sign-in rate limits. Many devices behind one office address count together. |
 
-Without either, rate limits count the connection's own address. The server refuses to start when an entry in
-`FF_TRUSTED_PROXIES` isn't an address or a range.
+Without either, rate limits and event streams count the connection's own address. The server refuses to start when an
+entry in `FF_TRUSTED_PROXIES` isn't an address or a range, or when an `FF_EVENT_STREAMS_…` value isn't a whole number
+above 0.
 
 In development mode (no `NODE_ENV=production`):
 
@@ -183,6 +186,9 @@ At start the server logs the ways to sign in it has, e.g.
 Both are needed. When they are set they win over what an admin saved in **Settings → CDN**, which then shows them
 read-only. Without them an admin can set the zone and token in the console instead. `cloudflare({ zoneId, token })`
 in the config file wins over the variables. See [CDN](/self-hosting/cdn).
+
+Each publish purges twice: at once, and again about 11 seconds later. With several servers, one still a round behind
+may refill the CDN with the old file right after the first purge; the second one drops it.
 
 ## Webhooks
 

@@ -54,8 +54,10 @@ Name the entity in the context by its dimension key. The server fills in the lev
 
 - **Which entity asks.** If the context names several dimensions (`"company": "globex", "brand": "lumen"`), the
   lowest asks, and the others must be the ones above it. One that isn't under the one named above it is
-  `400 INVALID_CONTEXT`. Outside the key's scope, `403`. An entity that doesn't exist is `400 INVALID_CONTEXT` for an
-  `all` key, and the same `403` for a key scoped to `entity` or `below`, so it can't tell which entities exist.
+  `400 INVALID_CONTEXT`. An entity outside the key's scope and one that doesn't exist get the same
+  `400 INVALID_CONTEXT`, with the same words, so a key can't tell which entities exist. The context is wrong, not
+  the key: the provider reports an error for that context and works again with the next one. (A `401` or `403`
+  stops OpenFeature's web provider for good, so those are for a wrong key only.)
 - **Naming none.** A key for one entity (or `below` one) asks as its own entity. An `all` key asks as no entity: what
   every device gets before sign-in.
 - **The rest of the context** is what the request knows about itself, nested or dotted (`{"app": {"version":
@@ -109,8 +111,8 @@ it asks.
 | The flag is off | `reason: DISABLED`, no value: the app's own default |
 | The flag uses the code default | no value: the provider returns the default written in your app |
 | The flag isn't in this service | `FLAG_NOT_FOUND` (404 for one flag; left out of the bulk answer) |
-| A chain that doesn't match, or an entity that doesn't exist (with an `all` key) | `400 INVALID_CONTEXT` |
-| An entity outside the credential's reach, or one that doesn't exist (an app token, or a key for some entities) | `403` |
+| A chain that doesn't match | `400 INVALID_CONTEXT` |
+| An entity outside the credential's reach, or one that doesn't exist: the same answer for both | `400 INVALID_CONTEXT` |
 | A backend's key sent from a browser (with an `Origin` header) | `403` |
 | No credential, or a wrong or replaced one | `401` |
 

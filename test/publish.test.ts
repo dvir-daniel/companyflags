@@ -5,6 +5,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './helpers.ts';
 import { purgeTags, PURGE_TIMEOUT_MS } from '../server/purge.ts';
+import { PURGE_AGAIN_MS, ROUND_MS, startWorkers } from '../server/workers.ts';
 
 type Mode = 'ok' | 'fail' | 'hang';
 let mode: Mode = 'ok';
@@ -117,4 +118,56 @@ test('stopping the workers waits for the round in progress, then starts no more'
   await own.workers.drain();
   assert.equal(Number((await own.db.query<{ n: number }>(`select count(*)::int as n from publish_queue where published_at is null`)).rows[0].n), 2,
     'nothing runs after stop: the rename waits in the outbox (one row per environment)');
+});
+
+test('the purge runs once more a round and a margin later, once for a burst of publishes', async (c) => {
+  const calls: string[] = [];
+  const hook = async (env: string) => { calls.push(env); return 'purged' as const; };
+  const own = await boot({ onPublish: hook });
+  await own.workers.stop();                     // its own workers wait the full time: these run with a short one
+  const workers = startWorkers(own.db, own.plane, own.hub, () => {}, hook, { purgeAgainAfterMs: 40 });
+  c.after(async () => { await workers.stop(); await own.stop(); });
+  assert.ok(PURGE_AGAIN_MS > ROUND_MS, 'after other servers’ next round');
+
+  const flip = (on: boolean) => own.editBase('payments_enabled', 'dev', (layer) => ({ ...layer, enabled: on }));
+  assert.equal((await flip(false)).status, 200);
+  await workers.drain();
+  assert.deepEqual(calls, ['dev'], 'at once');
+  for (let i = 0; i < 100 && calls.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+  assert.deepEqual(calls, ['dev', 'dev'], 'and once more');
+
+  calls.length = 0;
+  for (const on of [true, false, true]) { assert.equal((await flip(on)).status, 200); await workers.drain(); }
+  assert.deepEqual(calls, ['dev', 'dev', 'dev'], 'each publish at once');
+  await new Promise((r) => setTimeout(r, 200));
+  assert.deepEqual(calls, ['dev', 'dev', 'dev', 'dev'], 'and one more for the burst');
+});
+
+test('a snapshot rebuilt before its publish was told (another server published it): the next round tells', async (c) => {
+  const own = await boot();
+  await own.workers.stop();
+  let remote = 0;
+  const workers = startWorkers(own.db, own.plane, own.hub, () => {}, undefined, { onRemoteChange: () => { remote++; } });
+  c.after(async () => { await workers.stop(); await own.stop(); });
+  const heard: [string, number][] = [];
+  const off = own.hub.subscribe((env, revision) => heard.push([env, revision]));
+  c.after(off);
+
+  assert.equal((await own.editBase('payments_enabled', 'dev', (layer) => ({ ...layer, enabled: false }))).status, 200);
+  // OFREP rebuilds the snapshot for a provider that heard of the publish (ofrep.ts flagConfigEtag)…
+  const { revision } = await own.plane.refresh(own.db, 'dev');
+  await workers.drain();
+  assert.deepEqual(heard, [['dev', revision]], 'the outbox row tells, once');
+  // …or another server publishes the row: its listeners hear of it, ours don't yet
+  heard.length = 0;
+  remote = 0;
+  assert.equal((await own.editBase('payments_enabled', 'dev', (layer) => ({ ...layer, enabled: true }))).status, 200);
+  const next = (await own.plane.refresh(own.db, 'dev')).revision;
+  assert.ok(next > revision);
+  await own.db.query(`update publish_queue set published_at = now() where published_at is null`);
+  await workers.drain();
+  assert.deepEqual(heard, [['dev', next]], 'told once');
+  assert.equal(remote, 1);
+  await workers.drain();
+  assert.deepEqual(heard, [['dev', next]], 'and not again');
 });

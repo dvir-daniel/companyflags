@@ -32,6 +32,8 @@ In a protected environment, also:
 
 - putting a flag in a service, or taking it out, is a request too;
 - a value the environment serves can't be changed in place: add a new value and point the rules at it (reviewed);
+- nor can a value that a request there uses while it is in review, approved or scheduled. That holds in the console,
+  for `flags push` and for imports. Change it once the request is applied, rejected or withdrawn;
 - a new flag starts off;
 - a flag can be archived only once it is off and in no service there;
 - only admins can move an entity under another parent, since that changes what it gets in every environment at once.
@@ -51,8 +53,8 @@ approve.
 
 - You can't approve or reject your own request.
 - One rejection ends a request. Its author sends a new one.
-- An approval is recorded against the request's exact content (a hash of its items). A request's content can't be
-  edited: to change it, the author withdraws it and sends a new one.
+- An approval is recorded against the request's exact content (a hash of its items, with the value of every variant
+  they use). A request's content can't be edited: to change it, the author withdraws it and sends a new one.
 
 A request is **in review**, **approved**, **scheduled**, **applied**, **rejected**, **withdrawn**, or ended by a
 **conflict** or a **failure** when it was applied.
@@ -63,6 +65,8 @@ Each item of a request records the version of the settings it was made against. 
 the meantime, the request can't apply: it ends as a conflict, and nothing in it changes. The same holds for:
 
 - an entity's own settings, when the flag's defaults changed after the request was made;
+- a value the request serves, when it changed after the request was made, so a request never serves a value its
+  reviewers didn't see;
 - a change to which services a flag is in, when that list changed after the request was made.
 
 Two requests made against the same version can both be approved, but only the first one applied goes through.

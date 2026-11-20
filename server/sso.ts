@@ -1,7 +1,7 @@
 // Single sign-on: people sign in with the company's identity provider (Okta, Entra ID, Google Workspace, JumpCloud…)
 // over OIDC or SAML, through Better Auth's SSO plugin (betterAuth.ts). An admin adds a connection in Settings for the
 // company's email domains, and can require single sign-on there. Who a connection lets in is the access module's
-// rule (access.ts): people at its domains join as viewers, people an admin added keep their role, and where single
+// rule (access.ts): only people at its domains join, as viewers or with the role an admin gave them, and where single
 // sign-on is required nobody but an admin uses a password, so leaving the company (being removed from the identity
 // provider) ends access.
 //
@@ -10,12 +10,13 @@
 // (index.ts): the SSO plugin that keeps the connections, and `discover`, which reads an OIDC identity provider's
 // settings (over the network in production; tests hand it the documents).
 
-import { lookup } from 'node:dns/promises';
+import type { lookup as dnsLookup } from 'node:dns';
 import { BlockList, isIP } from 'node:net';
 import { HttpError, one, type Db, type Queryable } from './db.ts';
 import type { Access, Vouching } from './access.ts';
 import type { Actor } from './layers.ts';
 import * as journal from './journal.ts';
+import { NotPublicError, publicRead } from './publicFetch.ts';
 
 /** Reads the JSON document at an address: an OIDC identity provider's discovery document. */
 export type Discover = (url: string) => Promise<unknown>;
@@ -23,12 +24,25 @@ export type Discover = (url: string) => Promise<unknown>;
 /** In production: fetched, by the admin's request here, not by Better Auth (which only fetches from origins it is
  *  configured to trust). The address must be public (not this machine, a private network or a cloud metadata
  *  address) unless its origin is trusted (`trustedOrigins`: BETTER_AUTH_TRUSTED_ORIGINS), so adding a connection
- *  can't be used to look around the network. */
-export const discoverOverHttp = (trustedOrigins: readonly string[] = []): Discover => async (url) => {
-  await assertPublic(url, trustedOrigins);
-  const res = await fetch(url, { signal: AbortSignal.timeout(8000), redirect: 'error', headers: { accept: 'application/json' } });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+ *  can't be used to look around the network. It is checked by the connection's own lookup (publicFetch.ts
+ *  publicRead), so the name can't resolve to a public address for the check and a private one for the connection.
+ *  Redirects aren't followed. `lookup` and `timeoutMs` are for tests. */
+export const discoverOverHttp = (trustedOrigins: readonly string[] = [], o: { lookup?: typeof dnsLookup; timeoutMs?: number } = {}): Discover => async (url) => {
+  const origin = new URL(url).origin;
+  let res: { status: number; body: string };
+  try {
+    res = await publicRead(url, { allowedOrigins: trustedOrigins, lookup: o.lookup, timeoutMs: o.timeoutMs ?? 8000, headers: { accept: 'application/json' } });
+  } catch (e) {
+    if (e instanceof NotPublicError) {
+      throw new HttpError(422, `the identity provider at ${origin} isn’t on the public internet: if it is on your private network, `
+        + 'add its origin to BETTER_AUTH_TRUSTED_ORIGINS');
+    }
+    const code = (e as { code?: unknown }).code;
+    if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') throw new HttpError(422, `couldn’t find the identity provider at ${origin}: check the issuer address`);
+    throw e;
+  }
+  if (res.status < 200 || res.status > 299) throw new Error(`HTTP ${res.status}`);
+  return JSON.parse(res.body);
 };
 
 /** The SSO plugin that keeps connections and signs people in with them (betterAuth.ts). */
@@ -208,8 +222,8 @@ async function removeConnection(db: Db, access: SsoOptions['access'], id: string
 }
 
 /** Reads an OIDC provider's discovery document, and checks it is the issuer's. What goes wrong is said without the
- *  response's status or the network error (the network adapter's refusals of private addresses are said as they are),
- *  so this can't be used to look around the network. */
+ *  response's status, the network error or anything the document says (the network adapter's refusals of private
+ *  addresses are said as they are), so this can't be used to look around the network. */
 async function discover(read: Discover, issuer: string) {
   const url = `${issuer}/.well-known/openid-configuration`;
   let doc: any;
@@ -222,7 +236,7 @@ async function discover(read: Discover, issuer: string) {
   for (const k of ['issuer', 'authorization_endpoint', 'token_endpoint', 'jwks_uri']) {
     if (typeof doc?.[k] !== 'string') throw new HttpError(422, `the identity provider’s settings at ${url} have no ${k}`);
   }
-  if (doc.issuer.replace(/\/+$/, '') !== issuer) throw new HttpError(422, `the identity provider calls itself ${doc.issuer}: use that as the issuer`);
+  if (doc.issuer.replace(/\/+$/, '') !== issuer) throw new HttpError(422, `the identity provider’s settings at ${url} are for another issuer: check the issuer address`);
   return doc as { issuer: string; authorization_endpoint: string; token_endpoint: string; jwks_uri: string; userinfo_endpoint?: string; token_endpoint_auth_methods_supported?: string[] };
 }
 
@@ -246,25 +260,6 @@ export function isPublicAddress(address: string): boolean {
   const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address)?.[1];
   if (mapped) return isPublicAddress(mapped);
   return !NOT_PUBLIC.check(address, 'ipv6');
-}
-
-const originOf = (u: string) => { try { return new URL(u).origin; } catch { return null; } };
-
-/** Refuses an address whose host is, or resolves to, an address that isn't public, unless its origin is trusted. */
-async function assertPublic(url: string, trustedOrigins: readonly string[]) {
-  const u = new URL(url);
-  if (trustedOrigins.map(originOf).includes(u.origin)) return;
-  const host = u.hostname.replace(/^\[|\]$/g, '');
-  let addresses: string[];
-  try {
-    addresses = isIP(host) ? [host] : (await lookup(host, { all: true })).map((a) => a.address);
-  } catch {
-    throw new HttpError(422, `couldn’t find the identity provider at ${u.origin}: check the issuer address`);
-  }
-  if (!addresses.length || addresses.some((a) => !isPublicAddress(a))) {
-    throw new HttpError(422, `the identity provider at ${u.origin} isn’t on the public internet: if it is on your private network, `
-      + 'add its origin to BETTER_AUTH_TRUSTED_ORIGINS');
-  }
 }
 
 /** The entity ID and sign-in URL in a SAML identity provider's metadata (Better Auth reads the certificates itself). */

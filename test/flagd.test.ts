@@ -1,5 +1,5 @@
 // flagd JSON for backends (server/flagd.ts, GET /sdk/v1/flagd): evaluated the way flagd evaluates it
-// (flagdReference.ts), it gives every request the same answer as our evaluator.
+// (flagdReference.ts), and by OpenFeature's own flagd-core, it gives every request the same answer as our evaluator.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFlagdDoc, FLAGD_SCHEMA, type FlagdDoc } from '../server/flagd.ts';
@@ -7,7 +7,7 @@ import { bucketFor } from '../server/hash.ts';
 import {
   CODE_DEFAULT, type Condition, type FlagDef, type Inherit, type Layer, type Op, type Rule, type Snapshot,
 } from '../server/evaluator.ts';
-import { flagdEvaluate, nest, ours, same } from './flagdReference.ts';
+import { flagdCore, flagdEvaluate, nest, ours, same } from './flagdReference.ts';
 import { boot } from './helpers.ts';
 import { entities, fieldsFor } from './kit.ts';
 
@@ -25,7 +25,8 @@ const ENTITIES = entities([['vandelay', 'Vandelay', 'company'], ['wonka', 'Wonka
 const FIELDS: Snapshot['fields'] = fieldsFor(DIMS);
 const snapOf = (flags: Record<string, FlagDef>, o: { environment?: string; revision?: number } = {}): Snapshot =>
   ({ environment: o.environment ?? 'dev', revision: o.revision ?? 1, builtAt: '', flags, entities: ENTITIES, dimensions: DIMS, fields: FIELDS });
-const VERSIONS = ['4.9.1', '5.0.0', '5.0.0-beta.1', '5.0.0-beta.10', '6.0.0', '10.2.0'];
+// short and odd spellings too, ones both flagd and the server read (the others: 'versions flagd reads differently')
+const VERSIONS = ['4.9.1', '5.0.0', '5.0.0-beta.1', '5.0.0-beta.10', '6.0.0', '10.2.0', '6', '6.0', '5', 'v6.0.0', '6.0.0+build.7', '10.2'];
 const TEXT: Record<string, string[]> = {
   'device.platform': ['android', 'ios', 'web'], 'locale.language': ['en', 'es', 'de', 'en-GB'],
   entity: Object.keys(ENTITIES), company: ['vandelay', 'wonka', 'tyrell'], brand: ['velvet', 'onyx'],
@@ -36,7 +37,7 @@ const ROLES = ['admin', 'beta', 'staff'];
 function randomCondition(r: ReturnType<typeof random>): Condition {
   const field = r.pick(Object.keys(FIELDS).filter((f) => f !== 'device.id' && f !== 'session.id'));
   if (r.chance(0.1)) return { field, op: r.pick(['exists', 'missing'] as const), values: [] };
-  if (field === 'app.version') return { field, op: r.pick(['semver_lt', 'semver_lte', 'semver_gt', 'semver_gte', 'semver_eq'] as const), values: [r.pick(['5.0.0', '6.0.0', '5.0.0-beta.1'])] };
+  if (field === 'app.version') return { field, op: r.pick(['semver_lt', 'semver_lte', 'semver_gt', 'semver_gte', 'semver_eq'] as const), values: [r.pick(['5.0.0', '6.0.0', '5.0.0-beta.1', '6', '5.0', 'v6.0.0'])] };
   if (field === 'app.build') return { field, op: r.pick(['lt', 'lte', 'gt', 'gte'] as const), values: [r.pick([100, 250, 1000])] };
   if (field === 'user.roles') return { field, op: r.pick(['contains_any', 'contains_none'] as const), values: [r.pick(ROLES), ...(r.chance(0.5) ? [r.pick(ROLES)] : [])] };
   const op: Op = r.pick(['in', 'in', 'not_in', 'starts_with', 'ends_with'] as const);
@@ -55,7 +56,8 @@ function randomFlag(r: ReturnType<typeof random>, n: number): FlagDef {
       .filter((g) => g.to > g.from).slice(0, r.chance(0.5) ? 1 : 2);
     if (!ranges.length) ranges.push({ variation: 'b', from: 0, to: 2000 });
     const by = r.pick(['device.id', 'device.id', 'session.id', 'entity', 'company', 'brand']);
-    return { by, fallbackBy: by === 'device.id' && r.chance(0.4) ? 'session.id' : null, salt: r.pick(['f', 'checkout', 'x/y']), hashVersion: 2, ranges };
+    const fallbackBy = by === 'device.id' && r.chance(0.4) ? 'session.id' : by === 'session.id' && r.chance(0.4) ? 'device.id' : null;
+    return { by, fallbackBy, salt: r.pick(['f', 'checkout', 'x/y']), hashVersion: 2, ranges };
   };
   const rules = (own: boolean, base: boolean): Rule[] => Array.from({ length: r.int(0, 4) }, (): Rule => {
     const pct = r.chance(0.3);
@@ -85,6 +87,8 @@ function randomAttrs(r: ReturnType<typeof random>): Record<string, unknown> {
   maybe('device.platform', () => r.pick(TEXT['device.platform']));
   maybe('locale.language', () => r.pick(TEXT['locale.language']));
   maybe('device.id', () => `device-${r.int(0, 100000)}`);
+  // OpenFeature's targeting key, at the root of the context: the device ID when there's no device.id
+  if (r.chance(0.5)) attrs.targetingKey = r.chance(0.05) ? '' : `tk-${r.int(0, 100000)}`;
   maybe('session.id', () => `session-${r.int(0, 100000)}`);
   maybe('user.roles', () => ROLES.filter(() => r.chance(0.4)));
   return attrs;
@@ -106,9 +110,13 @@ test('every random flag, entity and request: flagd’s answer from the JSON is o
       for (let i = 0; i < 30; i++) {
         const attrs = randomAttrs(r);
         const theirs = flagdEvaluate(doc, 'f', nest(attrs));
-        if (theirs.reason) reasons.add(theirs.reason);
+        const core = flagdCore(doc, 'f', nest(attrs));
+        if (core.reason) reasons.add(core.reason);
         const want = ours(snap, 'f', 'server-ds', entity, attrs);
-        assert.equal(same(theirs), same(want), `flag ${n}, entity ${entity}, ${JSON.stringify(attrs)}\n${JSON.stringify(f)}\n${JSON.stringify(doc.flags.f)}`);
+        const where = `flag ${n}, entity ${entity}, ${JSON.stringify(attrs)}\n${JSON.stringify(f)}\n${JSON.stringify(doc.flags.f)}`;
+        assert.equal(same(core), same(want), `flagd-core: ${where}`);
+        assert.equal(same(theirs), same(want), where);
+        assert.equal(theirs.reason, core.reason, `the same reason: ${where}`);
         compared++;
       }
     }
@@ -116,6 +124,10 @@ test('every random flag, entity and request: flagd’s answer from the JSON is o
   assert.ok(compared > 50_000);
   assert.deepEqual([...reasons].sort(), ['DEFAULT', 'DISABLED', 'STATIC', 'TARGETING_MATCH'], 'every kind of flagd answer came up');
 });
+
+// missing is absent, null or "" in every JsonLogic (flagd.ts)
+const missing = (field: string) => ({ in: [{ var: field }, [null, '']] });
+const present = (field: string) => ({ '!': missing(field) });
 
 test('the JSON for new_checkout: the override, the 20% as flagd’s fractional, the default', () => {
   const rule = (r: Partial<Rule>): Rule => ({ ruleKey: 'k', name: null, locked: false, disabled: false, conditions: [], serveVariation: null, split: null, ...r });
@@ -134,15 +146,18 @@ test('the JSON for new_checkout: the override, the 20% as flagd’s fractional, 
     flags: { new_checkout: {
       state: 'ENABLED', variants: { off: false, on: true }, defaultVariant: 'off',
       targeting: { if: [
-        { or: [{ missing: ['app.version'] }, { sem_ver: [{ var: 'app.version' }, '<', '5.0.0'] }] }, 'off',
-        { and: [{ '!': { missing: ['device.id'] } }, { '==': [{ fractional: [{ cat: ['new_checkout/', { var: 'device.id' }] }, ['in', 2000], ['out', 8000]] }, 'in'] }] }, 'on',
+        { or: [missing('app.version'), { sem_ver: [{ var: 'app.version' }, '<', '5.0.0'] }] }, 'off',
+        { and: [
+          { or: [present('device.id'), present('targetingKey')] },
+          { '==': [{ fractional: [{ cat: ['new_checkout/', { if: [present('device.id'), { var: 'device.id' }, { var: 'targetingKey' }] }] }, ['in', 2000], ['out', 8000]] }, 'in'] },
+        ] }, 'on',
         null,
       ] },
     } },
   });
   // Wonka's own rule comes right after the override, and always applies
   assert.deepEqual(buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka).flags.new_checkout.targeting,
-    { if: [{ or: [{ missing: ['app.version'] }, { sem_ver: [{ var: 'app.version' }, '<', '5.0.0'] }] }, 'off', null] });
+    { if: [{ or: [missing('app.version'), { sem_ver: [{ var: 'app.version' }, '<', '5.0.0'] }] }, 'off', null] });
   assert.equal(buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka).flags.new_checkout.defaultVariant, 'on');
 });
 
@@ -170,6 +185,79 @@ test('devices on the edges of a %: the first bucket inside and the first outside
     assert.equal(ours(snap, 'f', 'server-ds', 'wonka', attrs).value, want.get(bucket), `bucket ${bucket}`);
   }
   assert.deepEqual([...found.values()], [8, 8, 8, 8], 'found devices for every edge');
+});
+
+const simpleRule = (r: Partial<Rule>): Rule => ({ ruleKey: 'k', name: null, locked: false, disabled: false, conditions: [], serveVariation: null, split: null, ...r });
+
+test('a context with only targetingKey: the device ID, in the same group as on the server (OFREP reads it so)', () => {
+  const f: FlagDef = {
+    key: 'f', valueType: 'string', kind: 'release', delivery: ['server-ds'], variations: { a: 'A', b: 'B' },
+    base: { version: 1, enabled: true, variationWhenOff: CODE_DEFAULT, defaultVariation: 'a', inherit: null, rules: [
+      simpleRule({ split: { by: 'device.id', fallbackBy: 'session.id', salt: 'tk', hashVersion: 2, ranges: [{ variation: 'b', from: 0, to: 5000 }] } }),
+    ] },
+    entities: {},
+  };
+  const snap = snapOf({ f });
+  const doc = buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka);
+  const seen = new Set<unknown>();
+  for (let i = 0; i < 400; i++) {
+    const want = bucketFor('tk', `tk-${i}`, 2) < 5000 ? 'B' : 'A';
+    for (const context of [{ targetingKey: `tk-${i}` }, { targetingKey: `tk-${i}`, session: { id: `s-${i}` } }, { device: { id: `tk-${i}` }, targetingKey: 'other' }]) {
+      assert.equal(flagdCore(doc, 'f', context).value, want, JSON.stringify(context));
+      assert.equal(flagdEvaluate(doc, 'f', context).value, want);
+    }
+    assert.equal(ours(snap, 'f', 'server-ds', 'wonka', { targetingKey: `tk-${i}` }).value, want);
+    seen.add(want);
+  }
+  assert.deepEqual([...seen].sort(), ['A', 'B'], 'both groups came up');
+  // no device ID and no targeting key: by the session
+  const bySession = bucketFor('tk', 's-1', 2) < 5000 ? 'B' : 'A';
+  assert.equal(flagdCore(doc, 'f', { session: { id: 's-1' } }).value, bySession);
+  assert.equal(flagdCore(doc, 'f', { targetingKey: '', session: { id: 's-1' } }).value, bySession, 'an empty targeting key is none');
+  assert.equal(flagdCore(doc, 'f', {}).value, 'A', 'nothing to bucket on: the % doesn’t apply');
+});
+
+test('versions in rules are written in full in the JSON, so strict semver readers take them', () => {
+  const f: FlagDef = {
+    key: 'f', valueType: 'string', kind: 'release', delivery: ['server-ds'], variations: { a: 'A', b: 'B' },
+    base: { version: 1, enabled: true, variationWhenOff: CODE_DEFAULT, defaultVariation: 'a', inherit: null, rules: [
+      simpleRule({ conditions: [{ field: 'app.version', op: 'semver_gte', values: ['6'] }, { field: 'app.version', op: 'semver_lt', values: ['v7.1-rc.1'] }], serveVariation: 'b' }),
+    ] },
+    entities: {},
+  };
+  const doc = buildFlagdDoc(snapOf({ f }), 'server-ds', ENTITIES.wonka);
+  const versions = JSON.stringify(doc.flags.f.targeting).match(/"sem_ver":\[\{"var":"app.version"\},"[<>=]+","[^"]+"\]/g);
+  assert.deepEqual(versions, ['"sem_ver":[{"var":"app.version"},">=","6.0.0"]', '"sem_ver":[{"var":"app.version"},"<","7.1.0-rc.1"]']);
+});
+
+test('versions flagd reads differently: what local-backends.md says', () => {
+  // an override for versions below 5, new for 6 and up, mid otherwise
+  const f: FlagDef = {
+    key: 'f', valueType: 'string', kind: 'release', delivery: ['server-ds'], variations: { old: 'old', mid: 'mid', new: 'new' },
+    base: { version: 1, enabled: true, variationWhenOff: CODE_DEFAULT, defaultVariation: 'mid', inherit: null, rules: [
+      simpleRule({ locked: true, conditions: [{ field: 'app.version', op: 'semver_lt', values: ['5.0.0'] }], serveVariation: 'old' }),
+      simpleRule({ conditions: [{ field: 'app.version', op: 'semver_gte', values: ['6.0.0'] }], serveVariation: 'new' }),
+    ] },
+    entities: {},
+  };
+  const snap = snapOf({ f });
+  const doc = buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka);
+  const both = (version: unknown) => ({
+    server: ours(snap, 'f', 'server-ds', 'wonka', { 'app.version': version }).value,
+    flagd: flagdCore(doc, 'f', { app: { version } }).value,
+  });
+  // read the same: full versions, short ones, v in front, a build part
+  for (const [v, want] of [['4.9.1', 'old'], ['5.2.0', 'mid'], ['6.0.0', 'new'], ['6', 'new'], ['4.9', 'old'], ['v6.0.0', 'new'], ['6.0.0+7', 'new'], ['6.0.0-rc.1', 'mid']]) {
+    assert.deepEqual(both(v), { server: want, flagd: want }, String(v));
+  }
+  // flagd can't read them, so no check on them matches there, an override's included; the server reads 6.1-beta
+  // and 01.0.0, and an override matches a version it can't read (abc)
+  assert.deepEqual(both('6.1-beta'), { server: 'new', flagd: 'mid' });
+  assert.deepEqual(both('01.0.0'), { server: 'old', flagd: 'mid' });
+  assert.deepEqual(both('abc'), { server: 'old', flagd: 'mid' });
+  // flagd reads them, the server doesn't: a number, a capital V
+  assert.deepEqual(both(6), { server: 'old', flagd: 'new' });
+  assert.deepEqual(both('V6.0.0'), { server: 'old', flagd: 'new' });
 });
 
 /** Every `fractional` in a flagd flag: its weights add up to 10000, as our buckets do. */

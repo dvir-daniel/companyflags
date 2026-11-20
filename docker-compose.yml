@@ -1,19 +1,21 @@
 # CompanyFlags with Postgres.
 #   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+#   echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
 #   docker compose up -d
 # then docker compose logs companyflags shows a setup link: open it to make the admin account. Settings: .env.example.
+# It listens on 127.0.0.1:8787 only: put your proxy in front, or set COMPANYFLAGS_BIND=0.0.0.0 in .env.
+# The release it runs: COMPANYFLAGS_VERSION in .env (0.8, 0.8.0, …), or the default below.
 services:
   companyflags:
-    image: ghcr.io/dvir-daniel/companyflags:latest
-    build: .
+    image: ghcr.io/dvir-daniel/companyflags:${COMPANYFLAGS_VERSION:-0.8}
     ports:
-      - "8787:8787"
-    # every setting in .env reaches the server (.env.example lists them); these two are set here
+      - "${COMPANYFLAGS_BIND:-127.0.0.1}:8787:8787"
+    # every setting in .env reaches the server (.env.example lists them); these three are set here
     env_file:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: postgres://companyflags:companyflags@postgres:5432/companyflags
+      DATABASE_URL: postgres://companyflags:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (openssl rand -hex 24)}@postgres:5432/companyflags
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (openssl rand -base64 32)}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8787}
     depends_on:
@@ -25,7 +27,8 @@ services:
     image: postgres:18-alpine
     environment:
       POSTGRES_USER: companyflags
-      POSTGRES_PASSWORD: companyflags
+      # used when the volume is new; to change it later, change it in Postgres too (ALTER USER)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (openssl rand -hex 24)}
       POSTGRES_DB: companyflags
     volumes:
       - postgres:/var/lib/postgresql

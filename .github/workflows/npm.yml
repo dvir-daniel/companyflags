@@ -1,5 +1,6 @@
 # A vX.Y.Z tag publishes the companyflags package to npm (packages/companyflags, built from the root's sources), after
-# it is built and tried the way a user would (smoke.sh). A tag with a "-" (v1.2.0-rc.1) publishes under "next".
+# CI (ci.yml) passes on the tagged commit and the package is built and tried the way a user would (smoke.sh). A tag
+# with a "-" (v1.2.0-rc.1) publishes under "next".
 #
 # Once, before the first tag (the maintainer):
 #   1. Make the package exist on npmjs.com: either publish 0.x by hand once (pnpm pack:npm, then
@@ -21,18 +22,25 @@ permissions:
   contents: read
 
 jobs:
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   publish:
     name: Publish companyflags
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write          # npm's trusted publishing (OIDC) and the provenance statement
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm

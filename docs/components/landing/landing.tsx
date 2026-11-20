@@ -19,6 +19,7 @@ const install = {
   Compose: [
     'curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml',
     'echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env',
+    'echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env',
     'docker compose up -d',
   ],
   Source: [

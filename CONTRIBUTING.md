@@ -15,6 +15,7 @@ gives you the right one).
 ```bash
 git clone https://github.com/dvir-daniel/companyflags.git
 cd companyflags
+corepack enable   # the pnpm version package.json names
 pnpm install
 pnpm dev          # the console on http://localhost:5173 with hot reload, the API on :8787 restarting on changes
 ```
@@ -22,11 +23,14 @@ pnpm dev          # the console on http://localhost:5173 with hot reload, the AP
 Data lives in `./data` (embedded Postgres, nothing to install); delete the folder to start over. `pnpm serve` builds
 the console and serves it with the API on http://localhost:8787, as in production.
 
+With `pnpm dev` the console isn't built, so it is on :5173 only: the setup link the server prints points there, and
+http://localhost:8787 itself just says where the console is.
+
 ## What's where
 
 | Path | What it is |
 |---|---|
-| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, CDN files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` is the type of `companyflags.config.ts` and `configFile.ts` reads it; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
+| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (`plugins/ofrep.ts` serves OFREP from `ofrep.ts`; `plugins/flagd.ts` and `plugins/cdnFiles.ts` serve flagd JSON, made by `flagd.ts`, through `delivery.ts`: backends' downloads and apps' CDN files; `plugins/cloudflare.ts` purges the CDN with `cdn.ts`); `config.ts` is the type of `companyflags.config.ts` and `configFile.ts` reads it; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
 | `web/` | The console: React 19, Vite, Tailwind 4 |
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
 | `packages/companyflags` | The npm package, built from `server/` and `web/dist` by `build.ts` (`pnpm pack:npm`; `pnpm test:npm` installs it and tries it). Not a workspace project: its version and dependencies are the root's |
@@ -61,8 +65,9 @@ CI runs all of these on every pull request.
 - **The schema only moves forward.** A schema change is the next numbered file in `server/migrations/`. Never edit a
   file a real database has applied: the server refuses to start if an applied file changed.
 - **No fixed business words.** Each installation names its own dimensions (customer, company › brand, region ›
-  store), so nothing a console user or rule author reads may say "customer", "tenant" or "brand" on its own.
-  `test/no-domain-words.test.ts` checks it; use the installation's words (`server/words.ts`, `web/src/dimWords.ts`).
+  store), so nothing a console user or rule author reads may say "customer", "company" or "brand" on its own.
+  `test/no-domain-words.test.ts` checks those three; use the installation's words (`server/words.ts`,
+  `web/src/dimWords.ts`). The generic word is "entity", never "tenant".
 - **Console files.** A `.tsx` file exports only components, so React Fast Refresh can swap it in place. Hooks, class
   strings and helpers go in a `.ts` file beside it (`uiKit.ts`, `pages/settingsKit.ts`).
 - **Plain words.** Console text and docs say what happens in short, plain sentences: "Production needs an approval",
@@ -73,12 +78,21 @@ CI runs all of these on every pull request.
 ## Pull requests
 
 - Keep each pull request to one change, with a title that says what changes for people using CompanyFlags.
+- Add your change to the "Unreleased" section of [CHANGELOG.md](CHANGELOG.md), in a sentence or two for people
+  using CompanyFlags.
 - Fill in the template: what changes, how you tested it.
 - A maintainer reviews within a few days. We may ask for changes; that's normal, not a rejection.
 
 ## Releases
 
-Maintainers release with a `vX.Y.Z` tag: it builds and publishes the Docker image
-(`ghcr.io/dvir-daniel/companyflags`), the npm package `companyflags` ([npm.yml](.github/workflows/npm.yml) says
-what to set up once), and a GitHub release with that version's notes from [CHANGELOG.md](CHANGELOG.md). Bump the
-version in both `package.json` and `packages/companyflags/package.json`. Add your change to the "Unreleased" section of CHANGELOG.md.
+Maintainers release with a `vX.Y.Z` tag. CI ([ci.yml](.github/workflows/ci.yml)) runs on the tagged commit first;
+only if it passes does the tag build and publish the Docker image (`ghcr.io/dvir-daniel/companyflags`, as `X.Y.Z`,
+`X.Y` and `latest`, with provenance and an SBOM), the npm package `companyflags`
+([npm.yml](.github/workflows/npm.yml) says what to set up once), and a GitHub release with that version's notes from
+[CHANGELOG.md](CHANGELOG.md).
+
+Before the tag: bump the version in both `package.json` and `packages/companyflags/package.json`, rename
+"Unreleased" in CHANGELOG.md to the version, and set the default of `COMPANYFLAGS_VERSION` in `docker-compose.yml`
+and `examples/flagd/docker-compose.yml` to the new `X.Y`.
+
+The workflows pin every action to a commit SHA, with its version in a comment; Dependabot proposes the updates.

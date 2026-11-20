@@ -4,12 +4,59 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+## 0.8.0 (2026-11-20)
+
+### Security
+
+- **An approved request serves only the values it was approved with.** A request records the value of every variant
+  it uses; changing one of them while the request is in review, approved or scheduled in a protected environment is
+  refused (422, from the console, `flags push` and import), and a value changed any other way stops the request as a
+  conflict instead of going out.
+- **Single sign-on creates accounts only at its connection's domains.** Someone invited at another domain must use
+  their invite link, which expires. Before, any connection could claim an invited person's account and role.
+- **The identity provider's address is checked by the connection that fetches it,** so a name can't answer a public
+  address to the check and a private one to the request (DNS rebinding). Its errors no longer repeat what the fetched
+  document says.
+
+### Reading flags
+
+- **The same % group everywhere.** flagd JSON (for backends and in the CDN file) buckets on `device.id`, then
+  `targetingKey`, then `session.id`, as OFREP and the server do.
+- **Full versions.** Rule versions like `6` or `6.0` are saved and written as `6.0.0`, so strict semver evaluators
+  read them. Devices should report full versions.
+- **Tested against OpenFeature's own flagd evaluator** (`@openfeature/flagd-core`), on random documents and contexts.
+  It found one difference, now fixed: empty and `null` values count as missing in both.
+- **No fatal error in OpenFeature's web provider.** An entity that doesn't exist or is outside the key's scope gets
+  `400 INVALID_CONTEXT`, the same answer either way; 401 and 403 are for bad credentials only.
+- **No stale answers with several servers.** A request with a newer `flagConfigEtag` makes the server catch up first,
+  every change event reaches its listeners, and the CDN is purged again shortly after a publish.
+- **Change-event streams have limits:** 10000 per environment and 100 per client address by default
+  (`FF_EVENT_STREAMS_PER_ENVIRONMENT`, `FF_EVENT_STREAMS_PER_CLIENT`), then `429`, and the provider falls back to
+  polling.
+
+### Console
+
+- **The entity picker picks by key** and shows each entity's parent, so two entities with the same name are told
+  apart. It searches by name and key and lists at most 50. The API key and parent pickers use it too.
+- **Clearing the % box keeps the rollout** instead of setting it to 0%; a share is saved only when it's valid.
+
+### Releases and running it
+
+- **Releases wait for CI** on the tagged commit; every GitHub Action is pinned to a commit; images come with
+  provenance and an SBOM.
+- **Docker Compose (breaking for existing setups):** the image is `${COMPANYFLAGS_VERSION:-0.8}` instead of `latest`,
+  `POSTGRES_PASSWORD` is required in `.env` (add `POSTGRES_PASSWORD=companyflags` to keep an existing database's
+  password), and the port is bound to `127.0.0.1` (`COMPANYFLAGS_BIND` to change it).
+- **`pnpm dev` on a fresh clone** prints the setup link at the console's address (:5173).
+
+### The CDN file, the docs site and the console's menus
+
 - **No more compatibility code; one name for each thing.** The CDN file's plugin is `cdnFiles()` (id `cdn-files`), at
   `/cdn/v1/flags/…`. Gone: `?flagSet=`, the `X-Customer-Id` header, the `customer.*` attributes and history kinds,
   the console's `#/customers` addresses, the "people from before accounts" path, hash version 1 on save, and the
   docs' redirect pages. Reading flags is described the same way in the docs, on the landing page and in the README.
 
-- **The CDN file is flagd JSON (breaking for apps that read it).** `/client/v1/flags/…` now answers with the same flagd
+- **The CDN file is flagd JSON (breaking for apps that read it).** The CDN file, now at `/cdn/v1/flags/…`, answers with the same flagd
   JSON backends get, made for the app service and the entity, so web apps and React Native read it with OpenFeature's
   `@openfeature/flagd-core` instead of code of your own. Off and code-default flags are now in it (the app's default
   still answers), % group names aren't (read them over OFREP), and the device's attributes are nested

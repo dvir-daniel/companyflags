@@ -7,8 +7,8 @@ import { ofrepApi } from '../ofrep.ts';
 
 export const ofrep = () => definePlugin({
   id: 'ofrep',
-  setup: ({ db, plane, keys, links, services, hub }) => ({
-    routes: ofrepApi({ db, plane, keys, links, apps: services, hub }),
+  setup: ({ db, plane, keys, links, services, hub, env }) => ({
+    routes: ofrepApi({ db, plane, keys, links, apps: services, hub, env }),
     prefixes: ['/ofrep'],
   }),
 });

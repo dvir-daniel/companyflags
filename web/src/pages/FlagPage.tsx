@@ -1,7 +1,7 @@
 // One flag on its own page, in the order it's checked: Overrides, then each entity's own settings, then the rules for everyone
 // and the default. Each layer is a list of "condition → value" rows; the first row that matches wins.
 import {
-  createContext, lazy, memo, Suspense, use, useCallback, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState,
+  createContext, lazy, memo, Suspense, use, useCallback, useDeferredValue, useEffect, useId, useImperativeHandle, useMemo, useRef, useState,
   type ReactNode, type Ref,
 } from 'react';
 import { ArrowLeftIcon, ArrowsClockwiseIcon, CaretDownIcon, CaretRightIcon, CaretUpIcon, CopyIcon, XIcon } from '@phosphor-icons/react';
@@ -36,6 +36,8 @@ import type { Section } from '../../../server/evaluator.ts';
 import { EntityPicker, DeliveryPanel, GetsText, PowerSwitch, ValueChip, ValueSelect, ValuesPanel } from './flagParts.tsx';
 import { useEnvs } from './envs.ts';
 import { readSchemaText, schemaText } from './flagTemplates.ts';
+import { percentText, readPercent } from './rolloutKit.ts';
+import { searchable, searchEntities } from './entityPickerKit.ts';
 import { firstMismatch } from '../../../server/jsonSchema.ts';
 import { ReviewDraft } from './draftReview.tsx';
 import { releaseState, stepText } from '../../../server/release.ts';
@@ -812,10 +814,8 @@ function AddOwnDialog({ flag, draft, existing, onClose, onExisting, onAdd, onNew
   const [picked, setPicked] = useState<string | null>(null);
   const [kind, setKind] = useState<'value' | 'conditions'>('value');
   const [value, setValue] = useState(flag.variations.find((v) => !isHidden(v.key))?.key ?? CODE_DEFAULT);
-  const matches = useMemo(() => {
-    const n = q.trim().toLowerCase();
-    return meta.entities.filter((c) => !n || c.name.toLowerCase().includes(n) || c.key.includes(n)).slice(0, 8);
-  }, [meta.entities, q]);
+  const found = useMemo(() => searchable(meta.entities, (e) => entityLabel(meta.entities, e.key)), [meta.entities]);
+  const matches = useMemo(() => searchEntities(found, q, 8).items, [found, q]);
   const ent = picked ? entityIndex(meta.entities).get(picked) : null;
   const who = entityWordsOf(meta.entities, picked);
   const baseGets = draft.fallback === CODE_DEFAULT ? 'the in-app default' : fmtValue(flag.variations.find((v) => v.key === draft.fallback)?.value ?? draft.fallback);
@@ -963,14 +963,12 @@ function CondEditor({ line, onChange, allowRollout, served, topSwitch, problem, 
   const settled = useMemo(() => (line.entity ? settledAt(meta.dimensions, meta.entities, line.entity) : null), [line.entity, meta.dimensions, meta.entities]);
   const set = (i: number, c: Condition) => onChange({ ...line, conditions: conditions.map((x, j) => (j === i ? sameRow(x, c) : x)) });
   const simpleSplit = line.split && line.split.ranges.length === 1 && line.split.ranges[0].from === 0;
-  const pct = simpleSplit ? +((line.split!.ranges[0].to) / 100).toFixed(2) : 0;
   const startRollout = (without: Condition[]) => onChange({ ...line, conditions: without, serveVariation: null,
     split: { by: 'device.id', fallbackBy: null, ranges: [{ variation: served ?? CODE_DEFAULT, from: 0, to: 1000 }] } });
   const stopRollout = (extra: Condition[] = []) => onChange({ ...line, split: null, serveVariation: served, conditions: [...conditions, ...extra] });
-  const setPct = (raw: string) => {
-    const p = Math.max(0, Math.min(100, Number(raw)));
-    if (!Number.isFinite(p) || !line.split) return;
-    onChange({ ...line, split: { ...line.split, ranges: [{ ...line.split.ranges[0], from: 0, to: Math.round(p * 100) }] } });
+  const setShare = (to: number) => {
+    if (!line.split) return;
+    onChange({ ...line, split: { ...line.split, ranges: [{ ...line.split.ranges[0], from: 0, to }] } });
   };
   // the attributes' groups, labels and known values come from server/fields.ts, through /meta
   const suggestions = (field: string) => suggestedValues(meta.fields.find((f) => f.name === field), {
@@ -1035,9 +1033,7 @@ function CondEditor({ line, onChange, allowRollout, served, topSwitch, problem, 
           <span className="flex min-h-8 items-center text-13 text-ink-3">Random, and each device keeps its answer</span>
           <div className="min-w-0 max-sm:col-span-2">
             {simpleSplit
-              ? <span className="flex items-center gap-2 text-13 text-ink-2">
-                  <input type="number" min={0} max={100} step={1} aria-label="Percent of devices" value={pct} onChange={(e) => setPct(e.target.value)} className={cn(dense, 'w-24 font-mono')} />%
-                </span>
+              ? <PercentBox to={line.split.ranges[0].to} onChange={setShare} className={dense} />
               : <span className="flex min-h-8 items-center text-13 text-ink-3">Split across several values</span>}
           </div>
           {remove('Remove rollout', () => stopRollout())}
@@ -1052,6 +1048,36 @@ function CondEditor({ line, onChange, allowRollout, served, topSwitch, problem, 
         <Button variant="secondary" onClick={onDone}>Done</Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The % box of a rollout. What's typed stays as typed; a valid share (0 to 100, at most two decimals) is saved as it's
+ * typed. Leaving the box puts back the last share when it's empty, and marks anything else that isn't one.
+ */
+function PercentBox({ to, onChange, className }: { to: number; onChange: (to: number) => void; className: string }) {
+  // what's typed, for the share it shows (another share, saved or swapped in, shows itself); `error`: left as it is
+  const [typed, setTyped] = useState<{ text: string; for: number; error?: string } | null>(null);
+  const mine = typed && typed.for === to ? typed : null;
+  const text = mine ? mine.text : percentText(to);
+  const errorId = useId();
+  return (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span className="flex items-center gap-2 text-13 text-ink-2">
+        <input type="text" inputMode="decimal" aria-label="Percent of devices" value={text} className={cn(className, 'w-24 font-mono')}
+          aria-invalid={!!mine?.error || undefined} aria-describedby={mine?.error ? errorId : undefined}
+          onChange={(e) => {
+            const t = e.target.value;
+            const r = readPercent(t);
+            if (r.ok && r.to !== null && r.to !== to) { setTyped({ text: t, for: r.to }); onChange(r.to); } else setTyped({ text: t, for: to });
+          }}
+          onBlur={() => {
+            const r = readPercent(text);
+            setTyped(r.ok ? null : { text, for: to, error: r.error });
+          }} />%
+      </span>
+      {mine?.error && <span id={errorId} className="text-13 text-live">{mine.error}</span>}
+    </span>
   );
 }
 

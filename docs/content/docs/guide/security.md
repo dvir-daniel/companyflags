@@ -186,7 +186,11 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
   or what your own proxies say (`FF_TRUSTED_PROXIES`), never a header a client sets itself;
 - SAML answers must be signed, are checked against the request they answer, and work once; OIDC uses PKCE;
 - adding an OIDC connection won't read an issuer on a private or loopback address unless an admin trusted its origin
-  (`BETTER_AUTH_TRUSTED_ORIGINS`), so it can't be used to look around your network;
+  (`BETTER_AUTH_TRUSTED_ORIGINS`), so it can't be used to look around your network. The address is checked as the
+  connection is made (so DNS rebinding can't get past it), redirects aren't followed, and errors never repeat what
+  the address answered;
+- single sign-on makes accounts only for emails at the connection's domains. Someone an admin added at another
+  domain joins with their invite link, so one connection can't claim an account, or its role, elsewhere;
 - password accounts are made only from an admin's invite link for that email, or as the first account;
 - **the first account is the admin's, made only with the setup link** the server prints while nobody has an
   account. Until then nobody else joins, however they sign in. See
@@ -206,7 +210,9 @@ sends no CORS headers, so no other site gets that permission.
 
 - An environment with **approvals needed** above 0 is protected: a change there is a request, and it applies only
   after that many approvals. Nobody approves their own request, and an approval is recorded against the request's
-  exact content. A request can't be edited: to change it, its author withdraws it and sends a new one.
+  exact content, the values of the variants it serves included. A request can't be edited: to change it, its author
+  withdraws it and sends a new one. While a request waits, nobody can change a value it uses, and if one changes
+  anyway, the request ends as a conflict instead of serving it.
 - **Break-glass** (on call and admins): turn a kill switch or ops flag off, or roll a version release back, without
   review. It needs a reason, and History keeps it.
 - **History is append-only.** Database triggers refuse to update, delete or truncate it, whatever the server does.

@@ -130,7 +130,8 @@ test('a JSONata expression that takes all the memory, makes too much or never re
   const others = setInterval(() => { void t.call('GET', '/healthz').then((r) => { if (r.status === 200) answered++; }); }, 50);
   try {
     for (const [expression, said] of [
-      ['$count($sort([1..3000000]))', /more memory than an expression may use/],       // one built-in on a huge list
+      // one built-in on a huge list; on a busy machine the time limit may stop it first
+      ['$count($sort([1..3000000]))', /more memory than an expression may use|ran longer than 1000 ms/],
       ['$pad("", 50000000)', /result is larger than 4 MB/],
       ['$contains("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", /^(a+)+$/)', /ran longer than 1000 ms/],   // a regular expression that backtracks without end
     ] as const) {

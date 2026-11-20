@@ -117,7 +117,9 @@ test('who may join an install in use: invites, signup domains, single sign-on, r
     ['single sign-on at the connection’s domain', sso('pat@corp.example'), null],
     ['single sign-on at a subdomain of it', sso('lou@eu.corp.example'), null],
     ['single sign-on, an email outside its domains', sso('x@elsewhere.example'), 'invite_required'],
-    ['single sign-on, an email an admin added', sso('pal@partner.example'), null],
+    // a connection vouches for its own domains only: someone an admin added elsewhere joins with their invite link
+    ['single sign-on, an email an admin added at another domain', sso('pal@partner.example'), 'invite_required'],
+    ['single sign-on, an invite expired at another domain', sso('old@corp.com'), 'invite_required'],
     ['single sign-on with a connection that isn’t there', sso('pat@corp.example', 'gone'), 'invite_required'],
 
     ['removed: a password account', password('rem@corp.example'), 'access_removed'],

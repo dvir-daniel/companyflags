@@ -165,6 +165,13 @@ export async function createApp(opts: AppOptions = {}) {
     app.use('/assets/*', async (c, next) => { await next(); c.header('Cache-Control', 'public, max-age=31536000, immutable'); });
     app.use('/*', serveStatic({ root: dist }));
     app.get('*', page);
+  } else {
+    // A clone where the console isn't built (pnpm dev serves it with Vite instead): the server's own address says
+    // where the console is, rather than a bare 404. The setup link lands here too when it's opened on this port.
+    app.get('/', (c) => {
+      c.header('Cache-Control', 'no-store');
+      return c.html(CONSOLE_NOT_BUILT, 404);
+    });
   }
   built = app;
   return { app, db, plane, hub, workers, identity, plugins: [...on], setupToken, needsSetup: () => access.needsSetup() };
@@ -254,6 +261,15 @@ function portFree(port: number, host: string) {
   });
 }
 
+/** Where `pnpm dev` serves the console (vite.config.ts), when web/dist isn't built. */
+export const DEV_CONSOLE = 'http://localhost:5173';
+
+/** The server's `/` when web/dist isn't built: a clone running `pnpm dev`, or the server started before `pnpm build`. */
+const CONSOLE_NOT_BUILT = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Console not built · CompanyFlags</title>
+<body style="font: 15px/1.6 system-ui, sans-serif; max-width: 34rem; margin: 15vh auto; padding: 0 16px">
+<p><b>The console isn’t built here.</b> This is the API. With <code>pnpm dev</code>, the console is at <a href="${DEV_CONSOLE}">${DEV_CONSOLE}</a>.</p>
+<p>To serve the console on this port too, run <code>pnpm serve</code> (or <code>pnpm build</code>, then start the server again).</p></body>`;
+
 /** Addresses only this machine can reach. */
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -280,6 +296,10 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
     .catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError || e instanceof AppearanceError ? fail(e.message) : Promise.reject(e)));
   log(`plugins: ${ctx.plugins.join(', ') || 'none'}`);
   const local = `http://${host === '0.0.0.0' || host === '::' ? 'localhost' : host}:${port}`;
+  // without web/dist (a clone running pnpm dev), the console is Vite's, which passes /api on to this server
+  const consoleBuilt = existsSync(CONSOLE_FOLDER);
+  if (!consoleBuilt) log(`the console isn’t built (web/dist): pnpm dev serves it on ${DEV_CONSOLE}; pnpm serve builds it and serves it on ${local}`);
+  const consoleAddress = (signIn.kind === 'better-auth' && signIn.settings.baseURL?.replace(/\/+$/, '')) || (consoleBuilt ? local : DEV_CONSOLE);
   if (signIn.kind === 'better-auth') {
     const settings = signIn.settings;
     const ways = ['email and password', ...(['google', 'github', 'microsoft'] as const).filter((p) => settings[p])];
@@ -292,7 +312,7 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
     log(`CompanyFlags on ${local}`);
     // a new server: the admin account is made with this link, so whoever reaches the server first can't make it
     void ctx.needsSetup().then((needed) => {
-      if (needed && ctx.setupToken) log(`nobody has an account yet: make the admin account at ${(signIn.kind === 'better-auth' && signIn.settings.baseURL?.replace(/\/+$/, '')) || local}/api/setup/${ctx.setupToken}`);
+      if (needed && ctx.setupToken) log(`nobody has an account yet: make the admin account at ${consoleAddress}/api/setup/${ctx.setupToken}`);
     }).catch(() => {});
   });
   server.on('error', (e: NodeJS.ErrnoException) => fail(e.code === 'EADDRINUSE' ? `port ${port} was taken while starting` : e.message));

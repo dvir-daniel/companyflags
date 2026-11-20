@@ -6,7 +6,10 @@ last ETag, and usually gets a `304`. Your backends then evaluate in memory, with
 
 ## Run it
 
-1. Start CompanyFlags:
+1. Free port 8787. If the quickstart's CompanyFlags still runs, stop it: `docker rm -f companyflags` (from
+   `docker run`), or `docker compose down` in its folder. Stop `pnpm dev` or `pnpm serve` too.
+
+2. Start CompanyFlags, from the repo's root:
 
    ```bash
    cd examples/flagd
@@ -15,21 +18,27 @@ last ETag, and usually gets a `304`. Your backends then evaluate in memory, with
    docker compose logs companyflags     # the setup link
    ```
 
-2. Open the setup link, make the admin account and an access token, and run the seed from the repo's root. See
-   [the examples' README](../README.md):
+3. Open the setup link and make the admin account. Then make an access token for the seed: your name at the foot of
+   the sidebar → **Access tokens** → **+ New token**, with the role **Admin**. Copy it: it is shown once.
+
+4. Run the seed. It is in `examples/`, so go back to the repo's root first:
 
    ```bash
+   cd ../..
    FLAGS_URL=http://localhost:8787 FLAGS_TOKEN=cfp_… node examples/seed.ts
+   cd examples/flagd
    ```
 
-3. Add the `api` service's key to `.env`, beside the secret, and start flagd:
+   It prints a key for the `web` service and one for the `api` service. See [the examples' README](../README.md).
+
+5. Add the `api` service's key to `.env`, beside the secret, and start flagd:
 
    ```bash
    echo "FLAGS_API_KEY=ff_dev_api_…" >> .env
    docker compose up -d flagd
    ```
 
-4. Ask flagd. It speaks OFREP too, on port 8016:
+6. Ask flagd. It speaks OFREP too, on port 8016:
 
    ```bash
    curl -X POST http://localhost:8016/ofrep/v1/evaluate/flags/max_upload_mb \
@@ -55,4 +64,4 @@ const limit = await OpenFeature.getClient().getNumberValue('max_upload_mb', 100)
 Port 8015 is flagd's sync stream (the provider evaluates in-process), 8013 its gRPC evaluation.
 
 The flagd version is pinned (`v0.18.2`): flagd has changed its `%` hash before, so check an upgrade against
-[Backends](https://dvir-daniel.github.io/companyflags/guide/backends) first. `docker compose down -v` removes it all.
+[Local evaluation in backends](https://dvir-daniel.github.io/companyflags/reading/local-backends) first. `docker compose down -v` removes it all.

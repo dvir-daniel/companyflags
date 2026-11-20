@@ -5,7 +5,9 @@
 import { randomBytes } from 'node:crypto';
 import { all, HttpError, one, type Db, type Tx } from './db.ts';
 import { KEY_SCOPES, newApiKey, type KeyScope } from './auth.ts';
-import { canonical, createChangeSet, deliveredTo, flagSetupProblems, normalizeLayer, projectIds, writeLayer, type Actor, type LayerDoc } from './layers.ts';
+import {
+  canonical, createChangeSet, deliveredTo, flagSetupProblems, normalizeLayer, projectIds, variantsUsed, writeLayer, type Actor, type LayerDoc,
+} from './layers.ts';
 import { audit, change, changeEverywhere, type Env } from './journal.ts';
 import { CODE_DEFAULT, HIDDEN_PREFIX, hiddenKey } from './evaluator.ts';
 import { needsRemoveBy, cleanTags, flagNameProblem, isVersionFlag, reservedKeyProblem } from './checks.ts';
@@ -162,9 +164,13 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
 
 // Adds variants, or changes the value of existing ones. A value served in a protected environment (as a default, by a
 // rule or by a % of devices) can't be changed here, since that would change what the environment serves without a
-// review: add a new value and point the rules at it (that change is reviewed). A flag with free values only takes typed
-// values (hidden variants). A new typed value changes nothing anyone gets until a rule serves it, so it makes no new
-// version and no history entry: the save that serves it does (each publish builds its snapshot from the database).
+// review: add a new value and point the rules at it (that change is reviewed). Nor can a value that a request there
+// waiting to go out (in review, approved or scheduled) uses: its reviewers approved the values they saw (and applying
+// it checks them again, layers.ts applyItemsIn). Every way to change variants comes here: the console, flags push
+// (flagsAsCode.ts), imports and incoming webhooks (values.ts, which only add variants). A flag with free values only
+// takes typed values (hidden variants). A new typed value changes nothing anyone gets until a rule serves it, so it
+// makes no new version and no history entry: the save that serves it does (each publish builds its snapshot from the
+// database).
 export async function upsertVariations(db: Db, flagKey: string, variations: { key: string; value: unknown }[], actor: Actor) {
   if (!Array.isArray(variations)) throw new HttpError(422, 'variations: a list of { key, value }');
   return db.transaction(async (tx) => {
@@ -192,6 +198,20 @@ export async function upsertVariations(db: Db, flagKey: string, variations: { ke
       if (served) {
         throw new HttpError(409, `${served.variant} is served in ${served.env}, which needs approval: add a new value and point the rules at it`,
           { variant: served.variant, environment: served.env });
+      }
+      const waiting = await all<{ id: string; env: string; proposed: { doc?: LayerDoc | null; values?: Record<string, unknown> } }>(tx,
+        `select cs.id, e.key as env, i.proposed from change_set cs join change_set_item i on i.change_set_id = cs.id
+          join environment e on e.id = cs.environment_id
+        where i.flag_id = $1 and i.kind = 'layer' and cs.status in ('in_review', 'approved', 'scheduled') and cs.environment_id = any($2::int[])
+        order by cs.id, i.seq`, [f.id, reviewed]);
+      for (const w of waiting) {
+        const used = new Set([...Object.keys(w.proposed.values ?? {}), ...variantsUsed(w.proposed.doc)]);
+        const variant = changing.find((k) => used.has(k));
+        if (variant) {
+          const shown = valueName(before.find((v) => v.key === variant) ?? { key: variant, value: null });
+          throw new HttpError(422, `${shown} is in request #${w.id} in ${w.env}, which is waiting to go out: add a new value, `
+            + 'or change this one once that request is applied, rejected or withdrawn', { variant, environment: w.env, changeSetId: Number(w.id) });
+        }
       }
     }
     for (const v of variations) {

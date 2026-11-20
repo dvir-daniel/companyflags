@@ -16,7 +16,8 @@ description: "Backends ask the server for each evaluation with OpenFeature’s O
 | `all` | any entity, for a backend shared by all of them |
 
 The key is shown once. It looks like `ff_prod_api_…`: one environment, one service. Send it as
-`Authorization: Bearer <key>`. A request about an entity outside the key's scope gets `403`.
+`Authorization: Bearer <key>`. A request about an entity outside the key's scope gets `400 INVALID_CONTEXT`, the
+same answer as for an entity that doesn't exist.
 
 A backend service's key is secret. A request that carries one and an `Origin` header, which browsers send, gets
 `403`: a backend's key in a web page doesn't work. Apps use their app service's own key, which is public

@@ -54,8 +54,9 @@ without a deploy. See [Flags in the age of AI](https://dvir-daniel.github.io/com
   inherited down the chain. Locked rules apply to everyone, always. The console traces every answer step by step.
 - **OpenFeature, no SDK of ours.** Two OpenFeature standards: OFREP when the server decides, and flagd JSON when your
   app or backend decides itself (an app's file cached by your CDN). Your flag-reading code stays standard.
-- **Nothing private reaches a device.** An app reads with its service's public key and gets values only: no rules,
-  no lists of entities. A signed app link from your backend keeps it to its own entity's values.
+- **Nothing private reaches a device.** An app reads with its service's public key. Over OFREP it gets values only;
+  its CDN file holds no list of entities and no rule about another entity, only the checks the device makes itself
+  (app version, platform, % group). A signed app link from your backend keeps it to its own entity's values.
 - **Made for AI-written code and AI features.** AI-built changes ship off, then to a few, with a kill switch and a
   remove-by date; models, prompts and parameters are JSON flags you roll out per % or per customer, and roll back in
   seconds. Agents keep flags in `flags.json` with the code; turning one on in production still needs an approval.
@@ -92,9 +93,13 @@ For production, run it with Postgres:
 ```bash
 curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
 docker compose up -d
 docker compose logs companyflags   # the setup link
 ```
+
+It runs the latest release (set `COMPANYFLAGS_VERSION` in `.env` to pin another) and answers on `127.0.0.1:8787`
+only, for a proxy in front of it. See [Docker](https://dvir-daniel.github.io/companyflags/self-hosting/docker).
 
 Or from npm (Node.js 22.18+), in a folder of its own:
 
@@ -123,11 +128,15 @@ or a backend, and does the server decide (OFREP) or your code (flagd JSON)?
 | **Backend** | OpenFeature's OFREP server providers | flagd: the entity's rules, in memory |
 
 Most apps start with OFREP. Make the service's key on the **API keys** page and give it to OpenFeature's own OFREP
-provider. An app service's key is public, and reads values only:
+provider. An app service's key is public, and over OFREP it reads values only:
 
 ```ts
 import { OpenFeature } from '@openfeature/web-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
+
+// one id per install, kept on the device: % rollouts give each device the same answer every time
+const installId = localStorage.getItem('installId') ?? crypto.randomUUID();
+localStorage.setItem('installId', installId);
 
 await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' } });
 await OpenFeature.setProviderAndWait(new OFREPWebProvider({
@@ -142,7 +151,17 @@ A backend service's key is secret, and a browser can't use one. A backend names 
 rules do:
 
 ```ts
-const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme', targetingKey: userId });
+import { OpenFeature } from '@openfeature/server-sdk';
+import { OFREPProvider } from '@openfeature/ofrep-provider';
+
+await OpenFeature.setProviderAndWait(new OFREPProvider({
+  baseUrl: 'https://flags.example.com',
+  headers: [['Authorization', `Bearer ${process.env.FLAGS_API_KEY}`]],   // the api service's key (secret)
+}));
+const client = OpenFeature.getClient();
+
+// per request: the entity (by its dimension) and who is asking
+const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme', targetingKey: 'user-1' });
 ```
 
 Or it runs [flagd](https://flagd.dev) next to it, which downloads the entity's rules as flagd JSON, and evaluates every

@@ -20,7 +20,12 @@ import type { Actor } from './layers.ts';
 import { contextFor, evaluate, sortedFlagKeys, UnknownEntityError, type EvalResult, type Snapshot } from './evaluator.ts';
 
 /** What each environment serves now, one snapshot per environment. A snapshot never changes once built. */
-export type Snapshots = { readonly snapshots: ReadonlyMap<string, Snapshot> };
+export type Snapshots = {
+  readonly snapshots: ReadonlyMap<string, Snapshot>;
+  /** @internal, for the built-in plugins: rebuild an environment's snapshot from the database, for a reader that knows
+   *  this server is behind (OFREP's flagConfigEtag, ofrep.ts). The workers tell the others listening (workers.ts). */
+  refresh?(db: Db, environment: string): Promise<Snapshot>;
+};
 
 /** Who asks the evaluator: a service, the entity (none: what everyone gets before sign-in), and what the device or
  *  request says about itself, flat ("app.version", "device.id"). Only the attributes an app may report are used. */

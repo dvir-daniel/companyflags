@@ -191,6 +191,65 @@ test('variant values: new ones and unused ones change at once (audited, republis
   assert.equal((await t.as('alice').put('/flags/new_checkout/variations', { variations: [{ key: 'on', value: false }] })).status, 409);
 });
 
+// A request's reviewers approve the values its variants have: an editor can't change one afterwards, and if one changes
+// anyway (an older server, the database by hand), applying the request is a conflict, not the new value served.
+test('a variant a request waiting to go out uses can’t change: not in the console, by flags push or by an import', async () => {
+  // a new variant nothing serves yet, and a request in production that serves it
+  assert.equal((await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'bump', value: 200 }] })).status, 200);
+  const id = await request({ edit: (l) => ({ ...l, defaultVariation: 'bump' }) });
+  const words = `bump is in request #${id} in prod, which is waiting to go out: add a new value, or change this one once that request is applied, rejected or withdrawn`;
+  const refused = async (when: string) => {
+    const r = await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'bump', value: 999999 }] });
+    assert.equal(r.status, 422, when);
+    assert.equal(r.json.error, words, when);
+    const file = (await t.as('alice').get('/flags-as-code')).json;
+    file.flags.max_upload_mb.variants.bump = 999999;
+    const pushed = await t.as('alice').post('/flags-as-code/push', file);
+    assert.equal(pushed.status, 422, `flags push, ${when}`);
+    assert.ok(pushed.json.error.endsWith(words), pushed.json.error);
+    const imported = await t.as('dana').post('/migration/import', { environment: 'dev', format: 'values', input: { flags: { max_upload_mb: { variants: { bump: 999999 } } } } });
+    assert.equal(imported.status, 422, `an import, ${when}: it only adds variants`);
+  };
+  await refused('in review');
+  await review('bob', id);
+  assert.equal(await status(id), 'approved');
+  await refused('approved');
+  assert.equal((await t.as('alice').post(`/change-sets/${id}/schedule`, { at: new Date(Date.now() + 3_600_000).toISOString() })).status, 200);
+  await refused('scheduled');
+  assert.equal((await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'bump', value: 200 }] })).status, 200, 'the same value is no change');
+
+  // once it is cancelled, nothing waiting uses it, and nothing in production serves it: it changes at once
+  assert.equal((await t.as('alice').post(`/change-sets/${id}/cancel`)).status, 200);
+  assert.equal((await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'bump', value: 250 }] })).status, 200);
+});
+
+test('an approved request whose variant’s value changed since is a conflict when applied: production keeps serving what it did', async () => {
+  assert.equal((await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'bump2', value: 200 }] })).status, 200);
+  const id = await request({ edit: (l) => ({ ...l, defaultVariation: 'bump2' }) });
+  assert.equal((await review('bob', id)).json.status, 'approved');
+  // the value changes behind the request's back (not through the API: that is refused)
+  await t.db.query(`update flag_variation set value = '999999' where key = 'bump2' and flag_id = (select id from flag where key = 'max_upload_mb')`);
+  const applied = await t.as('alice').post(`/change-sets/${id}/apply`);
+  assert.equal(applied.status, 409, JSON.stringify(applied.json));
+  assert.equal(applied.json.error, 'The value of max_upload_mb’s variant bump2 changed after this request was made: send a new request');
+  const cs = (await t.as('alice').get(`/change-sets/${id}`)).json;
+  assert.deepEqual([cs.status, cs.lastError], ['conflict', applied.json.error]);
+  await t.settle();
+  assert.equal(t.plane.get('prod').flags.max_upload_mb.base?.defaultVariation, 'standard', 'production still serves what it did');
+
+  // the value back as it was approved: a new request with the same change goes out
+  await t.db.query(`update flag_variation set value = '200' where key = 'bump2' and flag_id = (select id from flag where key = 'max_upload_mb')`);
+  const again = await request({ edit: (l) => ({ ...l, defaultVariation: 'bump2' }) });
+  await review('bob', again);
+  assert.equal((await t.as('alice').post(`/change-sets/${again}/apply`)).status, 200);
+  await t.settle();
+  assert.deepEqual([t.plane.get('prod').flags.max_upload_mb.base?.defaultVariation, t.plane.get('prod').flags.max_upload_mb.variations.bump2], ['bump2', 200]);
+  // put production back as the other tests expect it
+  const back = await request({ edit: (l) => ({ ...l, defaultVariation: 'standard' }) });
+  await review('bob', back);
+  assert.equal((await t.as('alice').post(`/change-sets/${back}/apply`)).status, 200);
+});
+
 test('which apps get a flag: at once in development; a request in production, checked against what it was', async () => {
   const dev = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', projects: ['android', 'ios'] });
   assert.equal(dev.status, 200, JSON.stringify(dev.json));

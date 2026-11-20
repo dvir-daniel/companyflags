@@ -15,6 +15,7 @@ docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \
 ```bash tab="Docker Compose"
 curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
 docker compose up -d
 ```
 
@@ -31,7 +32,8 @@ pnpm serve               # builds the console and serves it on http://localhost:
 ```
 
 
-Docker keeps the data in the `companyflags` volume; Compose runs Postgres beside it; npx keeps it in `./data`. See [Docker](/self-hosting/docker).
+Docker keeps the data in the `companyflags` volume; Compose runs Postgres beside it, and answers on
+`127.0.0.1:8787` only; npx keeps it in `./data`. See [Docker](/self-hosting/docker).
 
 ## 2. Set it up
 

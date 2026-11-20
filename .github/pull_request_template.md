@@ -9,5 +9,6 @@
 ## Checklist
 
 - [ ] `pnpm check` passes (types, lint and tests).
+- [ ] The change is in the "Unreleased" section of `CHANGELOG.md`.
 - [ ] A schema change is a new file in `server/migrations/`; no applied migration was edited.
 - [ ] Docs in `docs/` say what changed for users.

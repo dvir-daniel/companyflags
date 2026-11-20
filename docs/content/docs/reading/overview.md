@@ -30,7 +30,8 @@ All four give the same answers: the server's tests compare each one with the ser
 
 ## What each gets
 
-- **An app** gets values only, never the rules or a list of your entities. Its key is public: it goes in the app.
+- **An app** gets values only over OFREP. Its CDN file holds no list of entities and no rule about another entity,
+  only the checks the device makes itself (app version, platform, % group). Its key is public: it goes in the app.
 - **A backend** gets the rules too, for local evaluation. Its key is secret: a request with a backend's key from a
   browser is refused.
 

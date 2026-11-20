@@ -26,6 +26,7 @@ import { useEnvs } from './envs.ts';
 import { useDraftSession } from '../useDraft.ts';
 import { roleInfo } from '../../../server/policy.ts';
 import { EnvTile } from './flagHeader.tsx';
+import { EntityPicker } from './flagParts.tsx';
 import { HowItWorks } from '../howItWorks.tsx';
 import {
   cellButton, followsFrom, isMine, kindName, MD, selectedRow, tag, toTop, typeName, useLast,
@@ -78,7 +79,6 @@ export function EntityDialog({ dimension, entity, onClose }: { dimension: Dimens
   const { busy, error, run } = useAsync();
   const keyError = !entity && key ? entityKeyProblem(key) : null;
   const up = dimAbove(meta.dimensions, dimension.key);
-  const parents = up ? meta.entities.filter((e) => e.dimension === up.key) : [];
   const byKey = entityIndex(meta.entities);
   const parentChanged = (entity?.parent ?? '') !== parent;
   const save = async () => {
@@ -122,10 +122,7 @@ export function EntityDialog({ dimension, entity, onClose }: { dimension: Dimens
       </Field>
       {up && (
         <Field label={capital(up.singular)} hint={`Where it has no settings of its own on a flag, it gets what its ${one(up)} gets.${entity ? ' Moving it changes what it, and everything under it, gets.' : ''}`}>
-          <NativeSelect className="w-full [&_select]:h-[34px] [&_select]:text-13" value={parent} onChange={(e) => setParent(e.target.value)}>
-            <option value="">None</option>
-            {parents.map((c) => <option key={c.key} value={c.key}>{c.name}</option>)}
-          </NativeSelect>
+          <EntityPicker value={parent} onChange={setParent} dimension={up.key} allowNone placeholder="None" className="h-[34px]" />
         </Field>
       )}
       <ErrorList error={error} />

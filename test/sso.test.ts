@@ -9,7 +9,8 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { exportJWK, generateKeyPair, SignJWT, type CryptoKey } from 'jose';
 import * as samlify from 'samlify';
-import { isPublicAddress, readIdpMetadata } from '../server/sso.ts';
+import type { lookup as dnsLookup } from 'node:dns';
+import { discoverOverHttp, isPublicAddress, readIdpMetadata } from '../server/sso.ts';
 import type { AppOptions } from '../server/index.ts';
 import { browser, startApp } from './helpers.ts';
 
@@ -169,16 +170,34 @@ describe('OIDC, start to finish (in order)', () => {
     assert.ok(rows.length > 0 && rows.every((r) => !r.access_token || !r.access_token.startsWith('at-')), JSON.stringify(rows));
   });
 
-  test('the provider can’t sign in emails outside its domains, unless an admin added them', async () => {
+  test('the provider can’t sign in emails outside its domains, even someone an admin added: they join with their invite link', async () => {
     const outsider = await signInWithSso('pat@corp.example', { sub: 'u-x', email: 'x@elsewhere.example', name: 'X' });
     assert.match(outsider.location, /error=invite_required/);
     assert.equal(outsider.cookie.includes('session_token'), false);
     assert.equal((await ctx.db.query(`select 1 from auth_user where email = 'x@elsewhere.example'`)).rows.length, 0);
 
-    assert.equal((await call('POST', '/api/people', { cookie: await app.admin(), body: { email: 'x@elsewhere.example', role: 'editor' } })).status, 201);
-    const added = await signInWithSso('pat@corp.example', { sub: 'u-x', email: 'x@elsewhere.example', name: 'X' });
-    const m = (await meta(added.cookie)).json.me;
-    assert.deepEqual([m.key, m.role], ['x@elsewhere.example', 'editor'], 'with the role the admin chose');
+    // an admin added them, as an admin: the connection still doesn't vouch for an email at another domain
+    const { invite } = (await call('POST', '/api/people', { cookie: await app.admin(), body: { email: 'x@elsewhere.example', role: 'admin' } })).json;
+    const claimed = await signInWithSso('pat@corp.example', { sub: 'u-x', email: 'x@elsewhere.example', name: 'X' });
+    assert.match(claimed.location, /error=invite_required/);
+    assert.equal(claimed.cookie.includes('session_token'), false, 'no session');
+    assert.equal((await ctx.db.query(`select 1 from auth_user where email = 'x@elsewhere.example'`)).rows.length, 0, 'no account');
+    const people = (await meta(await app.admin())).json.users as { key: string; status: string }[];
+    assert.equal(people.find((p) => p.key === 'x@elsewhere.example')?.status, 'invited', 'their invite is still theirs to use');
+
+    // their invite link works, and they have the role the admin chose
+    const joined = await call('POST', '/api/auth/sign-up/email', { headers: { 'x-invite': invite }, body: { email: 'x@elsewhere.example', name: 'X', password: PASSWORD } });
+    assert.equal(joined.status, 200, JSON.stringify(joined.json));
+    const m = (await meta(joined.cookie)).json.me;
+    assert.deepEqual([m.key, m.role], ['x@elsewhere.example', 'admin'], 'with the role the admin chose');
+  });
+
+  test('an expired invite doesn’t let the provider in at another domain either', async () => {
+    assert.equal((await call('POST', '/api/people', { cookie: await app.admin(), body: { email: 'old@elsewhere.example', role: 'editor' } })).status, 201);
+    await ctx.db.query(`update app_user set invite_expires_at = now() - interval '1 day' where key = 'old@elsewhere.example'`);
+    const late = await signInWithSso('pat@corp.example', { sub: 'u-old', email: 'old@elsewhere.example', name: 'Old' });
+    assert.match(late.location, /error=invite_required/);
+    assert.equal((await ctx.db.query(`select 1 from auth_user where email = 'old@elsewhere.example'`)).rows.length, 0);
   });
 
   test('an existing password account at the domain signs in with the provider as the same person', async () => {
@@ -277,6 +296,26 @@ test('the issuer must be on the public internet unless trusted; what went wrong 
   assert.deepEqual((await call('GET', '/api/sso', { cookie })).json.connections, [], 'nothing was added');
 });
 
+test('the issuer’s address is checked by the connection’s own lookup: a name can’t answer public, then private (DNS rebinding)', async () => {
+  // a name that resolves to a public address the first time it is asked, and to this machine (the fake provider) after
+  let asked = 0;
+  const rebinding = ((_host: string, _o: unknown, cb: (e: Error | null, a: { address: string; family: number }[]) => void) => {
+    asked++;
+    cb(null, [{ address: asked === 1 ? '93.184.215.14' : '127.0.0.1', family: 4 }]);
+  }) as unknown as typeof dnsLookup;
+  const read = discoverOverHttp([], { lookup: rebinding, timeoutMs: 500 });
+  const port = new URL(IDP).port;
+  const got = await read(`http://rebind.acme.example:${port}/.well-known/openid-configuration`).then((d) => d, (e: Error) => e);
+  assert.ok(got instanceof Error, `the private address was never reached (got ${JSON.stringify(got)})`);
+  assert.equal(asked, 1, 'resolved once, by the connection itself: what was checked is what it connects to');
+
+  // and a name that answers private from the start is refused before anything is sent
+  const local = ((_h: string, _o: unknown, cb: (e: Error | null, a: { address: string; family: number }[]) => void) =>
+    cb(null, [{ address: '127.0.0.1', family: 4 }])) as unknown as typeof dnsLookup;
+  await assert.rejects(discoverOverHttp([], { lookup: local })(`http://idp.acme.example:${port}/.well-known/openid-configuration`),
+    /isn’t on the public internet: .*BETTER_AUTH_TRUSTED_ORIGINS/);
+});
+
 test('adding an OIDC connection reads the identity provider’s settings through the discovery adapter, offline', async (t) => {
   const { ctx, call, admin } = await appWithAdmin({ discover });
   t.after(() => ctx.stop());
@@ -293,7 +332,9 @@ test('adding an OIDC connection reads the identity provider’s settings through
   settingsAt.set(at, { ...settings, jwks_uri: undefined });
   assert.match((await add()).json.error, /have no jwks_uri/);
   settingsAt.set(at, { ...settings, issuer: 'https://someone.else.example' });
-  assert.match((await add()).json.error, /calls itself https:\/\/someone\.else\.example: use that as the issuer/);
+  const other = (await add()).json.error;
+  assert.equal(other, `the identity provider’s settings at ${at} are for another issuer: check the issuer address`);
+  assert.doesNotMatch(other, /someone\.else/, 'nothing the document says is repeated back');
   settingsAt.set(at, settings);
   const added = await add();
   assert.equal(added.status, 201, JSON.stringify(added.json));

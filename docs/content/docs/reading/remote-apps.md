@@ -32,8 +32,11 @@ client.getObjectDetails('theme', { accent: '#000', radius: 0 });   // value, rea
 
 The provider asks for every flag once and keeps the answers. The answer also lists a stream of change events
 (server-sent events): the provider listens to it, and when a publish changes the environment it asks again, with the
-last answer's `ETag` (a `304` when nothing changed for this app). So changes reach devices within a second or two.
-If the stream can't stay open, it polls every `pollInterval` instead. Changing the context (`OpenFeature.setContext`)
+last answer's `ETag` (a `304` when nothing changed for this app) and the publish's revision. So changes reach devices
+within a second or two. With several servers, the one it asks may not have caught up with that publish yet: it does
+first, so the answer is never the old one. If the stream can't stay open, it polls every `pollInterval` instead. Each
+server keeps so many streams open at once (see [Configuration](/self-hosting/configuration#server)); beyond that the
+stream gets `429` and the provider polls. Changing the context (`OpenFeature.setContext`)
 asks again. When answers change it emits `ConfigurationChanged`.
 
 Before sign-in, leave the entity out of the context: a key that asks about any entity then gets what everyone gets.

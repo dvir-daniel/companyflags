@@ -1,5 +1,6 @@
 // Shared pieces of the flag editor (values, delivery, on/off, entity search, the change summary).
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Combobox } from '@base-ui/react/combobox';
 import { Button } from '@companyflags/ui/components/button';
 import { Input } from '@companyflags/ui/components/input';
 import { NativeSelect } from '@companyflags/ui/components/native-select';
@@ -10,6 +11,7 @@ import { go, useApp } from '../app.ts';
 import { Actions, ErrorList, Field, InAppDefault, Modal, Switch, Val } from '../ui.tsx';
 import { denseField, monoLabel, useAsync } from '../uiKit.ts';
 import { useEnvs } from './envs.ts';
+import { resolveTyped, searchable, searchEntities } from './entityPickerKit.ts';
 import { pathIn, switchPlan } from '../../../server/policy.ts';
 import { isVersionFlag } from '../../../server/checks.ts';
 import { blankRow, fromText, nameError, rowError, toText, valueError, ValueInput, ValuesEditor, type ValueRow } from '../values.tsx';
@@ -443,48 +445,79 @@ export function DeliveryPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: ()
 }
 
 /**
- * Find an entity by name (a text field with suggestions), in any dimension or only in `dimension`. Dense (32px) unless
- * `className` says otherwise. `id` goes to the text field (a Field passes it, so its label points there).
+ * Pick an entity (a combobox), in any dimension or only in `dimension`. It's found by name or key, and each match says
+ * what it is ("Store · Bolt"), so two of the same name are told apart; the pick is by key. The field shows the pick with
+ * its parent: "Main store (Bolt)". What's typed that names no one entity is marked when the field is left. Dense (32px)
+ * unless `className` says otherwise. `id` goes to the text field (a Field passes it, so its label points there).
  */
-export function EntityPicker({ value, onChange, allowNone, placeholder, className, id, dimension }: {
+export function EntityPicker({ value, onChange, allowNone, placeholder, className, id, dimension, 'aria-describedby': describedBy, 'aria-required': required }: {
   value: string; onChange: (key: string) => void; allowNone?: boolean; placeholder?: string; className?: string; id?: string; dimension?: string;
+  'aria-describedby'?: string; 'aria-required'?: boolean;
 }) {
   const { meta } = useApp();
   const list = useMemo(() => (dimension ? meta.entities.filter((e) => e.dimension === dimension) : meta.entities), [meta.entities, dimension]);
-  // what's typed matches an entity by name (any case) or by key: one lookup per keystroke, not a scan of every entity
-  const byName = useMemo(() => {
-    const m = new Map<string, Entity>();
-    for (const c of list) { const k = c.name.toLowerCase(); if (!m.has(k)) m.set(k, c); }
-    return m;
-  }, [list]);
-  const inList = (e: Entity | undefined) => (e && (!dimension || e.dimension === dimension) ? e : undefined);
-  const match = (t: string) => byName.get(t.toLowerCase()) ?? inList(entityIndex(meta.entities).get(t));
-  const name = (k: string) => entityIndex(meta.entities).get(k)?.name ?? '';
-  // what's typed, for the entity it was typed against; another one chosen (or swapped in) shows its name
+  const labelOf = (e: Entity) => entityLabel(meta.entities, e.key);
+  const found = useMemo(() => searchable(list, (e) => entityLabel(meta.entities, e.key)), [list, meta.entities]);
+  // the pick, as the combobox holds it: one entity (compared by key), or none. A key no longer known still shows.
+  const picked = useMemo<Entity | null>(() => (value ? entityIndex(meta.entities).get(value) ?? { key: value, name: value, dimension: '', createdAt: '' } : null), [value, meta.entities]);
+  const shown = picked ? labelOf(picked) : '';
+  // what's typed, for the pick it was typed against (another pick shows its own label); `missed`: left naming no one
   const [typed, setTyped] = useState<{ text: string; for: string } | null>(null);
-  const text = typed && typed.for === value ? typed.text : name(value);
-  const listId = useId();
-  // each suggestion says what it is: "Store · Acme" (its dimension, and its parent)
-  const options = useMemo(() => list.map((c) => {
-    const d = dimensionOf(meta.dimensions, c.dimension);
-    const hint = [d ? capital(one(d)) : null, c.parent ? entityLabel(meta.entities, c.parent) : null].filter(Boolean).join(' · ');
-    return <option key={c.key} value={c.name} label={hint || undefined} />;
-  }), [list, meta.entities, meta.dimensions]);
+  const [missed, setMissed] = useState(false);
+  const text = typed && typed.for === value ? typed.text : shown;
+  const query = text === shown ? '' : text;     // the pick's own label lists everyone, as an empty field does
+  const { items, total } = useMemo(() => searchEntities(found, query), [found, query]);
+  const choose = (key: string) => { setTyped(null); setMissed(false); onChange(key); };
   const only = dimension ? dimensionOf(meta.dimensions, dimension) : undefined;
   const what = only ? capital(one(only)) : joined(meta.dimensions, 'or') || 'Who';
+  // what each match is: "Store · Bolt" (its dimension when it could be any of several, and its parent)
+  const whatIs = (c: Entity) => {
+    const d = dimensionOf(meta.dimensions, c.dimension);
+    return [!only && meta.dimensions.length > 1 && d ? capital(one(d)) : null, c.parent ? entityLabel(meta.entities, c.parent) : null].filter(Boolean).join(' · ');
+  };
+  const errorId = useId();
   return (
-    <>
-      <input id={id} list={listId} aria-label={what} value={text} placeholder={placeholder ?? (allowNone ? 'Everyone (none picked)' : `Find: ${what.toLowerCase()}`)}
+    <Combobox.Root<Entity> items={items} filter={null} autoHighlight value={picked} inputValue={text}
+      itemToStringLabel={labelOf} isItemEqualToValue={(a, b) => a.key === b.key}
+      onValueChange={(e) => { if (e) choose(e.key); else if (allowNone) choose(''); }}
+      onInputValueChange={(next, d) => {
+        if (d.reason === 'input-change') { setTyped({ text: next, for: value }); setMissed(false); return; }
+        // the combobox puts the pick's label back when it closes: not over what was typed and marked
+        if (missed && d.reason !== 'escape-key') return;
+        setTyped(null); setMissed(false);
+      }}>
+      <Combobox.Input id={id} aria-label={id ? undefined : what} aria-invalid={missed || undefined} aria-required={required}
+        aria-describedby={[describedBy, missed ? errorId : null].filter(Boolean).join(' ') || undefined}
+        placeholder={placeholder ?? (allowNone ? 'Everyone (none picked)' : `Find: ${what.toLowerCase()}`)}
         className={cn(denseField, 'w-full rounded-none', className)}
-        onChange={(e) => {
-          const t = e.target.value;
-          setTyped({ text: t, for: value });
-          const hit = match(t);
-          if (hit) onChange(hit.key); else if (!t && allowNone) onChange('');
-        }}
-        onBlur={() => { if (text && !match(text)) setTyped(null); }}
-        aria-invalid={!!text && !match(text)} />
-      <datalist id={listId}>{options}</datalist>
-    </>
+        onBlur={() => {
+          const t = text.trim();
+          if (!typed || typed.for !== value || t === shown) return;
+          if (!t) { if (!allowNone) setTyped(null); return; }
+          // typed out in full (a key, or the only one of that name): that's the pick
+          const hit = resolveTyped(found, t);
+          if (hit) choose(hit.key); else setMissed(true);
+        }} />
+      {missed && <span id={errorId} className="sr-only">Nothing is called “{text.trim()}”. Pick one from the list.</span>}
+      <Combobox.Portal>
+        <Combobox.Positioner sideOffset={4} align="start" className="isolate z-50 outline-none">
+          <Combobox.Popup className="w-max max-w-[min(420px,var(--available-width))] min-w-(--anchor-width) rounded-none bg-popover text-popover-foreground shadow-[0_8px_24px_var(--shadow-strong)] ring-1 ring-rule-2">
+            <Combobox.Empty><div className="px-2.5 py-2 text-13 text-ink-3">{query.trim() ? `Nothing matches “${query.trim()}”.` : 'None yet.'}</div></Combobox.Empty>
+            <Combobox.List className="max-h-[min(20rem,var(--available-height))] overflow-y-auto overscroll-contain py-1 outline-0 data-empty:p-0">
+              {(c: Entity) => (
+                <Combobox.Item key={c.key} value={c}
+                  className="flex cursor-default items-baseline gap-2 px-2.5 py-1.5 text-13 text-ink outline-none select-none data-highlighted:bg-wash data-selected:font-medium">
+                  <span className="min-w-0 truncate">{c.name} <span className="font-mono text-xs font-normal text-ink-3">{c.key}</span></span>
+                  {whatIs(c) && <span className="ml-auto shrink-0 pl-2 text-xs font-normal text-ink-3">{whatIs(c)}</span>}
+                </Combobox.Item>
+              )}
+            </Combobox.List>
+            {total > items.length && (
+              <div className="border-t border-grid px-2.5 py-1.5 text-xs text-ink-3">{items.length} of {total.toLocaleString()} shown. Type to narrow them down.</div>
+            )}
+          </Combobox.Popup>
+        </Combobox.Positioner>
+      </Combobox.Portal>
+    </Combobox.Root>
   );
 }

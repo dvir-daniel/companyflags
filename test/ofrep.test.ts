@@ -12,7 +12,11 @@ import { changed, CSRF, startApp } from './helpers.ts';
 import { sampleInstallation } from './sample.ts';
 import { createApiKey, rotateAppLink } from '../server/control.ts';
 import { contextFor, evaluate } from '../server/evaluator.ts';
-import { appToken } from '../server/delivery.ts';
+import { AppCache, appToken, LinkCache } from '../server/delivery.ts';
+import { ofrepApi, STREAM_LIMITS, streamLimitsFrom } from '../server/ofrep.ts';
+import { DataPlane } from '../server/snapshot.ts';
+import { KeyCache } from '../server/auth.ts';
+import { EventHub } from '../server/events.ts';
 
 let t: Awaited<ReturnType<typeof startApp>>;
 const system = { name: 'test', type: 'system' as const };
@@ -80,6 +84,26 @@ describe('an app with the OFREP web provider and its app link', () => {
   });
 });
 
+describe('an app whose context names an entity its token can’t ask about', () => {
+  test('the provider starts in ERROR, not FATAL (a 403 would be): the next context works', async () => {
+    const token = await tokenFor('dev', 'web', 'lumen');
+    const provider = new OFREPWebProvider({
+      baseUrl: BASE, fetchImplementation: fetchApp, headers: [['Authorization', `Bearer ${token}`]],
+      changeDetection: 'none', cacheMode: 'disabled', disableVisibilityRefresh: true,
+    });
+    await WebOpenFeature.setContext({ targetingKey: 'd-1', company: 'acme' });
+    await assert.rejects(WebOpenFeature.setProviderAndWait(provider));
+    const client = WebOpenFeature.getClient();
+    assert.equal(client.providerStatus, 'ERROR', 'only a wrong credential is FATAL');
+    assert.equal(client.getStringValue('api_base_url', 'x'), 'x');
+
+    await WebOpenFeature.setContext({ targetingKey: 'd-1', brand: 'lumen' });
+    assert.equal(client.providerStatus, 'READY');
+    assert.equal(client.getStringValue('api_base_url', 'x'), 'https://globex.api.example.com', 'its own entity');
+    await WebOpenFeature.close();
+  });
+});
+
 async function layerOf(flag: string, env: string) {
   const r = await t.app.request(`/api/flags/${flag}`, { headers: { 'x-user': 'admin' } });
   const { version, updatedAt: _u, updatedBy: _b, ...layer } = (await r.json() as any).layers[env].base;
@@ -115,8 +139,11 @@ describe('the protocol', () => {
     assert.equal((await bulk(bearer('ff_dev_api_nope'), {})).status, 401);
     assert.equal((await bulk({ 'x-api-key': all }, { company: 'acme' })).status, 200, 'OFREP’s X-API-Key header');
     assert.equal((await bulk(bearer(below), { brand: 'lumen' })).status, 200, 'below its entity');
-    assert.equal((await bulk(bearer(below), { company: 'acme' })).status, 403, 'outside its scope');
-    assert.equal((await bulk(bearer(own), { company: 'globex' })).status, 403);
+    // outside its scope: the context is wrong, not the key (a 401 or 403 would stop the web provider for good)
+    const outside = await bulk(bearer(below), { company: 'acme' });
+    assert.equal(outside.status, 400, 'outside its scope');
+    assert.equal((await outside.json() as any).errorCode, 'INVALID_CONTEXT');
+    assert.equal((await bulk(bearer(own), { company: 'globex' })).status, 400);
     assert.equal((await bulk(bearer(all), { company: 'nobody' })).status, 400, 'no such entity');
     const mismatch = await bulk(bearer(all), { company: 'acme', brand: 'lumen' });
     assert.equal(mismatch.status, 400, 'a brand under another company');
@@ -132,7 +159,7 @@ describe('the protocol', () => {
     // the app's token: only its own entity, and a replaced link stops it at once
     const token = await tokenFor('dev', 'web', 'lumen');
     assert.equal((await bulk(bearer(token), {})).status, 200);
-    assert.equal((await bulk(bearer(token), { company: 'acme' })).status, 403);
+    assert.equal((await bulk(bearer(token), { company: 'acme' })).status, 400);
     assert.equal((await bulk(bearer(token), { company: 'globex', brand: 'lumen' })).status, 200, 'naming itself and its company');
     assert.equal((await bulk(bearer(token.replace('.web.', '.api.')), {})).status, 401, 'a backend has no app token');
     assert.equal((await bulk(bearer(token.replace('.web.', '.ios.')), {})).status, 401, 'a token is bound to its app');
@@ -143,9 +170,11 @@ describe('the protocol', () => {
     // every app carries its token: asking about an entity that doesn't exist gets the same answer, byte for byte, as
     // asking about one it can't ask about, so the token can't be used to list the entities (an API key's neither)
     const answer = async (auth: Record<string, string>, context: unknown) => { const r = await bulk(auth, context); return [r.status, await r.text()] as const; };
-    for (const credential of [token, own]) {
+    for (const credential of [token, own, all]) {
       const [status, text] = await answer(bearer(credential), { company: 'acme-not-an-entity' });
-      assert.equal(status, 403);
+      assert.equal(status, 400);
+      assert.equal(JSON.parse(text).errorCode, 'INVALID_CONTEXT');
+      if (credential === all) continue;           // an `all` key may ask about every entity
       assert.equal(text.replace('acme-not-an-entity', 'X'), (await answer(bearer(credential), { company: 'initech' }))[1].replace('initech', 'X'), 'an entity that exists');
       assert.equal(text.replace('acme-not-an-entity', 'X'), (await answer(bearer(credential), { brand: 'acme-not-an-entity' }))[1].replace('acme-not-an-entity', 'X'), 'in another dimension');
     }
@@ -187,6 +216,37 @@ describe('the protocol', () => {
     assert.equal(bad.status, 400);
     assert.equal((await bad.json() as any).errorCode, 'PARSE_ERROR');
     assert.equal((await post('/ofrep/v1/evaluate/flags', { nocontext: true }, auth)).status, 400);
+  });
+
+  test('a provider that heard of a publish this server hasn’t caught up with (flagConfigEtag): it catches up first', async () => {
+    // a second server on the same database, still at the old snapshot: its own plane, caches and hub
+    const behind = new DataPlane();
+    await behind.refresh(t.db, 'dev');
+    const other = ofrepApi({ db: t.db, plane: behind, keys: new KeyCache(), links: new LinkCache(), apps: new AppCache(), hub: new EventHub() });
+    const auth = { authorization: `Bearer ${await tokenFor('dev', 'web', 'acme')}`, 'content-type': 'application/json' };
+    const ask = (query = '', headers: Record<string, string> = {}) =>
+      other.request(`/ofrep/v1/evaluate/flags${query}`, { method: 'POST', headers: { ...auth, ...headers }, body: JSON.stringify({ context: { targetingKey: 'd-1' } }) });
+    const first = await ask();
+    const etag = first.headers.get('etag')!;
+    const payments = (res: any) => JSON.stringify(res.flags.find((f: any) => f.key === 'payments_enabled'));
+    const before = payments(await first.json());
+
+    const { version, layer } = await layerOf('payments_enabled', 'dev');
+    const r = await t.app.request('/api/flags/payments_enabled/layers/dev/base', { method: 'PUT', headers: { 'content-type': 'application/json', 'x-user': 'admin', ...CSRF },
+      body: JSON.stringify({ layer: { ...layer, enabled: !layer.enabled }, expectedVersion: version }) });
+    assert.equal(r.status, 200, await r.text());
+    await t.workers.drain();
+    const revision = t.plane.get('dev').revision;
+    assert.ok(behind.get('dev').revision < revision, 'the second server is behind');
+
+    assert.equal((await ask('', { 'if-none-match': etag })).status, 304, 'without the revision: what it has (its next round catches up)');
+    assert.equal((await ask(`?flagConfigEtag=${behind.get('dev').revision}`, { 'if-none-match': etag })).status, 304, 'a revision it has');
+    const fresh = await ask(`?flagConfigEtag=${revision}`, { 'if-none-match': etag });
+    assert.equal(fresh.status, 200, 'the publish the event named');
+    assert.notEqual(payments(await fresh.json()), before);
+    assert.equal(behind.get('dev').revision, revision, 'caught up');
+    assert.equal((await ask(`?flagConfigEtag=${revision + 1000}`)).status, 200, 'a revision nobody published: the answer it has');
+    assert.equal(behind.get('dev').revision, revision);
   });
 
   test('browsers may call it from any origin, with the key in a header', async () => {
@@ -231,5 +291,51 @@ describe('the protocol', () => {
     await t.workers.drain();
     await until(/data: \{"type":"refetchEvaluation","etag":"\d+"\}/);
     await reader.cancel();
+  });
+});
+
+describe('change-event streams have a limit', () => {
+  test('per environment and per client address; beyond it, 429 and the provider polls', async (c) => {
+    const own = await startApp({ setup: sampleInstallation, signIn: { kind: 'test-header' },
+      env: { FF_EVENT_STREAMS_PER_ENVIRONMENT: '3', FF_EVENT_STREAMS_PER_CLIENT: '2' } });
+    c.after(() => own.stop());
+    const token = await appToken(own.db, 'dev', 'acme', 'web');
+    const bulk = await (await own.app.request('/ofrep/v1/evaluate/flags', { method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ context: {} }) })).json() as any;
+    const uri: string = bulk.eventStreams[0].endpoint.requestUri;
+    const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
+    // the connection's own address, as Node's server gives it
+    const listen = async (address: string) => {
+      const res = await own.app.request(uri, {}, { incoming: { socket: { remoteAddress: address } } });
+      if (res.status === 200) readers.push(res.body!.getReader());
+      return res;
+    };
+    c.after(() => Promise.all(readers.map((r) => r.cancel().catch(() => {}))));
+
+    assert.equal((await listen('198.51.100.1')).status, 200);
+    assert.equal((await listen('198.51.100.1')).status, 200);
+    const tooMany = await listen('198.51.100.1');
+    assert.equal(tooMany.status, 429, 'a third from one address');
+    assert.ok(Number(tooMany.headers.get('retry-after')) > 0);
+    assert.match((await tooMany.json() as any).error, /too many open event streams/);
+    assert.equal((await listen('198.51.100.2')).status, 200, 'another address');
+    assert.equal((await listen('198.51.100.3')).status, 429, 'a fourth in the environment');
+
+    // one closes: there is room again
+    await readers.shift()!.cancel();
+    let again = 429;
+    for (let i = 0; i < 50 && again === 429; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      const res = await listen('198.51.100.1');
+      again = res.status;
+    }
+    assert.equal(again, 200, 'room once one closed');
+  });
+
+  test('the limits come from the environment, whole numbers above 0', () => {
+    assert.deepEqual(streamLimitsFrom({}), STREAM_LIMITS);
+    assert.deepEqual(streamLimitsFrom({ FF_EVENT_STREAMS_PER_ENVIRONMENT: '500', FF_EVENT_STREAMS_PER_CLIENT: ' 20 ' }), { perEnvironment: 500, perClient: 20 });
+    assert.throws(() => streamLimitsFrom({ FF_EVENT_STREAMS_PER_CLIENT: '0' }), /FF_EVENT_STREAMS_PER_CLIENT: "0" isn’t a whole number above 0/);
+    assert.throws(() => streamLimitsFrom({ FF_EVENT_STREAMS_PER_ENVIRONMENT: 'lots' }), /FF_EVENT_STREAMS_PER_ENVIRONMENT/);
   });
 });

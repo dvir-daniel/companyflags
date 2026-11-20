@@ -88,7 +88,7 @@ const link = 'https://flags.example.com/cdn/v1/flags/prod/web/acme/k3J9xW2mQ7vR1
 await refresh(link);
 setInterval(() => refresh(link), 60_000);
 
-const context = { targetingKey: installId, app: { version: '6.2.0' }, device: { id: installId } };
+const context = { targetingKey: installId, app: { version: '6.2.0' } };
 core.resolveBooleanEvaluation('dark_mode_v2', false, context).value;
 ```
 
@@ -109,6 +109,11 @@ Report what your platform knows, by these names, nested as JsonLogic reads them 
 `device.os_version`, `device.api_level`, `device.browser`, `device.browser_version`, `device.browser_engine`,
 `geo.country`, `locale.language`, `locale.timezone`. The full list, with their known values, is in
 [Attributes](/reference/attributes).
+
+- The device ID for a % of devices is `device.id`, or OpenFeature's `targetingKey` when there's no `device.id`, as
+  over OFREP. A device in a % group is in the same group from the file and from the server.
+- Report versions in full, as text: `6.2.0`, not `6.2` or `6`. Rules always hold full versions, but the device's own
+  is read by whichever flagd evaluator the app runs, and not all of them read short ones.
 
 ## The same answers as the server
 

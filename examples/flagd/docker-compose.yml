@@ -4,9 +4,10 @@
 #   docker compose up -d flagd
 services:
   companyflags:
-    image: ghcr.io/dvir-daniel/companyflags:latest
+    # the release to run: COMPANYFLAGS_VERSION in .env, or the latest at the time of writing
+    image: ghcr.io/dvir-daniel/companyflags:${COMPANYFLAGS_VERSION:-0.8}
     ports:
-      - "8787:8787"
+      - "127.0.0.1:8787:8787"
     environment:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (openssl rand -base64 32)}
       BETTER_AUTH_URL: http://localhost:8787

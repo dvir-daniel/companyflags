@@ -18,7 +18,8 @@
 //   - the first account: on a new install, whoever opens the setup link the server prints when it starts (they become
 //     the admin). Until the first account is made, nobody else joins at all;
 //   - a password account: with the invite link an admin made for that email, while it works (once, for 7 days);
-//   - single sign-on: people at the connection's email domains (and subdomains), and people an admin added;
+//   - single sign-on: people at the connection's email domains (and subdomains) only. A connection vouches for the
+//     emails at its domains and no others, so someone an admin added at another domain joins with their invite link;
 //   - Google, GitHub or Microsoft, when they confirm the email: people an admin added, or anyone at a signup domain
 //     (FF_SIGNUP_DOMAINS);
 //   - where a connection requires single sign-on, no password or Google, GitHub or Microsoft sign-ins or accounts at its
@@ -126,7 +127,7 @@ const REMOVED: Refusal = { code: 'access_removed', message: 'An admin removed yo
 const SSO_REQUIRED: Refusal = { code: 'sso_required', message: 'Your organization signs in with single sign-on: use “Sign in with SSO”.' };
 const INVITE_REQUIRED: Refusal = { code: 'invite_required', message: 'Ask an admin of CompanyFlags for an invite link.' };
 const OUTSIDE_SSO: Refusal = {
-  code: 'invite_required', message: 'Your identity provider signed you in, but this email isn’t one of its email domains. Ask an admin for an invite.',
+  code: 'invite_required', message: 'Your identity provider signed you in, but this email isn’t at one of its email domains. Join with the invite link an admin sent you, or ask an admin for one.',
 };
 
 const clean = (email: unknown) => String(email ?? '').trim().toLowerCase();
@@ -216,8 +217,9 @@ export function createAccess(db: Db, opts: AccessOptions) {
           return invited ? null : INVITE_REQUIRED;
         }
         case 'sso': {
+          // only at its own domains: a connection can't claim an email elsewhere, even one an admin added (with a role)
           const conn = (await connections(db)).find((c) => c.id === a.connection);
-          return conn && (p || inDomains(email, conn.domains)) ? null : OUTSIDE_SSO;
+          return conn && inDomains(email, conn.domains) ? null : OUTSIDE_SSO;
         }
         case 'provider':
           return a.emailVerified && (p || signupDomains.has(email.split('@')[1] ?? '')) ? null : INVITE_REQUIRED;
@@ -241,7 +243,8 @@ export function createAccess(db: Db, opts: AccessOptions) {
     },
 
     /** An admin adds someone by email, with their role. They join with the invite link this returns
-     *  (`#/join/<invite>`, shown once), by single sign-on, or with a provider that confirms the same email. */
+     *  (`#/join/<invite>`, shown once), by single sign-on at a connection's domains, or with a provider that confirms
+     *  the same email. */
     async add(input: { email?: unknown; name?: unknown; role?: unknown }, actor: Actor) {
       const email = clean(input.email);
       if (!EMAIL.test(email)) throw new HttpError(422, 'email: their email address, e.g. sam@example.com');

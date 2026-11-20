@@ -24,6 +24,8 @@ export type Item = {
   proposed: LayerDoc | null;               // null = remove the entity's own settings
   allowReshuffle?: boolean;
   delivery?: { before: string[]; projects: string[] };   // delivery items: the services it is in now, and after
+  // a request's layer items: the value of every variant the proposal uses, as they were when it was made (and reviewed)
+  values?: Record<string, unknown>;
 };
 
 type FlagRow = { id: string; key: string; kind: string; value_type: string; archived_at: string | null };
@@ -79,6 +81,27 @@ export async function flagSetupProblems(q: Queryable, flag: { id: string; key: s
 export async function fieldFacts(q: Queryable): Promise<FieldFacts> {
   const rows = await all<{ name: string; value_type: string; can_split_by: boolean }>(q, `select name, value_type, can_split_by from condition_field`);
   return Object.fromEntries(rows.map((f) => [f.name, { valueType: f.value_type, canSplitBy: f.can_split_by }]));
+}
+
+/** The variants a layer uses: its default, its value when off, and what its rules and their %s serve. A to Z. */
+export function variantsUsed(l: LayerDoc | Layer | null | undefined): string[] {
+  const keys = new Set<string>();
+  const add = (k: unknown) => { if (typeof k === 'string') keys.add(k); };
+  add(l?.defaultVariation);
+  add(l?.variationWhenOff);
+  for (const r of l?.rules ?? []) {
+    add(r.serveVariation);
+    for (const rg of r.split?.ranges ?? []) add(rg.variation);
+  }
+  return [...keys].sort();
+}
+
+/** The values of these variants of a flag now, by key. `lock`: kept from changing until the transaction ends. */
+async function variantValues(q: Queryable, flagId: string, keys: string[], lock = false): Promise<Record<string, unknown>> {
+  if (!keys.length) return {};
+  const rows = await all<{ key: string; value: unknown }>(q, `select key, value from flag_variation where flag_id = $1 and key = any($2::text[])
+    order by key ${lock ? 'for share' : ''}`, [flagId, keys]);
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
 
 // ---------------------------------------------------------------- storage
@@ -193,6 +216,16 @@ async function applyItemsIn(tx: Tx, envKey: string, items: Item[], actor: Actor,
         throw new HttpError(409, `The defaults of ${it.flag} changed after this request was approved`, { flag: it.flag, baseChanged: true }, 'conflict');
       }
     }
+    // an approved request serves the values its reviewers saw: a variant whose value changed since is a conflict
+    if (it.values) {
+      const keys = Object.keys(it.values).sort();
+      const now = await variantValues(tx, flag.id, keys, true);
+      const changed = keys.find((k) => !Object.hasOwn(now, k) || canonical(now[k]) !== canonical(it.values![k]));
+      if (changed) {
+        throw new HttpError(409, `The value of ${it.flag}’s variant ${changed} changed after this request was made: send a new request`,
+          { flag: it.flag, variant: changed }, 'conflict');
+      }
+    }
     const before = await currentLayer(tx, env.id, flag.id, it.entity);
     let after: Layer | null = null;
     if (it.proposed === null) {
@@ -262,12 +295,15 @@ export async function createChangeSet(db: Db, envKey: string, items: Item[], aut
       if (curVersion !== it.expectedLayerVersion) {
         throw new HttpError(409, `${it.flag} (${it.entity ?? 'defaults'}) was changed by someone else — reload to see it`, { flag: it.flag, entity: it.entity, currentVersion: curVersion }, 'conflict');
       }
-      if (it.proposed) await normalizeLayer(tx, flag, !it.entity, it.proposed, before, it.allowReshuffle, facts);
+      const normalized = it.proposed ? await normalizeLayer(tx, flag, !it.entity, it.proposed, before, it.allowReshuffle, facts) : null;
       let expectedBaseVersion: number | null | undefined;
       if (it.entity) expectedBaseVersion = (await currentLayer(tx, env.id, flag.id, null))?.version ?? null;
-      const { kind: _kind, delivery: _delivery, ...layerItem } = it;
-      const hashed = { ...layerItem, expectedBaseVersion };
-      prepared.push({ it: hashed, flag, entityId: cust?.id ?? null, before: stripVersion(before), proposed: { doc: it.proposed, allowReshuffle: !!it.allowReshuffle }, hashed });
+      // the values it serves are part of what is reviewed: they are in the hash, and checked again when it is applied
+      const values = await variantValues(tx, flag.id, variantsUsed(normalized), true);
+      const { kind: _kind, delivery: _delivery, values: _values, ...layerItem } = it;
+      const hashed = { ...layerItem, expectedBaseVersion, values };
+      prepared.push({ it: hashed, flag, entityId: cust?.id ?? null, before: stripVersion(before),
+        proposed: { doc: it.proposed, allowReshuffle: !!it.allowReshuffle, values }, hashed });
     }
     const hash = hashItems(prepared.map((p) => p.hashed));
     const cs = await one<{ id: string }>(tx, `insert into change_set (environment_id, author, reason, content_hash, by_agent) values ($1,$2,$3,$4,$5) returning id`,
@@ -285,7 +321,7 @@ export async function createChangeSet(db: Db, envKey: string, items: Item[], aut
 
 type ItemRow = {
   kind: 'layer' | 'delivery'; flag: string; entity: string | null; expected_layer_version: string | null; expected_base_version: string | null;
-  before: { projects?: string[] } | null; proposed: { doc?: LayerDoc | null; allowReshuffle?: boolean; projects?: string[] };
+  before: { projects?: string[] } | null; proposed: { doc?: LayerDoc | null; allowReshuffle?: boolean; projects?: string[]; values?: Record<string, unknown> };
 };
 export async function loadChangeSetItems(q: Queryable, id: string | number): Promise<Item[]> {
   const rows = await all<ItemRow>(q, `
@@ -300,6 +336,7 @@ export async function loadChangeSetItems(q: Queryable, id: string | number): Pro
     expectedLayerVersion: r.expected_layer_version === null ? null : Number(r.expected_layer_version),
     expectedBaseVersion: r.entity ? (r.expected_base_version === null ? null : Number(r.expected_base_version)) : undefined,
     proposed: r.proposed.doc ?? null, allowReshuffle: !!r.proposed.allowReshuffle,
+    ...(r.proposed.values ? { values: r.proposed.values } : {}),   // requests made before values were kept have none
   }));
 }
 

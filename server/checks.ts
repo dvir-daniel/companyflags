@@ -4,7 +4,7 @@
 import { CODE_DEFAULT, type Condition, type Inherit, type Layer, type Op, type Rule, type SplitRange } from './evaluator.ts';
 import { HASH_VERSION } from './hash.ts';
 import { isVersionRelease } from './release.ts';
-import { parseSemver } from './semver.ts';
+import { fullVersion, parseSemver } from './semver.ts';
 import { CHOICES, fieldLabel, opLabel, OPS_BY_TYPE, type ConditionLike } from './words.ts';
 
 export type RuleDoc = Partial<Omit<Rule, 'split' | 'conditions'>> & {
@@ -104,7 +104,9 @@ export function checkRule(r: RuleDoc, flag: FlagFacts, fields: FieldFacts, opts:
   for (const c of r.conditions ?? []) {
     const p = conditionProblem(c, fields);
     if (p) problems.push(p);
-    conditions.push({ field: c.field, op: c.op as Op, values: c.op === 'exists' || c.op === 'missing' ? [] : (c.values ?? []) });
+    // versions are saved in full ("6" → "6.0.0"): they compare the same, and strict readers of flagd JSON need it
+    const values = c.op === 'exists' || c.op === 'missing' ? [] : (c.values ?? []);
+    conditions.push({ field: c.field, op: c.op as Op, values: c.op.startsWith('semver_') ? values.map((v) => fullVersion(String(v)) ?? v) : values });
   }
 
   if (!!r.split === !!r.serveVariation) problems.push('serve one variant, or a % of devices');

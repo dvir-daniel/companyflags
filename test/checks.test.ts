@@ -22,6 +22,17 @@ test('checks on one condition: the words the rule editor shows', () => {
   assert.equal(conditionProblem({ field: 'project', op: 'exists' }, fields), null);
 });
 
+test('a version in a rule is saved in full: 6 → 6.0.0 (strict semver readers of flagd JSON refuse short ones)', () => {
+  const rule = (values: string[]) => checkRule({ ruleKey: KEY, conditions: [{ field: 'app.version', op: 'semver_gte', values }], serveVariation: 'on' }, config, fields, { isBase: true });
+  assert.deepEqual(rule(['6']).rule.conditions[0].values, ['6.0.0']);
+  assert.deepEqual(rule(['v6.1']).rule.conditions[0].values, ['6.1.0']);
+  assert.deepEqual(rule(['6.0-beta.1']).rule.conditions[0].values, ['6.0.0-beta.1']);
+  assert.deepEqual(rule(['6.0.0+build.5']).rule.conditions[0].values, ['6.0.0'], 'comparing ignores the build');
+  assert.deepEqual(rule(['6.2.1']).rule.conditions[0].values, ['6.2.1']);
+  assert.deepEqual(rule(['five']).rule.conditions[0].values, ['five'], 'not a version: kept, and refused');
+  assert.match(rule(['five']).problems.join(), /must look like 5.0.0/);
+});
+
 test('a rule: flag purpose rules and the % of devices', () => {
   const pct = (to: number, fallbackBy: string | null = null) => ({ ruleKey: KEY, split: { by: 'device.id', fallbackBy, ranges: [{ variation: 'on', from: 0, to }] } });
   assert.deepEqual(checkRule(pct(0), config, fields, { isBase: true }).problems, ['Set a percentage above 0']);

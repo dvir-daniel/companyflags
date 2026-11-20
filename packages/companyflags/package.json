@@ -1,6 +1,6 @@
 {
   "name": "companyflags",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "A self-hosted feature flag and remote config server, read with OpenFeature.",
   "license": "MIT",
   "type": "module",

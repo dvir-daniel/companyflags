@@ -49,9 +49,10 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
   the rules for everyone. Each answer can be traced step by step in the console.
 - **OpenFeature, no SDK of ours.** Apps and backends use OpenFeature's own providers (OFREP, flagd), so you can switch
   to or from CompanyFlags without touching the code that reads flags.
-- **Privacy by construction.** A device gets values, never rules. Checks on dimensions, services and environments
-  are settled on the server, so a device never receives a list of entities or a rule. A signed app link pins an app
-  to its own entity, so it can't read another's values.
+- **Privacy by construction.** Over OFREP an app gets values only. Its CDN file holds no list of entities and no
+  rule about another entity, only the checks the device makes itself (app version, platform, % group): checks on
+  dimensions, services and environments are settled on the server. A signed app link pins an app to its own entity,
+  so it can't read another's values.
 - **Change control built in.** Protected environments, approvals by someone other than the author, scheduled
   changes, break-glass for on call, an append-only history, and restore.
 - **No big switch.** Import the old system's values, and apps keep reading it, through OpenFeature's Multi-Provider,

@@ -1,12 +1,13 @@
 // What apps read: the CDN file, one per environment, app and entity, as flagd JSON (server/flagd.ts), at the
 // entity's secret link (server/delivery.ts). What an OpenFeature flagd provider on the device answers from the file
-// must always equal what the server's evaluator answers for that device.
+// (OpenFeature's flagd-core, and our reference of flagd) must always equal what the server's evaluator answers for that
+// device, and what OFREP answers it.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import { boot, cdnAnswer } from './helpers.ts';
+import { flagdCore, nest, ours, same } from './flagdReference.ts';
 import { buildFlagdDoc } from '../server/flagd.ts';
-import { contextFor, evaluate } from '../server/evaluator.ts';
 import { DIMENSION_GROUP, FIELDS, groupFields, type FieldInfo } from '../server/fields.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
@@ -14,8 +15,10 @@ before(async () => { t = await boot(); });
 after(async () => { await t.stop(); });
 
 // No version that can't be read ("not-a-version"): an override matches it on the server and not in flagd (server/flagd.ts).
-const DEVICES: Record<string, unknown>[] = Array.from({ length: 60 }, (_, i) => ({
-  'device.id': i % 7 ? `d-${i}` : undefined, 'app.version': ['4.9.0', '5.0.0', '6.2.0', '7.1.3', undefined][i % 5], 'app.build': 100 + i,
+// Short ones (6, 6.2) both read. Some devices send only OpenFeature's targetingKey as their ID, some neither.
+const DEVICES: Record<string, unknown>[] = Array.from({ length: 70 }, (_, i) => ({
+  'device.id': i % 7 && i % 4 ? `d-${i}` : undefined, targetingKey: i % 4 === 0 ? `tk-${i}` : i % 11 === 0 ? `other-${i}` : undefined,
+  'app.version': ['4.9.0', '5.0.0', '6.2.0', '7.1.3', undefined, '6', '4.9', 'v5.0.0'][i % 8], 'app.build': 100 + i,
   'device.platform': ['android', 'ios', 'web'][i % 3], 'device.os_version': ['13', '17.4', '10.15.7'][i % 3],
   'device.browser': i % 5 ? 'chrome' : undefined, 'geo.country': ['US', 'CA', 'DE'][i % 3], 'session.id': i % 2 ? `s-${i}` : undefined,
 }));
@@ -30,11 +33,12 @@ function parity() {
         for (const key of Object.keys(snap.flags)) {
           for (const attrs of DEVICES) {
             const sent = Object.fromEntries(Object.entries(attrs).filter(([, v]) => v !== undefined));
-            const want = evaluate(snap, key, contextFor(snap, { project, entity }, sent, { trust: 'app' }), false);
-            const got = cdnAnswer(file, key, sent);
+            const want = same(ours(snap, key, project, entity, sent));
             const where = `${env}/${project}/${entity}/${key} ${JSON.stringify(sent)}`;
-            if (want.codeDefault || want.errorCode) assert.ok(got.codeDefault, `${where}: expected the in-app default`);
-            else assert.deepEqual(got.value, want.value, where);
+            const got = cdnAnswer(file, key, sent);
+            assert.equal(got.notFound ? 'not found' : same(got), want, where);
+            const core = flagdCore(file, key, nest(sent));
+            assert.equal(core.notFound ? 'not found' : same(core), want, `flagd-core: ${where}`);
             // no group: flagd JSON has nowhere to put a % group's name (the app reads it over OFREP, metadata.group)
             checked++;
           }
@@ -60,6 +64,27 @@ test('still equal with named % groups, inside and outside, by device and by enti
   });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.ok(parity() > 10_000);
+});
+
+test('a device that sends only targetingKey: the same % group from the file (flagd-core) as over OFREP', async () => {
+  const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'web', scope: 'all' })).json.key;
+  const file = (await t.cdnFile('dev', 'web', 'acme')).json;
+  const snap = t.plane.get('dev');
+  const split = Object.keys(file.flags).filter((k) => JSON.stringify(file.flags[k].targeting ?? null).includes('fractional'));
+  assert.ok(split.length > 0, 'a % rule in the web file');
+  const groups = new Set<string>();
+  for (let i = 0; i < 40; i++) {
+    const ofrep = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { targetingKey: `tk-${i}`, company: 'acme' } }, { authorization: `Bearer ${key}` });
+    assert.equal(ofrep.status, 200, JSON.stringify(ofrep.json));
+    for (const k of split) {
+      const remote = ofrep.json.flags.find((f: { key: string }) => f.key === k);
+      const local = flagdCore(file, k, { targetingKey: `tk-${i}` });
+      assert.equal(local.codeDefault ? 'code default' : JSON.stringify(local.value), 'value' in remote ? JSON.stringify(remote.value) : 'code default', `${k}, tk-${i}`);
+      assert.equal(same(local), same(ours(snap, k, 'web', 'acme', { 'device.id': `tk-${i}` })));
+      groups.add(`${k}:${remote.reason}`);
+    }
+  }
+  assert.ok([...groups].some((g) => g.endsWith(':SPLIT')), 'some devices inside a %');
 });
 
 test('the file is settled for its entity: no entity lists, nothing about other entities or apps', async () => {

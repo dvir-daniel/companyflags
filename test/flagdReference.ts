@@ -1,7 +1,9 @@
 // flagd, as a reference for tests: evaluates our flagd JSON (server/flagd.ts) the way flagd does. The JsonLogic follows
 // json-logic-js and flagd's own operators (fractional, sem_ver, starts_with, ends_with), written from their documented
-// behaviour, not from our evaluator, so comparing its answers with server/evaluator.ts means something.
+// behaviour, not from our evaluator, so comparing its answers with server/evaluator.ts means something. flagdCore runs
+// the real thing, OpenFeature's flagd-core (the evaluator in flagd's JavaScript providers), on the same JSON.
 import assert from 'node:assert/strict';
+import { FlagdCore } from '@openfeature/flagd-core';
 import type { FlagdDoc } from '../server/flagd.ts';
 import { murmur3Cbor } from '../server/hash.ts';
 import { contextFor, evaluate, type Snapshot } from '../server/evaluator.ts';
@@ -17,9 +19,12 @@ function getVar(data: Data, path: unknown, fallback: unknown = null): unknown {
   }
   return cur === undefined ? fallback : cur;
 }
+// flagd's sem_ver: semver, with a v or V in front or not; "6" and "6.1" read as 6.0.0 and 6.1.0; the build ignored
 function semver(s: unknown) {
-  const m = typeof s === 'string' ? /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/.exec(s) : null;
-  return m ? { nums: [Number(m[1]), Number(m[2]), Number(m[3])], pre: m[4] ? m[4].split('.') : [] } : null;
+  if (typeof s !== 'string') return null;
+  const m = /^[vV]?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(s)
+    ?? /^[vV]?(\d+)(?:\.(\d+))?()$/.exec(s);
+  return m ? { nums: [Number(m[1]), Number(m[2] || 0), Number(m[3] || 0)], pre: m[4] ? m[4].split('.') : [] } : null;
 }
 function semverCompare(a: NonNullable<ReturnType<typeof semver>>, b: NonNullable<ReturnType<typeof semver>>): number {
   for (let i = 0; i < 3; i++) if (a.nums[i] !== b.nums[i]) return a.nums[i] < b.nums[i] ? -1 : 1;
@@ -99,7 +104,7 @@ export function flagdEvaluate(doc: FlagdDoc, key: string, context: Data): Answer
   if (!f) return { notFound: true };
   if (f.state === 'DISABLED') return { codeDefault: true, reason: 'DISABLED' };
   let variant = f.defaultVariant;
-  let reason = 'STATIC';
+  let reason = variant === null ? 'DEFAULT' : 'STATIC';    // no default variant: the code's default, as flagd-core says
   if (f.targeting !== undefined) {
     const r = run(f.targeting, context);
     if (r === null || r === undefined) reason = 'DEFAULT';
@@ -110,6 +115,31 @@ export function flagdEvaluate(doc: FlagdDoc, key: string, context: Data): Answer
     }
   }
   return variant === null ? { codeDefault: true, reason } : { value: f.variants[variant], reason };
+}
+
+/** The same flag evaluated by OpenFeature's flagd-core, as a flagd provider evaluating in-process does. */
+const cores = new WeakMap<FlagdDoc, FlagdCore>();
+export function flagdCore(doc: FlagdDoc, key: string, context: Record<string, unknown>): Answer {
+  let core = cores.get(doc);
+  if (!core) {
+    core = new FlagdCore();
+    core.setConfigurations(JSON.stringify(doc));
+    cores.set(doc, core);
+  }
+  const f = Object.hasOwn(doc.flags, key) ? doc.flags[key] : undefined;
+  if (!f) {
+    assert.equal(core.resolveStringEvaluation(key, '', context as never).errorCode, 'FLAG_NOT_FOUND');
+    return { notFound: true };
+  }
+  const sample = Object.values(f.variants)[0];
+  const ctx = context as never;
+  const r = typeof sample === 'boolean' ? core.resolveBooleanEvaluation(key, false, ctx)
+    : typeof sample === 'number' ? core.resolveNumberEvaluation(key, 0, ctx)
+      : typeof sample === 'string' ? core.resolveStringEvaluation(key, '', ctx)
+        : core.resolveObjectEvaluation(key, {}, ctx);
+  assert.equal(r.errorCode, undefined, `flagd-core: ${r.errorCode} ${r.errorMessage}`);
+  // no variant: the default the app passed, the one in its code
+  return r.variant === undefined ? { codeDefault: true, reason: r.reason } : { value: r.value, reason: r.reason };
 }
 
 /** The request's attributes as flagd's evaluation context: "app.version" is { app: { version } }. */
@@ -131,8 +161,12 @@ export function cdnAnswer(file: FlagdDoc, key: string, attrs: Record<string, unk
   return a.notFound ? { codeDefault: true, notFound: true } : a;
 }
 
+/** The server's answer. `targetingKey` is the device ID when there's no device.id, as OFREP reads it (ofrep.ts). */
 export function ours(snap: Snapshot, key: string, project: string, entity: string | null, attrs: Record<string, unknown>): Answer {
-  const r = evaluate(snap, key, contextFor(snap, { project, entity }, attrs, { trust: 'app' }), false);
+  const { targetingKey, ...rest } = attrs;
+  const sent = targetingKey !== undefined && targetingKey !== null && targetingKey !== '' && [undefined, null, ''].includes(rest['device.id'] as never)
+    ? { ...rest, 'device.id': String(targetingKey) } : rest;
+  const r = evaluate(snap, key, contextFor(snap, { project, entity }, sent, { trust: 'app' }), false);
   if (r.errorCode === 'FLAG_NOT_FOUND') return { notFound: true };
   return r.codeDefault ? { codeDefault: true } : { value: r.value };
 }

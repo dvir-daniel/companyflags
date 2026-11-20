@@ -13,9 +13,14 @@
 // What carries over exactly (test/flagd.test.ts evaluates the JSON and compares it with our evaluator):
 // - The order: overrides, the entity's rules, those of each entity above it, rules for everyone, then the most
 //   specific default.
-// - Checks on missing values: a missing value never matches a rule, except an override's ("fails closed").
+// - Checks on missing values: a missing value never matches a rule, except an override's ("fails closed"). Missing is
+//   absent, null or "", as on the server, written {"in": [{"var": …}, [null, ""]]}: JsonLogic's own `missing` differs
+//   between flagd's languages (json-logic-engine, which flagd's JavaScript uses, counts "" and null as there).
 // - % of devices: flagd's `fractional` with the bucketing value {"cat": ["<salt>/", <device ID>]} and weights out of
 //   10000 is our hash version 2 (hash.ts), so a device is in the same group here as on the server and in the apps.
+//   The device ID is `device.id`, else OpenFeature's `targetingKey` (at the root of flagd's context), as OFREP reads
+//   it (ofrep.ts); then the backup ID, if the rule has one.
+// - Versions in rules are written in full (6 → 6.0.0, fullVersion): strict semver readers refuse short ones.
 // - "Use the default in the app's code": a branch returns null with no defaultVariant, so the SDK uses its own default.
 //   A flag switched off is flagd's DISABLED, which does the same.
 //
@@ -24,11 +29,13 @@
 //   rules. A flag whose rules can serve the app's default has its own default as the last branch (TARGETING_MATCH).
 // - Group names of a % (metadata.group in our answers): flagd has nowhere to put them.
 // - For an override, a value that is there but can't be read (a version like "abc") matches on our server and not in
-//   flagd. Versions compare the same when written in full (6.0.0).
+//   flagd. The server reads a few versions flagd doesn't (6-beta, 01.0.0, V6.0.0 in some languages) and flagd reads a
+//   number (6) the server doesn't: devices report full versions (6.0.0) as text.
 //
 // The request's attributes are nested, as JsonLogic reads "app.version": { "app": { "version": "6.0.0" } }.
 
 import { BUCKETS, HASH_VERSION } from './hash.ts';
+import { fullVersion } from './semver.ts';
 import { CODE_DEFAULT, HIDDEN_PREFIX, forEntity, sortedFlagKeys, type AnswerException, type Condition, type EntityInfo, type FlagDef, type Op, type Snapshot, type Where } from './evaluator.ts';
 
 export const FLAGD_SCHEMA = 'https://flagd.dev/schema/v0/flags.json';
@@ -94,8 +101,12 @@ function anyVariant(flag: FlagDef): Record<string, unknown> {
 
 const and = (parts: Logic[]): Logic => (parts.length === 0 ? true : parts.length === 1 ? parts[0] : { and: parts });
 const or = (parts: Logic[]): Logic => (parts.length === 1 ? parts[0] : { or: parts });
-const missing = (field: string): Logic => ({ missing: [field] });
+/** Absent, null or "": the server's missing (evaluator.ts isMissing), the same in every JsonLogic. */
+const missing = (field: string): Logic => ({ in: [{ var: field }, [null, '']] });
 const present = (field: string): Logic => ({ '!': missing(field) });
+
+/** OpenFeature's targeting key: OFREP reads it as the device ID when there's no device.id (ofrep.ts). */
+const TARGETING_KEY = 'targetingKey';
 
 /** When one line applies: its checks, and for a % of devices, the device inside its part. */
 function lineCheck(e: AnswerException): Logic {
@@ -103,9 +114,12 @@ function lineCheck(e: AnswerException): Logic {
   if (e.split) {
     const s = e.split;
     if (s.hashVersion !== HASH_VERSION) throw new Error(`a % of devices with hash_version ${s.hashVersion} can’t be written as flagd JSON (only ${HASH_VERSION})`);
-    // the device ID, or the backup ID when there's none (answerFor)
-    const unit = s.fallbackBy ? { if: [present(s.by), { var: s.by }, { var: s.fallbackBy }] } : { var: s.by };
-    parts.push(s.fallbackBy ? or([present(s.by), present(s.fallbackBy)]) : present(s.by));
+    // the first of: the ID it is by, the backup ID when there's none (evalRule); the device ID is device.id, else the
+    // targeting key
+    const ids = [s.by, ...(s.fallbackBy ? [s.fallbackBy] : [])].flatMap((f) => (f === 'device.id' ? [f, TARGETING_KEY] : [f]));
+    const last = ids[ids.length - 1];
+    const unit = ids.length === 1 ? { var: last } : { if: [...ids.slice(0, -1).flatMap((f) => [present(f), { var: f }]), { var: last }] };
+    parts.push(or(ids.map(present)));
     const { from, to } = s.range;
     const entries = [...(from > 0 ? [['out', from]] : []), ['in', to - from], ...(to < BUCKETS ? [['out', BUCKETS - to]] : [])];
     parts.push({ '==': [{ fractional: [{ cat: [`${s.salt}/`, unit] }, ...entries] }, 'in'] });
@@ -131,7 +145,7 @@ function check(c: Condition, locked: boolean): Logic {
     case 'contains_none': test = { none: [value, { in: [{ var: '' }, values] }] }; break;
     case 'starts_with': case 'ends_with': test = or(values.map((v) => ({ [c.op]: [text, String(v)] }))); break;
     default:
-      if (SEMVER[c.op]) test = { sem_ver: [value, SEMVER[c.op], String(values[0])] };
+      if (SEMVER[c.op]) test = { sem_ver: [value, SEMVER[c.op], fullVersion(String(values[0])) ?? String(values[0])] };
       else if (NUMBER[c.op]) test = { [NUMBER[c.op]!]: [value, Number(values[0])] };
       else throw new Error(`no flagd JSON for the check "${c.op}"`);
   }

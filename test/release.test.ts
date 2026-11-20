@@ -493,7 +493,9 @@ describe('version releases end to end', () => {
     const branches = file.flags.web_bundle.targeting.if;
     assert.equal(branches.length, 3);
     assert.equal(file.flags.web_bundle.variants[branches[1]], '1.0.2');
-    assert.deepEqual(branches[0].and[1]['=='][0].fractional, [{ cat: ['web_bundle/1.0.1/', { var: 'device.id' }] }, ['in', 500], ['out', 9500]]);
+    // the device ID: device.id, else OpenFeature's targetingKey (flagd.ts)
+    const deviceId = { if: [{ '!': { in: [{ var: 'device.id' }, [null, '']] } }, { var: 'device.id' }, { var: 'targetingKey' }] };
+    assert.deepEqual(branches[0].and[1]['=='][0].fractional, [{ cat: ['web_bundle/1.0.1/', deviceId] }, ['in', 500], ['out', 9500]]);
 
     await save('dev', { kind: 'everyone' });
     assert.equal(await on(null), '1.0.2', 'everyone: devices without an ID too');
