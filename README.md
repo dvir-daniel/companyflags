@@ -44,6 +44,10 @@ Feature flags start simple and grow. Some rules must hold for everyone, whatever
 need settings of their own. Production changes need a second pair of eyes and a way back. Every app and backend should
 get the same answer. CompanyFlags covers all of it in one place, and your code reads it through OpenFeature.
 
+With AI writing more of the code, and AI features that change with a new model or prompt, this matters more: ship
+what nobody read line by line behind a flag, to a few first, with a kill switch, and change models and prompts
+without a deploy. See [Flags in the age of AI](https://dvir-daniel.github.io/companyflags/guide/ai).
+
 - **Your own dimensions.** Serve config per `region` › `store`, per `team`, per `customer` › `brand`, or whatever
   your product is made of. You name the levels, up to four.
 - **Settings per entity, rules for everyone.** Any region, store or customer can have settings of its own on any flag,
@@ -52,6 +56,9 @@ get the same answer. CompanyFlags covers all of it in one place, and your code r
   or flagd JSON, evaluated in-process. Your flag-reading code stays standard.
 - **Nothing private reaches a device.** An app reads with its service's public key and gets values only: no rules,
   no lists of entities. A signed app link from your backend keeps it to its own entity's values.
+- **Made for AI-written code and AI features.** AI-built changes ship off, then to a few, with a kill switch and a
+  remove-by date; models, prompts and parameters are JSON flags you roll out per % or per customer, and roll back in
+  seconds. Agents keep flags in `flags.json` with the code; turning one on in production still needs an approval.
 - **Reviewed changes.** Production can require an approval for every change, with scheduling, break-glass for on
   call, an append-only history, restore, and side-by-side compare.
 - **Releases and version releases.** Give early access to a few, then 1% → 5% → 25% → 50% of devices,

@@ -4,6 +4,9 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- Docs: [Flags in the age of AI](https://dvir-daniel.github.io/companyflags/guide/ai): AI-written code behind a
+  flag, models and prompts as config, agents with flags as code. Settings shows Dimensions above Services.
+
 ## 0.3.0 (2026-11-20)
 
 Flag sets are now services, and every service gets keys: an app reads its flags with its own public key, no backend

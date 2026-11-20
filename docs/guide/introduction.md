@@ -17,6 +17,9 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
   append-only history and restore.
 - **Products with many devices** that don't want rules or lists of entities sent to every phone, or a bill that
   grows with every request.
+- **Teams shipping AI-written code or AI features**: changes nobody read line by line go out behind a flag, to a few
+  first, with a kill switch; models and prompts are config you roll out and roll back without a deploy. See
+  [Flags in the age of AI](/guide/ai).
 - **Teams moving from another system**, a flag tool or one built in-house, that can't switch everything on one day:
   both run side by side, and flags move one at a time.
 

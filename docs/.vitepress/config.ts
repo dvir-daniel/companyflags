@@ -61,6 +61,7 @@ export default defineConfig({
           { text: 'Releases', link: '/guide/releases' },
           { text: 'Approvals and history', link: '/guide/approvals' },
           { text: 'Flags as code', link: '/guide/flags-as-code' },
+          { text: 'Flags in the age of AI', link: '/guide/ai' },
         ],
       },
       {
