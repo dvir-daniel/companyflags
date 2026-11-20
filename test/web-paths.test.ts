@@ -29,7 +29,7 @@ const meta = {
   environments: [{ key: 'dev', name: 'Development', minApprovals: 0, revision: 1 }, { key: 'prod', name: 'Production', minApprovals: 1, revision: 1 }],
   projects: [], users: [], fields: [],
   dimensions: [{ key: 'company', singular: 'company', plural: 'companies', entities: 1, withParent: 0 }, { key: 'brand', singular: 'brand', plural: 'brands', entities: 1, withParent: 1 }],
-  entities: [{ key: 'acme', name: 'Acme', dimension: 'company', createdAt: '' }, { key: 'dove', name: 'Dove', dimension: 'brand', parent: 'acme', createdAt: '' }],
+  entities: [{ key: 'acme', name: 'Acme', dimension: 'company', createdAt: '' }, { key: 'velvet', name: 'Velvet', dimension: 'brand', parent: 'acme', createdAt: '' }],
 } as unknown as Meta;
 
 test('an address in parts, decoded', () => {
@@ -75,7 +75,7 @@ test('the first requests of each page, with what this browser remembers', () => 
     '/dimensions/company/acme/children?environment=dev&page=0&size=50&diff=0&q=', '/dimensions/company/acme',
   ]);
   // an entity page with no environment in the address opens in the last one used
-  assert.deepEqual(paths.firstPaths('#/dimensions/brand/dove', meta)[1], '/dimensions/brand/dove');
+  assert.deepEqual(paths.firstPaths('#/dimensions/brand/velvet', meta)[1], '/dimensions/brand/velvet');
   assert.deepEqual(paths.firstPaths('#/history', meta), ['/history?']);
   assert.deepEqual(paths.firstPaths('#/keys', meta), ['/api-keys']);
   assert.deepEqual(paths.firstPaths('#/approvals', meta), ['/change-sets']);
@@ -95,7 +95,7 @@ test('an environment that no longer exists, remembered or in the address, falls 
 
 test('addresses from before dimensions open the same pages under #/dimensions', () => {
   assert.equal(paths.newAddress('#/customers', meta), '#/dimensions/company');
-  assert.equal(paths.newAddress('#/customer/dove', meta), '#/dimensions/brand/dove');
+  assert.equal(paths.newAddress('#/customer/velvet', meta), '#/dimensions/brand/velvet');
   assert.equal(paths.newAddress('#/customer/acme/prod', meta), '#/dimensions/company/acme/prod');
   // a company's Brands tab is the tab of the entities under it
   assert.equal(paths.newAddress('#/customer/acme/prod/brands', meta), '#/dimensions/company/acme/prod/children');

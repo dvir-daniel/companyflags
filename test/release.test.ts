@@ -99,16 +99,16 @@ describe('where a release is', () => {
 
   test('rules made on the flag page are read by their shape: a % on some apps, its own name, a backup ID', () => {
     const l = stored({ enabled: true, defaultVariation: 'off', rules: [
-      { name: 'Beta customers', locked: false, disabled: false, conditions: [{ field: 'entity', op: 'in', values: ['google'] }], serveVariation: 'on', split: null },
+      { name: 'Beta customers', locked: false, disabled: false, conditions: [{ field: 'entity', op: 'in', values: ['wonka'] }], serveVariation: 'on', split: null },
       { name: '20% of android devices', locked: false, disabled: false, conditions: [{ field: 'project', op: 'in', values: ['android'] }], serveVariation: null,
         split: { by: 'device.id', fallbackBy: 'session.id', ranges: [{ variation: 'on', from: 0, to: 2000 }] } },
     ] });
     const s = releaseState(variants, l);
-    assert.deepEqual([s.step, s.percent, s.apps, s.entities], ['percent', 20, ['android'], ['google']]);
+    assert.deepEqual([s.step, s.percent, s.apps, s.entities], ['percent', 20, ['android'], ['wonka']]);
     // early access from before dimensions checked customer.id, which means the same: still read as early access
-    const old = stored({ ...l, rules: [{ ...l.rules[0], conditions: [{ field: 'customer.id', op: 'in', values: ['google'] }] }, l.rules[1]] });
-    assert.deepEqual(releaseState(variants, old).entities, ['google']);
-    assert.deepEqual(step(old, { kind: 'entities', entities: ['google', 'acme'] }).rules[0].conditions, [{ field: 'entity', op: 'in', values: ['google', 'acme'] }],
+    const old = stored({ ...l, rules: [{ ...l.rules[0], conditions: [{ field: 'customer.id', op: 'in', values: ['wonka'] }] }, l.rules[1]] });
+    assert.deepEqual(releaseState(variants, old).entities, ['wonka']);
+    assert.deepEqual(step(old, { kind: 'entities', entities: ['wonka', 'acme'] }).rules[0].conditions, [{ field: 'entity', op: 'in', values: ['wonka', 'acme'] }],
       'changing it writes today’s name');
     assert.equal(stepText(s), '20% of devices on android');
     assert.deepEqual(nextChange(s), { kind: 'percent', percent: 25 }, 'a % off the ladder goes to the next one on it');
@@ -165,7 +165,7 @@ describe('releases end to end', () => {
     assert.deepEqual(list.environments, ['dev', 'prod']);
     assert.deepEqual(list.rows.map((r: any) => r.key).sort(), ['android_quick_share', 'dark_mode_v2', 'new_checkout']);
     assert.deepEqual([row('new_checkout').envs.dev.step, row('new_checkout').envs.dev.percent, row('new_checkout').envs.dev.text], ['percent', 20, '20% of devices on android']);
-    assert.deepEqual(row('dark_mode_v2').envs.prod.entities, ['google', 'spotify', 'globex']);
+    assert.deepEqual(row('dark_mode_v2').envs.prod.entities, ['wonka', 'oscorp', 'globex']);
     assert.equal(row('android_quick_share').ready, true);
     const keys = async (q: string) => (await t.as('alice').get(`/releases?page=0&${q}`)).json.rows.map((r: any) => r.key).sort();
     assert.deepEqual(await keys('show=rolling'), ['dark_mode_v2', 'new_checkout']);

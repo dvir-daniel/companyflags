@@ -34,11 +34,11 @@ test('every attribute in fields.ts is offered by the rule editor, under its grou
 
 test('the editor’s suggestions: the fixed lists, the apps, every entity, or one dimension’s entities', () => {
   const lists = { apps: ['android', 'web'], environments: ['dev', 'prod'],
-    entities: [{ key: 'unilever', dimension: 'company' }, { key: 'dove', dimension: 'brand' }, { key: 'acme', dimension: 'company' }] };
+    entities: [{ key: 'tyrell', dimension: 'company' }, { key: 'velvet', dimension: 'brand' }, { key: 'acme', dimension: 'company' }] };
   const of = (name: string) => suggestedValues(meta.find((f) => f.name === name), lists);
-  assert.deepEqual(of('entity'), ['unilever', 'dove', 'acme']);
-  assert.deepEqual(of('company'), ['unilever', 'acme']);
-  assert.deepEqual(of('brand'), ['dove']);
+  assert.deepEqual(of('entity'), ['tyrell', 'velvet', 'acme']);
+  assert.deepEqual(of('company'), ['tyrell', 'acme']);
+  assert.deepEqual(of('brand'), ['velvet']);
   assert.deepEqual([of('project'), of('environment')], [['android', 'web'], ['dev', 'prod']]);
   assert.deepEqual(of('device.platform'), ['android', 'ios', 'web', 'macos', 'windows']);
   assert.deepEqual([of('app.version'), of('nope')], [[], []]);
@@ -48,12 +48,12 @@ test('labels and entity names come from the entries and the dimensions', () => {
   for (const f of FIELDS) assert.equal(fieldLabel(f.name), f.label);
   assert.equal(fieldLabel('old.attribute'), 'old.attribute');
   assert.deepEqual([fieldLabel('brand', DIMS), fieldLabel('entity', DIMS), fieldLabel('brand')], ['Brand', 'Company or brand', 'brand']);
-  const names: Record<string, string> = { unilever: 'Unilever', dove: 'Dove' };
+  const names: Record<string, string> = { tyrell: 'Tyrell', velvet: 'Velvet' };
   const vocab = { dimensions: DIMS, nameOf: (k: string) => names[k] };
-  assert.equal(conditionText({ field: 'company', op: 'in', values: ['unilever'] }, vocab), 'Company is Unilever');
-  assert.equal(conditionText({ field: 'entity', op: 'not_in', values: ['dove'] }, vocab), 'Company or brand is not Dove');
-  assert.equal(conditionText({ field: 'customer.id', op: 'in', values: ['dove', 'nobody'] }, vocab), 'Company or brand is Dove or nobody', 'old rules read the same way');
-  assert.equal(conditionText({ field: 'project', op: 'in', values: ['dove'] }, vocab), 'Flag set is dove', 'only entity attributes name entities');
+  assert.equal(conditionText({ field: 'company', op: 'in', values: ['tyrell'] }, vocab), 'Company is Tyrell');
+  assert.equal(conditionText({ field: 'entity', op: 'not_in', values: ['velvet'] }, vocab), 'Company or brand is not Velvet');
+  assert.equal(conditionText({ field: 'customer.id', op: 'in', values: ['velvet', 'nobody'] }, vocab), 'Company or brand is Velvet or nobody', 'old rules read the same way');
+  assert.equal(conditionText({ field: 'project', op: 'in', values: ['velvet'] }, vocab), 'Flag set is velvet', 'only entity attributes name entities');
   assert.deepEqual(['company', 'brand', 'entity', 'customer.id', 'customer.company', 'project', 'store'].filter((f) => namesEntities(f, ['company', 'brand'])),
     ['company', 'brand', 'entity', 'customer.id', 'customer.company']);
 });

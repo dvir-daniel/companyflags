@@ -74,7 +74,7 @@ test('a dimension goes in between only while the one below has no entity with a 
   assert.equal((await save([COMPANY, division, BRAND])).status, 200, 'no brand has a company yet');
   assert.deepEqual(await keys(), ['company', 'division', 'brand']);
   assert.equal((await save([COMPANY, BRAND])).status, 200, 'and out again: it was empty');
-  assert.equal((await t.as('dana').post('/dimensions/brand', { key: 'nf-kids', name: 'Netflix Kids', parent: 'netflix' })).status, 201);
+  assert.equal((await t.as('dana').post('/dimensions/brand', { key: 'sl-kids', name: 'Soylent Kids', parent: 'soylent' })).status, 201);
   const refused = await save([COMPANY, division, BRAND]);
   assert.equal(refused.status, 422);
   assert.match(refused.json.error, /Divisions can only go between company and brand while no brands have a parent/);
@@ -101,19 +101,19 @@ test('added at the bottom and the top; removed once empty and no rule checks it;
   assert.equal((await t.as('dana').post('/dimensions/store', { key: 'x', name: 'X' })).status, 404);
   // back at the bottom, with a store under a brand (not under a company: the dimension right above only)
   assert.equal((await save([COMPANY, BRAND, store])).status, 200);
-  assert.equal((await t.as('dana').post('/dimensions/store', { key: 'nf-kids-1', name: 'Kids store', parent: 'nf-kids' })).status, 201);
-  assert.equal((await t.as('dana').post('/dimensions/store', { key: 'nf-1', name: 'Store under a company', parent: 'netflix' })).status, 422);
+  assert.equal((await t.as('dana').post('/dimensions/store', { key: 'sl-kids-1', name: 'Kids store', parent: 'sl-kids' })).status, 201);
+  assert.equal((await t.as('dana').post('/dimensions/store', { key: 'nf-1', name: 'Store under a company', parent: 'soylent' })).status, 422);
   // at the top: the companies have no parent until moved under one
   assert.equal((await save([region, COMPANY, BRAND, store])).status, 200);
   assert.equal((await t.as('dana').post('/dimensions/region', { key: 'eu', name: 'Europe' })).status, 201);
-  assert.equal((await t.as('dana').put('/dimensions/company/netflix', { name: 'Netflix', parent: 'eu' })).status, 200);
+  assert.equal((await t.as('dana').put('/dimensions/company/soylent', { name: 'Soylent', parent: 'eu' })).status, 200);
   await t.settle();
-  assert.deepEqual(t.plane.get('dev').entities['nf-kids-1'].path, ['nf-kids-1', 'nf-kids', 'netflix', 'eu']);
-  assert.deepEqual(t.plane.get('dev').entities['nf-kids-1'].at, { store: 'nf-kids-1', brand: 'nf-kids', company: 'netflix', region: 'eu' });
+  assert.deepEqual(t.plane.get('dev').entities['sl-kids-1'].path, ['sl-kids-1', 'sl-kids', 'soylent', 'eu']);
+  assert.deepEqual(t.plane.get('dev').entities['sl-kids-1'].at, { store: 'sl-kids-1', brand: 'sl-kids', company: 'soylent', region: 'eu' });
   assert.deepEqual(t.plane.get('dev').dimensions, ['region', 'company', 'brand', 'store']);
   assert.match((await save([region, COMPANY, BRAND, store, d('shelf')])).json.error, /At most 4/);
   // an archived store still belongs to Stores: it stays
-  await t.db.query(`update entity set archived_at = now() where key = 'nf-kids-1'`);
+  await t.db.query(`update entity set archived_at = now() where key = 'sl-kids-1'`);
   assert.match((await save([region, COMPANY, BRAND])).json.error, /Stores can’t go: it has archived entries/);
   assert.deepEqual(await keys(), ['region', 'company', 'brand', 'store']);
 });

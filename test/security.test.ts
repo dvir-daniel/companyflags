@@ -15,7 +15,7 @@ let t: Awaited<ReturnType<typeof boot>>;
 before(async () => { t = await boot({ log: (m) => logs.push(m) }); });
 after(async () => { await t.stop(); });
 
-const OTHERS = ['microsoft', 'google', 'netflix', 'sap', 'spotify', 'globex', 'initech', 'newco'];
+const OTHERS = ['vandelay', 'wonka', 'soylent', 'cyberdyne', 'oscorp', 'globex', 'initech', 'newco'];
 const keyFor = async (body: Record<string, string>) => {
   const r = await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-wupserver', ...body });
   assert.equal(r.status, 201, JSON.stringify(r.json));
@@ -26,9 +26,9 @@ const download = (key: string, path = '', headers: Record<string, string> = {}) 
   { authorization: `Bearer ${key}`, ...headers });
 
 test('an entity’s backend gets its own settings: no other entity’s key or typed-in value, and the same answers', async () => {
-  // typed-in values of their own (hidden "val-" variants) for netflix and microsoft
+  // typed-in values of their own (hidden "val-" variants) for soylent and vandelay
   assert.equal((await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'val-nf1', value: 777 }, { key: 'val-ms1', value: 555 }] })).status, 200);
-  for (const [entity, value] of [['netflix', 'val-nf1'], ['microsoft', 'val-ms1']]) {
+  for (const [entity, value] of [['soylent', 'val-nf1'], ['vandelay', 'val-ms1']]) {
     const flag = (await t.as('alice').get('/flags/max_upload_mb')).json;
     const own = flag.layers.dev.entities.find((c: any) => c.entity === entity);
     const r = await t.as('alice').put(`/flags/max_upload_mb/layers/dev/${entity}`, { layer: { inherit: 'customer_only', defaultVariation: value, rules: [] }, expectedVersion: own?.layer.version ?? null });
@@ -37,13 +37,13 @@ test('an entity’s backend gets its own settings: no other entity’s key or ty
   await t.settle();
   const snap = t.plane.get('dev');
 
-  for (const entity of ['acme', 'netflix', 'spotify']) {
+  for (const entity of ['acme', 'soylent', 'oscorp']) {
     const res = await download(await keyFor({ scope: 'entity', entity }));
     assert.equal(res.status, 200);
     const text = JSON.stringify(res.json);
     for (const other of OTHERS.filter((o) => o !== entity)) assert.ok(!text.includes(`"${other}"`), `${entity}’s download names ${other}`);
-    if (entity !== 'netflix') assert.ok(!text.includes('val-nf1') && !text.includes('777'), `${entity} sees netflix’s own value`);
-    assert.ok(!text.includes('val-ms1'), `${entity} sees microsoft’s own value`);
+    if (entity !== 'soylent') assert.ok(!text.includes('val-nf1') && !text.includes('777'), `${entity} sees soylent’s own value`);
+    assert.ok(!text.includes('val-ms1'), `${entity} sees vandelay’s own value`);
     // what the backend works out in-process with flagd is what the server would answer
     for (const flag of Object.keys(res.json.flags)) {
       for (const attrs of [{}, { 'device.id': 'd-1', 'app.version': '6.0.0' }, { 'device.id': 'd-2', 'locale.language': 'de' }]) {
@@ -51,8 +51,8 @@ test('an entity’s backend gets its own settings: no other entity’s key or ty
       }
     }
   }
-  const netflix = JSON.stringify((await download(await keyFor({ scope: 'entity', entity: 'netflix' }))).json);
-  assert.ok(netflix.includes('val-nf1'), 'its own typed-in value is there');
+  const soylent = JSON.stringify((await download(await keyFor({ scope: 'entity', entity: 'soylent' }))).json);
+  assert.ok(soylent.includes('val-nf1'), 'its own typed-in value is there');
   assert.equal((await download(await keyFor({ scope: 'all' }))).status, 400, 'a shared key gets one entity at a time');
 });
 
@@ -70,40 +70,40 @@ test('a shared backend asking for an entity that doesn’t exist, or in the wron
 
 test('key scopes: one entity, an entity and those under it, or any; the key is the only header', async () => {
   const dana = t.as('dana');
-  assert.equal((await dana.post('/dimensions/brand', { key: 'nf-kids', name: 'Netflix Kids', parent: 'netflix' })).status, 201);
-  assert.equal((await dana.post('/dimensions/brand', { key: 'ms-xbox', name: 'Xbox', parent: 'microsoft' })).status, 201);
+  assert.equal((await dana.post('/dimensions/brand', { key: 'sl-kids', name: 'Soylent Kids', parent: 'soylent' })).status, 201);
+  assert.equal((await dana.post('/dimensions/brand', { key: 'vd-latex', name: 'Vandelay Latex', parent: 'vandelay' })).status, 201);
   await t.settle();
-  const own = await keyFor({ scope: 'entity', entity: 'netflix' });
-  const below = await keyFor({ scope: 'below', entity: 'netflix' });
+  const own = await keyFor({ scope: 'entity', entity: 'soylent' });
+  const below = await keyFor({ scope: 'below', entity: 'soylent' });
   const any = await keyFor({ scope: 'all' });
   const id = async (key: string, path = '', headers: Record<string, string> = {}) => {
     const r = await download(key, path, headers);
     return r.status === 200 ? r.json.metadata.flagSetId : r.status;
   };
   // an entity's key: only its entity, with the path or without
-  assert.deepEqual([await id(own), await id(own, '/company/netflix'), await id(own, '/brand/nf-kids'), await id(own, '/company/acme')],
-    ['dev/server-wupserver/netflix', 'dev/server-wupserver/netflix', 403, 403]);
+  assert.deepEqual([await id(own), await id(own, '/company/soylent'), await id(own, '/brand/sl-kids'), await id(own, '/company/acme')],
+    ['dev/server-wupserver/soylent', 'dev/server-wupserver/soylent', 403, 403]);
   // below: its entity and every entity under it, not its parent's others or other companies'
-  assert.deepEqual([await id(below), await id(below, '/company/netflix'), await id(below, '/brand/nf-kids'), await id(below, '/brand/ms-xbox'), await id(below, '/company/acme')],
-    ['dev/server-wupserver/netflix', 'dev/server-wupserver/netflix', 'dev/server-wupserver/nf-kids', 403, 403]);
+  assert.deepEqual([await id(below), await id(below, '/company/soylent'), await id(below, '/brand/sl-kids'), await id(below, '/brand/vd-latex'), await id(below, '/company/acme')],
+    ['dev/server-wupserver/soylent', 'dev/server-wupserver/soylent', 'dev/server-wupserver/sl-kids', 403, 403]);
   // all: any, named in the path
-  assert.deepEqual([await id(any, '/brand/nf-kids'), await id(any, '/brand/ms-xbox'), await id(any)], ['dev/server-wupserver/nf-kids', 'dev/server-wupserver/ms-xbox', 400]);
+  assert.deepEqual([await id(any, '/brand/sl-kids'), await id(any, '/brand/vd-latex'), await id(any)], ['dev/server-wupserver/sl-kids', 'dev/server-wupserver/vd-latex', 400]);
   // X-Customer-Id, from before dimensions, still names the entity for an `all` key; it never widens a narrower key
-  assert.equal(await id(any, '', { 'x-customer-id': 'nf-kids' }), 'dev/server-wupserver/nf-kids');
-  assert.equal(await id(own, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/netflix', 'an entity’s key ignores it');
-  assert.equal(await id(below, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/netflix');
-  // moving Netflix Kids out from under Netflix takes it out of the `below` key's reach at once (the key cache is untouched)
-  assert.equal((await dana.put('/dimensions/brand/nf-kids', { name: 'Netflix Kids', parent: 'microsoft' })).status, 200);
+  assert.equal(await id(any, '', { 'x-customer-id': 'sl-kids' }), 'dev/server-wupserver/sl-kids');
+  assert.equal(await id(own, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/soylent', 'an entity’s key ignores it');
+  assert.equal(await id(below, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/soylent');
+  // moving Soylent Kids out from under Soylent takes it out of the `below` key's reach at once (the key cache is untouched)
+  assert.equal((await dana.put('/dimensions/brand/sl-kids', { name: 'Soylent Kids', parent: 'vandelay' })).status, 200);
   await t.settle();
-  assert.deepEqual([await id(below, '/brand/nf-kids'), await id(any, '/brand/nf-kids')], [403, 'dev/server-wupserver/nf-kids']);
-  assert.equal((await dana.put('/dimensions/brand/nf-kids', { name: 'Netflix Kids', parent: 'netflix' })).status, 200);
+  assert.deepEqual([await id(below, '/brand/sl-kids'), await id(any, '/brand/sl-kids')], [403, 'dev/server-wupserver/sl-kids']);
+  assert.equal((await dana.put('/dimensions/brand/sl-kids', { name: 'Soylent Kids', parent: 'soylent' })).status, 200);
   await t.settle();
-  assert.equal(await id(below, '/brand/nf-kids'), 'dev/server-wupserver/nf-kids', 'and back in at once');
+  assert.equal(await id(below, '/brand/sl-kids'), 'dev/server-wupserver/sl-kids', 'and back in at once');
   // what's refused when a key is made
   const bad = async (body: Record<string, string>) => (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', ...body })).status;
   assert.deepEqual([await bad({ scope: 'below' }), await bad({ scope: 'entity', entity: 'nobody' }), await bad({ scope: 'customer', entity: 'acme' }),
     await bad({ scope: 'all_customers' })], [422, 422, 422, 422]);
-  const listed = (await t.as('alice').get('/api-keys')).json.find((k: any) => k.scope === 'below' && k.entity === 'netflix');
+  const listed = (await t.as('alice').get('/api-keys')).json.find((k: any) => k.scope === 'below' && k.entity === 'soylent');
   assert.deepEqual([listed.dimension, listed.projectKind], ['company', 'server']);
 });
 
@@ -150,15 +150,15 @@ test('prototype names are unknown keys like any other', async () => {
 test('one entity: the same row as in its dimension’s list, or 404', async () => {
   const rows = async (dim: string) => (await t.as('alice').get(`/dimensions/${dim}`)).json;
   const lists = { company: await rows('company'), brand: await rows('brand') };
-  for (const [dim, key] of [['company', 'netflix'], ['brand', 'nf-kids'], ['company', 'acme']] as const) {
+  for (const [dim, key] of [['company', 'soylent'], ['brand', 'sl-kids'], ['company', 'acme']] as const) {
     const one = await t.as('vic@example.com').get(`/dimensions/${dim}/${key}`);
     assert.equal(one.status, 200, key);
     assert.deepEqual(one.json, lists[dim].find((c: any) => c.key === key), key);
   }
-  const netflix = (await t.as('alice').get('/dimensions/company/netflix')).json;
-  assert.deepEqual([netflix.children, netflix.parent, typeof netflix.createdAt, netflix.flagsWithSettings.dev > 0], [1, null, 'string', true]);
-  assert.equal((await t.as('alice').get('/dimensions/brand/nf-kids')).json.parentName, 'Netflix');
-  assert.equal((await t.as('alice').get('/dimensions/company/nf-kids')).status, 404, 'in its own dimension only');
+  const soylent = (await t.as('alice').get('/dimensions/company/soylent')).json;
+  assert.deepEqual([soylent.children, soylent.parent, typeof soylent.createdAt, soylent.flagsWithSettings.dev > 0], [1, null, 'string', true]);
+  assert.equal((await t.as('alice').get('/dimensions/brand/sl-kids')).json.parentName, 'Soylent');
+  assert.equal((await t.as('alice').get('/dimensions/company/sl-kids')).status, 404, 'in its own dimension only');
   assert.equal((await t.as('alice').get('/dimensions/company/nobody')).status, 404);
   await t.db.query(`update entity set archived_at = now() where key = 'newco'`);
   assert.equal((await t.as('alice').get('/dimensions/company/newco')).status, 404, 'an archived entity isn’t listed');

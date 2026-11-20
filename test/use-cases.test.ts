@@ -14,14 +14,14 @@ describe('use cases', () => {
     assert.equal(ios.errorCode, 'FLAG_NOT_FOUND');
   });
 
-  test('UC2 + UC3: per-customer URL, Microsoft android differs from Microsoft iOS', async () => {
-    const msAndroid = await t.trace({ project: 'android', entity: 'microsoft', flag: 'api_base_url' });
-    const msIos = await t.trace({ project: 'ios', entity: 'microsoft', flag: 'api_base_url' });
-    const google = await t.trace({ project: 'web', entity: 'google', flag: 'api_base_url' });
+  test('UC2 + UC3: per-customer URL, Vandelay android differs from Vandelay iOS', async () => {
+    const msAndroid = await t.trace({ project: 'android', entity: 'vandelay', flag: 'api_base_url' });
+    const msIos = await t.trace({ project: 'ios', entity: 'vandelay', flag: 'api_base_url' });
+    const wonka = await t.trace({ project: 'web', entity: 'wonka', flag: 'api_base_url' });
     const acme = await t.trace({ project: 'web', entity: 'acme', flag: 'api_base_url' });
-    assert.equal(msAndroid.value, 'https://android.microsoft.api.example.com');
-    assert.equal(msIos.value, 'https://microsoft.api.example.com');
-    assert.equal(google.value, 'https://google.api.example.com');
+    assert.equal(msAndroid.value, 'https://android.vandelay.api.example.com');
+    assert.equal(msIos.value, 'https://vandelay.api.example.com');
+    assert.equal(wonka.value, 'https://wonka.api.example.com');
     assert.equal(acme.value, 'https://api.example.com');
   });
 
@@ -73,7 +73,7 @@ describe('use cases', () => {
     assert.equal(bypass.status, 200, JSON.stringify(bypass.json));
     await t.settle();
     for (const project of ['android', 'web', 'server-ds']) {
-      const r = await t.trace({ environment: 'prod', project, entity: 'microsoft', flag: 'payments_enabled' });
+      const r = await t.trace({ environment: 'prod', project, entity: 'vandelay', flag: 'payments_enabled' });
       assert.equal(r.codeDefault, true);                    // OFF: nothing is sent, the app uses its code default
       assert.equal(r.reason, 'DISABLED');
     }
@@ -81,37 +81,37 @@ describe('use cases', () => {
     assert.equal(hist[0].actorType, 'bypass');
   });
 
-  test('UC6: locked off for android < 5.0, Google cannot override; missing version fails closed', async () => {
-    const old = await t.trace({ project: 'android', entity: 'google', attrs: { 'app.version': '4.9.3', 'device.id': 'x' }, flag: 'new_checkout' });
+  test('UC6: locked off for android < 5.0, Wonka cannot override; missing version fails closed', async () => {
+    const old = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'app.version': '4.9.3', 'device.id': 'x' }, flag: 'new_checkout' });
     assert.equal(old.value, false);
     assert.equal(old.metadata.layer, 'base');
-    const v510 = await t.trace({ project: 'android', entity: 'google', attrs: { 'app.version': '5.10.0', 'device.id': 'x' }, flag: 'new_checkout' });
-    assert.equal(v510.value, true);                         // 5.10 > 5.0 (semver, not string compare); Google rule applies
-    const missing = await t.trace({ project: 'android', entity: 'google', attrs: { 'device.id': 'x' }, flag: 'new_checkout' });
+    const v510 = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'app.version': '5.10.0', 'device.id': 'x' }, flag: 'new_checkout' });
+    assert.equal(v510.value, true);                         // 5.10 > 5.0 (semver, not string compare); Wonka rule applies
+    const missing = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'device.id': 'x' }, flag: 'new_checkout' });
     assert.equal(missing.value, false);
     assert.ok(missing.trace[2].conditions.some((c: any) => /fails closed/.test(c.note ?? '')));
-    const garbage = await t.trace({ project: 'android', entity: 'google', attrs: { 'app.version': 'banana', 'device.id': 'x' }, flag: 'new_checkout' });
+    const garbage = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'app.version': 'banana', 'device.id': 'x' }, flag: 'new_checkout' });
     assert.equal(garbage.value, false);
-    const ios = await t.trace({ project: 'ios', entity: 'google', attrs: { 'app.version': '1.0.0' }, flag: 'new_checkout' });
+    const ios = await t.trace({ project: 'ios', entity: 'wonka', attrs: { 'app.version': '1.0.0' }, flag: 'new_checkout' });
     assert.equal(ios.value, true);                          // the lock only targets android
   });
 
   test('UC7: EU host via one rule for everyone; an “Own settings only” layer is explicit and visible in the trace', async () => {
-    assert.equal((await t.trace({ project: 'web', entity: 'netflix', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
-    assert.equal((await t.trace({ project: 'web', entity: 'spotify', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
+    assert.equal((await t.trace({ project: 'web', entity: 'soylent', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
+    assert.equal((await t.trace({ project: 'web', entity: 'oscorp', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
     assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'data_region_host' })).value, 'https://us.data.example.com');
-    const sap = await t.trace({ project: 'web', entity: 'sap', flag: 'data_region_host' });
-    assert.equal(sap.value, 'https://us.data.example.com');
-    assert.ok(sap.trace.some((s: any) => s.outcome === 'skipped' && /uses only its own settings/.test(s.detail)));
+    const cyberdyne = await t.trace({ project: 'web', entity: 'cyberdyne', flag: 'data_region_host' });
+    assert.equal(cyberdyne.value, 'https://us.data.example.com');
+    assert.ok(cyberdyne.trace.some((s: any) => s.outcome === 'skipped' && /uses only its own settings/.test(s.detail)));
     const impact = (await t.as('alice').get('/flags/data_region_host/impact/dev')).json;
-    assert.deepEqual(impact.ownOnly, ['sap']);
+    assert.deepEqual(impact.ownOnly, ['cyberdyne']);
 
     // an entity's own default no longer masks base rules (the original design's STOP bug)
     const netflixLayer = { inherit: 'base_rules_then_customer_default', defaultVariation: 'us', rules: [] };
-    const s = await t.as('alice').put('/flags/data_region_host/layers/dev/netflix', { layer: netflixLayer, expectedVersion: null });
+    const s = await t.as('alice').put('/flags/data_region_host/layers/dev/soylent', { layer: netflixLayer, expectedVersion: null });
     assert.equal(s.status, 200, JSON.stringify(s.json));
     await t.settle();
-    assert.equal((await t.trace({ project: 'web', entity: 'netflix', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
+    assert.equal((await t.trace({ project: 'web', entity: 'soylent', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
   });
 
   test('entities have a key, a name, a dimension and, below the top, a parent; renames are audited', async () => {
@@ -125,13 +125,13 @@ describe('use cases', () => {
 
   test('entity page: every flag with all its variants, the defaults, and this entity’s own settings', async () => {
     const list = (await t.as('alice').get('/dimensions/company')).json;
-    const ms = list.find((c: any) => c.key === 'microsoft');
+    const ms = list.find((c: any) => c.key === 'vandelay');
     assert.ok(ms.flagsWithSettings.dev >= 1);
-    const view = (await t.as('alice').get('/dimensions/company/netflix/flags?environment=dev')).json;
-    assert.equal(view.entity.name, 'Netflix');
+    const view = (await t.as('alice').get('/dimensions/company/soylent/flags?environment=dev')).json;
+    assert.equal(view.entity.name, 'Soylent');
     const ds = view.rows.find((f: any) => f.key === 'ds_backend_config');
-    assert.deepEqual([ds.answer.gets.variant, ds.answer.gets.section], ['netflix', 'entity_default']);
-    assert.deepEqual(ds.variations.map((v: any) => v.key), ['default', 'netflix']);
+    assert.deepEqual([ds.answer.gets.variant, ds.answer.gets.section], ['soylent', 'entity_default']);
+    assert.deepEqual(ds.variations.map((v: any) => v.key), ['default', 'soylent']);
     const plain = view.rows.find((f: any) => f.key === 'new_checkout');
     assert.equal(plain.hasOwn, false);                        // no own settings: gets the defaults
     assert.ok(plain.variations.length >= 2);
@@ -141,11 +141,11 @@ describe('use cases', () => {
     assert.equal((await t.as('alice').get('/dimensions/company/nope/flags')).status, 404);
   });
 
-  test('UC8: a flag sent only to server-ds never reaches a phone; Netflix gets its own value', async () => {
-    const phone = await t.trace({ project: 'android', entity: 'netflix', flag: 'ds_backend_config' });
+  test('UC8: a flag sent only to server-ds never reaches a phone; Soylent gets its own value', async () => {
+    const phone = await t.trace({ project: 'android', entity: 'soylent', flag: 'ds_backend_config' });
     assert.equal(phone.errorCode, 'FLAG_NOT_FOUND');
-    const ds = await t.trace({ project: 'server-ds', entity: 'netflix', flag: 'ds_backend_config' });
-    assert.deepEqual(ds.value, { host: 'ds-netflix.internal', poolSize: 40 });
+    const ds = await t.trace({ project: 'server-ds', entity: 'soylent', flag: 'ds_backend_config' });
+    assert.deepEqual(ds.value, { host: 'ds-soylent.internal', poolSize: 40 });
   });
 
   test('UC9: a brand-new entity gets the base with zero configuration', async () => {
@@ -159,7 +159,7 @@ describe('use cases', () => {
 
   test('UC10: trace explains every layer and the bucket', async () => {
     const id = deviceIn('new_checkout', 0, 2000);
-    const r = await t.trace({ project: 'android', entity: 'microsoft', attrs: { 'device.id': id, 'app.version': '6.0.0' }, flag: 'new_checkout' });
+    const r = await t.trace({ project: 'android', entity: 'vandelay', attrs: { 'device.id': id, 'app.version': '6.0.0' }, flag: 'new_checkout' });
     assert.equal(r.value, true);
     assert.equal(r.reason, 'SPLIT');
     const split = r.trace.find((s: any) => s.split?.bucket !== undefined);

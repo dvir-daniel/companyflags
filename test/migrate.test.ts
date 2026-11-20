@@ -128,7 +128,7 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
     { key: 'brand', singular: 'brand', plural: 'brands', entities: 2, withParent: 2 },
   ]);
   for (const c of CUSTOMERS) assert.equal((await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}`, { as: 'alice' })).status, 200, c);
-  assert.equal((await call('GET', '/api/dimensions/brand/dove', { as: 'alice' })).json.parent, 'unilever');
+  assert.equal((await call('GET', '/api/dimensions/brand/velvet', { as: 'alice' })).json.parent, 'tyrell');
   // live rules use today's names; the old names stay as attributes for what still has them
   const rules = (await app.db.query<{ c: string; by: string | null }>(`select conditions::text as c, split_by as by from flag_rule`)).rows;
   assert.ok(rules.every((r) => !r.c.includes('customer.') && !r.by?.startsWith('customer.')), JSON.stringify(rules));
@@ -147,12 +147,12 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
   const anon = await call('GET', '/client/v1/flags/prod/web');
   assert.deepEqual([anon.json.flags, anon.headers.get('etag')], [golden.files[''].flags, golden.files[''].etag], 'before login');
 
-  // flagd JSON: Dove's own key (now scope entity) and the shared one (now all), by path and by the old header
+  // flagd JSON: Velvet's own key (now scope entity) and the shared one (now all), by path and by the old header
   const flagd = (key: string, path = '', headers: Record<string, string> = {}) => call('GET', `/sdk/v1/flagd${path}`, { headers: { authorization: `Bearer ${key}`, ...headers } });
   // the same flags and ETags; only flagSetId differs, as it names the flag set since 0.1.0 (<env>/<flag set>/<entity>)
   const now = (c: string) => { const d = golden.flagd[c].doc; return { ...d, metadata: { ...d.metadata, flagSetId: `prod/backend/${c}` } }; };
-  const own = await flagd(KEYS.dove);
-  assert.deepEqual([own.status, own.json, own.headers.get('etag')], [200, now('dove'), golden.flagd.dove.etag]);
+  const own = await flagd(KEYS.velvet);
+  assert.deepEqual([own.status, own.json, own.headers.get('etag')], [200, now('velvet'), golden.flagd.velvet.etag]);
   for (const c of CUSTOMERS) {
     assert.deepEqual((await flagd(KEYS.shared, `/${DIMENSION_OF[c]}/${c}`)).json, now(c), `${c} by path`);
     const legacy = await flagd(KEYS.shared, '', { 'x-customer-id': c });
@@ -161,10 +161,10 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
   assert.deepEqual((await app.db.query(`select scope from api_key order by id`)).rows.map((r: any) => r.scope), ['entity', 'all']);
 
   // History from before reads: the old kinds, the entity column, and what a restore leaves alone, in words
-  const axe = (await call('GET', '/api/history?entity=axe', { as: 'alice' })).json;
-  assert.deepEqual(axe.map((h: any) => [h.changeType, h.entity]), [['customer.update', 'axe']]);
+  const onyx = (await call('GET', '/api/history?entity=onyx', { as: 'alice' })).json;
+  assert.deepEqual(onyx.map((h: any) => [h.changeType, h.entity]), [['customer.update', 'onyx']]);
   const preview = (await call('GET', '/api/environments/prod/versions/0/restore-preview', { as: 'alice' })).json;
-  assert.deepEqual(preview.notRolledBack.map((x: any) => x.text), ['Added Dove under Unilever', 'Axe moved out of Unilever']);
+  assert.deepEqual(preview.notRolledBack.map((x: any) => x.text), ['Added Velvet under Tyrell', 'Onyx moved out of Tyrell']);
 
   // the change set in review still applies: its rule on customer.id means what it meant
   const cs = (await call('GET', `/api/change-sets/${changeSet}`, { as: 'alice' })).json;

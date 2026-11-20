@@ -65,7 +65,7 @@ test('the file has values only: no entity lists, nothing about other entities or
   const snap = t.plane.get('dev');
   const file = JSON.stringify(buildClientFile(snap, 'web', snap.entities.acme));
   for (const field of ['entity', 'company', 'brand']) assert.ok(!file.includes(`"field":"${field}"`), `checks on ${field} are settled on the server`);
-  for (const other of ['microsoft', 'netflix', 'spotify']) assert.ok(!file.includes(`"${other}"`), `nothing about ${other}`);
+  for (const other of ['vandelay', 'soylent', 'oscorp']) assert.ok(!file.includes(`"${other}"`), `nothing about ${other}`);
   assert.ok(!file.includes('"project"'), 'checks on the app are settled on the server');
 });
 
@@ -106,11 +106,11 @@ test('the link: cacheable for a CDN, tagged with its environment, 304 on the sam
 test('a link is only good for its own entity and environment; wrong links all look the same', async () => {
   const acme = await t.link('dev', 'web', 'acme');
   const secret = acme.split('/').pop()!;
-  const google = await t.link('dev', 'web', 'google');
-  assert.notEqual(google.split('/').pop(), secret, 'each entity has its own secret');
+  const wonka = await t.link('dev', 'web', 'wonka');
+  assert.notEqual(wonka.split('/').pop(), secret, 'each entity has its own secret');
   assert.notEqual((await t.link('prod', 'web', 'acme')).split('/').pop(), secret, 'and each environment');
   const get = (p: string) => t.call('GET', p);
-  assert.equal((await get(`/client/v1/flags/dev/web/google/${secret}`)).status, 404, 'acme’s secret on google’s path');
+  assert.equal((await get(`/client/v1/flags/dev/web/wonka/${secret}`)).status, 404, 'acme’s secret on wonka’s path');
   assert.equal((await get(`/client/v1/flags/prod/web/acme/${secret}`)).status, 404, 'a dev secret in prod');
   assert.equal((await get(`/client/v1/flags/dev/web/nobody/${secret}`)).json.error, (await get(`/client/v1/flags/dev/web/acme/wrong`)).json.error);
   assert.equal((await get(`/client/v1/flags/dev/server-ds/acme/${secret}`)).status, 404, 'backends don’t get app files');
@@ -131,12 +131,12 @@ test('replacing an entity’s link stops the old one at once and is in History',
 });
 
 test('a publish that changes values changes the file and its ETag', async () => {
-  const before_ = await t.appFile('dev', 'android', 'google');
+  const before_ = await t.appFile('dev', 'android', 'wonka');
   assert.ok('android_quick_share' in before_.json.flags);
   const base = (await t.as('alice').get('/flags/android_quick_share')).json.layers.dev.base;
   assert.equal((await t.as('alice').put('/flags/android_quick_share/layers/dev/base', { layer: { ...base, enabled: false }, expectedVersion: base.version })).status, 200);
   await t.settle();
-  const after_ = await t.appFile('dev', 'android', 'google', { 'if-none-match': before_.headers.get('etag')! });
+  const after_ = await t.appFile('dev', 'android', 'wonka', { 'if-none-match': before_.headers.get('etag')! });
   assert.equal(after_.status, 200);
   assert.ok(!('android_quick_share' in after_.json.flags), 'off → in-app default → left out');
 });

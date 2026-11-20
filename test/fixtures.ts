@@ -22,14 +22,14 @@ export async function fixtures(db: Db) {
       ('android','client'), ('ios','client'), ('web','client'), ('server-wupserver','server'), ('server-ds','server');
   `);
   const customers: [string, string][] = [
-    ['microsoft', 'Microsoft'], ['google', 'Google'], ['netflix', 'Netflix'], ['sap', 'SAP'], ['spotify', 'Spotify'],
+    ['vandelay', 'Vandelay'], ['wonka', 'Wonka'], ['soylent', 'Soylent'], ['cyberdyne', 'CYBERDYNE'], ['oscorp', 'Oscorp'],
     ['acme', 'Acme Corp'], ['globex', 'Globex'], ['initech', 'Initech'], ['newco', 'NewCo (just signed up)'],
   ];
   await seedDimensions(db, [['company', 'company', 'companies'], ['brand', 'brand', 'brands']]);
   for (const [key, name] of customers) await db.query(`insert into entity (key, name, dimension_id) select $1, $2, id from dimension where key = 'company'`, [key, name]);
-  const eu = ['netflix', 'spotify'];
-  const beta = ['google', 'spotify', 'globex'];
-  const enterprise = ['microsoft', 'google', 'netflix', 'sap'];
+  const eu = ['soylent', 'oscorp'];
+  const beta = ['wonka', 'oscorp', 'globex'];
+  const enterprise = ['vandelay', 'wonka', 'soylent', 'cyberdyne'];
 
   const both = (projects: string[]) => ({ dev: projects, prod: projects });
   const clients = ['android', 'ios', 'web'];
@@ -48,15 +48,15 @@ export async function fixtures(db: Db) {
     base: { enabled: true, defaultVariation: 'on', rules: [] },
   }, system);
 
-  // UC2 + UC3 — server URL per customer; Microsoft android has its own
+  // UC2 + UC3 — server URL per customer; Vandelay android has its own
   await createFlag(db, {
     key: 'api_base_url', name: 'API base URL', tags: ['infra', 'networking'], valueType: 'string', kind: 'config', owner: 'platform-team',
-    description: 'UC2/UC3: per-customer API host. Microsoft android gets a dedicated host; Microsoft iOS gets Microsoft\'s regular one.',
+    description: 'UC2/UC3: per-customer API host. Vandelay android gets a dedicated host; Vandelay iOS gets Vandelay\'s regular one.',
     variations: [
       { key: 'default', value: 'https://api.example.com' },
-      { key: 'microsoft', value: 'https://microsoft.api.example.com' },
-      { key: 'microsoft-android', value: 'https://android.microsoft.api.example.com' },
-      { key: 'google', value: 'https://google.api.example.com' },
+      { key: 'vandelay', value: 'https://vandelay.api.example.com' },
+      { key: 'vandelay-android', value: 'https://android.vandelay.api.example.com' },
+      { key: 'wonka', value: 'https://wonka.api.example.com' },
     ],
     delivery: both([...clients, 'server-wupserver']),
     base: { enabled: true, defaultVariation: 'default', rules: [] },
@@ -93,7 +93,7 @@ export async function fixtures(db: Db) {
   // UC7 — EU host through one Base rule, not per-customer settings
   await createFlag(db, {
     key: 'data_region_host', name: 'Data region host', tags: ['infra', 'compliance'], valueType: 'string', kind: 'config', owner: 'platform-team',
-    description: 'UC7: EU customers get the EU host through one rule for everyone. SAP is pinned to US with its own default.',
+    description: 'UC7: EU customers get the EU host through one rule for everyone. CYBERDYNE is pinned to US with its own default.',
     variations: [{ key: 'us', value: 'https://us.data.example.com' }, { key: 'eu', value: 'https://eu.data.example.com' }],
     delivery: both(everyone),
     base: {
@@ -102,13 +102,13 @@ export async function fixtures(db: Db) {
     },
   }, system);
 
-  // UC8 — backend setting sent only to server-ds; Netflix gets its own value
+  // UC8 — backend setting sent only to server-ds; Soylent gets its own value
   await createFlag(db, {
     key: 'ds_backend_config', name: 'Data service backend', tags: ['infra', 'data'], valueType: 'json', kind: 'config', owner: 'data-team',
-    description: 'UC8: sent only to server-ds. Netflix has its own connection pool.',
+    description: 'UC8: sent only to server-ds. Soylent has its own connection pool.',
     variations: [
       { key: 'default', value: { host: 'ds.internal', poolSize: 10 } },
-      { key: 'netflix', value: { host: 'ds-netflix.internal', poolSize: 40 } },
+      { key: 'soylent', value: { host: 'ds-soylent.internal', poolSize: 40 } },
     ],
     delivery: both(['server-ds']),
     base: { enabled: true, defaultVariation: 'default', rules: [] },
@@ -159,20 +159,20 @@ export async function fixtures(db: Db) {
 
   // Customer layers (same in dev and prod)
   const layers: [string, string, LayerDoc][] = [
-    ['api_base_url', 'microsoft', {
-      inherit: 'base_rules_then_customer_default', defaultVariation: 'microsoft',
-      rules: [{ ruleKey: uuid(), name: 'Microsoft android', conditions: [{ field: 'project', op: 'in', values: ['android'] }], serveVariation: 'microsoft-android' }],
+    ['api_base_url', 'vandelay', {
+      inherit: 'base_rules_then_customer_default', defaultVariation: 'vandelay',
+      rules: [{ ruleKey: uuid(), name: 'Vandelay android', conditions: [{ field: 'project', op: 'in', values: ['android'] }], serveVariation: 'vandelay-android' }],
     }],
-    ['api_base_url', 'google', { inherit: 'base_rules_then_customer_default', defaultVariation: 'google', rules: [] }],
-    ['new_checkout', 'google', {
+    ['api_base_url', 'wonka', { inherit: 'base_rules_then_customer_default', defaultVariation: 'wonka', rules: [] }],
+    ['new_checkout', 'wonka', {
       inherit: 'base_rules_then_base_default',
-      rules: [{ ruleKey: uuid(), name: 'Google gets it everywhere', conditions: [], serveVariation: 'on' }],
+      rules: [{ ruleKey: uuid(), name: 'Wonka gets it everywhere', conditions: [], serveVariation: 'on' }],
     }],
-    ['data_region_host', 'sap', { inherit: 'customer_only', defaultVariation: 'us', rules: [] }],
-    ['ds_backend_config', 'netflix', { inherit: 'base_rules_then_customer_default', defaultVariation: 'netflix', rules: [] }],
-    ['max_upload_mb', 'netflix', {
+    ['data_region_host', 'cyberdyne', { inherit: 'customer_only', defaultVariation: 'us', rules: [] }],
+    ['ds_backend_config', 'soylent', { inherit: 'base_rules_then_customer_default', defaultVariation: 'soylent', rules: [] }],
+    ['max_upload_mb', 'soylent', {
       inherit: 'base_rules_then_base_default',
-      rules: [{ ruleKey: uuid(), name: 'Netflix web uploads', conditions: [{ field: 'project', op: 'in', values: ['web'] }], serveVariation: 'huge' }],
+      rules: [{ ruleKey: uuid(), name: 'Soylent web uploads', conditions: [{ field: 'project', op: 'in', values: ['web'] }], serveVariation: 'huge' }],
     }],
   ];
   for (const env of ['dev', 'prod']) {

@@ -8,10 +8,10 @@ import { createHash } from 'node:crypto';
 type Q = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> };
 
 export const ENV_SECRET = 'link-secret-of-prod';
-/** The raw API keys: Dove's own (scope `customer`), and a shared one (`all_customers`). */
-export const KEYS = { dove: 'ff_prod_backend_doveOwnKey0000000000', shared: 'ff_prod_backend_sharedKey000000000000' };
-export const CUSTOMERS = ['unilever', 'dove', 'axe', 'acme', 'solo'];
-export const DIMENSION_OF: Record<string, string> = { unilever: 'company', dove: 'brand', axe: 'brand', acme: 'company', solo: 'company' };
+/** The raw API keys: Velvet's own (scope `customer`), and a shared one (`all_customers`). */
+export const KEYS = { velvet: 'ff_prod_backend_velvOwnKey0000000000', shared: 'ff_prod_backend_sharedKey000000000000' };
+export const CUSTOMERS = ['tyrell', 'velvet', 'onyx', 'acme', 'solo'];
+export const DIMENSION_OF: Record<string, string> = { tyrell: 'company', velvet: 'brand', onyx: 'brand', acme: 'company', solo: 'company' };
 export const CHANGE_SET_RULE = '00000000-0000-4000-8000-0000000000c5';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -21,11 +21,11 @@ export async function seedBeforeDimensions(db: Q) {
   await db.query(`insert into environment (key, name, min_approvals, revision, link_secret) values ('prod', 'Production', 1, 1, $1)`, [ENV_SECRET]);
   await db.query(`insert into project (key, kind) values ('web', 'client'), ('backend', 'server')`);
   await db.query(`insert into app_user (key, name, role) values ('alice', 'Alice', 'editor'), ('bob', 'Bob', 'approver'), ('dana', 'Dana', 'admin')`);
-  for (const [key, name] of [['unilever', 'Unilever'], ['acme', 'Acme'], ['solo', 'Solo']]) {
+  for (const [key, name] of [['tyrell', 'Tyrell'], ['acme', 'Acme'], ['solo', 'Solo']]) {
     await db.query(`insert into customer (key, name) values ($1, $2)`, [key, name]);
   }
-  for (const [key, name] of [['dove', 'Dove'], ['axe', 'Axe']]) {
-    await db.query(`insert into customer (key, name, parent_id) select $1, $2, id from customer where key = 'unilever'`, [key, name]);
+  for (const [key, name] of [['velvet', 'Velvet'], ['onyx', 'Onyx']]) {
+    await db.query(`insert into customer (key, name, parent_id) select $1, $2, id from customer where key = 'tyrell'`, [key, name]);
   }
   await db.query(`update customer set client_link_version = 3 where key = 'acme'`);
   // the server of then kept these two attributes in its list
@@ -63,24 +63,24 @@ export async function seedBeforeDimensions(db: Q) {
   };
   const f = await flag('f', 'string', [['a', 'A'], ['b', 'B'], ['c', 'C'], ['d', 'D']]);
   const fBase = await layer(f, null, { def: 'a' });
-  await rule(f, fBase, true, 0, { locked: true, conditions: [{ field: 'customer.id', op: 'in', values: ['axe'] }, { field: 'app.version', op: 'semver_lt', values: ['2.0.0'] }], serve: 'd' });
-  await rule(f, fBase, true, 1, { conditions: [{ field: 'customer.company', op: 'in', values: ['unilever'] }, { field: 'device.platform', op: 'in', values: ['ios'] }], serve: 'b' });
-  await rule(f, fBase, true, 2, { conditions: [{ field: 'customer.id', op: 'in', values: ['acme', 'dove'] }], serve: 'c' });
+  await rule(f, fBase, true, 0, { locked: true, conditions: [{ field: 'customer.id', op: 'in', values: ['onyx'] }, { field: 'app.version', op: 'semver_lt', values: ['2.0.0'] }], serve: 'd' });
+  await rule(f, fBase, true, 1, { conditions: [{ field: 'customer.company', op: 'in', values: ['tyrell'] }, { field: 'device.platform', op: 'in', values: ['ios'] }], serve: 'b' });
+  await rule(f, fBase, true, 2, { conditions: [{ field: 'customer.id', op: 'in', values: ['acme', 'velvet'] }], serve: 'c' });
   await rule(f, fBase, true, 3, { conditions: [{ field: 'customer.company', op: 'not_in', values: ['acme'] }], split: { by: 'customer.id', salt: 'by-customer', ranges: [['b', 0, 5000]] } });
   await rule(f, fBase, true, 4, { split: { by: 'device.id', salt: 'f', ranges: [['c', 0, 3000], ['d', 3000, 4000]] } });
-  const uni = await layer(f, 'unilever', { inherit: 'customer_only', def: 'd' });
+  const uni = await layer(f, 'tyrell', { inherit: 'customer_only', def: 'd' });
   await rule(f, uni, false, 0, { conditions: [{ field: 'app.version', op: 'semver_lt', values: ['3.0.0'] }], serve: 'b' });
-  const dove = await layer(f, 'dove', { inherit: 'base_rules_then_customer_default', def: 'c' });
-  await rule(f, dove, false, 0, { split: { by: 'customer.company', salt: 'by-company', ranges: [['a', 0, 4000]] } });
+  const velvet = await layer(f, 'velvet', { inherit: 'base_rules_then_customer_default', def: 'c' });
+  await rule(f, velvet, false, 0, { split: { by: 'customer.company', salt: 'by-company', ranges: [['a', 0, 4000]] } });
   const acme = await layer(f, 'acme', { inherit: 'base_rules_then_base_default', def: null });
   await rule(f, acme, false, 0, { conditions: [{ field: 'project', op: 'in', values: ['web'] }], serve: 'd' });
   const g = await flag('g', 'bool', [['on', true], ['off', false]]);
   const gBase = await layer(g, null, { def: 'off' });
-  await rule(g, gBase, true, 0, { conditions: [{ field: 'customer.company', op: 'in', values: ['unilever'] }, { field: 'customer.id', op: 'not_in', values: ['axe'] }], serve: 'on' });
+  await rule(g, gBase, true, 0, { conditions: [{ field: 'customer.company', op: 'in', values: ['tyrell'] }, { field: 'customer.id', op: 'not_in', values: ['onyx'] }], serve: 'on' });
 
   // API keys of both old scopes
   await db.query(`insert into api_key (key_hash, key_prefix, environment_id, project_id, scope, customer_id)
-    select $1, 'ff_prod_backend_dove', $2, p.id, 'customer', c.id from project p, customer c where p.key = 'backend' and c.key = 'dove'`, [sha(KEYS.dove), env]);
+    select $1, 'ff_prod_backend_velv', $2, p.id, 'customer', c.id from project p, customer c where p.key = 'backend' and c.key = 'velvet'`, [sha(KEYS.velvet), env]);
   await db.query(`insert into api_key (key_hash, key_prefix, environment_id, project_id, scope)
     select $1, 'ff_prod_backend_shar', $2, id, 'all_customers' from project where key = 'backend'`, [sha(KEYS.shared), env]);
 
@@ -96,10 +96,10 @@ export async function seedBeforeDimensions(db: Q) {
 
   // History from then: a brand added, one moved out of its company (revision 1 of prod)
   await db.query(`insert into change_history (environment_id, revision, changed_by, actor_type, change_type, flag, customer, before, after)
-    values ($1, 1, 'dana', 'user', 'customer.create', null, 'dove', null, $2),
-           ($1, 1, 'dana', 'user', 'customer.update', null, 'axe', $3, $4)`,
-  [env, JSON.stringify({ key: 'dove', name: 'Dove', company: 'unilever' }),
-    JSON.stringify({ key: 'axe', name: 'Axe', company: 'unilever' }), JSON.stringify({ key: 'axe', name: 'Axe', company: null })]);
+    values ($1, 1, 'dana', 'user', 'customer.create', null, 'velvet', null, $2),
+           ($1, 1, 'dana', 'user', 'customer.update', null, 'onyx', $3, $4)`,
+  [env, JSON.stringify({ key: 'velvet', name: 'Velvet', company: 'tyrell' }),
+    JSON.stringify({ key: 'onyx', name: 'Onyx', company: 'tyrell' }), JSON.stringify({ key: 'onyx', name: 'Onyx', company: null })]);
   return { changeSet: Number(cs) };
 }
 

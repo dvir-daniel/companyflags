@@ -14,19 +14,19 @@ const compare = async (a: object, b: object, attrs: object = { 'app.version': '6
 };
 
 test('two entities: their own settings show up as differences, with the reason named after the entity', async () => {
-  const r = await compare({ environment: 'dev', project: 'android', entity: 'microsoft' }, { environment: 'dev', project: 'android', entity: 'google' });
+  const r = await compare({ environment: 'dev', project: 'android', entity: 'vandelay' }, { environment: 'dev', project: 'android', entity: 'wonka' });
   const api = r.rows.find((x) => x.key === 'api_base_url');
   assert.equal(api.same, false);
-  assert.equal(api.a.value, 'https://android.microsoft.api.example.com');
-  assert.equal(api.a.source, 'Microsoft’s rule');
-  assert.equal(api.b.value, 'https://google.api.example.com');
-  assert.equal(api.b.source, 'Google’s default');
+  assert.equal(api.a.value, 'https://android.vandelay.api.example.com');
+  assert.equal(api.a.source, 'Vandelay’s rule');
+  assert.equal(api.b.value, 'https://wonka.api.example.com');
+  assert.equal(api.b.source, 'Wonka’s default');
   assert.equal(r.different, r.rows.filter((x) => !x.same).length);
   assert.ok(r.rows.some((x) => x.same));
 });
 
 test('two apps: a flag sent to only one app is a difference', async () => {
-  const r = await compare({ environment: 'dev', project: 'android', entity: 'microsoft' }, { environment: 'dev', project: 'ios', entity: 'microsoft' });
+  const r = await compare({ environment: 'dev', project: 'android', entity: 'vandelay' }, { environment: 'dev', project: 'ios', entity: 'vandelay' });
   const quick = r.rows.find((x) => x.key === 'android_quick_share');
   assert.equal(quick.same, false);
   assert.equal(quick.a.sent, true);

@@ -65,7 +65,7 @@
       "revision": 1,
       "etag": "W/\"Y4zQZrrubkS7iLLlpprPGf\""
     },
-    "unilever": {
+    "tyrell": {
       "flags": {
         "f": {
           "value": "D",
@@ -91,7 +91,7 @@
       "revision": 1,
       "etag": "W/\"OG3ia69ITYDuPz2Ju1XmAa\""
     },
-    "dove": {
+    "velvet": {
       "flags": {
         "f": {
           "value": "C",
@@ -117,7 +117,7 @@
       "revision": 1,
       "etag": "W/\"IUB6Ayv_TOxr-2quadJQCN\""
     },
-    "axe": {
+    "onyx": {
       "flags": {
         "f": {
           "value": "D",
@@ -208,11 +208,11 @@
     }
   },
   "flagd": {
-    "unilever": {
+    "tyrell": {
       "doc": {
         "$schema": "https://flagd.dev/schema/v0/flags.json",
         "metadata": {
-          "flagSetId": "prod/unilever",
+          "flagSetId": "prod/tyrell",
           "environment": "prod",
           "revision": 1
         },
@@ -262,11 +262,11 @@
       },
       "etag": "W/\"rabY0aZmHWZoHhs2cAjmcY\""
     },
-    "dove": {
+    "velvet": {
       "doc": {
         "$schema": "https://flagd.dev/schema/v0/flags.json",
         "metadata": {
-          "flagSetId": "prod/dove",
+          "flagSetId": "prod/velvet",
           "environment": "prod",
           "revision": 1
         },
@@ -316,11 +316,11 @@
       },
       "etag": "W/\"r9viSfQxE5C0WRLkBMVKDT\""
     },
-    "axe": {
+    "onyx": {
       "doc": {
         "$schema": "https://flagd.dev/schema/v0/flags.json",
         "metadata": {
-          "flagSetId": "prod/axe",
+          "flagSetId": "prod/onyx",
           "environment": "prod",
           "revision": 1
         },
@@ -530,9 +530,9 @@
     }
   },
   "links": {
-    "unilever": "/client/v1/flags/prod/web/unilever/-EYshNQzFC87lKrXGGDAl7",
-    "dove": "/client/v1/flags/prod/web/dove/Jp-HpBJb4Ph7y8x9yBACtG",
-    "axe": "/client/v1/flags/prod/web/axe/NqSeYInf9ZfFX0_FerlLKY",
+    "tyrell": "/client/v1/flags/prod/web/tyrell/ph0fU-GPIiBcyvMZiGOs1n",
+    "velvet": "/client/v1/flags/prod/web/velvet/btmim-IA95vjIcqJ1SSTHR",
+    "onyx": "/client/v1/flags/prod/web/onyx/QXxkpKoigs2d1MUjhjQ3bs",
     "acme": "/client/v1/flags/prod/web/acme/5J0d7f4EMiO1bRY51pmMwB",
     "solo": "/client/v1/flags/prod/web/solo/3CK7A-haQJHHlqp7JdkJsM"
   }

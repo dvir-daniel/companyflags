@@ -111,21 +111,21 @@ test('a saved draft someone else changed since: found at review and before publi
 
 test('another write path in this browser tells the session what it changed: the draft is stale at once', async () => {
   const s = await opened(sessionOf('dev'), 'api_base_url');
-  s.edit('api_base_url', (d) => ({ ...d, fallback: 'google' }));
-  // a brand-style "use its company's again": Microsoft's own settings removed, as Customers.tsx does it
-  const ms = (await flagNow('api_base_url')).layers.dev.entities.find((c: { entity: string }) => c.entity === 'microsoft');
-  const r = await t.as('alice').post('/environments/dev/publish', { items: [{ flag: 'api_base_url', entity: 'microsoft', expectedVersion: ms.layer.version, layer: null }] });
+  s.edit('api_base_url', (d) => ({ ...d, fallback: 'wonka' }));
+  // a brand-style "use its company's again": Vandelay's own settings removed, as Customers.tsx does it
+  const ms = (await flagNow('api_base_url')).layers.dev.entities.find((c: { entity: string }) => c.entity === 'vandelay');
+  const r = await t.as('alice').post('/environments/dev/publish', { items: [{ flag: 'api_base_url', entity: 'vandelay', expectedVersion: ms.layer.version, layer: null }] });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   const told = s.noteChanged(['api_base_url']);
   assert.deepEqual(s.summary(meta).stale, ['api_base_url'], 'marked before the server answers');
   await told;
   assert.deepEqual(s.summary(meta).stale, ['api_base_url']);
   await s.rebase(['api_base_url']);
-  assert.deepEqual(s.summary(meta).flags[0].sentences, ['Default: google'], 'Microsoft stays removed');
+  assert.deepEqual(s.summary(meta).flags[0].sentences, ['Default: wonka'], 'Vandelay stays removed');
   assert.equal((await s.publish({ meta })).applied, true);
   const now = (await flagNow('api_base_url')).layers.dev;
-  assert.equal(now.base.defaultVariation, 'google');
-  assert.equal(now.entities.some((c: { entity: string }) => c.entity === 'microsoft'), false);
+  assert.equal(now.base.defaultVariation, 'wonka');
+  assert.equal(now.entities.some((c: { entity: string }) => c.entity === 'vandelay'), false);
 });
 
 test('publishing goes values → submit → clear, as one version with the sentences in its note', async () => {
@@ -138,14 +138,14 @@ test('publishing goes values → submit → clear, as one version with the sente
     removeItem: (k) => { if (k === key) log.push('clear'); storage.removeItem(k); },
   };
   const s = await opened(sessionOf('dev', { storage: logged, log }), 'ds_backend_config', 'dark_mode_v2');
-  const value = { host: 'ds-spotify.internal', poolSize: 5 };
+  const value = { host: 'ds-oscorp.internal', poolSize: 5 };
   const hidden = hiddenKey(value);
-  s.edit('ds_backend_config', (d) => setOwnValues(d, ['spotify'], hidden, { key: hidden, value }));
+  s.edit('ds_backend_config', (d) => setOwnValues(d, ['oscorp'], hidden, { key: hidden, value }));
   s.edit('dark_mode_v2', (d) => ({ ...d, fallback: 'on' }));
   s.flush();
   log.length = 0;
 
-  const res = await s.publish({ meta, reason: 'Spotify pool' });
+  const res = await s.publish({ meta, reason: 'Oscorp pool' });
   assert.deepEqual(log.filter((l) => !l.startsWith('GET')), ['PUT /flags/ds_backend_config/variations', 'POST /environments/dev/publish', 'clear']);
   assert.equal(res.applied, true);
   assert.deepEqual([...res.flags].sort(), ['dark_mode_v2', 'ds_backend_config']);
@@ -154,10 +154,10 @@ test('publishing goes values → submit → clear, as one version with the sente
 
   const ds = await flagNow('ds_backend_config');
   assert.ok(ds.variations.some((v: { key: string }) => v.key === hidden));
-  assert.equal(ds.layers.dev.entities.find((c: { entity: string }) => c.entity === 'spotify')?.layer.rules[0].serveVariation, hidden);
+  assert.equal(ds.layers.dev.entities.find((c: { entity: string }) => c.entity === 'oscorp')?.layer.rules[0].serveVariation, hidden);
   const version = (await t.as('alice').get('/environments/dev/versions?page=0&size=1')).json.rows[0];
   assert.equal(version.revision, res.revision);
-  assert.match(version.comment, /^Spotify pool\n\n/);
+  assert.match(version.comment, /^Oscorp pool\n\n/);
   assert.match(version.comment, /dark_mode_v2: Default: true/);
 });
 
@@ -254,7 +254,7 @@ test('switching flag or environment never writes one environment’s draft under
   const prod = await opened(sessionOf('prod', { storage }), 'data_region_host');
   dev.edit('data_region_host', (d) => ({ ...d, fallback: 'us' }));
   dev.edit('max_upload_mb', (d) => ({ ...d, fallback: 'huge' }));             // another flag: its own entry
-  prod.edit('data_region_host', (d) => setOwnValues(d, ['spotify'], 'eu'));
+  prod.edit('data_region_host', (d) => setOwnValues(d, ['oscorp'], 'eu'));
   dev.flush(); prod.flush();
 
   const flag = await flagNow('data_region_host');
@@ -307,7 +307,7 @@ test('drafts kept by an older console (unversioned, and version 1) convert to ve
   assert.equal((await s.publish({ meta })).applied, true);
   assert.equal((await flagNow('max_upload_mb')).layers.dev.base.defaultVariation, 'huge');
 
-  // version 1 ({ version: 1, envs }): SAP's Customer only default keeps its line, so only my edit shows
+  // version 1 ({ version: 1, envs }): CYBERDYNE's Customer only default keeps its line, so only my edit shows
   const v1 = memoryStorage();
   v1.setItem(olderKey('alice'), JSON.stringify({ version: 1, envs: { prod: { data_region_host: region } } }));
   const p = await opened(sessionOf('prod', { storage: v1, environments: ['dev', 'prod'] }), 'data_region_host');
@@ -316,7 +316,7 @@ test('drafts kept by an older console (unversioned, and version 1) convert to ve
   const view = p.view('data_region_host', meta);
   assert.equal(view.draft!.fallback, 'eu');
   assert.deepEqual(view.sentences, ['Default: eu']);
-  const sap = (d: typeof region.orig) => d.lines.find((l) => l.entity === 'sap')!.id;
-  assert.equal(sap(view.orig!), sap(region.orig));
+  const cyberdyne = (d: typeof region.orig) => d.lines.find((l) => l.entity === 'cyberdyne')!.id;
+  assert.equal(cyberdyne(view.orig!), cyberdyne(region.orig));
   assert.equal(view.stale, false);
 });

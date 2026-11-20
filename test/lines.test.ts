@@ -18,14 +18,14 @@ const flag: FlagDetail = {
   layers: { dev: {
     base: layer({ enabled: true, variationWhenOff: 'code_default', defaultVariation: 'a', rules: [everyoneOnAndroid] }),
     entities: [
-      { entity: 'microsoft', layer: layer({ inherit: 'base_rules_then_customer_default', defaultVariation: 'c' }) },
-      { entity: 'google', layer: layer({ inherit: 'customer_only', defaultVariation: 'c' }) },
+      { entity: 'vandelay', layer: layer({ inherit: 'base_rules_then_customer_default', defaultVariation: 'c' }) },
+      { entity: 'wonka', layer: layer({ inherit: 'customer_only', defaultVariation: 'c' }) },
     ],
   } },
 };
 const meta = {
   dimensions: [{ key: 'company', singular: 'company', plural: 'companies', entities: 2, withParent: 0 }],
-  entities: [{ key: 'microsoft', name: 'Microsoft', dimension: 'company', createdAt: '' }, { key: 'google', name: 'Google', dimension: 'company', createdAt: '' }],
+  entities: [{ key: 'vandelay', name: 'Vandelay', dimension: 'company', createdAt: '' }, { key: 'wonka', name: 'Wonka', dimension: 'company', createdAt: '' }],
   fields: [{ name: 'project', valueType: 'string', comesFrom: 'key', canSplitBy: false, description: '' }],
 } as unknown as Meta;
 const gets = (d: ReturnType<typeof toDraft>, entity: string, project: string) =>
@@ -33,30 +33,30 @@ const gets = (d: ReturnType<typeof toDraft>, entity: string, project: string) =>
 
 test('an own default that comes after the rules for everyone stays after them', () => {
   const d = toDraft(flag, 'dev');
-  assert.deepEqual(d.afterEveryone, { microsoft: 'c' });
-  // opening the flag changes nothing: published as it opens, the base and Microsoft's layer are the ones stored
+  assert.deepEqual(d.afterEveryone, { vandelay: 'c' });
+  // opening the flag changes nothing: published as it opens, the base and Vandelay's layer are the ones stored
   const opened = toLayers(d, true);
   assert.deepEqual(opened.base.rules, flag.layers.dev.base.rules);
   assert.equal(opened.base.defaultVariation, flag.layers.dev.base.defaultVariation);
-  assert.deepEqual(opened.entities.get('microsoft'), { rules: [], inherit: 'base_rules_then_customer_default', defaultVariation: 'c' });
-  assert.equal(gets(d, 'microsoft', 'android'), 'b');                             // the rule for everyone wins
-  assert.equal(gets(d, 'microsoft', 'web'), 'c');                                 // then Microsoft's default
-  assert.equal(gets(d, 'google', 'android'), 'c');                                // own settings only skips the rules for everyone
-  // editing Microsoft republishes it with its mode kept
-  const edited = { ...d, lines: [...d.lines, { id: K(9), entity: 'microsoft', locked: false, paused: false, name: null, conditions: [{ field: 'project', op: 'in', values: ['web'] }], serveVariation: 'a', split: null }] };
+  assert.deepEqual(opened.entities.get('vandelay'), { rules: [], inherit: 'base_rules_then_customer_default', defaultVariation: 'c' });
+  assert.equal(gets(d, 'vandelay', 'android'), 'b');                             // the rule for everyone wins
+  assert.equal(gets(d, 'vandelay', 'web'), 'c');                                 // then Vandelay's default
+  assert.equal(gets(d, 'wonka', 'android'), 'c');                                // own settings only skips the rules for everyone
+  // editing Vandelay republishes it with its mode kept
+  const edited = { ...d, lines: [...d.lines, { id: K(9), entity: 'vandelay', locked: false, paused: false, name: null, conditions: [{ field: 'project', op: 'in', values: ['web'] }], serveVariation: 'a', split: null }] };
   const [item] = changes(flag, 'dev', d, edited);
-  assert.deepEqual([item.entity, item.layer?.inherit, item.layer?.defaultVariation], ['microsoft', 'base_rules_then_customer_default', 'c']);
-  assert.equal(gets(edited, 'microsoft', 'android'), 'b');
+  assert.deepEqual([item.entity, item.layer?.inherit, item.layer?.defaultVariation], ['vandelay', 'base_rules_then_customer_default', 'c']);
+  assert.equal(gets(edited, 'vandelay', 'android'), 'b');
 });
 
 test('setting, clearing and removing an own default', () => {
   const d = toDraft(flag, 'dev');
-  const own = setOwnValues(d, ['microsoft'], 'a');                                // an own value now beats the rules for everyone
+  const own = setOwnValues(d, ['vandelay'], 'a');                                // an own value now beats the rules for everyone
   assert.deepEqual(own.afterEveryone, {});
-  assert.equal(gets(own, 'microsoft', 'android'), 'a');
-  const gone = removeEntity(d, 'microsoft');
-  assert.equal(toLayers(gone, true).entities.has('microsoft'), false);
-  assert.equal(gets(gone, 'microsoft', 'web'), 'a');
+  assert.equal(gets(own, 'vandelay', 'android'), 'a');
+  const gone = removeEntity(d, 'vandelay');
+  assert.equal(toLayers(gone, true).entities.has('vandelay'), false);
+  assert.equal(gets(gone, 'vandelay', 'web'), 'a');
   assert.deepEqual(lineToRule(d.lines.find((l) => l.id === K(1))!).conditions, everyoneOnAndroid.conditions);
 });
 
@@ -106,19 +106,19 @@ test('opening any stored flag and saving it unchanged writes back exactly what i
     }
     assert.deepEqual([...seen].sort(), ['base_rules_then_base_default', 'base_rules_then_customer_default', 'customer_only']);
 
-    // republishing SAP (Own settings only) with a new value keeps it Own settings only: the trace still skips the rules for everyone
+    // republishing CYBERDYNE (Own settings only) with a new value keeps it Own settings only: the trace still skips the rules for everyone
     const flag: FlagDetail = (await alice.get('/flags/data_region_host')).json;
     const d = toDraft(flag, 'dev');
-    const next = { ...d, lines: d.lines.map((l) => (l.entity === 'sap' ? { ...l, serveVariation: 'eu' } : l)) };
+    const next = { ...d, lines: d.lines.map((l) => (l.entity === 'cyberdyne' ? { ...l, serveVariation: 'eu' } : l)) };
     const items = changes(flag, 'dev', d, next);
-    assert.deepEqual(items.map((i) => [i.entity, i.layer?.inherit, i.layer?.defaultVariation, i.layer?.rules.length]), [['sap', 'customer_only', 'eu', 0]]);
+    assert.deepEqual(items.map((i) => [i.entity, i.layer?.inherit, i.layer?.defaultVariation, i.layer?.rules.length]), [['cyberdyne', 'customer_only', 'eu', 0]]);
     assert.equal((await alice.post('/flags/data_region_host/publish/dev', { items })).status, 200);
     await t.settle();
-    const sap = await t.trace({ flag: 'data_region_host', project: 'web', entity: 'sap' });
-    assert.equal(sap.variant, 'eu');
-    assert.equal(sap.decidedBy.section, 'entity_default');
-    assert.ok(sap.trace.some((s: { outcome: string; detail: string }) => s.outcome === 'skipped' && /uses only its own settings/.test(s.detail)));
-    assert.deepEqual((await alice.get('/flags/data_region_host/impact/dev')).json.ownOnly, ['sap']);
+    const cyberdyne = await t.trace({ flag: 'data_region_host', project: 'web', entity: 'cyberdyne' });
+    assert.equal(cyberdyne.variant, 'eu');
+    assert.equal(cyberdyne.decidedBy.section, 'entity_default');
+    assert.ok(cyberdyne.trace.some((s: { outcome: string; detail: string }) => s.outcome === 'skipped' && /uses only its own settings/.test(s.detail)));
+    assert.deepEqual((await alice.get('/flags/data_region_host/impact/dev')).json.ownOnly, ['cyberdyne']);
   } finally {
     await t.stop();
   }
@@ -126,16 +126,16 @@ test('opening any stored flag and saving it unchanged writes back exactly what i
 
 // ---- editing the "Own settings only" default
 
-// Google: Own settings only, with one rule of its own before its default
+// Wonka: Own settings only, with one rule of its own before its default
 const googleOnWeb = { ruleKey: K(2), name: null, locked: false, disabled: false, conditions: [{ field: 'project', op: 'in', values: ['web'] }], serveVariation: 'a', split: null };
 const only: FlagDetail = structuredClone(flag);
 only.layers.dev.entities[1].layer.rules = [googleOnWeb];
 const googleLayer = (orig: Draft, next: Draft) => {
-  const items = changes(only, 'dev', orig, next).filter((i) => i.entity === 'google');
+  const items = changes(only, 'dev', orig, next).filter((i) => i.entity === 'wonka');
   assert.equal(items.length, 1);
   return items[0].layer && plain(items[0].layer);
 };
-const ownLine = (d: Draft) => d.lines.filter((l) => l.entity === 'google').at(-1)!;
+const ownLine = (d: Draft) => d.lines.filter((l) => l.entity === 'wonka').at(-1)!;
 const withOwn = (d: Draft, f: (l: Line) => Line | null): Draft => ({ ...d, lines: d.lines.flatMap((l) => (l === ownLine(d) ? [f(l)].filter((x) => x !== null) : [l])) });
 const asRule = (l: Line) => plain(lineToRule(l));
 
@@ -144,13 +144,13 @@ test('the Own settings only default shows as the last line for that entity, and 
   const own = ownLine(d);
   assert.deepEqual([own.conditions, own.split, own.serveVariation, own.ownOnly], [[], null, 'c', true]);
   assert.deepEqual(changes(only, 'dev', d, structuredClone(d)), []);
-  const r = preview(only, 'dev', d, true, meta, { project: 'android', entity: 'google', attrs: {} });
+  const r = preview(only, 'dev', d, true, meta, { project: 'android', entity: 'wonka', attrs: {} });
   assert.deepEqual([r.variant, r.decidedBy.section], ['c', 'entity_default']);
   assert.ok(r.trace.some((s) => s.outcome === 'skipped' && /uses only its own settings/.test(s.detail)));
   // a new value: still Own settings only, with the new default
   assert.deepEqual(googleLayer(d, withOwn(d, (l) => ({ ...l, serveVariation: 'b' }))),
     { inherit: 'customer_only', defaultVariation: 'b', rules: [asRule(d.lines.find((l) => l.id === K(2))!)] });
-  assert.deepEqual(googleLayer(d, setOwnValues(d, ['google'], 'a')), { inherit: 'customer_only', defaultVariation: 'a', rules: [asRule(d.lines.find((l) => l.id === K(2))!)] });
+  assert.deepEqual(googleLayer(d, setOwnValues(d, ['wonka'], 'a')), { inherit: 'customer_only', defaultVariation: 'a', rules: [asRule(d.lines.find((l) => l.id === K(2))!)] });
 });
 
 test('a condition, a % split, a pause, a move or deleting it makes the Own settings only default an ordinary rule again', () => {
@@ -159,23 +159,23 @@ test('a condition, a % split, a pause, a move or deleting it makes the Own setti
   const rulesOnly = (rules: unknown[]) => ({ inherit: 'base_rules_then_base_default', defaultVariation: null, rules });
   const onWeb = withOwn(d, (l) => ({ ...l, conditions: [{ field: 'project', op: 'in', values: ['web'] }] }));
   assert.deepEqual(googleLayer(d, onWeb), rulesOnly([rule2, asRule(ownLine(onWeb))]));
-  assert.equal(gets(d, 'google', 'android'), 'c');                                 // Own settings only: the rules for everyone are skipped
-  assert.equal(preview(only, 'dev', onWeb, true, meta, { project: 'android', entity: 'google', attrs: {} }).variant, 'b');   // now they apply
+  assert.equal(gets(d, 'wonka', 'android'), 'c');                                 // Own settings only: the rules for everyone are skipped
+  assert.equal(preview(only, 'dev', onWeb, true, meta, { project: 'android', entity: 'wonka', attrs: {} }).variant, 'b');   // now they apply
   const split = withOwn(d, (l) => ({ ...l, serveVariation: null, split: { by: 'device.id', fallbackBy: null, ranges: [{ variation: 'b', from: 0, to: 5000 }] } }));
   assert.deepEqual(googleLayer(d, split), rulesOnly([rule2, asRule(ownLine(split))]));
   const paused = withOwn(d, (l) => ({ ...l, paused: true }));
   assert.deepEqual(googleLayer(d, paused), rulesOnly([rule2, asRule(ownLine(paused))]));
-  // moved above Google's other rule: no longer last, so it's a rule like the one now after it
+  // moved above Wonka's other rule: no longer last, so it's a rule like the one now after it
   const own = ownLine(d);
-  const moved = { ...d, lines: [...d.lines.filter((l) => l.entity !== 'google'), own, ...d.lines.filter((l) => l.entity === 'google' && l !== own)] };
+  const moved = { ...d, lines: [...d.lines.filter((l) => l.entity !== 'wonka'), own, ...d.lines.filter((l) => l.entity === 'wonka' && l !== own)] };
   assert.deepEqual(googleLayer(d, moved), rulesOnly([asRule(own), rule2]));
   assert.deepEqual(googleLayer(d, withOwn(d, () => null)), rulesOnly([rule2]));
-  assert.deepEqual(googleLayer(d, setOwnValues(d, ['google'], null)), rulesOnly([rule2]));
+  assert.deepEqual(googleLayer(d, setOwnValues(d, ['wonka'], null)), rulesOnly([rule2]));
   // with a default after the rules for everyone, the rule comes back as Rules + own default
-  assert.deepEqual(googleLayer(d, { ...onWeb, afterEveryone: { ...onWeb.afterEveryone, google: 'b' } }),
+  assert.deepEqual(googleLayer(d, { ...onWeb, afterEveryone: { ...onWeb.afterEveryone, wonka: 'b' } }),
     { inherit: 'base_rules_then_customer_default', defaultVariation: 'b', rules: [rule2, asRule(ownLine(onWeb))] });
   // an entity whose only line was the default is back to the same as everyone
   const plainGoogle = toDraft(flag, 'dev');
   const [gone] = changes(flag, 'dev', plainGoogle, withOwn(plainGoogle, () => null));
-  assert.deepEqual([gone.entity, gone.layer], ['google', null]);
+  assert.deepEqual([gone.entity, gone.layer], ['wonka', null]);
 });
