@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { HomeLayout } from 'fumadocs-ui/layouts/home';
 import { Logo } from '@/components/logo';
-import { REPO } from '@/lib/source';
+import { BASE, REPO } from '@/lib/source';
+import { RESOURCES } from '@/lib/resources';
 
 // The landing page's bar: the name, then the parts of the site in small capitals, as better-auth.com's. No search here:
 // it's on the docs' pages.
@@ -14,6 +15,9 @@ export default function Layout({ children }: { children: ReactNode }) {
         { text: 'OpenFeature', url: '/sdk/openfeature' },
         { text: 'Self-hosting', url: '/self-hosting/docker' },
         { text: 'Reference', url: '/reference/http-api' },
+        { type: 'menu', text: 'Resources', items: RESOURCES.map((r) => ({
+          text: r.text, description: r.description, url: r.url === '/llms.txt' ? `${BASE}/llms.txt` : r.url, external: r.external,
+        })) },
         { text: 'GitHub', url: REPO, external: true },
       ]}>
       {children}

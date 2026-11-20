@@ -186,3 +186,31 @@ code, kbd, pre { font-family: var(--font-mono); }
   -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
 }
+/* the RESOURCES menu in the docs' bar: a panel of links, each with a line of words, as better-auth.com's menus */
+@media (min-width: 1024px) {
+  .cf-tabs { overflow: visible; }
+  .cf-tabs-menu { position: relative; display: flex; }
+  .cf-tabs-menu > button {
+    display: flex; align-items: center; gap: 6px; padding: 0 22px; border: 0; border-left: 1px solid var(--color-fd-border);
+    background: transparent; cursor: pointer; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--cf-ink-nav); transition: color 150ms, background-color 150ms;
+  }
+  .cf-tabs-menu > button:hover, .cf-tabs-menu[data-open] > button { color: var(--cf-ink); background: var(--cf-wash); }
+  .cf-tabs-menu[data-open] > button svg { transform: rotate(180deg); }
+  .cf-tabs-panel {
+    position: absolute; top: 100%; right: 0; z-index: 50; display: grid; grid-template-columns: 1fr 1fr; width: 520px;
+    border: 1px solid var(--color-fd-border); background: var(--color-fd-background); box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.5);
+  }
+  .cf-tabs-panel > a { display: grid; gap: 3px; padding: 14px 16px; border-bottom: 1px solid var(--color-fd-border); transition: background-color 150ms; }
+  .cf-tabs-panel > a:nth-child(odd) { border-right: 1px solid var(--color-fd-border); }
+  .cf-tabs-panel > a:hover { background: var(--cf-wash); }
+  .cf-tabs-panel b { font-size: 14px; font-weight: 500; color: var(--color-fd-foreground); }
+  .cf-tabs-panel span { font-size: 13px; color: var(--color-fd-muted-foreground); }
+}
+/* the landing bar's RESOURCES menu: the same small-capital cell as the links beside it */
+#nd-home-layout #nd-nav ul.flex > li > button {
+  height: 100%; padding: 0 22px; border: 0; border-left: 1px solid var(--color-fd-border); border-radius: 0 !important;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--cf-ink-nav); background: transparent; transition: color 150ms, background-color 150ms;
+}
+#nd-home-layout #nd-nav ul.flex > li > button:hover, #nd-home-layout #nd-nav ul.flex > li > button[data-state='open'] { color: var(--cf-ink); background: var(--cf-wash); }
