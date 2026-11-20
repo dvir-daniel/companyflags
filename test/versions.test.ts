@@ -1,4 +1,4 @@
-// Drafts and versions (Google style): a draft that spans flags is published as one version, every version is
+// Drafts and versions (Wonka style): a draft that spans flags is published as one version, every version is
 // listed with what it changed, and any earlier version can be restored. Restore undoes flag settings only
 // (docs/design/adr/0001-restore-undoes-flag-settings-only.md).
 import { after, before, test } from 'node:test';
@@ -104,10 +104,10 @@ test('the list shows every environment, rule counts and the last version; condit
 
 test('restore undoes flag settings only: a brand moved out of its company stays moved, and the answer says so', async () => {
   const dana = t.as('dana');
-  assert.equal((await dana.post('/dimensions/company', { key: 'unilever', name: 'Unilever' })).status, 201);
-  assert.equal((await dana.post('/dimensions/brand', { key: 'dove', name: 'Dove', parent: 'unilever' })).status, 201);
+  assert.equal((await dana.post('/dimensions/company', { key: 'tyrell', name: 'Tyrell' })).status, 201);
+  assert.equal((await dana.post('/dimensions/brand', { key: 'velvet', name: 'Velvet', parent: 'tyrell' })).status, 201);
   const at = (await t.as('alice').get('/environments/dev/versions?page=0&size=1')).json.rows[0].revision;
-  assert.equal((await dana.put('/dimensions/brand/dove', { name: 'Dove', parent: null })).json.parent, null);
+  assert.equal((await dana.put('/dimensions/brand/velvet', { name: 'Velvet', parent: null })).json.parent, null);
 
   const v = (await t.as('alice').get('/environments/dev/versions?page=0&size=1')).json;
   assert.equal(v.rows[0].notRolledBack, 1, 'the versions list marks the move as a change restore doesn’t undo');
@@ -117,16 +117,16 @@ test('restore undoes flag settings only: a brand moved out of its company stays 
   const only = await t.as('alice').post(`/environments/dev/versions/${at}/restore`, {});
   assert.equal(only.status, 422);
   assert.match(only.json.error, /restore undoes flag settings only/);
-  assert.match(only.json.error, /Not rolled back: Dove moved out of Unilever/);
-  assert.deepEqual(only.json.notRolledBack.map((n: any) => [n.kind, n.entity, n.text]), [['entity.update', 'dove', 'Dove moved out of Unilever']]);
+  assert.match(only.json.error, /Not rolled back: Velvet moved out of Tyrell/);
+  assert.deepEqual(only.json.notRolledBack.map((n: any) => [n.kind, n.entity, n.text]), [['entity.update', 'velvet', 'Velvet moved out of Tyrell']]);
 
   // with a flag setting changed as well, the setting goes back and the move is listed as not rolled back
   assert.equal((await t.as('alice').post('/environments/dev/publish', { items: [await flip('new_checkout', 'dev', false)] })).status, 200);
   const r = await t.as('alice').post(`/environments/dev/versions/${at}/restore`, {});
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.equal(r.json.restored, 1);
-  assert.deepEqual(r.json.notRolledBack.map((n: any) => n.text), ['Dove moved out of Unilever']);
+  assert.deepEqual(r.json.notRolledBack.map((n: any) => n.text), ['Velvet moved out of Tyrell']);
   assert.equal((await base('new_checkout', 'dev')).enabled, true);
-  const dove = (await t.as('alice').get('/meta')).json.entities.find((c: any) => c.key === 'dove');
-  assert.equal(dove.parent, null, 'Dove is still out of Unilever');
+  const velvet = (await t.as('alice').get('/meta')).json.entities.find((c: any) => c.key === 'velvet');
+  assert.equal(velvet.parent, null, 'Velvet is still out of Tyrell');
 });

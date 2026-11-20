@@ -20,16 +20,16 @@ function random(seed: number) {
 }
 
 const DIMS = ['company', 'brand'];
-const ENTITIES = entities([['microsoft', 'Microsoft', 'company'], ['google', 'Google', 'company'], ['unilever', 'Unilever', 'company'],
-  ['dove', 'Dove', 'brand', 'unilever'], ['axe', 'Axe', 'brand', 'unilever']]);
+const ENTITIES = entities([['vandelay', 'Vandelay', 'company'], ['wonka', 'Wonka', 'company'], ['tyrell', 'Tyrell', 'company'],
+  ['velvet', 'Velvet', 'brand', 'tyrell'], ['onyx', 'Onyx', 'brand', 'tyrell']]);
 const FIELDS: Snapshot['fields'] = fieldsFor(DIMS);
 const snapOf = (flags: Record<string, FlagDef>, o: { environment?: string; revision?: number } = {}): Snapshot =>
   ({ environment: o.environment ?? 'dev', revision: o.revision ?? 1, builtAt: '', flags, entities: ENTITIES, dimensions: DIMS, fields: FIELDS });
 const VERSIONS = ['4.9.1', '5.0.0', '5.0.0-beta.1', '5.0.0-beta.10', '6.0.0', '10.2.0'];
 const TEXT: Record<string, string[]> = {
   'device.platform': ['android', 'ios', 'web'], 'locale.language': ['en', 'es', 'de', 'en-GB'],
-  entity: Object.keys(ENTITIES), company: ['microsoft', 'google', 'unilever'], brand: ['dove', 'axe'],
-  'customer.id': Object.keys(ENTITIES), 'customer.company': ['microsoft', 'google', 'unilever'],
+  entity: Object.keys(ENTITIES), company: ['vandelay', 'wonka', 'tyrell'], brand: ['velvet', 'onyx'],
+  'customer.id': Object.keys(ENTITIES), 'customer.company': ['vandelay', 'wonka', 'tyrell'],
   project: ['server-ds', 'web'], environment: ['dev', 'prod'],
 };
 const ROLES = ['admin', 'beta', 'staff'];
@@ -126,12 +126,12 @@ test('the JSON for new_checkout: the override, the 20% as flagd’s fractional, 
       rule({ locked: true, conditions: [{ field: 'app.version', op: 'semver_lt', values: ['5.0.0'] }], serveVariation: 'off' }),
       rule({ split: { by: 'device.id', fallbackBy: null, salt: 'new_checkout', hashVersion: 2, ranges: [{ variation: 'on', from: 0, to: 2000 }] } }),
     ] },
-    entities: { google: { version: 1, enabled: null, variationWhenOff: null, defaultVariation: null, inherit: null, rules: [rule({ serveVariation: 'on' })] } },
+    entities: { wonka: { version: 1, enabled: null, variationWhenOff: null, defaultVariation: null, inherit: null, rules: [rule({ serveVariation: 'on' })] } },
   };
   const snap = snapOf({ new_checkout: f }, { environment: 'prod', revision: 15 });
-  assert.deepEqual(buildFlagdDoc(snap, 'server-ds', ENTITIES.microsoft), {
+  assert.deepEqual(buildFlagdDoc(snap, 'server-ds', ENTITIES.vandelay), {
     $schema: FLAGD_SCHEMA,
-    metadata: { flagSetId: 'prod/server-ds/microsoft', environment: 'prod', revision: 15 },
+    metadata: { flagSetId: 'prod/server-ds/vandelay', environment: 'prod', revision: 15 },
     flags: { new_checkout: {
       state: 'ENABLED', variants: { off: false, on: true }, defaultVariant: 'off',
       targeting: { if: [
@@ -141,10 +141,10 @@ test('the JSON for new_checkout: the override, the 20% as flagd’s fractional, 
       ] },
     } },
   });
-  // Google's own rule comes right after the override, and always applies
-  assert.deepEqual(buildFlagdDoc(snap, 'server-ds', ENTITIES.google).flags.new_checkout.targeting,
+  // Wonka's own rule comes right after the override, and always applies
+  assert.deepEqual(buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka).flags.new_checkout.targeting,
     { if: [{ or: [{ missing: ['app.version'] }, { sem_ver: [{ var: 'app.version' }, '<', '5.0.0'] }] }, 'off', null] });
-  assert.equal(buildFlagdDoc(snap, 'server-ds', ENTITIES.google).flags.new_checkout.defaultVariant, 'on');
+  assert.equal(buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka).flags.new_checkout.defaultVariant, 'on');
 });
 
 test('devices on the edges of a %: the first bucket inside and the first outside, at both ends', () => {
@@ -157,7 +157,7 @@ test('devices on the edges of a %: the first bucket inside and the first outside
     entities: {},
   };
   const snap = snapOf({ f });
-  const doc = buildFlagdDoc(snap, 'server-ds', ENTITIES.google);
+  const doc = buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka);
   // several devices per edge bucket: within one bucket, devices sit at different points of it
   const want = new Map([[1999, 'A'], [2000, 'B'], [4999, 'B'], [5000, 'A']]);
   const found = new Map([...want.keys()].map((b) => [b, 0]));
@@ -168,7 +168,7 @@ test('devices on the edges of a %: the first bucket inside and the first outside
     found.set(bucket, found.get(bucket)! + 1);
     const attrs = { 'device.id': id };
     assert.equal(flagdEvaluate(doc, 'f', nest(attrs)).value, want.get(bucket), `bucket ${bucket}`);
-    assert.equal(ours(snap, 'f', 'server-ds', 'google', attrs).value, want.get(bucket), `bucket ${bucket}`);
+    assert.equal(ours(snap, 'f', 'server-ds', 'wonka', attrs).value, want.get(bucket), `bucket ${bucket}`);
   }
   assert.deepEqual([...found.values()], [8, 8, 8, 8], 'found devices for every edge');
 });
@@ -195,7 +195,7 @@ test('a % rule of an older hash version is refused, not written with the wrong h
     entities: {},
   };
   const snap = snapOf({ f });
-  assert.throws(() => buildFlagdDoc(snap, 'server-ds', ENTITIES.google), /hash_version 1 can’t be written as flagd JSON/);
+  assert.throws(() => buildFlagdDoc(snap, 'server-ds', ENTITIES.wonka), /hash_version 1 can’t be written as flagd JSON/);
 });
 
 // ---------------------------------------------------------------- the endpoint, on the test data
@@ -208,29 +208,29 @@ const flagdFor = (key: string, path = '', headers: Record<string, string> = {}) 
 
 test('GET /sdk/v1/flagd: an entity’s key gets its flag set; a shared key names the entity in the path, by its dimension', async () => {
   const dana = t.as('dana');
-  const own = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'netflix' })).json.key;
+  const own = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'soylent' })).json.key;
   const shared = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
 
   const res = await flagdFor(own);
   assert.equal(res.status, 200, JSON.stringify(res.json));
   assert.equal(res.json.$schema, FLAGD_SCHEMA);
-  assert.deepEqual(res.json.metadata, { flagSetId: 'dev/server-ds/netflix', environment: 'dev', revision: t.plane.get('dev').revision });
+  assert.deepEqual(res.json.metadata, { flagSetId: 'dev/server-ds/soylent', environment: 'dev', revision: t.plane.get('dev').revision });
   const snap = t.plane.get('dev');
   assert.deepEqual(Object.keys(res.json.flags), Object.keys(snap.flags).filter((k) => snap.flags[k].delivery.includes('server-ds')).sort(),
     'the flags sent to this backend, and only those');
   assert.ok(!/"(entity|company|brand|customer\.id|customer\.company)"/.test(JSON.stringify(res.json.flags)), 'checks on entities are settled: no other entity is named');
-  assert.deepEqual((await flagdFor(own, '/company/netflix')).json, res.json, 'the key’s own entity, named in the path');
+  assert.deepEqual((await flagdFor(own, '/company/soylent')).json, res.json, 'the key’s own entity, named in the path');
 
   assert.equal((await flagdFor(shared)).status, 400, 'a shared key that names no entity');
   assert.match((await flagdFor(shared)).json.error, /\/sdk\/v1\/flagd\/<dimension>\/<entity>/);
   assert.equal((await flagdFor(shared, '/company/nobody')).status, 404);
-  assert.equal((await flagdFor(shared, '/brand/netflix')).status, 404, 'the dimension must be the entity’s');
-  assert.deepEqual((await flagdFor(shared, '/company/netflix')).json, res.json, 'a shared key asking for Netflix gets what Netflix’s key gets');
-  assert.equal((await flagdFor('ff_dev_nope', '/company/netflix')).status, 401);
+  assert.equal((await flagdFor(shared, '/brand/soylent')).status, 404, 'the dimension must be the entity’s');
+  assert.deepEqual((await flagdFor(shared, '/company/soylent')).json, res.json, 'a shared key asking for Soylent gets what Soylent’s key gets');
+  assert.equal((await flagdFor('ff_dev_nope', '/company/soylent')).status, 401);
 
   const etag = res.headers.get('etag')!;
   assert.equal((await flagdFor(own, '', { 'if-none-match': etag })).status, 304);
-  assert.equal((await flagdFor(shared, '/company/netflix', { 'if-none-match': etag })).status, 304);
+  assert.equal((await flagdFor(shared, '/company/soylent', { 'if-none-match': etag })).status, 304);
 });
 
 test('the test data: for every entity and many requests, flagd’s answer from the endpoint is ours', async () => {

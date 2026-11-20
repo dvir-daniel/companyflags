@@ -65,22 +65,22 @@ test('customers list: paged and searched on the server', async () => {
   assert.deepEqual(names, [...names].sort((a, b) => a.localeCompare(b)), 'by name, A to Z');
   const next = (await t.as('alice').get('/dimensions/company?page=1&size=3&q=o')).json.rows.map((c: any) => c.name);
   assert.ok(next.length > 0 && next[0].localeCompare(names.at(-1)) > 0, 'the next page carries on where this one stopped');
-  assert.deepEqual((await t.as('alice').get('/dimensions/company?page=0&q=netflix')).json.rows.map((c: any) => c.key), ['netflix']);
+  assert.deepEqual((await t.as('alice').get('/dimensions/company?page=0&q=soylent')).json.rows.map((c: any) => c.key), ['soylent']);
 });
 
 test('entity page: one page, with counts for the whole list', async () => {
-  const r = (await t.as('alice').get('/dimensions/company/netflix/flags?environment=dev&page=0&size=2')).json;
+  const r = (await t.as('alice').get('/dimensions/company/soylent/flags?environment=dev&page=0&size=2')).json;
   assert.equal(r.rows.length, 2);
   assert.ok(r.matched === r.all && r.all > 2);
-  const own = (await t.as('alice').get('/dimensions/company/netflix/flags?environment=dev&page=0&own=1')).json;
+  const own = (await t.as('alice').get('/dimensions/company/soylent/flags?environment=dev&page=0&own=1')).json;
   assert.equal(own.matched, r.withOwn);
   assert.ok(own.rows.every((f: any) => f.hasOwn));
-  const q = (await t.as('alice').get('/dimensions/company/netflix/flags?environment=dev&page=0&q=backend')).json;
+  const q = (await t.as('alice').get('/dimensions/company/soylent/flags?environment=dev&page=0&q=backend')).json;
   assert.deepEqual(q.rows.map((f: any) => f.key), ['ds_backend_config']);
 });
 
 test('compare: counts cover every flag, rows are one filtered page', async () => {
-  const body = { a: { environment: 'dev', project: 'android', entity: 'microsoft' }, b: { environment: 'dev', project: 'android', entity: 'google' }, attrs: { 'app.version': '6.2.0' } };
+  const body = { a: { environment: 'dev', project: 'android', entity: 'vandelay' }, b: { environment: 'dev', project: 'android', entity: 'wonka' }, attrs: { 'app.version': '6.2.0' } };
   const full = (await t.as('alice').post('/compare', body)).json;
   const paged = (await t.as('alice').post('/compare', { ...body, onlyDiff: true, page: 0, size: 1 })).json;
   assert.equal(paged.all, full.all);                       // same meaning as every other list: all = before filters

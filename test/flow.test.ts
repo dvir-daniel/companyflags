@@ -41,7 +41,7 @@ describe('save flow', () => {
     const badOp = await put({ layer: { inherit: 'base_rules_then_base_default', rules: [{ conditions: [{ field: 'app.version', op: 'in', values: ['5'] }], serveVariation: 'on' }] }, expectedVersion: null });
     assert.equal(badOp.status, 422);
     const fallbackOnConfig = await t.as('alice').put('/flags/api_base_url/layers/dev/acme', { layer: { inherit: 'base_rules_then_base_default',
-      rules: [{ conditions: [], split: { by: 'device.id', fallbackBy: 'session.id', ranges: [{ variation: 'google', from: 0, to: 100 }] } }] }, expectedVersion: null });
+      rules: [{ conditions: [], split: { by: 'device.id', fallbackBy: 'session.id', ranges: [{ variation: 'wonka', from: 0, to: 100 }] } }] }, expectedVersion: null });
     assert.equal(fallbackOnConfig.status, 422);
     assert.match(fallbackOnConfig.json.errors.join(), /sticky/);
   });
@@ -74,8 +74,8 @@ describe('approvals', () => {
 
   test('an entity’s change goes stale when the base moves underneath it', async () => {
     const flag = (await t.as('alice').get('/flags/api_base_url')).json;
-    const ms = flag.layers.prod.entities.find((c: any) => c.entity === 'microsoft').layer;
-    const cs = await t.as('alice').put('/flags/api_base_url/layers/prod/microsoft', { layer: { ...ms, rules: [] }, expectedVersion: ms.version, reason: 'drop the android rule' });
+    const ms = flag.layers.prod.entities.find((c: any) => c.entity === 'vandelay').layer;
+    const cs = await t.as('alice').put('/flags/api_base_url/layers/prod/vandelay', { layer: { ...ms, rules: [] }, expectedVersion: ms.version, reason: 'drop the android rule' });
     const id = cs.json.changeSetId;
     await t.as('bob').post(`/change-sets/${id}/review`, { decision: 'approve' });
     // someone changes the base in the meantime (via another approved change set)
@@ -92,7 +92,7 @@ describe('approvals', () => {
     const r = await t.as('alice').post('/change-sets', {
       environment: 'prod', reason: 'Initech launch',
       items: [
-        { flag: 'api_base_url', entity: 'initech', expectedLayerVersion: null, proposed: { inherit: 'base_rules_then_customer_default', defaultVariation: 'google', rules: [] } },
+        { flag: 'api_base_url', entity: 'initech', expectedLayerVersion: null, proposed: { inherit: 'base_rules_then_customer_default', defaultVariation: 'wonka', rules: [] } },
         { flag: 'max_upload_mb', entity: 'initech', expectedLayerVersion: null, proposed: { inherit: 'customer_only', defaultVariation: 'huge', rules: [] } },
       ],
     });
@@ -119,10 +119,10 @@ describe('approvals', () => {
 
 describe('data plane', () => {
   test('the entity comes from the link; what an app says about itself can’t change it', async () => {
-    const file = (await t.appFile('dev', 'android', 'microsoft')).json;
+    const file = (await t.appFile('dev', 'android', 'vandelay')).json;
     const read = (key: string, attrs: Record<string, unknown>) => readClientFile(file, key, attrs);
-    const spoof = { 'device.id': 'dev-1', entity: 'netflix', company: 'netflix', 'customer.id': 'netflix', project: 'ios', 'app.version': '6.0.0' };
-    assert.equal(read('api_base_url', spoof).value, 'https://android.microsoft.api.example.com');
+    const spoof = { 'device.id': 'dev-1', entity: 'soylent', company: 'soylent', 'customer.id': 'soylent', project: 'ios', 'app.version': '6.0.0' };
+    assert.equal(read('api_base_url', spoof).value, 'https://android.vandelay.api.example.com');
     assert.equal(read('data_region_host', spoof).value, 'https://us.data.example.com');   // spoofed entity (an EU one) ignored
     assert.ok(!('ds_backend_config' in file.flags));                                     // not sent to apps
     assert.ok(!('dark_mode_v2' in file.flags));                                          // not delivered to android
@@ -132,26 +132,26 @@ describe('data plane', () => {
     const app = await t.as('dana').post('/api-keys', { environment: 'dev', project: 'web', scope: 'entity', entity: 'acme' });
     assert.equal(app.status, 422);
     const server = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
-    const doc = await t.call('GET', '/sdk/v1/flagd/company/netflix', undefined, { authorization: `Bearer ${server}` });
+    const doc = await t.call('GET', '/sdk/v1/flagd/company/soylent', undefined, { authorization: `Bearer ${server}` });
     assert.equal(doc.status, 200);
     assert.ok(doc.json.flags.ds_backend_config);
     assert.ok(!doc.json.flags.android_quick_share);
   });
 
   test('a save goes through the outbox and reaches the app’s file', async () => {
-    const ms = (await t.as('alice').get('/flags/api_base_url')).json.layers.dev.entities.find((c: any) => c.entity === 'microsoft').layer;
-    const before_ = (await t.appFile('dev', 'web', 'microsoft')).json.revision;
-    await t.as('alice').put('/flags/api_base_url/layers/dev/microsoft', { layer: ms, expectedVersion: ms.version });
+    const ms = (await t.as('alice').get('/flags/api_base_url')).json.layers.dev.entities.find((c: any) => c.entity === 'vandelay').layer;
+    const before_ = (await t.appFile('dev', 'web', 'vandelay')).json.revision;
+    await t.as('alice').put('/flags/api_base_url/layers/dev/vandelay', { layer: ms, expectedVersion: ms.version });
     await t.settle();
-    assert.ok((await t.appFile('dev', 'web', 'microsoft')).json.revision > before_);
+    assert.ok((await t.appFile('dev', 'web', 'vandelay')).json.revision > before_);
     const q = (await t.as('alice').get('/publish-queue')).json;
     assert.ok(q.every((row: any) => row.publishedAt));
   });
 
   test('revoked keys stop working', async () => {
-    const k = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'netflix' })).json;
+    const k = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'soylent' })).json;
     const doc = await t.call('GET', '/sdk/v1/flagd', undefined, { authorization: `Bearer ${k.key}` });
-    assert.equal(doc.json.metadata.flagSetId, 'dev/server-ds/netflix');                           // an entity’s key gets only its entity
+    assert.equal(doc.json.metadata.flagSetId, 'dev/server-ds/soylent');                           // an entity’s key gets only its entity
     await t.as('dana').post(`/api-keys/${k.id}/revoke`);
     assert.equal((await t.call('GET', '/sdk/v1/flagd', undefined, { authorization: `Bearer ${k.key}` })).status, 401);
   });

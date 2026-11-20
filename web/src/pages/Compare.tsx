@@ -274,7 +274,7 @@ export function Compare() {
   );
 }
 
-/** "6 of 5,009 flags differ", or with the sides: "6 of 5,009 flags differ between Microsoft and Google". */
+/** "6 of 5,009 flags differ", or with the sides: "6 of 5,009 flags differ between Acme and Globex". */
 function countText(r: Result, sides?: [string, string]) {
   const text = `${r.different.toLocaleString()} of ${r.all.toLocaleString()} flags ${r.different === 1 ? 'differs' : 'differ'}`;
   return sides ? `${text} between ${sides[0]} and ${sides[1]}` : text;
