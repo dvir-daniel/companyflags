@@ -86,10 +86,15 @@ jobs:
           for _ in $(seq 1 30); do curl -sf http://localhost:8787/readyz && exit 0; sleep 1; done
           docker logs cf
           exit 1
-      - name: The console and the sign-in answer
+      - name: The console, the sign-in and the setup link answer
         run: |
           curl -sf -o /dev/null http://localhost:8787/
-          curl -sf http://localhost:8787/api/sign-in | grep -q '"firstPerson":true'
+          curl -sf -o /dev/null http://localhost:8787/api/sign-in
+          # a new server prints the link that makes the admin account; it opens the console
+          link=$(docker logs cf 2>&1 | grep -o 'http[^ ]*/api/setup/[A-Za-z0-9_-]*' | head -1)
+          test -n "$link"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$link")" = 302
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8787/api/setup/wrong)" = 404
 
   docs:
     name: Docs site
