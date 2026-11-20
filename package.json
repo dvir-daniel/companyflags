@@ -43,11 +43,11 @@
     "cli": "node server/cli.ts"
   },
   "dependencies": {
-    "@better-auth/sso": "^1.7.16",
-    "@electric-sql/pglite": "^0.5.15",
-    "@hono/node-server": "^2.1.6",
-    "better-auth": "^1.7.16",
-    "hono": "^4.13.17",
+    "@better-auth/sso": "^1.7.25",
+    "@electric-sql/pglite": "^0.5.16",
+    "@hono/node-server": "^2.1.8",
+    "better-auth": "^1.7.25",
+    "hono": "^4.13.19",
     "kysely": "^0.29.9",
     "pg": "^8.23.1"
   },
@@ -65,18 +65,18 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.2.1",
+    "@vitejs/plugin-react": "^6.3.0",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.5.2",
-    "concurrently": "^10.0.6",
+    "concurrently": "^10.0.7",
     "jose": "^6.2.17",
-    "oxlint": "1.91.0",
+    "oxlint": "1.94.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "samlify": "^2.15.1",
     "tailwindcss": "^4.3.5",
     "typescript": "^7.0.2",
-    "vite": "^8.3.6"
+    "vite": "^8.3.8"
   }
 }
