@@ -8,7 +8,7 @@ import { PRODUCTS, RESOURCES } from '@/lib/resources';
 // it's on the docs' pages.
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <HomeLayout nav={{ title: <Logo />, url: '/' }} searchToggle={{ enabled: false }}
+    <HomeLayout nav={{ title: <Logo />, url: '/' }} searchToggle={{ enabled: false }} themeSwitch={{ enabled: false }}
       links={[
         { text: 'Readme', url: '/', active: 'url' },
         { text: 'Docs', url: '/guide/introduction' },

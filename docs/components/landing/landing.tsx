@@ -4,6 +4,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { IllusHowItWorks } from '../illus/how-it-works';
+import { HeroIcons } from './hero-icons';
 import './landing.css';
 
 const repo = 'https://github.com/dvir-daniel/companyflags';
@@ -214,6 +215,7 @@ export function Landing() {
           <Link href="/guide/introduction">Docs</Link><span>/</span>
           <a href={`${repo}/blob/main/CHANGELOG.md`}>Changelog</a><span>/</span>
           <a href={`${repo}/blob/main/SECURITY.md`}>Security</a>
+          <HeroIcons repo={repo} />
         </footer>
       </aside>
 
