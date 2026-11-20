@@ -58,3 +58,11 @@ export async function migrate(db: Db, migrations = readMigrations()): Promise<{ 
     applied.push(name);
   }
 }
+
+/** The migrations the database doesn't have yet, without applying any (the CLI's migrate --check). */
+export async function pendingMigrations(db: Db, migrations = readMigrations()): Promise<string[]> {
+  const table = await db.query<{ t: string | null }>(`select to_regclass('schema_migration')::text as t`);
+  if (!table.rows[0]?.t) return migrations.map((m) => m.name);
+  const done = new Set((await db.query<{ name: string }>(`select name from schema_migration`)).rows.map((r) => r.name));
+  return migrations.filter((m) => !done.has(m.name)).map((m) => m.name);
+}

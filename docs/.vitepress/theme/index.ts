@@ -7,6 +7,7 @@ import Landing from './Landing.vue';
 import IllusHowItWorks from './IllusHowItWorks.vue';
 import IllusChain from './IllusChain.vue';
 import IllusOrder from './IllusOrder.vue';
+import IllusArchitecture from './IllusArchitecture.vue';
 
 export default {
   extends: DefaultTheme,
@@ -15,5 +16,6 @@ export default {
     app.component('IllusHowItWorks', IllusHowItWorks);
     app.component('IllusChain', IllusChain);
     app.component('IllusOrder', IllusOrder);
+    app.component('IllusArchitecture', IllusArchitecture);
   },
 } satisfies Theme;

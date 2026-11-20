@@ -1,9 +1,47 @@
 # Configuration
 
-CompanyFeatures reads its settings from environment variables when it starts. It doesn't read a `.env` file itself:
-set them in your container, your process manager or your shell. The repository's
-[`.env.example`](https://github.com/dvir-daniel/companyfeatures/blob/main/.env.example) lists the ones you are
-most likely to need.
+CompanyFeatures reads its settings from two places when it starts:
+
+1. **`companyfeatures.config.ts`**, a typed file in the folder it runs in (optional);
+2. **environment variables**, for whatever the file doesn't set.
+
+Then come the defaults. Without a config file, the environment variables decide everything, as in the Docker image.
+CompanyFeatures doesn't read a `.env` file itself: set the variables in your container, your process manager or your
+shell. The repository's [`.env.example`](https://github.com/dvir-daniel/companyfeatures/blob/main/.env.example)
+lists the ones you are most likely to need.
+
+## The config file
+
+One file says how the server runs, the way Better Auth has its `auth.ts`. `companyfeatures init` writes one:
+
+```ts
+// companyfeatures.config.ts
+import { defineConfig } from 'companyfeatures/config';
+import { appFiles, cloudflare, flagd, ofrep } from 'companyfeatures/plugins';
+
+export default defineConfig({
+  database: { url: process.env.DATABASE_URL },          // or { dataDir: './data' }
+  server: { port: 8787 },
+  auth: { baseURL: 'https://flags.example.com' },      // Better Auth: secret, baseURL, providers, …
+  plugins: [ofrep(), flagd(), appFiles(), cloudflare()],
+});
+```
+
+| Setting | Instead of | What it does |
+|---|---|---|
+| `database.url` | `DATABASE_URL` | A Postgres 15+ server. |
+| `database.dataDir` | `FF_DATA_DIR` | Without a server: where embedded Postgres keeps its files. |
+| `server.port`, `server.host` | `PORT`, `HOST` | Where the server listens. |
+| `auth` | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, the providers' variables, … | Sign-in with Better Auth: `secret`, `baseURL`, `google`, `github`, `microsoft`, `signupDomains`, `trustedOrigins`, `clientIp`. Each one left out comes from its variable. |
+| `plugins` | — | What reads flags besides the console, and what runs after a publish. Left out: all of them. See [Plugins](/reference/plugins). |
+
+- The file is TypeScript, run by Node as the server is: no build step. It can read `process.env`, so secrets stay in
+  the environment.
+- A setting the file leaves out, or sets to `undefined`, comes from its environment variable.
+- The server looks for the file in the folder it starts in. `FF_CONFIG` names another one.
+- In Docker, mount it at `/app/companyfeatures.config.ts`: `-v ./companyfeatures.config.ts:/app/companyfeatures.config.ts:ro`.
+  It imports `companyfeatures/config` and `companyfeatures/plugins` from the server itself, so it stays in `/app`.
+- The server says which file it read, and which plugins run, when it starts.
 
 ::: warning Docker Compose passes only what it names
 The repository's `docker-compose.yml` hands the container only the variables in its `environment:` block
@@ -50,6 +88,10 @@ database doesn't have yet:
 
 So going back to an older version means restoring the backup you took before upgrading. See
 [Production checklist](/self-hosting/production).
+
+To migrate before the new version starts, for example as a step of a deploy, run
+[`companyfeatures migrate`](/reference/cli#migrate). `companyfeatures migrate --check` lists what an upgrade would
+apply, and exits with 1 when something is pending.
 
 ## Server
 

@@ -11,16 +11,17 @@ import { consoleApi } from './api.ts';
 import { FolderInUseError, HttpError, openDb, type Db } from './db.ts';
 import { MigrationError } from './migrate.ts';
 import { createIdentity, signInFromEnv, type SignIn } from './identity.ts';
+import { loadConfig, resolveConfig, type Resolved } from './config.ts';
 import { createAccess } from './access.ts';
 import { betterAuthAccounts, createAuth, SetupError } from './betterAuth.ts';
 import { discoverOverHttp, singleSignOn, vouchingConnections, type Discover } from './sso.ts';
 import { EventHub } from './events.ts';
-import { AppCache, deliveryApi, LinkCache } from './delivery.ts';
-import { ofrepApi } from './ofrep.ts';
+import { AppCache, LinkCache, linkRoutes } from './delivery.ts';
 import { KeyCache } from './auth.ts';
 import { journaled } from './journal.ts';
 import type { Purger } from './purge.ts';
-import { createCdn, type CdnOptions } from './cdn.ts';
+import { PluginError, publishHooks, setUpPlugins, type Plugin } from './plugin.ts';
+import { defaultPlugins, type CloudflareOptions } from './plugins/index.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
 import { startWorkers } from './workers.ts';
@@ -32,11 +33,13 @@ export type AppOptions = {
   discover?: Discover;                   // reads an OIDC identity provider's settings (sso.ts); tests hand it the documents
   setup?: (db: Db) => Promise<void>;     // tests: fill a new, empty database
   log?: (m: string) => void;
-  /** How this server reaches Cloudflare to purge app files after a publish (cdn.ts): `fetch`, and the zone and token
-   *  set on the server (CF_ZONE_ID, CF_API_TOKEN). Only the server's own start sets it, so an app made in a test never
-   *  purges a real Cloudflare zone. */
-  cdn?: CdnOptions;
-  /** tests: a purger of their own instead (publish.test.ts) */
+  /** The plugins (plugin.ts, plugins/): what reads flags besides the console, and what runs after a publish. Without
+   *  a list, every built-in one, with a Cloudflare purge that has no `fetch` unless `cdn` gives one, so an app made in
+   *  a test never purges a real Cloudflare zone (the server's own start passes the config's list, config.ts). */
+  plugins?: Plugin[];
+  /** tests: the built-in Cloudflare plugin's options, when `plugins` isn't given */
+  cdn?: CloudflareOptions;
+  /** tests: a purger of their own instead of the plugins' onPublish (publish.test.ts) */
   purge?: Purger;
 };
 
@@ -77,8 +80,11 @@ export async function createApp(opts: AppOptions = {}) {
   const sso = singleSignOn(db, {
     access, plugin: auth, discover: opts.discover ?? discoverOverHttp(settings?.trustedOrigins ?? []), baseURL: settings?.baseURL, production: settings?.production,
   });
-  const cdn = createCdn(db, { ...opts.cdn, log });
-  const workers = startWorkers(db, plane, hub, log, opts.purge ?? cdn.purge, {
+  // the plugins (plugin.ts): set up once, with what the core shares
+  const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: opts.cdn ?? { fetch: undefined } }),
+    { db, plane, hub, keys, links, flagSets: apps, log }).catch(async (e) => { await store.close(); throw e; });
+  const on = new Set(plugins.map((p) => p.id));
+  const workers = startWorkers(db, plane, hub, log, opts.purge ?? publishHooks(plugins), {
     onRemoteChange: () => { links.forget(); keys.forget(); apps.forget(); },
   });
 
@@ -101,13 +107,15 @@ export async function createApp(opts: AppOptions = {}) {
     }
   });
   app.route('/api', identity.routes);                    // sign-in pages and Better Auth: open to everyone
-  app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, cdn }));
-  app.route('/', deliveryApi({ db, plane, links, keys, apps }));
-  app.route('/', ofrepApi({ db, plane, keys, links, apps, hub }));   // OpenFeature's own providers (OFREP)
+  app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, plugins }));
+  app.route('/', linkRoutes({ db, plane, links, keys, flagSets: apps }, { files: on.has('app-files') }));   // app links, for backends
+  for (const p of plugins) if (p.parts.routes) app.route('/', p.parts.routes);
   // An unknown address under the API, the app files or the backend downloads is a 404 with a JSON error,
-  // never the console's page (which answers every other address, below).
+  // never the console's page (which answers every other address, below). The built-in plugins' prefixes stay JSON
+  // even when the plugin is off.
   const noSuchEndpoint = (c: Context) => c.json({ error: `no such endpoint: ${c.req.method} ${c.req.path}` }, 404);
-  for (const prefix of ['/api', '/client', '/sdk', '/ofrep']) {
+  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
+  for (const prefix of prefixes) {
     app.all(prefix, noSuchEndpoint);
     app.all(`${prefix}/*`, noSuchEndpoint);
   }
@@ -128,7 +136,7 @@ export async function createApp(opts: AppOptions = {}) {
     app.use('/*', serveStatic({ root: './web/dist' }));
     app.get('*', page);
   }
-  return { app, db, plane, hub, workers, identity };
+  return { app, db, plane, hub, workers, identity, plugins: [...on] };
 }
 
 /** The console page's Content-Security-Policy: scripts only from this server, plus the page's own inline scripts by
@@ -182,27 +190,29 @@ function portFree(port: number, host: string) {
   });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const port = Number(process.env.PORT || 8787);              // an empty PORT is the default, not port 0
-  const host = process.env.HOST || '0.0.0.0';
-  const dataDir = process.env.FF_DATA_DIR || './data';
+/** Starts the server as configured (config.ts): the port first, then the database, then the requests. Used when this
+ *  file is run (node server/index.ts) and by the CLI's start (cli.ts). */
+export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
   const fail = (m: string): never => { console.error(`[ff] ${m}`); process.exit(1); };
   const log = (m: string) => console.log(`[ff] ${m}`);
+  let resolved: Resolved;
+  let file: string | null;
+  try {
+    const loaded = await loadConfig(o);
+    file = loaded.file;
+    resolved = resolveConfig(loaded.config, o.env ?? process.env);
+  } catch (e) { return fail((e as Error).message); }
+  const { port, host, signIn } = resolved;
   // the port first: a second copy started by mistake stops here, before it opens any data
   if (!(await portFree(port, host))) {
     fail(`port ${port} is already in use: CompanyFeatures may already be running (open http://localhost:${port}), or start this one with PORT=<another port>`);
   }
-  let signIn: SignIn;
-  try { signIn = signInFromEnv(); } catch (e) { fail((e as Error).message); }
-  const ctx = await createApp({
-    databaseUrl: process.env.DATABASE_URL || undefined,
-    dataDir,
-    signIn: signIn!,
-    cdn: { fetch: globalThis.fetch, server: { zoneId: process.env.CF_ZONE_ID, token: process.env.CF_API_TOKEN } },
-    log,
-  }).catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError ? fail(e.message) : Promise.reject(e)));
-  if (signIn!.kind === 'better-auth') {
-    const settings = signIn!.settings;
+  if (file) log(`config: ${file}`);
+  const ctx = await createApp({ databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, log })
+    .catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError ? fail(e.message) : Promise.reject(e)));
+  log(`plugins: ${ctx.plugins.join(', ') || 'none'}`);
+  if (signIn.kind === 'better-auth') {
+    const settings = signIn.settings;
     const ways = ['email and password', ...(['google', 'github', 'microsoft'] as const).filter((p) => settings[p])];
     log(`sign-in with Better Auth: ${ways.join(', ')}`);
   }
@@ -231,3 +241,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   process.on('SIGINT', () => { void shutdown('SIGINT'); });
   process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 }
+
+if (import.meta.url === `file://${process.argv[1]}`) await start();

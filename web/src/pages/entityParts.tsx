@@ -556,7 +556,10 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
   // the answer is kept with the entity, environment and app it's for, so another one's link (or error) never shows
   // here; each time the drawer opens it's asked for again
   const asked = `${entity.key}\n${env}\n${app}`;
-  type Link = { path: string; token?: string };
+  type Link = { path?: string; token?: string };
+  // what this server serves (server/plugin.ts): the token is for OFREP, the address for app files
+  const ofrep = meta.plugins?.includes('ofrep') ?? true;
+  const files = meta.plugins?.includes('app-files') ?? true;
   const [got, setGot] = useState<{ asked: string; link: Link | null; error: string | null } | null>(null);
   const link = got?.asked === asked ? got.link : null;
   const error = got?.asked === asked ? got.error : null;
@@ -569,7 +572,7 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
       .then((r) => { if (live) setGot({ asked, link: r, error: null }); }, (e: Error) => { if (live) setGot({ asked, link: null, error: e.message }); });
     return () => { live = false; };
   }, [open, asked, linkPath, app]);
-  const url = link ? `${location.origin}${link.path}` : '';
+  const url = link?.path ? `${location.origin}${link.path}` : '';
   const replace = async () => {
     const r = await ask({ title: `Replace ${entity.name}’s app link?`,
       body: <><p>The current link and its token stop working in every environment within a minute. Apps keep their saved flags until they log in again and get the new link from your backend. The links of the entries under {entity.name} stay as they are.</p></>,
@@ -585,8 +588,8 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
   return (
     <Drawer open={open} onClose={onClose} title="App link" subtitle={`${entity.name} · ${envName(env)}`}
       footer={<>
-        <Button disabled={!link} onClick={() => void copyText(url, 'the app link', toast)}>Copy link</Button>
-        <Button variant="secondary" disabled={!link?.token} onClick={() => void copyText(link?.token ?? '', 'the OpenFeature token', toast)}>Copy token</Button>
+        {files && <Button disabled={!url} onClick={() => void copyText(url, 'the app link', toast)}>Copy link</Button>}
+        {ofrep && <Button variant={files ? 'secondary' : undefined} disabled={!link?.token} onClick={() => void copyText(link?.token ?? '', 'the OpenFeature token', toast)}>Copy token</Button>}
         <Button variant="secondary" disabled={!link || busy} onClick={replace}>{busy ? 'Replacing…' : 'Replace link'}</Button>
       </>}>
       <div className="grid gap-4 text-13 text-ink-2">
@@ -598,12 +601,12 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
             </NativeSelect>
           </Field>
           {error ? <Callout tone="error">{error}</Callout> : <>
-            <Field label="OpenFeature token" hint="For OpenFeature’s OFREP providers (web, Android, iOS): send it as Authorization: Bearer <token>.">
+            {ofrep && <Field label="OpenFeature token" hint="For OpenFeature’s OFREP providers (web, Android, iOS): send it as Authorization: Bearer <token>.">
               <Input readOnly value={link?.token ?? ''} placeholder="Loading…" onFocus={(e) => e.target.select()} className="h-[34px] font-mono text-13" aria-label="OpenFeature token" />
-            </Field>
-            <Field label="App file" hint="The same link as an address: the app’s values only, cached by your CDN.">
+            </Field>}
+            {files && <Field label="App file" hint="The same link as an address: the app’s values only, cached by your CDN.">
               <Input readOnly value={url} placeholder="Loading…" onFocus={(e) => e.target.select()} className="h-[34px] font-mono text-13" aria-label="App link" />
-            </Field>
+            </Field>}
           </>}
         </>}
         <p className="m-0 text-ink-3">Each environment has its own link.</p>

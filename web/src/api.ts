@@ -97,6 +97,8 @@ export type Meta = {
   /** change sets waiting for review, in every environment, that `me` may approve (server/policy.ts mayApprove;
    *  older servers don't send it) */
   pendingApprovals?: number;
+  /** the plugins this server runs (server/plugin.ts): 'ofrep', 'flagd', 'app-files', 'cloudflare', or its own */
+  plugins: string[];
 };
 export type TraceStep = {
   stage: string; layer: 'base' | 'entity' | null; owner?: string; ruleKey?: string; ruleName?: string | null;

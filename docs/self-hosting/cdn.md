@@ -51,6 +51,9 @@ Without a purge, a change reaches apps once the CDN's copy is a minute old and t
 With a purge, CompanyFeatures drops the environment's files from Cloudflare right after each publish, so apps get the
 change in seconds.
 
+The purge is the [`cloudflare()` plugin](/reference/plugins#cloudflare-options). It runs unless your config file
+lists plugins without it, and its zone and token can be set there too: `cloudflare({ zoneId, token })`.
+
 The purge is one API request per publish:
 
 ```http

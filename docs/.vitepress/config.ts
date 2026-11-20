@@ -44,6 +44,8 @@ export default defineConfig({
           { text: 'Flags and rules', link: '/guide/flags-and-rules' },
           { text: 'Releases', link: '/guide/releases' },
           { text: 'Approvals and history', link: '/guide/approvals' },
+          { text: 'Flags as code', link: '/guide/flags-as-code' },
+          { text: 'Architecture', link: '/guide/architecture' },
         ],
       },
       {
@@ -70,6 +72,8 @@ export default defineConfig({
         text: 'Reference',
         items: [
           { text: 'HTTP API', link: '/reference/http-api' },
+          { text: 'Plugins', link: '/reference/plugins' },
+          { text: 'CLI', link: '/reference/cli' },
           { text: 'Attributes', link: '/reference/attributes' },
         ],
       },

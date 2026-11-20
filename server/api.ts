@@ -1,6 +1,6 @@
 // Console (control-plane) API. The sign-in (identity.ts: a Better Auth session cookie) says which email is asking;
 // the access module (access.ts) says who that person is and what their role lets them do: viewers can look but not
-// change anything, and settings (environments, apps, people, single sign-on) are for admins.
+// change anything, and settings (environments, flag sets, people, single sign-on) are for admins.
 // Every change (any method but GET) must carry X-Requested-With: companyfeatures, which a page on another site can't
 // send without the server's permission (CORS), and isn't accepted from a cross-site request at all (CSRF).
 
@@ -10,7 +10,7 @@ import { all, HttpError, one, type Db } from './db.ts';
 import type { Identity } from './identity.ts';
 import { may, mustBeAllowed, type Access, type Person } from './access.ts';
 import { serviceProvider, type SingleSignOn } from './sso.ts';
-import type { Cdn } from './cdn.ts';
+import type { PluginParts } from './plugin.ts';
 import { appToken, clientLink } from './delivery.ts';
 import { notRolledBack, RESTORABLE } from './journal.ts';
 import { HISTORY_CSV_HEADER, historyBatches, historyCsv, historyFilter, historyPage } from './history.ts';
@@ -37,7 +37,7 @@ import { loadLayers, type DataPlane } from './snapshot.ts';
 
 // `db` is the app's journaled database (journal.ts): what a change does after it commits (waking the publisher,
 // forgetting cached links and keys, building a new environment's snapshot) happens there, not in the routes.
-type Deps = { db: Db; plane: DataPlane; hub: EventHub; identity: Identity; access: Access; sso: SingleSignOn; cdn: Cdn };
+type Deps = { db: Db; plane: DataPlane; hub: EventHub; identity: Identity; access: Access; sso: SingleSignOn; plugins: { id: string; parts: PluginParts }[] };
 type User = Person;
 
 // The only POSTs a viewer may make: they run the evaluator and change nothing. Exact addresses: an entity or
@@ -65,7 +65,7 @@ type GridRow = { key: string; valueType: FlagDef['valueType']; enabled: boolean;
 type Outcome = { sent: boolean; value: unknown; codeDefault: boolean; variant: string | null; source: string; rule: string | null; byDevice: boolean };
 type CompareRow = { key: string; a: Outcome; b: Outcome; same: boolean };
 
-export function consoleApi({ db, plane, hub, identity, access, sso, cdn }: Deps) {
+export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: Deps) {
   const app = new Hono<{ Variables: { user: User } }>();
 
   // who is asking, and may they change anything at all
@@ -145,7 +145,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, cdn }: Deps)
     const { removed: _, ...me } = c.get('user');
     const pendingApprovals = pending.filter((cs) => mayApprove(me, cs)).length;
     const fields = fieldRows.map((r) => fieldInfo(r, dimensions));
-    return c.json({ me, signIn: identity.kind, environments, projects, dimensions, entities, users, fields, dataPlane, pendingApprovals });
+    return c.json({ me, signIn: identity.kind, environments, projects, dimensions, entities, users, fields, dataPlane, pendingApprovals, plugins: plugins.map((p) => p.id) });
   });
 
   // ------------------------------------------------------------ flags
@@ -834,25 +834,8 @@ export function consoleApi({ db, plane, hub, identity, access, sso, cdn }: Deps)
     return c.json(await sso.remove(c.req.param('id'), actor(c.get('user'))));
   });
 
-  // ------------------------------------------------------------ the CDN purge (cdn.ts): admins set the Cloudflare zone
-  // and token; everyone can see whether it's set up (never the token) and how the last publishes' purges went
-  app.get('/cdn', async (c) => c.json(await cdn.state()));
-  app.put('/cdn', async (c) => {
-    adminOnly(c.get('user'));
-    await cdn.save(await c.req.json(), actor(c.get('user')));
-    return c.json(await cdn.state());
-  });
-  app.delete('/cdn', async (c) => {
-    adminOnly(c.get('user'));
-    await cdn.remove(actor(c.get('user')));
-    return c.json(await cdn.state());
-  });
-  app.post('/cdn/purge', async (c) => {
-    adminOnly(c.get('user'));
-    const { environment } = await c.req.json<{ environment?: unknown }>();
-    await cdn.purgeNow(environment, actor(c.get('user')));
-    return c.json({ purged: true });
-  });
+  // ------------------------------------------------------------ the plugins' console routes (plugin.ts), signed in as above
+  for (const p of plugins) if (p.parts.console) app.route('/', p.parts.console({ actor, adminOnly }));
 
   // ------------------------------------------------------------ trace / playground (S9: runs the real evaluator)
   app.post('/trace', async (c) => {

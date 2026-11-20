@@ -26,7 +26,7 @@ the console and serves it with the API on http://localhost:8787, as in productio
 
 | Path | What it is |
 |---|---|
-| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `delivery.ts` serves app files and backend downloads; `ofrep.ts` answers OpenFeature's providers; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
+| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, app files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` reads `companyfeatures.config.ts`; `cli.ts` is the `companyfeatures` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
 | `web/` | The console: React 19, Vite, Tailwind 4 |
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
 | `test/` | The server's and console's tests (`node --test`) |
