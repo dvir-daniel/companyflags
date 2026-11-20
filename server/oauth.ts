@@ -37,6 +37,9 @@ const CLIENT_PREFIX = 'cfc_';
 const ACCESS_SECONDS = 3600;
 const REFRESH_DAYS = 30;
 const CODE_SECONDS = 600;
+/** Registration is open to anyone: a client nobody signed in with goes after a day, and there are at most this many
+ *  at once, so registering over and over can't fill the database. */
+export const MAX_UNUSED_CLIENTS = 1000;
 /** Where the authorize page waits while its person signs in to the console (the console's page sends them back). */
 const PENDING_COOKIE = 'companyflags.oauth';
 
@@ -193,8 +196,16 @@ export function oauthRoutes({ db, identity, access, baseURL }: Deps) {
     if (!Array.isArray(grants) || grants.some((g) => g !== 'authorization_code' && g !== 'refresh_token')) return bad('grant_types: authorization_code and refresh_token');
     const types = body.response_types ?? ['code'];
     if (!Array.isArray(types) || types.some((t) => t !== 'code')) return bad('response_types: code');
-    const rawName = typeof body.client_name === 'string' ? body.client_name.replace(/\p{Cc}/gu, '').trim() : '';
+    // no control or invisible formatting characters (right-to-left overrides): the consent page shows the name as sent
+    const rawName = typeof body.client_name === 'string' ? body.client_name.replace(/[\p{Cc}\p{Cf}]/gu, '').trim() : '';
     const name = (rawName || 'An MCP client').slice(0, 100);
+    const unused = `not exists (select 1 from oauth_grant g where g.client_id = c.id)`;
+    await db.query(`delete from oauth_client c where created_at < now() - interval '1 day' and ${unused}`);
+    const count = await one<{ n: number }>(db, `select count(*)::int as n from oauth_client c where ${unused}`);
+    if (count!.n >= MAX_UNUSED_CLIENTS) {
+      c.header('Retry-After', '3600');
+      return c.json({ error: 'temporarily_unavailable', error_description: 'too many clients registered and not used yet: try again later' }, 429);
+    }
     const id = secret(CLIENT_PREFIX).slice(0, 36);
     const row = await one<{ at: number }>(db, `insert into oauth_client (id, name, redirect_uris) values ($1, $2, $3)
       returning extract(epoch from created_at)::bigint as at`, [id, name, uris]);
@@ -206,30 +217,23 @@ export function oauthRoutes({ db, identity, access, baseURL }: Deps) {
   });
 
   // ---------------------------------------------------------------- the browser: sign in, then allow
-  /** The request in an /authorize address or form, checked. A problem with the client or its redirect URI is shown
-   *  on the page (never sent anywhere); any other goes back to the client. */
-  const askOf = async (c: Context, q: Record<string, string | undefined>): Promise<{ ask: Ask } | { page: Response } | { back: Response }> => {
+  /** The request in an /authorize address or form, checked. A problem is shown on the page, never sent back to the
+   *  client: anyone may register a client with any https redirect URI, so going back to it before the person has
+   *  answered would make this server an open redirect to any address. */
+  const askOf = async (c: Context, q: Record<string, string | undefined>): Promise<{ ask: Ask } | { page: Response }> => {
     const client = await clientById(q.client_id);
     if (!client) return { page: page(c, 'Unknown app', '<h1>This app isn’t known here</h1><p>Its client ID isn’t registered with this server. Connect it again from the app.</p>', 400) };
     const redirectUri = q.redirect_uri ?? (client.redirectUris.length === 1 ? client.redirectUris[0] : '');
     if (!redirectUri || !redirectFits(client, redirectUri)) {
       return { page: page(c, 'Wrong address', '<h1>This app asked to go back to an address it didn’t register</h1><p>Nothing was sent. Connect it again from the app.</p>', 400) };
     }
-    const state = q.state ?? null;
-    const back = (error: string, description: string) => {
-      const u = new URL(redirectUri);
-      u.searchParams.set('error', error);
-      u.searchParams.set('error_description', description);
-      if (state !== null) u.searchParams.set('state', state);
-      u.searchParams.set('iss', base(c));
-      return { back: c.redirect(u.toString(), 302) };
-    };
-    if (q.response_type !== 'code') return back('unsupported_response_type', 'response_type: code');
-    if (!q.code_challenge || !/^[A-Za-z0-9._~-]{43,128}$/.test(q.code_challenge)) return back('invalid_request', 'PKCE is required: a code_challenge');
-    if (q.code_challenge_method !== 'S256') return back('invalid_request', 'code_challenge_method: S256');
+    const wrong = (description: string) => ({ page: page(c, 'Can’t connect', `<h1>This app’s request can’t be used</h1><p>${esc(description)}. Nothing was sent. Connect it again from the app.</p>`, 400) });
+    if (q.response_type !== 'code') return wrong('response_type: code');
+    if (!q.code_challenge || !/^[A-Za-z0-9._~-]{43,128}$/.test(q.code_challenge)) return wrong('PKCE is required: a code_challenge');
+    if (q.code_challenge_method !== 'S256') return wrong('code_challenge_method: S256');
     const resource = ourResource(c, q.resource);
-    if (!resource) return back('invalid_target', `this server gives tokens for ${resourceOf(c)} only`);
-    return { ask: { client, redirectUri, state, challenge: q.code_challenge, resource } };
+    if (!resource) return wrong(`this server gives tokens for ${resourceOf(c)} only`);
+    return { ask: { client, redirectUri, state: q.state ?? null, challenge: q.code_challenge, resource } };
   };
 
   const KEYS = ['client_id', 'redirect_uri', 'response_type', 'state', 'code_challenge', 'code_challenge_method', 'resource', 'scope'] as const;
@@ -238,7 +242,6 @@ export function oauthRoutes({ db, identity, access, baseURL }: Deps) {
     const q = c.req.query();
     const checked = await askOf(c, q);
     if ('page' in checked) return checked.page;
-    if ('back' in checked) return checked.back;
     const { ask } = checked;
     const p = await signedIn(c);
     if (!p) {
@@ -274,7 +277,6 @@ ${option('viewer', 'Reads flags only.')}
     const q = Object.fromEntries(Object.entries(form).filter(([, v]) => typeof v === 'string')) as Record<string, string>;
     const checked = await askOf(c, q);
     if ('page' in checked) return checked.page;
-    if ('back' in checked) return checked.back;
     const { ask } = checked;
     const p = await signedIn(c);
     if (!p) return page(c, 'Signed out', '<h1>You’re signed out</h1><p>Connect the app again to sign in.</p>', 403);

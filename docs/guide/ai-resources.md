@@ -93,19 +93,24 @@ claude mcp add --transport http companyflags https://flags.example.com/mcp \
 }
 ```
 
-For a client that only starts local servers, run the bridge from the Docker image (or `pnpm cli mcp` in a clone):
+For a client that only starts local servers, run the bridge with npx (Node.js 22.18+). It needs only the URL and the
+token:
 
 ```json
 {
   "mcpServers": {
     "companyflags": {
-      "command": "docker",
-      "args": ["run", "--rm", "-i", "-e", "COMPANYFLAGS_URL", "-e", "COMPANYFLAGS_TOKEN", "ghcr.io/dvir-daniel/companyflags", "companyflags", "mcp"],
+      "command": "npx",
+      "args": ["-y", "companyflags", "mcp"],
       "env": { "COMPANYFLAGS_URL": "https://flags.example.com", "COMPANYFLAGS_TOKEN": "cfp_…" }
     }
   }
 }
 ```
+
+Without Node, the Docker image runs it too: `"command": "docker"`, `"args": ["run", "--rm", "-i", "-e",
+"COMPANYFLAGS_URL", "-e", "COMPANYFLAGS_TOKEN", "ghcr.io/dvir-daniel/companyflags", "companyflags", "mcp"]`. In a
+clone, `pnpm cli mcp`.
 
 | Tools | |
 |---|---|

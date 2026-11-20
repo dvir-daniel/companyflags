@@ -34,7 +34,9 @@ CompanyFlags is before 1.0: only the **latest release** gets security fixes.
   evaluation (OFREP) with its event stream, flagd downloads and app links for backends;
 - the built-in plugins (`server/plugins/`): OFREP, flagd JSON, app files, webhooks out and in, the Cloudflare purge;
 - JSONata expressions in imports, exports and webhooks;
-- the `companyflags` command (`server/cli.ts`) and flags as code;
+- access tokens (`cfp_…`), the MCP server (`/mcp`), OAuth sign-in for MCP clients (`/oauth/…`, `/.well-known/…`),
+  agents' tokens and what an agent may do, and alerts turning a kill switch off (`POST /api/alerts/kill`);
+- the `companyflags` command (`server/cli.ts`), with the CLI over HTTP and `companyflags mcp`, and flags as code;
 - the console (`web/`, `packages/ui`);
 - the Docker image and the files we publish to deploy it.
 
@@ -47,6 +49,11 @@ Out of scope: problems that need the server's own secrets (`BETTER_AUTH_SECRET`,
 host, denial of service by sheer volume (put a CDN or rate limiter in front, as the docs describe), an app service's
 key read out of an app (it is public by design, and reads that service's values only), and reports from automated
 scanners with no shown impact.
+
+An agent doing more than an editor, a token above its person's role, a token that makes tokens, or OAuth giving more
+than the person allowed is in scope. What we accept for agents, tokens and OAuth, and why, is listed under
+[Agents, tokens and OAuth](docs/guide/security.md#agents-tokens-and-oauth): for example, an OAuth token working on
+`/api` as well as `/mcp`, a client choosing its own name, and a token passed as `--token` showing in the process list.
 
 ## How CompanyFlags protects an installation
 

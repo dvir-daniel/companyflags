@@ -32,7 +32,7 @@ test('help, secret and init', async (t) => {
   assert.notEqual((await run(['secret'], dir, {})).text.trim(), secret);
   const init = await run(['init'], dir, {});
   assert.equal(init.code, 0);
-  assert.match(init.text, /warning: this folder isn’t inside the server’s folder/, 'a file here can’t import companyflags/config');
+  assert.match(init.text, /warning: this folder can’t import companyflags\/config.*npm i companyflags/, 'a file here can’t import companyflags/config');
   assert.match(readFileSync(join(dir, 'companyflags.config.ts'), 'utf8'), /defineConfig\(\{[\s\S]*ofrep\(\)/);
   const again = await run(['init'], dir, {});
   assert.deepEqual([again.code, /already here/.test(again.text)], [1, true]);

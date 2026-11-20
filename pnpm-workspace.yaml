@@ -1,7 +1,9 @@
-# The server and console live at the root; packages/ holds the console's UI library and the SDK, docs/ the docs site,
-# examples/ the sample apps. One lockfile for all of them.
+# The server and console live at the root; packages/ holds the console's UI library, docs/ the docs site, examples/
+# the sample apps. One lockfile for all of them. packages/companyflags isn't a project of its own: it is the npm
+# package that build.ts makes from the root's sources (same name, so it stays out).
 packages:
   - packages/*
+  - '!packages/companyflags'
   - docs
   - examples/*
 

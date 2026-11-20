@@ -6,6 +6,7 @@ runs in (or `FF_CONFIG`), then the environment, and works on the database they n
 
 | Where | How to run it |
 |---|---|
+| npm (Node.js 22.18+) | `npx companyflags <command>`; after `npm i companyflags` in a folder, the same there |
 | A clone of the repository | `pnpm cli <command>`, or `node server/cli.ts <command>` |
 | The Docker image | `docker compose exec companyflags companyflags <command>` |
 
@@ -19,12 +20,14 @@ Without `DATABASE_URL`, the data is in embedded Postgres, which only one process
 ### `start`
 
 Runs the server: the console, its API and the [plugins](/reference/plugins). The same as `node server/index.ts`.
+The console comes with the package, so `npx companyflags start` serves it from any folder.
 
 ### `init`
 
 Writes `companyflags.config.ts` in this folder, with the database, sign-in and every built-in plugin. It won't
-write over one that's there unless you add `--force`. Run it in the server's folder: the file's imports come from the
-server it sits next to. Run anywhere else, it writes the file and warns that the server can't load it there.
+write over one that's there unless you add `--force`. Run it where the file's imports resolve: a folder where you ran
+`npm i companyflags`, the clone's root, or `/app` in Docker. Run anywhere else, it writes the file and warns that the
+server can't load it there.
 
 ### `secret`
 
@@ -111,7 +114,7 @@ MCP over stdio, for AI clients that only start local servers. Each JSON-RPC line
 `/mcp` with the token, and each answer is a line on stdout. Nothing else goes to stdout: errors go to stderr.
 
 ```bash
-companyflags mcp --url https://flags.example.com --token cfp_…
+npx -y companyflags mcp --url https://flags.example.com --token cfp_…
 ```
 
 `COMPANYFLAGS_URL` and `COMPANYFLAGS_TOKEN` work in place of `--url` and `--token`. The token is an access token made

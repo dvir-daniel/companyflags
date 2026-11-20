@@ -328,6 +328,9 @@ export function createAccess(db: Db, opts: AccessOptions) {
         if (may(cur, 'changesSettings') && await activeAdmins(tx) <= 1) throw new HttpError(409, 'this is the only admin: make someone else an admin first');
         await tx.query(`update app_user set removed_at = now(), invite_hash = null, invite_expires_at = null where key = $1`, [key]);
         await accounts.remove(tx, key);
+        // their access tokens and OAuth sign-ins end for good: inviting them again gives back the role, not old tokens
+        await tx.query(`update access_token set revoked_at = now() where revoked_at is null and person_id = (select id from app_user where key = $1)`, [key]);
+        await tx.query(`delete from oauth_code where person_id = (select id from app_user where key = $1)`, [key]);
         await audit(tx, actor, { kind: 'person.remove', before: { person: key, role: cur.role } });
         return { key, removed: true };
       });

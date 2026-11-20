@@ -65,6 +65,24 @@ test('no token: 401 with WWW-Authenticate; a wrong Origin: 403', async () => {
   assert.equal((await post({ jsonrpc: '2.0', id: 1, method: 'ping' }, { authorization: `Bearer ${agent}`, origin: 'https://evil.example' })).status, 403);
 });
 
+test('DNS rebinding: a page that renamed this server to its own address is refused, though Origin and Host agree', async () => {
+  const rebound = await t.app.request('http://evil.example/mcp', { method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${agent}`, origin: 'http://evil.example' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) });
+  assert.equal(rebound.status, 403);
+});
+
+test('a key of . or .. never reaches another endpoint of the API', async () => {
+  for (const key of ['.', '..']) {
+    const r = await tool('get_flag', { key });
+    assert.ok(r.isError);
+    assert.match(r.text, /isn’t a key/);
+  }
+  const archived = await tool('archive_flag', { flag: '..', apply: true });
+  assert.ok(archived.isError);
+  assert.match(archived.text, /isn’t a key/);
+});
+
 test('an agent lists and gets flags, and explains them', async () => {
   const list = await tool('list_flags', { q: 'checkout' });
   assert.ok(list.json.flags.some((f: { key: string }) => f.key === 'new_checkout'));

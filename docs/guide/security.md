@@ -126,6 +126,54 @@ to yours.
   role goes down, your tokens go down with it.
 - Tokens are made and revoked only in the signed-in console, never with a token. Admins see and revoke everyone's.
   Each is recorded in History.
+- **Removing a person** revokes all their tokens and OAuth sign-ins. Inviting them again gives back their role, not
+  their old tokens.
+
+## Agents, tokens and OAuth
+
+What protects the MCP server (`/mcp`), OAuth sign-in for MCP clients, access tokens and the CLI over HTTP:
+
+- **An agent is never above an editor.** An agent's token, made in the console or through OAuth, is Viewer or Editor.
+  It can't approve, break glass (`POST /api/alerts/kill` refuses it), schedule others' requests or change Settings.
+  Its requests carry its person's name, so its person can't approve them either.
+- **Every MCP tool calls the console's API** with the caller's token, in this process. So roles, approvals and
+  History hold as for any script. A tool sends no request to any other address. A key of `.` or `..` is refused, so
+  a tool can't reach another endpoint than its own.
+- **Tokens and codes are kept as hashes** and looked up by their hash, so comparing them leaks no timing. History
+  keeps a token's prefix (`cfp_` and 6 characters), never the token.
+- **OAuth is OAuth 2.1 with PKCE (S256 only).** The redirect URI must match one the client registered: exactly, or
+  for `http://127.0.0.1`, `http://[::1]` and `http://localhost`, on any port (RFC 8252). A code works once, for 10
+  minutes, for its client, redirect URI and resource; used again, the token it gave is revoked. A refresh token works
+  once; an old one back revokes the sign-in. A revoked, expired or removed sign-in can't be refreshed.
+- **No open redirect.** A request the authorize page can't use is shown on the page, never sent back to the client:
+  anyone may register a client, so its redirect URI proves nothing until a person allows it.
+- **The consent page** escapes everything it shows, loads nothing, can't be framed, and takes the answer only from
+  its own page (the `Origin` and `Sec-Fetch-Site` headers, and the sign-in cookie is `SameSite=Lax`). A client's name
+  loses control and invisible formatting characters.
+- **Registration is open**, as MCP clients need (RFC 7591), but bounded: a client nobody signed in with goes after a
+  day, and at most 1,000 such clients exist at once (then `429`).
+- **`/mcp` refuses web pages.** A request with an `Origin` header is refused unless it is the server's own configured
+  address (`BETTER_AUTH_URL`), so DNS rebinding can't reach it. It takes one JSON-RPC message per request (no
+  batches) and at most 1 MB.
+
+Accepted, and why:
+
+- **An OAuth token also works on `/api`.** It is an agent's access token, bound to its person and role, and the MCP
+  tools call `/api` with it anyway. Bounding it to `/mcp` would add nothing.
+- **No rate limit of its own on `/oauth/token` and `/oauth/revoke`.** Codes, access and refresh tokens are 32 random
+  bytes, so guessing one isn't possible. Volume is for a rate limiter in front, as for the rest of the server.
+- **A client chooses its own name.** The page says it is an agent with your name, and the address the code goes to.
+  Allow only an app you just connected.
+- **Apps' own schemes** (`cursor://…`) are allowed as redirect URIs, as desktop MCP clients need. Another app on the
+  same computer could claim the scheme; PKCE means a stolen code is useless without its verifier.
+- **A token's role follows its person's.** It goes down with theirs, and back up if an admin raises theirs again (never
+  above the token's own role). Revoke tokens you no longer trust.
+- **Requiring single sign-on doesn't revoke tokens.** Remove a person to end their tokens.
+- **Without `BETTER_AUTH_URL`**, the OAuth documents name the address the request asked for (its `Host`). Set it in
+  production.
+- **`companyflags mcp --token` and `flags --token`** show the token in the computer's process list. Use
+  `COMPANYFLAGS_TOKEN` instead on a shared computer, and an `https://` address: over `http://` the token crosses the
+  network as it is.
 
 ## Sign-in
 

@@ -19,6 +19,10 @@ echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 docker compose up -d
 ```
 
+```bash [npm]
+npx companyflags start   # Node.js 22.18+; embedded Postgres in ./data, on http://localhost:8787
+```
+
 ```bash [From source]
 git clone https://github.com/dvir-daniel/companyflags.git
 cd companyflags
@@ -29,12 +33,12 @@ pnpm serve               # builds the console and serves it on http://localhost:
 
 :::
 
-Docker keeps the data in the `companyflags` volume; Compose runs Postgres beside it. See [Docker](/self-hosting/docker).
+Docker keeps the data in the `companyflags` volume; Compose runs Postgres beside it; npx keeps it in `./data`. See [Docker](/self-hosting/docker).
 
 ## 2. Set it up
 
 A new server has no accounts. It prints a **setup link** in its log when it starts: see `docker logs companyflags`,
-`docker compose logs companyflags`, or the terminal running `pnpm serve`.
+`docker compose logs companyflags`, or the terminal running `npx companyflags start` or `pnpm serve`.
 
 ```text
 [companyflags] nobody has an account yet: make the admin account at http://localhost:8787/api/setup/<secret>
@@ -101,6 +105,9 @@ a signed [app link](/guide/services#signed-app-links) at sign-in. That is option
 
 ## Next
 
+- [Examples](/guide/examples): a React page, a Node server and flagd, in the repo's
+  [`examples/`](https://github.com/dvir-daniel/companyflags/tree/main/examples) folder, with a script that sets up a
+  server for them.
 - [How it fits together](/guide/concepts): environments, services, dimensions, flags and rules.
 - [Services](/guide/services): apps and backends, their keys, and signed app links.
 - [Moving from another system](/guide/migration): already have flags somewhere else? Bring them over one at a time,

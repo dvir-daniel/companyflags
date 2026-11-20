@@ -3,18 +3,32 @@
 // the environment's, else the defaults.
 
 import { existsSync } from 'node:fs';
-import { isAbsolute, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
+import { isAbsolute, join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { authSettingsFromEnv } from './betterAuth.ts';
 import { ConfigError, type Config } from './config.ts';
 import type { SignIn } from './identity.ts';
 import type { Plugin } from './plugin.ts';
 import { defaultPlugins } from './plugins/index.ts';
+import { PACKAGE_FOLDER } from './packageFolder.ts';
 
 export const CONFIG_FILE = 'companyflags.config.ts';
 
-/** The server's own folder (where its package.json is): `companyflags/…` resolves only for a file inside it. */
-export const SERVER_FOLDER = fileURLToPath(new URL('..', import.meta.url)).replace(/[\\/]$/, '');
+/** The server's own folder (where its package.json is): the repository, /app in Docker, or node_modules/companyflags. */
+export const SERVER_FOLDER = PACKAGE_FOLDER;
+
+/** Whether a config file in `dir` can import `companyflags/config`: inside the server's folder (the package names
+ *  itself), or in a folder where the package is installed (npm i companyflags). */
+export function canImportConfig(dir: string): boolean {
+  try { createRequire(join(dir, CONFIG_FILE)).resolve('companyflags/config'); return true; } catch { return false; }
+}
+
+/** What to do when a config file's folder can't import `companyflags/…`. A server installed from npm (npx) has no
+ *  folder of its own to offer. */
+export const whereConfigGoes = () => /[\\/]node_modules[\\/]/.test(SERVER_FOLDER)
+  ? 'install the package beside it (npm i companyflags), then run npx companyflags there'
+  : `install the package beside it (npm i companyflags), or keep the file in the server’s folder (${SERVER_FOLDER}; /app in Docker)`;
 
 /** The config file, from FF_CONFIG or companyflags.config.ts in `cwd`: its default export, or {} when there is
  *  none. A file that is named but missing, or doesn't export a config, is an error. */
@@ -32,9 +46,9 @@ export async function loadConfig(o: { cwd?: string; env?: NodeJS.ProcessEnv; fil
     mod = await import(pathToFileURL(file).href);
   } catch (e) {
     const err = e as NodeJS.ErrnoException;
-    // outside the server's folder, `companyflags/config` names no package: say where the file must be
+    // where the package isn't installed, `companyflags/config` names no package: say where the file can be
     if (err.code === 'ERR_MODULE_NOT_FOUND' && /['"]companyflags['"]/.test(err.message ?? '')) {
-      throw new ConfigError(`${file} imports companyflags/…, which only resolves inside the server’s folder (${SERVER_FOLDER}): keep the file there (/app in Docker)`);
+      throw new ConfigError(`${file} imports companyflags/…, which doesn’t resolve from its folder: ${whereConfigGoes()}`);
     }
     throw new ConfigError(`${file} couldn’t be loaded: ${err.message}`);
   }

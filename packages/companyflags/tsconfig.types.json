@@ -1,0 +1,14 @@
+{
+  // The type declarations for companyflags/config and companyflags/plugins (build.ts runs it).
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rewriteRelativeImportExtensions": true,
+    "rootDir": "../../server",
+    "outDir": "dist/types"
+  },
+  "include": [],
+  "files": ["../../server/config.ts", "../../server/plugins/index.ts"]
+}

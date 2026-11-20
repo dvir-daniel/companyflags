@@ -28,6 +28,7 @@ import { defaultPlugins } from './plugins/index.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
 import { startWorkers } from './workers.ts';
+import { CONSOLE_FOLDER } from './packageFolder.ts';
 
 export type AppOptions = {
   databaseUrl?: string;                  // a Postgres server; without it, embedded Postgres in dataDir (or in memory)
@@ -143,7 +144,7 @@ export async function createApp(opts: AppOptions = {}) {
     app.all(`${prefix}/*`, noSuchEndpoint);
   }
 
-  const dist = fileURLToPath(new URL('../web/dist', import.meta.url));
+  const dist = CONSOLE_FOLDER;                   // from the package's folder, never the one it runs in
   if (existsSync(dist)) {
     // index.html is read on every request and never cached, so a rebuild shows up on the next reload;
     // the hashed /assets files can be cached forever.
@@ -156,7 +157,7 @@ export async function createApp(opts: AppOptions = {}) {
     app.get('/', page);
     app.get('/index.html', page);
     app.use('/assets/*', async (c, next) => { await next(); c.header('Cache-Control', 'public, max-age=31536000, immutable'); });
-    app.use('/*', serveStatic({ root: './web/dist' }));
+    app.use('/*', serveStatic({ root: dist }));
     app.get('*', page);
   }
   built = app;

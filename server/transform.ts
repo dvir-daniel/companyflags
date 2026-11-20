@@ -39,7 +39,8 @@ export function expressionProblem(expression: unknown): string | null {
 
 // ---------------------------------------------------------------- the workers
 
-const WORKER = new URL('./jsonataWorker.ts', import.meta.url);
+// beside this file: the .ts in the repository, the .js the package builds (packages/companyflags)
+const WORKER = new URL(import.meta.url.endsWith('.ts') ? './jsonataWorker.ts' : './jsonataWorker.js', import.meta.url);
 /** Each worker's memory, in MB: a little more than DATA_MAX of JSON needs. */
 const RESOURCES = { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 };
 /** Workers at once, and expressions waiting for one before more are turned away. */

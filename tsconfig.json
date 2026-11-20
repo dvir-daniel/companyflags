@@ -13,5 +13,5 @@
     "lib": ["ES2023"],
     "types": ["node"]
   },
-  "include": ["server", "test"]
+  "include": ["server", "test", "packages/companyflags/build.ts"]
 }

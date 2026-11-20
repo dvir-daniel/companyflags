@@ -96,6 +96,14 @@ docker compose up -d
 docker compose logs companyflags   # the setup link
 ```
 
+Or from npm (Node.js 22.18+), in a folder of its own:
+
+```bash
+npx companyflags start   # embedded Postgres in ./data; prints the setup link
+```
+
+To keep a config file next to it, install it there: `npm i companyflags`, then `npx companyflags init`.
+
 Or from source (Node.js 22.18+, pnpm 11):
 
 ```bash
@@ -136,6 +144,17 @@ flag in memory. To pin an app to its own entity, a backend can hand it a signed 
 [Services](https://dvir-daniel.github.io/companyflags/guide/services) and
 [Backends](https://dvir-daniel.github.io/companyflags/guide/backends).
 
+## Examples
+
+Small, working apps in [`examples/`](examples), each with a README. [`examples/seed.ts`](examples/seed.ts) sets up a
+new server for them through the console's API, with an admin's access token, and prints the keys.
+
+| | |
+|---|---|
+| [React](examples/react) | A Vite + React page: OpenFeature's React SDK and the OFREP web provider |
+| [Node](examples/node) | A Node HTTP server: OpenFeature's server SDK and the OFREP provider, per company |
+| [flagd](examples/flagd) | Docker Compose: CompanyFlags, and flagd syncing a company's flagd JSON |
+
 ## Configure it
 
 Everything is optional: without a file, environment variables decide. With one, it's typed, like Better Auth's
@@ -159,8 +178,8 @@ export default defineConfig({
 });
 ```
 
-The file goes in the server's own folder: the clone's root, or `/app` in the Docker image. companyflags isn't an npm
-package; the file's imports come from the server it sits next to.
+The file goes in a folder where `companyflags/config` resolves: one where you ran `npm i companyflags`, the clone's
+root, or `/app` in the Docker image.
 
 Keep the flags your code reads in a file next to it, and push it from CI:
 

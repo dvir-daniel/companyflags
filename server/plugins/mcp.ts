@@ -9,17 +9,16 @@
 // API and nowhere else. A request from a web page on another site (its Origin header) is refused, against DNS
 // rebinding.
 
-import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { definePlugin, type PluginContext } from '../plugin.ts';
 import { FLAG_KINDS } from '../flagsAsCode.ts';
 import { applyChange, backChange, changeText, LADDER, nextChange, releaseState, stepText, type Change } from '../release.ts';
 import { whenText } from '../words.ts';
 import { RESOURCE_METADATA_PATH } from '../oauth.ts';
+import { VERSION } from '../packageFolder.ts';
 
 export const MCP_PROTOCOL = '2025-11-25';
 const PROTOCOLS = new Set([MCP_PROTOCOL, '2025-06-18', '2025-03-26']);
-const VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 const INSTRUCTIONS = `CompanyFlags: feature flags and remote config, read by apps with OpenFeature.
 Read and explain freely. Each change tool shows what it would change; call it again with apply: true to do it.
@@ -80,7 +79,12 @@ function apiFor(request: PluginContext['request'], token: string) {
   };
   return { api, call, ok };
 }
-const seg = (s: unknown) => encodeURIComponent(String(s));
+/** One segment of an API address: never . or .., which the address would resolve to another endpoint. */
+const seg = (s: unknown) => {
+  const v = String(s);
+  if (v === '.' || v === '..') throw new ToolError(`"${v}" isn’t a key`);
+  return encodeURIComponent(v);
+};
 
 // ------------------------------------------------------------------ tools
 type Schema = { type: 'object'; properties: Record<string, { type: string | string[]; description?: string; enum?: readonly string[]; items?: unknown }>; required?: string[] };
@@ -766,9 +770,11 @@ export const mcp = () => definePlugin({
     const routes = new Hono();
 
     routes.post('/mcp', async (c) => {
-      // against DNS rebinding: a web page on another site can't reach this through someone's browser
+      // against DNS rebinding: a web page on another site can't reach this through someone's browser. The address
+      // asked for (its Host) proves nothing then, since that page renamed it: only the configured address counts, and
+      // without one no web page may, as with a token on the console's API
       const origin = c.req.header('origin');
-      if (origin && origin !== new URL(c.req.url).origin && origin !== own) return c.json({ error: 'this Origin may not use /mcp' }, 403);
+      if (origin && origin !== own) return c.json({ error: 'this Origin may not use /mcp' }, 403);
       const token = c.req.header('authorization')?.match(/^Bearer\s+(cfp_\S+)$/i)?.[1];
       // without a token, or with one that doesn't work: where to sign in (oauth.ts), for clients that sign in with OAuth
       const challenge = (error?: string) => c.header('WWW-Authenticate',

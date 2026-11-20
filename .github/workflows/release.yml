@@ -1,5 +1,5 @@
 # A vX.Y.Z tag releases the server and console: the Docker image on GHCR (amd64 and arm64) and a GitHub release whose
-# notes are that version's section of CHANGELOG.md.
+# notes are that version's section of CHANGELOG.md. npm.yml publishes the npm package on the same tag.
 name: Release
 
 on:

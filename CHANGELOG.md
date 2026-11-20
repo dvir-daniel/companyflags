@@ -4,6 +4,32 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+## 0.6.0 (2026-11-20)
+
+- **On npm as `companyflags`:** `npx companyflags start` runs the server and the console from any folder, and every
+  other command works the same way (`init`, `migrate`, `flags …`, `mcp`). After `npm i companyflags`, a
+  `companyflags.config.ts` in that folder imports `companyflags/config` and `companyflags/plugins`, with types. MCP
+  clients that start local servers run `npx -y companyflags mcp`.
+- **Examples** in [`examples/`](https://github.com/dvir-daniel/companyflags/tree/main/examples): a Vite + React page
+  (OpenFeature's React SDK and OFREP web provider), a Node server (the server SDK and OFREP provider, per company) and
+  Docker Compose with flagd syncing a company's flagd JSON. `examples/seed.ts` sets up a server for them with an
+  access token. See [Examples](https://dvir-daniel.github.io/companyflags/guide/examples).
+
+### Security
+
+- **Removing a person revokes their access tokens and OAuth sign-ins.** Before, inviting them again brought every old
+  token and refresh token back to life, at once and before they accepted.
+- **No open redirect through `/oauth/authorize`.** A request it can't use is shown on the page instead of being sent
+  to the client's redirect URI, which anyone could register. Signed out or in, nobody is sent anywhere until they
+  answer.
+- **`/mcp` refuses every `Origin` but the configured address.** It compared the `Origin` with the address asked for,
+  which a DNS-rebinding page sets itself.
+- **Client registration is bounded:** a client nobody signed in with goes after a day, and at most 1,000 exist at once
+  (`429`). A client's name loses invisible formatting characters (right-to-left overrides) as well as control ones.
+- MCP tools refuse a key of `.` or `..`, which would have sent the call to another endpoint of the API.
+- The [security model](https://dvir-daniel.github.io/companyflags/guide/security#agents-tokens-and-oauth) has a new
+  section, "Agents, tokens and OAuth", with what is accepted and why.
+
 ## 0.5.0 (2026-11-20)
 
 - **OAuth sign-in for MCP clients:** add `https://<server>/mcp` to Claude, Cursor or VS Code with no token. The client

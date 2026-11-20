@@ -1,0 +1,53 @@
+{
+  "name": "companyflags",
+  "version": "0.6.0",
+  "description": "A self-hosted feature flag and remote config server, read with OpenFeature.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dvir-daniel/companyflags.git"
+  },
+  "homepage": "https://dvir-daniel.github.io/companyflags/",
+  "bin": {
+    "companyflags": "dist/cli.js"
+  },
+  "exports": {
+    "./config": {
+      "types": "./dist/types/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./plugins": {
+      "types": "./dist/types/plugins/index.d.ts",
+      "default": "./dist/plugins.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "web/dist"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "keywords": [
+    "feature-flags",
+    "feature-toggles",
+    "remote-config",
+    "openfeature",
+    "flagd",
+    "self-hosted",
+    "dimensions",
+    "cdn"
+  ],
+  "dependencies": {
+    "@better-auth/sso": "^1.7.25",
+    "@electric-sql/pglite": "^0.5.16",
+    "@hono/node-server": "^2.1.8",
+    "better-auth": "^1.7.25",
+    "hono": "^4.13.19",
+    "jsonata": "2.2.2",
+    "kysely": "^0.29.9",
+    "pg": "^8.23.1"
+  }
+}

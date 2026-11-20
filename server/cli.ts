@@ -16,13 +16,13 @@
 
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { connectDb, FolderInUseError, type Db } from './db.ts';
 import { migrate, MigrationError, pendingMigrations, readMigrations } from './migrate.ts';
 import { ConfigError } from './config.ts';
-import { CONFIG_FILE, loadConfig, resolveConfig, SERVER_FOLDER } from './configFile.ts';
+import { canImportConfig, CONFIG_FILE, loadConfig, resolveConfig, whereConfigGoes } from './configFile.ts';
 import { journaled } from './journal.ts';
 import { describe, planFlags, pullFlags, pushFlags, type Done, type Plan } from './flagsAsCode.ts';
 import { codeReferences } from './codeReferences.ts';
@@ -123,8 +123,11 @@ export async function main(argv: string[], o: {
         if (existsSync(file) && !force) throw new UsageError(`${CONFIG_FILE} is already here (--force writes over it)`);
         writeFileSync(file, CONFIG_TEMPLATE);
         out(`wrote ${file}`);
-        // its imports (companyflags/config, /plugins) only resolve inside the server's folder
-        if (!inside(SERVER_FOLDER, cwd)) err(`warning: this folder isn’t inside the server’s folder (${SERVER_FOLDER}), so the server can’t load this file: move it there (/app in Docker)`);
+        // its imports (companyflags/config, /plugins) resolve inside the server's folder, or where the package is installed
+        if (!canImportConfig(cwd)) err(`warning: this folder can’t import companyflags/config, so the server can’t load this file: ${whereConfigGoes()}`);
+        // a folder made by npm i: Node reads the file as a module either way, but warns unless package.json says so
+        const pkg = resolve(cwd, 'package.json');
+        if (existsSync(pkg) && !/"type"\s*:\s*"module"/.test(readFileSync(pkg, 'utf8'))) out('tip: add "type": "module" to package.json, so Node loads the file without a warning');
         out('next: set BETTER_AUTH_SECRET (companyflags secret makes one), then companyflags start');
         return 0;
       }
@@ -277,13 +280,6 @@ function remote(url: string | undefined, token: string | undefined) {
       throw new ServerError(`${base.origin} answered ${res.status}: ${said}`);
     },
   };
-}
-
-/** Whether a folder is the server's folder or inside it (through links too). */
-function inside(root: string, dir: string) {
-  const real = (p: string) => { try { return realpathSync(p); } catch { return resolve(p); } };
-  const r = relative(real(root), real(dir));
-  return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r));
 }
 
 /** The configured database, opened for one command. `current`: it must have every migration (flags need today's

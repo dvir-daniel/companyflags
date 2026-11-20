@@ -29,8 +29,10 @@ the console and serves it with the API on http://localhost:8787, as in productio
 | `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, app files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` is the type of `companyflags.config.ts` and `configFile.ts` reads it; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
 | `web/` | The console: React 19, Vite, Tailwind 4 |
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
+| `packages/companyflags` | The npm package, built from `server/` and `web/dist` by `build.ts` (`pnpm pack:npm`; `pnpm test:npm` installs it and tries it). Not a workspace project: its version and dependencies are the root's |
 | `test/` | The server's and console's tests (`node --test`) |
 | `docs/` | The documentation site (VitePress); `docs/design/` holds design notes and decision records |
+| `examples/` | Example apps (React, Node, flagd), each its own package with its own `pnpm build`; not in the root's typecheck or lint. `seed.ts` sets up a server for them |
 | `GLOSSARY.md` | Words we use, and the ones we avoid |
 
 ## Checks
@@ -77,5 +79,6 @@ CI runs all of these on every pull request.
 ## Releases
 
 Maintainers release with a `vX.Y.Z` tag: it builds and publishes the Docker image
-(`ghcr.io/dvir-daniel/companyflags`) and a GitHub release with that version's notes from
-[CHANGELOG.md](CHANGELOG.md). Add your change to the "Unreleased" section of CHANGELOG.md.
+(`ghcr.io/dvir-daniel/companyflags`), the npm package `companyflags` ([npm.yml](.github/workflows/npm.yml) says
+what to set up once), and a GitHub release with that version's notes from [CHANGELOG.md](CHANGELOG.md). Bump the
+version in both `package.json` and `packages/companyflags/package.json`. Add your change to the "Unreleased" section of CHANGELOG.md.

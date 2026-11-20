@@ -214,11 +214,11 @@ export default defineConfig({ server: { port: 9200 }, plugins: [ofrep(), flagd()
   }
 });
 
-test('a config file outside the server’s folder: the error says to keep it there', async () => {
+test('a config file where companyflags isn’t installed: the error says to install it or keep the file in the server’s folder', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ff-config-'));
   try {
     writeFileSync(join(dir, 'companyflags.config.ts'), `import { defineConfig } from 'companyflags/config';\nexport default defineConfig({});\n`);
-    await assert.rejects(loadConfig({ cwd: dir, env: {} }), (e: Error) => e instanceof ConfigError && /only resolves inside the server’s folder .*\/app in Docker/.test(e.message));
+    await assert.rejects(loadConfig({ cwd: dir, env: {} }), (e: Error) => e instanceof ConfigError && /doesn’t resolve from its folder: install the package beside it \(npm i companyflags\).*\/app in Docker/.test(e.message));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

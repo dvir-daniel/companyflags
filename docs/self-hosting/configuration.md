@@ -34,9 +34,10 @@ export default defineConfig({
 });
 ```
 
-The file goes in the server's own folder: the clone's root, or `/app` in the Docker image. companyflags isn't an npm
-package; the file's imports (`companyflags/config`, `companyflags/plugins`) only resolve inside the server's folder.
-A file anywhere else, `FF_CONFIG` naming one included, stops the start with a message that says where it must be.
+The file's imports (`companyflags/config`, `companyflags/plugins`) must resolve from its folder: one where you ran
+`npm i companyflags` (then start it there with `npx companyflags start`), the clone's root, or `/app` in the Docker
+image. A file anywhere else, `FF_CONFIG` naming one included, stops the start with a message that says where it can
+go. In a folder made by `npm init`, add `"type": "module"` to its `package.json`, or Node warns as it loads the file.
 
 | Setting | Instead of | What it does |
 |---|---|---|
@@ -46,7 +47,7 @@ A file anywhere else, `FF_CONFIG` naming one included, stops the start with a me
 | `auth` | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, the providers' variables, … | Sign-in with Better Auth: `secret`, `baseURL`, `google`, `github`, `microsoft`, `signupDomains`, `trustedOrigins`, `clientIp`, `rateLimit` ([below](#auth)). Each one left out comes from its variable. |
 | `plugins` | — | What reads flags besides the console, and what runs after a publish. Left out: all of them. See [Plugins](/reference/plugins). |
 
-- The file is TypeScript, run by Node as the server is: no build step. It can read `process.env`, so secrets stay in
+- The file is TypeScript, run by Node directly (type stripping): no build step. The npm package has the types. It can read `process.env`, so secrets stay in
   the environment.
 - A setting the file leaves out, or sets to `undefined`, comes from its environment variable.
 - The server looks for the file in the folder it starts in. `FF_CONFIG` names another one.
@@ -193,7 +194,7 @@ See [Webhooks](/guide/webhooks#where-they-can-go).
 
 | Variable | Default | What it does |
 |---|---|---|
-| `FF_CONFIG` | `./companyflags.config.ts` | Another config file to read, inside the server's folder. A named file that is missing, or outside that folder, stops the start. |
+| `FF_CONFIG` | `./companyflags.config.ts` | Another config file to read, in a folder where `companyflags/config` resolves. A named file that is missing, or can't import it, stops the start. |
 
 For contributors: `FF_TEST_PG` points `pnpm test:pg` at a Postgres server for the test suite; the server itself
 never reads it.

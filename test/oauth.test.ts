@@ -164,13 +164,16 @@ test('a wrong code_verifier, a used code, a wrong resource or client are refused
   assert.equal((await req('POST', '/oauth/token', { form: { grant_type: 'authorization_code', client_id: 'cfc_nope', code: c.code, code_verifier: verifier } })).status, 401);
 });
 
-test('the authorize page: no PKCE or plain PKCE goes back as an error, an unknown redirect is never followed, Deny', async () => {
+test('the authorize page: no PKCE or plain PKCE is refused on the page, an unknown redirect is never followed, Deny', async () => {
   const client = await register();
   const base = { client_id: client, redirect_uri: REDIRECT, response_type: 'code', state: 's' };
   const noPkce = await req('GET', `/oauth/authorize?${new URLSearchParams(base)}`, { headers: { 'x-user': 'alice' } });
-  assert.equal(new URL(noPkce.location!).searchParams.get('error'), 'invalid_request');
+  assert.equal(noPkce.status, 400);
+  assert.equal(noPkce.location, null);
+  assert.match(noPkce.text, /PKCE is required/);
   const plain = await req('GET', `/oauth/authorize?${new URLSearchParams({ ...base, code_challenge: 'a'.repeat(43), code_challenge_method: 'plain' })}`, { headers: { 'x-user': 'alice' } });
-  assert.equal(new URL(plain.location!).searchParams.get('error'), 'invalid_request');
+  assert.equal(plain.status, 400);
+  assert.equal(plain.location, null);
   const evil = await req('GET', `/oauth/authorize?${new URLSearchParams({ ...base, redirect_uri: 'https://evil.example/cb', code_challenge: 'a'.repeat(43), code_challenge_method: 'S256' })}`, { headers: { 'x-user': 'alice' } });
   assert.equal(evil.status, 400);
   assert.equal(evil.location, null);
@@ -235,4 +238,50 @@ test('revoke: at /oauth/revoke, or on the Access tokens page', async () => {
   assert.equal((await t.as('alice').del(`/tokens/${row.id}`)).status, 200);
   assert.equal((await mcp(two.access_token)).status, 401);
   assert.equal((await req('POST', '/oauth/token', { form: { grant_type: 'refresh_token', client_id: client, refresh_token: two.refresh_token } })).json.error, 'invalid_grant');
+});
+
+test('a bad request never goes back to the client before the person answers: no open redirect through this server', async () => {
+  // anyone can register a client that goes back anywhere
+  const phish = (await req('POST', '/oauth/register', { json: { client_name: 'Phish', redirect_uris: ['https://phish.example/landing'] } })).json.client_id;
+  const asks: Record<string, string>[] = [{ response_type: 'token' }, { response_type: 'code' },
+    { response_type: 'code', code_challenge: 'a'.repeat(43), code_challenge_method: 'S256', resource: 'https://other.example/mcp' }];
+  for (const q of asks) {
+    for (const headers of [{}, { 'x-user': 'alice' }] as Record<string, string>[]) {
+      const r = await req('GET', `/oauth/authorize?${new URLSearchParams({ client_id: phish, ...q })}`, { headers });
+      assert.equal(r.status, 400, JSON.stringify(q));
+      assert.equal(r.location, null, 'not sent to the client’s address');
+    }
+  }
+});
+
+test('a removed person’s sign-in ends for good: inviting them again doesn’t bring back the refresh token', async () => {
+  await t.db.query(`insert into app_user (key, name, role) values ('frank', 'Frank (editor)', 'editor')`);
+  const client = await register('Removed later');
+  const { verifier, challenge } = pkce();
+  const tok = (await exchange(client, (await authorize(client, challenge, { user: 'frank' })).code, verifier)).json;
+  assert.equal((await mcp(tok.access_token)).status, 200);
+  assert.equal((await t.as('dana').del('/people/frank')).status, 200);
+  assert.equal((await t.as('dana').post('/people/frank/invite')).status, 200);
+  assert.equal((await mcp(tok.access_token)).status, 401);
+  const refreshed = await req('POST', '/oauth/token', { form: { grant_type: 'refresh_token', client_id: client, refresh_token: tok.refresh_token, resource: RESOURCE } });
+  assert.equal(refreshed.json.error, 'invalid_grant');
+});
+
+test('registration: invisible formatting characters leave the name, and unused clients are limited and go after a day', async () => {
+  const named = await req('POST', '/oauth/register', { json: { client_name: 'Claude‮​edoc', redirect_uris: [REDIRECT] } });
+  assert.equal(named.json.client_name, 'Claudeedoc');
+  const { MAX_UNUSED_CLIENTS } = await import('../server/oauth.ts');
+  const unused = `not exists (select 1 from oauth_grant g where g.client_id = c.id)`;
+  const now = (await t.db.query<{ n: number }>(`select count(*)::int as n from oauth_client c where ${unused}`)).rows[0].n;
+  await t.db.query(`insert into oauth_client (id, name, redirect_uris) select 'cfc_fill' || i, 'Filler', array[$2::text]
+    from generate_series(1, $1::int) i`, [MAX_UNUSED_CLIENTS - now, REDIRECT]);
+  const full = await req('POST', '/oauth/register', { json: { client_name: 'One too many', redirect_uris: [REDIRECT] } });
+  assert.equal(full.status, 429, full.text);
+  assert.equal(full.json.error, 'temporarily_unavailable');
+  // a day later, the clients nobody signed in with are gone; one with a sign-in stays
+  const kept = (await t.db.query<{ id: string }>(`select client_id as id from oauth_grant limit 1`)).rows[0].id;
+  await t.db.query(`update oauth_client set created_at = now() - interval '2 days'`);
+  assert.equal((await req('POST', '/oauth/register', { json: { client_name: 'Later', redirect_uris: [REDIRECT] } })).status, 201);
+  assert.equal((await t.db.query(`select 1 from oauth_client where id like 'cfc_fill%'`)).rows.length, 0);
+  assert.equal((await t.db.query(`select 1 from oauth_client where id = $1`, [kept])).rows.length, 1);
 });

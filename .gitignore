@@ -3,6 +3,11 @@ node_modules
 /data-*
 web/dist
 packages/*/dist
+# the npm package's copies (packages/companyflags/build.ts)
+packages/companyflags/web
+packages/companyflags/README.md
+packages/companyflags/LICENSE.md
+packages/companyflags/*.tgz
 docs/.vitepress/cache
 docs/.vitepress/dist
 .DS_Store
@@ -18,3 +23,6 @@ coverage
 
 # agents' git worktrees
 .claude/worktrees/
+
+# the examples
+examples/*/dist

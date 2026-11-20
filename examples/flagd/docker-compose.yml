@@ -1,0 +1,36 @@
+# CompanyFlags, and flagd syncing Acme's flags from it as flagd JSON (see README.md).
+#   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+#   docker compose up -d companyflags        # then set it up, seed it, and add FLAGS_API_KEY to .env
+#   docker compose up -d flagd
+services:
+  companyflags:
+    image: ghcr.io/dvir-daniel/companyflags:latest
+    ports:
+      - "8787:8787"
+    environment:
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (openssl rand -base64 32)}
+      BETTER_AUTH_URL: http://localhost:8787
+    volumes:
+      - companyflags:/data
+
+  flagd:
+    image: ghcr.io/open-feature/flagd:v0.18.2
+    # One http source: Acme's flags in the api service, with the api service's key (a backend's: secret).
+    # flagd asks again every 30 seconds with the last ETag, and usually gets a 304.
+    command:
+      - start
+      - --sources
+      - >-
+        [{"uri": "http://companyflags:8787/sdk/v1/flagd/company/acme",
+          "provider": "http",
+          "authHeader": "Bearer ${FLAGS_API_KEY:-set FLAGS_API_KEY in .env}",
+          "interval": 30}]
+    ports:
+      - "8013:8013"   # flagd's gRPC evaluation (OpenFeature's flagd provider, resolverType rpc)
+      - "8015:8015"   # flagd's sync stream (OpenFeature's flagd provider, resolverType in-process)
+      - "8016:8016"   # flagd's own OFREP
+    depends_on:
+      - companyflags
+
+volumes:
+  companyflags:

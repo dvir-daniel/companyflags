@@ -66,6 +66,18 @@ test('tokens are made in the console only, never from a browser, and stop when r
   assert.equal((await t.as('dana').del(`/tokens/${bobs.id}`)).status, 200);
 });
 
+test('removing a person ends their tokens for good: inviting them again doesn’t bring old ones back', async () => {
+  await t.db.query(`insert into app_user (key, name, role) values ('erin', 'Erin (editor)', 'editor')`);
+  const made = (await make('erin', { name: 'laptop script' })).json;
+  assert.equal((await withToken(made.token, 'GET', '/api/flags')).status, 200);
+  assert.equal((await t.as('dana').del('/people/erin')).status, 200);
+  assert.equal((await withToken(made.token, 'GET', '/api/flags')).status, 401);
+  assert.equal((await t.as('dana').post('/people/erin/invite')).status, 200);
+  assert.equal((await withToken(made.token, 'GET', '/api/flags')).status, 401, 'an invite gives back the role, not the old token');
+  const row = (await t.as('dana').get('/tokens?all=1')).json.find((x: { id: number }) => x.id === made.id);
+  assert.ok(row.revokedAt, 'shown as revoked');
+});
+
 test('where changes need approval, an agent’s change is a request a person approves', async () => {
   const agent = (await make('alice', { name: 'agent', agent: true })).json;
   const r = await withToken(agent.token, 'PUT', '/api/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android', 'ios'] });

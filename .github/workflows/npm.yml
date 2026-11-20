@@ -1,0 +1,62 @@
+# A vX.Y.Z tag publishes the companyflags package to npm (packages/companyflags, built from the root's sources), after
+# it is built and tried the way a user would (smoke.sh). A tag with a "-" (v1.2.0-rc.1) publishes under "next".
+#
+# Once, before the first tag (the maintainer):
+#   1. Make the package exist on npmjs.com: either publish 0.x by hand once (pnpm pack:npm, then
+#      cd packages/companyflags && npm publish --access public, signed in as an owner), or add an npm granular access
+#      token with publish rights as the NPM_TOKEN secret of this repository (Settings → Secrets and variables →
+#      Actions). With the secret, this workflow can publish the first version itself.
+#   2. Add this repository as a trusted publisher: npmjs.com → the companyflags package → Settings → Trusted
+#      publishing → GitHub Actions, organization or user "dvir-daniel", repository "companyflags", workflow
+#      "npm.yml", no environment. From then on publishing goes through OIDC with provenance, and NPM_TOKEN can be
+#      removed (then, in the package's settings, also require 2FA and disallow tokens).
+# The package.json "repository" must stay this repository's URL: npm checks it against the provenance.
+name: npm
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish companyflags
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write          # npm's trusted publishing (OIDC) and the provenance statement
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      # trusted publishing needs npm 11.5.1 or later
+      - run: npm install -g npm@^11.5.1
+      - run: pnpm install --frozen-lockfile
+      - name: The tag is the package's version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./packages/companyflags/package.json').version")"
+          test "v$version" = "$TAG" || { echo "the tag $TAG isn't packages/companyflags/package.json's version $version"; exit 1; }
+      - run: pnpm pack:npm
+      - run: bash packages/companyflags/smoke.sh
+      - name: npm publish
+        working-directory: packages/companyflags
+        env:
+          TAG: ${{ github.ref_name }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # with the NPM_TOKEN secret, publish with it; without, npm uses the trusted publisher (OIDC)
+          if [[ -n "$NPM_TOKEN" ]]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "$HOME/.npmrc"
+          fi
+          flags=(--provenance --access public)
+          if [[ "$TAG" == *-* ]]; then flags+=(--tag next); fi
+          npm publish "${flags[@]}"
