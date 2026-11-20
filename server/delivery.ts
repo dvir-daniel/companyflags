@@ -1,4 +1,5 @@
-// Data plane, made to sit behind a CDN (Cloudflare).
+// Data plane, made to sit behind a CDN (Cloudflare). Three sets of routes: app files (the app-files plugin), app links
+// (core) and flagd JSON (the flagd plugin); plugins/ mounts the plugins' ones, index.ts the links.
 //
 // Apps (android, ios, web): one file per environment, app and entity, values only (clientFile.ts).
 //   GET /client/v1/flags/:env/:app                     before login: what everyone gets
@@ -157,7 +158,16 @@ function send(c: Context, d: Download, cacheControl: string, tag?: string) {
 // serving the last file for a day. A publish purges the environment's tag, so changes show in seconds.
 const CDN_CACHE = 'public, max-age=60, stale-while-revalidate=600, stale-if-error=86400';
 
-export function deliveryApi({ db, plane, links, keys, apps }: { db: Db; plane: Pick<DataPlane, 'snapshots'>; links: LinkCache; keys: KeyCache; apps: AppCache }) {
+type Parts = { db: Db; plane: Pick<DataPlane, 'snapshots'>; links: LinkCache; keys: KeyCache; flagSets: AppCache };
+
+const snapshotIn = (plane: Parts['plane'], env: string) => {
+  const snap = plane.snapshots.get(env);
+  if (!snap) throw new HttpError(404, `environment "${env}" not found`);
+  return snap;
+};
+
+/** App files (the app-files plugin): GET /client/v1/flags/…, values only, for apps and the CDN in front of them. */
+export function appFileRoutes({ db, plane, links, flagSets: apps }: Parts) {
   const app = new Hono();
   // If-None-Match → 304 the standard way (weak comparison, a list of ETags, *), keeping the headers a 304 must carry.
   // It uses the ETag each response already has, so nothing is hashed per request. Only on these paths: this app is
@@ -169,14 +179,7 @@ export function deliveryApi({ db, plane, links, keys, apps }: { db: Db; plane: P
   // A 304 keeps the CORS headers too: a browser reading the file from another origin checks them on every answer.
   const retainedHeaders = [...RETAINED_304_HEADERS, 'access-control-allow-origin', 'access-control-expose-headers', 'cache-tag'];
   app.use('/client/v1/flags/*', etag({ retainedHeaders }));
-  app.use('/sdk/v1/flagd', etag());
-  app.use('/sdk/v1/flagd/*', etag());
-
-  const snapshotFor = (env: string) => {
-    const snap = plane.snapshots.get(env);
-    if (!snap) throw new HttpError(404, `environment "${env}" not found`);
-    return snap;
-  };
+  const snapshotFor = (env: string) => snapshotIn(plane, env);
 
   app.get('/client/v1/flags/:env/:app', async (c) => {
     const { env, app: appKey } = c.req.param();
@@ -199,6 +202,15 @@ export function deliveryApi({ db, plane, links, keys, apps }: { db: Db; plane: P
     return send(c, await clientDownload(snap, appKey, entity), CDN_CACHE, `env-${env}`);
   });
 
+  return app;
+}
+
+/** App links for backends (core): GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>. `files`: whether app files
+ *  are served (the app-files plugin), so the answer has the file's path as well as the OFREP token. */
+export function linkRoutes({ db, plane, keys, flagSets: apps }: Parts, o: { files: boolean }) {
+  const app = new Hono();
+  const snapshotFor = (env: string) => snapshotIn(plane, env);
+
   // Backend servers hand each app its entity's link at sign-in: GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>, with
   // the backend's API key, within its scope, for the key's environment. The answer is the link's path (the app file, from
   // the address apps use) and the same link as a token for OpenFeature's OFREP providers. Never cached: it is a secret.
@@ -213,12 +225,21 @@ export function deliveryApi({ db, plane, links, keys, apps }: { db: Db; plane: P
     if (!appKey) throw new HttpError(400, 'name the flag set the link is for: ?flagSet=<key>, e.g. ?flagSet=web');
     await ensureClientApp(db, apps, appKey);
     c.header('Cache-Control', 'no-store');
-    return c.json({ environment: p.environment, flagSet: appKey, entity, path: await clientLink(db, p.environment, entity, appKey),
+    return c.json({ environment: p.environment, flagSet: appKey, entity, ...(o.files ? { path: await clientLink(db, p.environment, entity, appKey) } : {}),
       token: await appToken(db, p.environment, entity, appKey) });
   });
+  return app;
+}
 
-  // Backend servers: one entity's flags as flagd JSON. A flag set is one entity's (flagd.ts), so a backend serving
-  // several asks for each, for example as one flagd source per entity. The key says which it may ask about.
+/** flagd JSON for backends (the flagd plugin): GET /sdk/v1/flagd/<dimension>/<entity>, with an API key. */
+export function flagdRoutes({ db, plane, keys }: Parts) {
+  const app = new Hono();
+  app.use('/sdk/v1/flagd', etag());
+  app.use('/sdk/v1/flagd/*', etag());
+  const snapshotFor = (env: string) => snapshotIn(plane, env);
+
+  // Backend servers: one entity's flags as flagd JSON. A flagd document is one entity's flags in the key's flag set
+  // (flagd.ts), so a backend serving several entities asks for each, for example as one flagd source per entity. The key says which it may ask about.
   const flagdFor = async (c: Context, named: { dimension: string; entity: string } | null) => {
     const p = await authenticate(db, { authorization: c.req.header('authorization') }, keys);
     const snap = snapshotFor(p.environment);

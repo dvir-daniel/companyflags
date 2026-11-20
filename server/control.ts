@@ -75,7 +75,7 @@ export async function createFlag(db: Db, f: NewFlag, actor: Actor) {
       const delivered = f.delivery[env.key] ?? [];
       for (const pk of delivered) {
         const p = projs.find((x) => x.key === pk);
-        if (!p) throw new HttpError(422, `unknown project ${pk}`);
+        if (!p) throw new HttpError(422, `unknown flag set ${pk}`);
         await tx.query(`insert into flag_delivery (flag_id, project_id, environment_id) values ($1,$2,$3)`, [flagId, p.id, env.id]);
       }
       await change(tx, env, actor, { kind: 'flag.create', flag: f.key, after: { ...f, freeValues: free, base: undefined, layer } });

@@ -82,7 +82,8 @@ export function Settings({ section }: { section?: string }) {
 
         <SingleSignOn />
 
-        <Cdn />
+        {/* the Cloudflare plugin's settings (server/plugins/cloudflare.ts), when this server runs it */}
+        {meta.plugins?.includes('cloudflare') && <Cdn />}
       </div>
 
       {/* the forms are mounted only while open, so each opening starts fresh */}

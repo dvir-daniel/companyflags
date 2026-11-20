@@ -118,7 +118,7 @@ test('removed: publishes stop purging; removing again says there’s nothing', a
 });
 
 test('set on the server (CF_ZONE_ID, CF_API_TOKEN): it wins, shows as the server’s, and can’t be changed in the console', async () => {
-  const own = await boot({ cdn: { fetch: cloudflare, server: { zoneId: ZONE, token: TOKEN } } });
+  const own = await boot({ cdn: { fetch: cloudflare, zoneId: ZONE, token: TOKEN } });
   try {
     const s = (await own.as('alice').get('/cdn')).json;
     assert.deepEqual([s.source, s.zoneId, s.tokenEnd], ['server', ZONE, '1234']);

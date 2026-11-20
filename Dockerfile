@@ -35,7 +35,10 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY server ./server
 COPY --from=build /app/web/dist ./web/dist
-RUN mkdir -p /data && chown node:node /data
+# the companyfeatures command (server/cli.ts): docker compose exec companyfeatures companyfeatures migrate --check.
+# A config file goes at /app/companyfeatures.config.ts (or set FF_CONFIG); without one, the environment decides.
+RUN ln -s /app/server/cli.ts /usr/local/bin/companyfeatures && chmod +x /app/server/cli.ts \
+  && mkdir -p /data && chown node:node /data
 USER node
 VOLUME ["/data"]
 EXPOSE 8787

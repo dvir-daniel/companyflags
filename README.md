@@ -60,6 +60,8 @@ get the same answer. CompanyFeatures covers all of it in one place, and your cod
   [Better Auth](https://www.better-auth.com).
 - **Cheap at any scale.** Every entity's values are also one file your CDN caches, rebuilt once per publish, for
   fleets where no request should reach the server.
+- **Plugins, one config file, a CLI.** Built the way Better Auth is: a small core, plugins for each way flags are read,
+  one typed `companyfeatures.config.ts`, and a `companyfeatures` command that migrates and keeps your flags as code.
 
 ## Quickstart
 
@@ -117,6 +119,34 @@ Or it runs [flagd](https://flagd.dev) next to it, which downloads the entity's r
 flag in memory. See [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) and
 [Backends](https://dvir-daniel.github.io/companyfeatures/guide/backends).
 
+## Configure it
+
+Everything is optional: without a file, environment variables decide. With one, it's typed, like Better Auth's
+`auth.ts`:
+
+```ts
+// companyfeatures.config.ts (companyfeatures init writes one)
+import { defineConfig } from 'companyfeatures/config';
+import { appFiles, cloudflare, flagd, ofrep } from 'companyfeatures/plugins';
+
+export default defineConfig({
+  database: { url: process.env.DATABASE_URL },
+  auth: { baseURL: 'https://flags.example.com' },
+  plugins: [ofrep(), flagd(), appFiles(), cloudflare()],
+});
+```
+
+Keep the flags your code reads in a file next to it, and push it from CI:
+
+```bash
+companyfeatures flags plan     # what would change
+companyfeatures flags push     # new flags, details, variants, flag sets; reviewed where production needs it
+```
+
+See [Plugins](https://dvir-daniel.github.io/companyfeatures/reference/plugins),
+[CLI](https://dvir-daniel.github.io/companyfeatures/reference/cli) and
+[Architecture](https://dvir-daniel.github.io/companyfeatures/guide/architecture).
+
 ## How it works
 
 <p align="center">
@@ -129,7 +159,7 @@ flag in memory. See [OpenFeature](https://dvir-daniel.github.io/companyfeatures/
 
 One evaluator decides every answer: OFREP's, the app files', the backends' flagd JSON and the console's trace. The
 tests check each against it, with OpenFeature's own providers and flagd's own logic, for many entities and devices
-(about 370 tests, on embedded and real Postgres). Several server instances can share one Postgres database.
+(about 380 tests, on embedded and real Postgres). Several server instances can share one Postgres database.
 
 ## Documentation
 
@@ -139,6 +169,7 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 | [Concepts](https://dvir-daniel.github.io/companyfeatures/guide/concepts) | Environments, flag sets, dimensions, flags, rules |
 | [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) | Web, React, Android, iOS and backends |
 | [Self-hosting](https://dvir-daniel.github.io/companyfeatures/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
+| [Plugins](https://dvir-daniel.github.io/companyfeatures/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyfeatures/reference/cli) | The built-in plugins, writing your own, and the `companyfeatures` command |
 | [HTTP API](https://dvir-daniel.github.io/companyfeatures/reference/http-api) | OFREP, app files, flagd JSON, links, health |
 
 The docs are in [`docs/`](docs) and run locally with `pnpm docs:dev`.

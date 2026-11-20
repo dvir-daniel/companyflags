@@ -5,6 +5,14 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "bin": {
+    "companyfeatures": "./server/cli.ts"
+  },
+  "exports": {
+    "./config": "./server/config.ts",
+    "./plugins": "./server/plugins/index.ts",
+    "./package.json": "./package.json"
+  },
   "packageManager": "pnpm@11.27.1",
   "engines": {
     "node": ">=22.18"
@@ -31,7 +39,8 @@
     "lint": "oxlint server web/src test packages",
     "check": "pnpm typecheck && pnpm lint && pnpm test",
     "docs:dev": "pnpm --filter docs dev",
-    "docs:build": "pnpm --filter docs build"
+    "docs:build": "pnpm --filter docs build",
+    "cli": "node server/cli.ts"
   },
   "dependencies": {
     "@better-auth/sso": "^1.7.16",
