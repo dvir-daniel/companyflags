@@ -126,29 +126,8 @@ code, kbd, pre { font-family: var(--font-mono); }
 #nd-home-layout #nd-nav ul.flex > li > a[data-active='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--cf-ink-nav); }
 #nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com'] { background: var(--cf-ink); color: var(--cf-page); }
 #nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com']:hover { background: var(--cf-ink-1); }
-#nd-home-layout #nd-nav nav > div.flex-1 { flex: none; padding: 0 12px; border-left: 1px solid var(--color-fd-border); align-self: stretch; }
 
 /* ---- the docs' pages, as better-auth.com's */
-/* the bar across the top, over the page and "On this page" (components/site-tabs.tsx) */
-.cf-tabs { display: none; }
-@media (min-width: 1024px) {
-  #nd-docs-layout { --fd-header-height: 48px !important; }
-  .cf-tabs {
-    grid-area: 1 / 3 / 2 / -1; position: sticky; top: 0; z-index: 30; display: flex; height: 48px;
-    justify-content: flex-end; border-bottom: 1px solid var(--color-fd-border); background: var(--color-fd-background);
-    min-width: 0; contain: inline-size; overflow: hidden;   /* never widens the grid's columns */
-  }
-  .cf-tabs > a {
-    position: relative; display: flex; align-items: center; padding: 0 22px; border-left: 1px solid var(--color-fd-border);
-    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-nav);
-    transition: color 150ms, background-color 150ms;
-  }
-  .cf-tabs > a:hover { color: var(--cf-ink); background: var(--cf-wash); }
-  .cf-tabs > a[data-active] { color: var(--cf-ink); }
-  .cf-tabs > a[data-active]::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--cf-ink-nav); }
-  .cf-tabs > a.cf-tabs-github { background: var(--cf-ink); color: var(--cf-page); }
-  .cf-tabs > a.cf-tabs-github:hover { background: var(--cf-ink-1); }
-}
 /* the version, at the top of the sidebar */
 .cf-version { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--color-fd-border); transition: background-color 150ms; }
 .cf-version:hover { background: var(--cf-wash); }
@@ -186,28 +165,6 @@ code, kbd, pre { font-family: var(--font-mono); }
   -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
 }
-/* the RESOURCES menu in the docs' bar: a panel of links, each with a line of words, as better-auth.com's menus */
-@media (min-width: 1024px) {
-  .cf-tabs { overflow: visible; }
-  .cf-tabs-menu { position: relative; display: flex; }
-  .cf-tabs-menu > button {
-    display: flex; align-items: center; gap: 6px; padding: 0 22px; border: 0; border-left: 1px solid var(--color-fd-border);
-    background: transparent; cursor: pointer; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px;
-    text-transform: uppercase; color: var(--cf-ink-nav); transition: color 150ms, background-color 150ms;
-  }
-  .cf-tabs-menu > button:hover, .cf-tabs-menu[data-open] > button { color: var(--cf-ink); background: var(--cf-wash); }
-  .cf-tabs-menu[data-active] > button { color: var(--cf-ink); box-shadow: inset 0 -2px 0 var(--cf-ink-nav); }
-  .cf-tabs-menu[data-open] > button svg { transform: rotate(180deg); }
-  .cf-tabs-panel {
-    position: absolute; top: 100%; right: 0; z-index: 50; display: grid; grid-template-columns: 1fr 1fr; width: 520px;
-    border: 1px solid var(--color-fd-border); background: var(--color-fd-background); box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.5);
-  }
-  .cf-tabs-panel > a { display: grid; gap: 3px; padding: 14px 16px; border-bottom: 1px solid var(--color-fd-border); transition: background-color 150ms; }
-  .cf-tabs-panel > a:nth-child(odd) { border-right: 1px solid var(--color-fd-border); }
-  .cf-tabs-panel > a:hover { background: var(--cf-wash); }
-  .cf-tabs-panel b { font-size: 14px; font-weight: 500; color: var(--color-fd-foreground); }
-  .cf-tabs-panel span { font-size: 13px; color: var(--color-fd-muted-foreground); }
-}
 /* the landing bar's RESOURCES menu: the same small-capital cell as the links beside it */
 #nd-home-layout #nd-nav ul.flex > li > button {
   height: 100%; padding: 0 22px; border: 0; border-left: 1px solid var(--color-fd-border); border-radius: 0 !important;
@@ -216,20 +173,62 @@ code, kbd, pre { font-family: var(--font-mono); }
 }
 #nd-home-layout #nd-nav ul.flex > li > button:hover, #nd-home-layout #nd-nav ul.flex > li > button[data-state='open'] { color: var(--cf-ink); background: var(--cf-wash); }
 
-/* ---- moving between the landing page and the docs (a view transition, app/layout.tsx): the bar stays, the left
-   column narrows from the hero to the sidebar, the logo and the bar's links glide to their new places, and the
-   rest crossfades, as on better-auth.com (300ms, easing out) */
-.cf-landing .hero, #nd-sidebar { view-transition-name: cf-left; }
-#nd-home-layout #nd-nav nav > a:first-child, #nd-sidebar a[href$='/']:first-of-type { view-transition-name: cf-logo; }
-#nd-home-layout #nd-nav nav > ul.flex, .cf-tabs { view-transition-name: cf-tabs; }
-::view-transition-group(*) { animation-duration: 300ms; animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
-::view-transition-old(root) { animation: 150ms ease-in both cf-vt-out; }
-::view-transition-new(root) { animation: 280ms ease-out both cf-vt-in; }
-::view-transition-old(cf-left), ::view-transition-new(cf-left) { height: 100%; object-fit: none; object-position: left top; }
-::view-transition-new(cf-left) { animation: 280ms ease-out both cf-vt-in; }
-::view-transition-old(cf-left) { animation: 150ms ease-in both cf-vt-out; }
-@keyframes cf-vt-out { to { opacity: 0; } }
-@keyframes cf-vt-in { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+
+/* ---- the site's bar on a wide screen (components/site-bar.tsx), as better-auth.com's: it stays in place between pages.
+   The logo's cell is as wide as the column under it and eases from the hero's 40% to the sidebar's width; the parts of
+   the site share the rest in equal cells; it comes in once, when the site opens. */
+:root { --cf-left: 40%; }
+.cf-bar { display: none; }
+@media (min-width: 1024px) {
+  html:has(#nd-docs-layout) { --cf-left: min(22vw, 300px); }
+  .cf-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 99; display: flex; align-items: flex-start; pointer-events: none; }
+  .cf-bar-left {
+    width: var(--cf-left); flex: none; height: 48px; display: flex; align-items: stretch; pointer-events: auto;
+    background: var(--color-fd-background); transition: width 300ms ease-out; animation: cf-bar-logo 280ms ease-out both;
+  }
+  .cf-bar-left > a { display: flex; align-items: center; padding: 0 16px; color: var(--color-fd-foreground); }
+  .cf-bar-right {
+    flex: 1; min-width: 0; height: 49px; display: flex; align-items: stretch; pointer-events: auto;
+    border-bottom: 1px solid var(--color-fd-border); background: var(--color-fd-background);
+    animation: cf-bar-tabs 280ms ease-out 40ms both;
+  }
+  .cf-bar-cell { position: relative; flex: 1; display: flex; }
+  .cf-bar-cell > a, .cf-bar-cell > button {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; height: 100%;
+    border: 0; border-left: 1px solid var(--color-fd-border); background: transparent; cursor: pointer;
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; white-space: nowrap;
+    color: var(--cf-ink-nav); transition: color 150ms, background-color 150ms, border-color 150ms;
+  }
+  .cf-bar-cell > a:hover, .cf-bar-cell > button:hover, .cf-bar-menu[data-open] > button { color: var(--cf-ink); background: var(--cf-wash); }
+  .cf-bar-cell > a[data-active], .cf-bar-menu[data-active] > button { color: var(--cf-ink); box-shadow: inset 0 -2px 0 var(--cf-ink-nav); }
+  .cf-bar-menu[data-open] > button svg { transform: rotate(180deg); }
+  .cf-bar-github > a { background: var(--cf-ink); color: var(--cf-page); }
+  .cf-bar-github > a:hover { background: var(--cf-ink-1); color: var(--cf-page); }
+  .cf-bar-panel {
+    position: absolute; top: 100%; right: 0; z-index: 100; display: grid; grid-template-columns: 1fr 1fr; width: 520px;
+    border: 1px solid var(--color-fd-border); background: var(--color-fd-background); box-shadow: 0 24px 48px -24px rgba(0, 0, 0, 0.5);
+    animation: cf-bar-panel 120ms ease-out both;
+  }
+  .cf-bar-panel > a { display: grid; gap: 3px; padding: 14px 16px; border-bottom: 1px solid var(--color-fd-border); transition: background-color 150ms; }
+  .cf-bar-panel > a:nth-child(odd) { border-right: 1px solid var(--color-fd-border); }
+  .cf-bar-panel > a:hover { background: var(--cf-wash); }
+  .cf-bar-panel b { font-size: 14px; font-weight: 500; color: var(--color-fd-foreground); }
+  .cf-bar-panel span { font-size: 13px; color: var(--color-fd-muted-foreground); }
+
+  /* the landing page: its own bar gives way to the site's */
+  #nd-home-layout #nd-nav { display: none; }
+  #nd-home-layout { padding-top: 48px; }
+  .cf-landing { grid-template-columns: var(--cf-left) 1fr !important; }
+
+  /* the docs: room for the bar, and the sidebar fixed under it at the logo's width, coming in once from the left */
+  #nd-docs-layout { --fd-banner-height: 48px; --fd-sidebar-width: var(--cf-left) !important; padding-top: 48px; }
+  #nd-sidebar {
+    position: fixed !important; top: 48px !important; left: 0; bottom: 0; width: var(--cf-left) !important; height: auto !important;
+    animation: cf-bar-side 280ms ease-out both;
+  }
+  #nd-sidebar > div:first-child > div.flex:first-child:has(a[href$='/']) { display: none; }   /* its logo row: the bar has the logo */
 }
+@keyframes cf-bar-logo { from { transform: translateX(-20px); opacity: 0; } }
+@keyframes cf-bar-tabs { from { transform: translateY(-10px); opacity: 0; } }
+@keyframes cf-bar-side { from { transform: translateX(-24px); opacity: 0; } }
+@keyframes cf-bar-panel { from { opacity: 0; transform: translateY(-4px); } }
