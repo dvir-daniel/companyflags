@@ -7,6 +7,6 @@ packages:
   - docs
   - examples/*
 
-# Install scripts that may run (pnpm runs none it isn't told about): esbuild, which VitePress uses, checks its binary.
+# Install scripts that may run (pnpm runs none it isn’t told about): esbuild, which the npm package’s build uses, checks its binary.
 allowBuilds:
   esbuild: true

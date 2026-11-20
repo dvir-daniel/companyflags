@@ -1,0 +1,18 @@
+/* IllusArchitecture (was the scoped style of IllusArchitecture.vue); every rule sits under its root, .cf-ill.arch */
+.cf-ill.arch { border: 1px solid var(--cf-rule); container-type: inline-size; }
+.arch .head, .arch .core, .arch .foot { display: grid; gap: 12px; padding: 16px 20px; }
+.arch .head, .arch .core { border-bottom: 1px solid var(--cf-rule); }
+/* five plugins and your own: two rows of three, or three rows of two when narrow */
+.arch .plugins { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--cf-rule); }
+.arch .plugin { display: grid; justify-items: start; align-content: start; gap: 8px; padding: 16px 20px; border-right: 1px solid var(--cf-rule); min-width: 0; }
+.arch .plugin:nth-child(3n) { border-right: 0; }
+.arch .plugin:nth-child(-n + 3) { border-bottom: 1px solid var(--cf-rule); }
+.arch .call { font-family: var(--font-mono); font-size: 13px; color: var(--cf-ink); background: none; padding: 0; }
+.arch .where { font-family: var(--font-mono); font-size: 11px; color: var(--cf-ink-3); overflow-wrap: anywhere; }
+.arch .own .call { color: var(--cf-ink-2); }
+@container (max-width: 760px) {
+  .arch .plugins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .arch .plugin, .arch .plugin:nth-child(3n) { border-right: 1px solid var(--cf-rule); }
+  .arch .plugin:nth-child(2n) { border-right: 0; }
+  .arch .plugin:nth-child(-n + 4) { border-bottom: 1px solid var(--cf-rule); }
+}

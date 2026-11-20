@@ -8,8 +8,10 @@ packages/companyflags/web
 packages/companyflags/README.md
 packages/companyflags/LICENSE.md
 packages/companyflags/*.tgz
-docs/.vitepress/cache
-docs/.vitepress/dist
+docs/.next
+docs/.source
+docs/out
+docs/next-env.d.ts
 .DS_Store
 /data*.lock
 .archify

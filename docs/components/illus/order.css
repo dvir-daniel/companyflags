@@ -1,0 +1,9 @@
+/* IllusOrder (was the scoped style of IllusOrder.vue); every rule sits under its root, .cf-ill.order */
+.cf-ill.order { border: 1px solid var(--cf-rule); }
+.order .step { display: grid; grid-template-columns: 32px 1fr auto; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--cf-rule); }
+.order .num { font-family: var(--font-mono); font-size: 12px; color: var(--cf-ink-3); }
+.order .what { display: grid; gap: 2px; min-width: 0; }
+.order .what b { font-size: 14px; font-weight: 500; color: var(--cf-ink); }
+.order .what .text { font-size: 13px; color: var(--cf-ink-2); }
+.order .foot { padding: 12px 16px; font-size: 10px; line-height: 1.6; }
+@media (max-width: 640px) { .order .step { grid-template-columns: 28px 1fr; } .order .step .chip { grid-column: 2; justify-self: start; } }

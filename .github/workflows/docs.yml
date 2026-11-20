@@ -1,4 +1,4 @@
-# The docs site (docs/, VitePress) on GitHub Pages. Turn Pages on with "GitHub Actions" as the source.
+# The docs site (docs/, Next.js and Fumadocs, built to static files) on GitHub Pages. Turn Pages on with "GitHub Actions" as the source.
 name: Docs
 
 on:
@@ -37,7 +37,7 @@ jobs:
           DOCS_SITE: ${{ steps.pages.outputs.origin }}   # full addresses in /llms.txt
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/.vitepress/dist
+          path: docs/out
 
   deploy:
     needs: build

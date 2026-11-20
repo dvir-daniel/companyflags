@@ -1,0 +1,249 @@
+/* The landing page (was the scoped style of Landing.vue). Every rule sits under its root, .cf-landing, and every
+   keyframe name starts with cf-. The README labels are matched as h2.label so they don't reach the illustration's own
+   .label elements (the Vue scoping kept them apart). */
+.cf-landing {
+  display: grid;
+  grid-template-columns: minmax(360px, 38%) 1fr;
+  min-height: calc(100vh - var(--cf-nav-height, 48px));
+  background: var(--cf-page);
+  color: var(--cf-ink);
+}
+.cf-landing a { text-decoration: none; color: inherit; }
+
+/* ---- the hero, fixed on the left */
+.cf-landing .hero {
+  position: sticky;
+  top: var(--cf-nav-height, 48px);
+  height: calc(100vh - var(--cf-nav-height, 48px));
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--cf-rule);
+  overflow: hidden;
+}
+.cf-landing .hero-art { position: absolute; inset: 0; }
+/* the dotted ground, fading out toward the edges, drifting slowly */
+.cf-landing .hero-art::before {
+  content: ''; position: absolute; inset: -24px;
+  background-image: radial-gradient(var(--cf-grid) 1px, transparent 1px);
+  background-size: 12px 12px;
+  mask-image: radial-gradient(ellipse 70% 55% at 45% 40%, #000 30%, transparent 75%);
+  animation: cf-drift 24s linear infinite;
+}
+@keyframes cf-drift { to { transform: translate(12px, 12px); } }
+.cf-landing .hero-art { animation: cf-art-in 900ms var(--cf-ease) both; }
+@keyframes cf-art-in { from { opacity: 0; } }
+
+/* the mark: three stepped bars (the layers, from the defaults down to one entity) that snap in from the left, with
+   flag keys running through them, and spread apart when pointed at */
+.cf-landing .mark { position: absolute; left: 20%; top: 16%; display: grid; gap: 14px; pointer-events: auto; }
+.cf-landing .bar {
+  position: relative; height: 46px; overflow: hidden;
+  background: linear-gradient(90deg, var(--cf-rule-2), var(--cf-rule)); border: 1px solid var(--cf-rule-2);
+  transition: transform 450ms var(--cf-ease);
+  animation: cf-snap 700ms var(--cf-ease) both;
+}
+.cf-landing .b0 { width: 220px; animation-delay: 150ms; }
+.cf-landing .b1 { width: 156px; animation-delay: 260ms; }
+.cf-landing .b2 { width: 92px; animation-delay: 370ms; }
+@keyframes cf-snap { from { opacity: 0; transform: translateX(-28px) rotate(-3deg); } to { opacity: 1; transform: none; } }
+.cf-landing .mark:hover .b0 { transform: translateX(-10px); }
+.cf-landing .mark:hover .b1 { transform: translateX(8px); }
+.cf-landing .mark:hover .b2 { transform: translateX(26px); }
+.cf-landing .ticker {
+  position: absolute; inset: 0; display: flex; align-items: center; gap: 18px; width: max-content; padding-left: 10px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.4px; color: var(--cf-ink-3); opacity: 0.55;
+  animation: cf-tick 38s linear infinite;
+}
+.cf-landing .b1 .ticker { animation-direction: reverse; animation-duration: 30s; }
+.cf-landing .b2 .ticker { animation-duration: 24s; }
+.cf-landing .mark:hover .ticker { opacity: 0.9; }
+@keyframes cf-tick { to { transform: translateX(-50%); } }
+
+/* the live answer: a request typed out, and the server's answer for it */
+.cf-landing .answer {
+  width: 340px; margin-top: 18px; padding: 10px 12px; border: 1px solid var(--cf-rule); background: var(--cf-page);
+  font-family: var(--font-mono); font-size: 11px; color: var(--cf-ink-3);
+  box-shadow: 0 18px 40px -24px rgba(0, 0, 0, 0.35); animation: cf-snap 700ms var(--cf-ease) 520ms both;
+}
+.cf-landing .answer p { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cf-landing .answer .p { color: var(--cf-accent); }
+.cf-landing .answer b { color: var(--cf-ink); font-weight: 400; }
+.cf-landing .caret { display: inline-block; width: 1px; height: 11px; margin-left: 1px; vertical-align: -1px; background: var(--cf-ink-2); animation: cf-blink 1s steps(2) infinite; }
+@keyframes cf-blink { 50% { opacity: 0; } }
+.cf-landing .got { display: flex; gap: 10px; margin-top: 8px !important; padding-top: 8px; border-top: 1px dashed var(--cf-rule); }
+.cf-landing .got .val { color: var(--cf-ink); }
+.cf-landing .got .why { margin-left: auto; color: #16a34a; letter-spacing: 0.5px; }
+.dark .cf-landing .got .why { color: #4ade80; }
+
+/* the hero's words rise in, one after the other */
+.cf-landing .in-1, .cf-landing .in-2, .cf-landing .in-3 { animation: cf-rise 700ms var(--cf-ease) both; }
+.cf-landing .in-1 { animation-delay: 100ms; }
+.cf-landing .in-2 { animation-delay: 200ms; }
+.cf-landing .in-3 { animation-delay: 300ms; }
+@keyframes cf-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* swapping one tab's content for another's: the new content (a new element, keyed by the tab) fades in */
+.cf-landing .swap { animation: cf-swap-in 240ms var(--cf-ease) both; }
+@keyframes cf-swap-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.cf-landing .hero-body { position: relative; margin-top: auto; padding: 0 32px 24px; }
+.cf-landing .pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 14px; margin-bottom: 18px;
+  font-size: 13px; color: var(--cf-ink-2);
+  border: 1px solid var(--cf-rule); background: var(--cf-panel); border-radius: 999px;
+}
+.cf-landing .pill { transition: border-color 200ms, background-color 200ms; }
+.cf-landing .pill:hover { border-color: var(--cf-rule-2); }
+.cf-landing .pill > span:last-child { display: inline-block; transition: transform 250ms var(--cf-ease); }
+.cf-landing .pill:hover > span:last-child { transform: translateX(3px); }
+.cf-landing .pill b { color: var(--cf-ink); font-weight: 500; }
+.cf-landing .pill .tri { font-size: 10px; color: var(--cf-ink); }
+.cf-landing h1 { margin: 0 0 24px; font-size: clamp(30px, 2.7vw, 40px); line-height: 1.15; font-weight: 400; letter-spacing: -0.03em; max-width: 13em; }
+.cf-landing .actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.cf-landing .btn { position: relative; display: inline-flex; align-items: center; height: 38px; padding: 0 20px; font-size: 14px; font-weight: 500; }
+.cf-landing .btn { transition: background-color 200ms, transform 200ms var(--cf-ease); }
+.cf-landing .btn:active { transform: translateY(1px); }
+/* the main button: a light sweeps across it when pointed at */
+.cf-landing .btn.primary { overflow: hidden; background: var(--cf-ink); color: var(--cf-page); }
+.cf-landing .btn.primary span { position: relative; z-index: 1; }
+.cf-landing .btn.primary::after {
+  content: ''; position: absolute; inset: 0; transform: translateX(-110%);
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--cf-page) 28%, transparent) 50%, transparent 80%);
+}
+.cf-landing .btn.primary:hover::after { transform: translateX(110%); transition: transform 700ms var(--cf-ease); }
+.cf-landing .btn.ghost { border: 1px solid var(--cf-rule-2); color: var(--cf-ink); }
+.cf-landing .btn.ghost:hover { background: var(--cf-wash); }
+/* the corner marks step out when pointed at */
+.cf-landing .corner { position: absolute; width: 7px; height: 7px; border-color: var(--cf-ink-3); border-style: solid; transition: transform 250ms var(--cf-ease), border-color 200ms; }
+.cf-landing .btn.ghost:hover .corner.tl, .cf-landing .cell:hover .corner.tl { transform: translate(-2px, -2px); border-color: var(--cf-ink); }
+.cf-landing .btn.ghost:hover .corner.br, .cf-landing .cell:hover .corner.br { transform: translate(2px, 2px); border-color: var(--cf-ink); }
+.cf-landing .corner.tl { top: -4px; left: -4px; border-width: 1px 0 0 1px; }
+.cf-landing .corner.br { bottom: -4px; right: -4px; border-width: 0 1px 1px 0; }
+.cf-landing .hero-foot {
+  position: relative; display: flex; gap: 10px; padding: 18px 32px; margin-top: 48px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--cf-ink-3);
+}
+.cf-landing .hero-foot a { transition: color 150ms; }
+.cf-landing .hero-foot a:hover { color: var(--cf-ink); }
+.cf-landing .hero-foot { animation: cf-rise 700ms var(--cf-ease) 400ms both; }
+
+/* ---- the README side */
+.cf-landing .body { min-width: 0; }
+.cf-landing section { padding: 40px 40px 8px; max-width: 980px; }
+.cf-landing h2.label, .cf-landing .title {
+  display: flex; align-items: center; gap: 16px; margin: 0 0 22px; border: 0; padding: 0;
+}
+.cf-landing h2.label::after, .cf-landing .title::after { content: ''; flex: 1; height: 1px; background: var(--cf-rule); transform-origin: left; }
+.cf-landing h2.label span { font-family: var(--font-mono); font-size: 14px; font-weight: 400; letter-spacing: 0.4px; }
+.cf-landing .title span { font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
+.cf-landing .lead { margin: 0 0 22px; font-size: 16px; line-height: 1.75; color: var(--cf-ink-2); max-width: 46em; }
+.cf-landing .lead b { color: var(--cf-ink); font-weight: 500; }
+.cf-landing .lead.small { font-size: 15px; margin-top: 18px; }
+.cf-landing .note { font-size: 13px; color: var(--cf-ink-3); margin: 12px 0 0; }
+.cf-landing .note code, .cf-landing .lead code { font-family: var(--font-mono); font-size: 12px; color: var(--cf-ink-2); }
+
+.cf-landing .code { border: 1px solid var(--cf-rule); background: var(--cf-panel); }
+.cf-landing .tabs { position: relative; display: flex; align-items: stretch; gap: 0; border-bottom: 1px solid var(--cf-rule); padding: 0 8px; }
+.cf-landing .tabs button { padding: 11px 14px; font-size: 13px; color: var(--cf-ink-3); background: none; border: 0; cursor: pointer; transition: color 150ms; }
+.cf-landing .tabs button:hover { color: var(--cf-ink); }
+.cf-landing .tabs button.on { color: var(--cf-ink); }
+/* the chosen tab's line slides from one tab to the next */
+.cf-landing .tabs .slide { position: absolute; left: 0; bottom: -1px; height: 2px; background: var(--cf-ink-nav); transition: transform 320ms var(--cf-ease), width 320ms var(--cf-ease); }
+.cf-landing .tabs .file { margin-left: auto; align-self: center; padding-right: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--cf-ink-3); }
+.cf-landing .cmd { position: relative; }
+.cf-landing pre { margin: 0; padding: 18px 20px; overflow-x: auto; font-family: var(--font-mono); font-size: 13px; line-height: 1.7; color: var(--cf-ink); }
+.cf-landing pre code { font-family: inherit; }
+.cf-landing .prompt { color: var(--cf-accent); user-select: none; }
+.cf-landing .copy {
+  position: absolute; right: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; color: var(--cf-ink-3);
+  background: var(--cf-page); border: 1px solid var(--cf-rule); cursor: pointer;
+  transition: color 150ms, border-color 150ms, transform 200ms var(--cf-ease);
+}
+.cf-landing .copy svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.cf-landing .copy:hover { color: var(--cf-ink); border-color: var(--cf-rule-2); }
+.cf-landing .copy:active { transform: scale(0.96); }
+.cf-landing .copy.done { color: #16a34a; border-color: color-mix(in srgb, #16a34a 40%, transparent); }
+.cf-landing .copy.done svg { animation: cf-pop 300ms var(--cf-ease); }
+@keyframes cf-pop { from { transform: scale(0.4); opacity: 0; } }
+
+/* the languages OpenFeature reads flags in, running past, slower when pointed at */
+.cf-landing .marquee { display: flex; align-items: center; gap: 16px; margin-top: 18px; padding: 10px 0; border-top: 1px solid var(--cf-rule); border-bottom: 1px solid var(--cf-rule); }
+.cf-landing .mq-label { flex: none; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); }
+.cf-landing .mq-window { flex: 1; min-width: 0; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+.cf-landing .mq-track { display: flex; gap: 34px; width: max-content; animation: cf-tick 40s linear infinite; }
+.cf-landing .mq-track span { font-size: 14px; font-weight: 500; color: var(--cf-ink-2); white-space: nowrap; transition: color 150ms; }
+.cf-landing .mq-track span:hover { color: var(--cf-ink); }
+.cf-landing .marquee:hover .mq-track { animation-play-state: paused; }
+
+.cf-landing .grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--cf-rule); border-left: 1px solid var(--cf-rule); }
+.cf-landing .grid.three { grid-template-columns: repeat(3, 1fr); }
+.cf-landing .cell { position: relative; padding: 20px 20px 22px; border-right: 1px solid var(--cf-rule); border-bottom: 1px solid var(--cf-rule); min-width: 0; transition: background-color 250ms; }
+.cf-landing .cell:hover { background: var(--cf-wash); }
+.cf-landing .cell .corner { opacity: 0; }
+.cf-landing .cell:hover .corner { opacity: 1; }
+.cf-landing .cell .corner.tl { top: -1px; left: -1px; }
+.cf-landing .cell .corner.br { bottom: -1px; right: -1px; }
+.cf-landing .num { transition: color 200ms, letter-spacing 300ms var(--cf-ease); }
+.cf-landing .cell:hover .num { color: var(--cf-ink); letter-spacing: 1.2px; }
+.cf-landing .num { margin: 0 0 10px; font-family: var(--font-mono); font-size: 12px; color: var(--cf-ink-3); letter-spacing: 0.4px; }
+.cf-landing .cell h3 { margin: 0 0 8px; font-size: 15px; font-weight: 500; }
+.cf-landing .cell p:not(.num) { margin: 0; font-size: 14px; line-height: 1.6; color: var(--cf-ink-2); }
+.cf-landing .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.cf-landing .chips span { padding: 2px 7px; font-family: var(--font-mono); font-size: 11px; color: var(--cf-ink-2); border: 1px solid var(--cf-rule); background: var(--cf-page); transition: transform 250ms var(--cf-ease), border-color 200ms, color 200ms; }
+/* pointed at, a card's chips light up one after the other, the way a release steps */
+.cf-landing .cell:hover .chips span { animation: cf-chip 0.6s var(--cf-ease) calc(var(--i) * 90ms) both; }
+@keyframes cf-chip { 40% { transform: translateY(-3px); border-color: var(--cf-ink-3); color: var(--cf-ink); } 100% { transform: none; border-color: var(--cf-rule-2); color: var(--cf-ink); } }
+
+.cf-landing .split { display: grid; grid-template-columns: 1fr 230px; }
+.cf-landing .editor { min-width: 0; border-right: 1px solid var(--cf-rule); }
+.cf-landing .numbered { counter-reset: line; }
+.cf-landing .numbered .line { counter-increment: line; }
+.cf-landing .numbered .line::before { content: counter(line); display: inline-block; width: 2.2em; margin-right: 14px; text-align: right; color: var(--cf-ink-3); opacity: 0.6; user-select: none; }
+.cf-landing .side { display: flex; flex-direction: column; }
+.cf-landing .side a {
+  padding: 13px 16px; border-bottom: 1px solid var(--cf-rule); font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3);
+}
+.cf-landing .side a { position: relative; transition: color 150ms, background-color 200ms, padding-left 250ms var(--cf-ease); }
+.cf-landing .side a.on, .cf-landing .side a:hover { color: var(--cf-ink); background: var(--cf-wash); }
+.cf-landing .side a.on { padding-left: 22px; box-shadow: inset 2px 0 0 var(--cf-ink); }
+/* a new example's lines come in from the top down */
+.cf-landing .numbered .line { display: inline-block; animation: cf-line-in 380ms var(--cf-ease) calc(var(--l) * 22ms) both; }
+@keyframes cf-line-in { from { opacity: 0; transform: translateX(-4px); } }
+.cf-landing .side p { margin: auto 0 0; padding: 16px; font-size: 13px; line-height: 1.6; color: var(--cf-ink-2); }
+
+.cf-landing .diagram { border: 1px solid var(--cf-rule); background: var(--cf-panel); font-size: 12.5px; color: var(--cf-ink-2); }
+.cf-landing .links { display: flex; flex-wrap: wrap; gap: 24px; margin: 18px 0 0; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; }
+.cf-landing .links a { color: var(--cf-ink-2); transition: color 150ms, letter-spacing 300ms var(--cf-ease); }
+.cf-landing .links a:hover { color: var(--cf-ink); letter-spacing: 1px; }
+.cf-landing .cta { padding-top: 56px; padding-bottom: 72px; }
+.cf-landing .cta h2 { margin: 0 0 22px; font-size: 26px; font-weight: 400; letter-spacing: -0.02em; border: 0; padding: 0; }
+
+@media (max-width: 1100px) {
+  .cf-landing .grid { grid-template-columns: repeat(2, 1fr); }
+  .cf-landing .split { grid-template-columns: 1fr; }
+  .cf-landing .editor { border-right: 0; border-bottom: 1px solid var(--cf-rule); }
+}
+@media (max-width: 960px) {
+  .cf-landing { grid-template-columns: 1fr; }
+  .cf-landing .hero { position: relative; top: 0; height: auto; border-right: 0; border-bottom: 1px solid var(--cf-rule); }
+  /* the mark and the live answer sit above the words, in the flow, so they never cover them */
+  .cf-landing .hero-art { position: relative; inset: auto; padding: 32px 16px 28px; }
+  .cf-landing .mark { position: relative; left: auto; top: auto; gap: 10px; }
+  .cf-landing .hero-body { margin-top: 0; padding: 0 16px 20px; }
+  .cf-landing .hero-foot { padding: 14px 16px; margin-top: 24px; }
+  .cf-landing .bar { height: 32px; }
+  .cf-landing section { padding: 32px 16px 4px; }
+}
+@media (max-width: 640px) {
+  .cf-landing .grid, .cf-landing .grid.three { grid-template-columns: 1fr; }
+  .cf-landing .b0 { width: 160px; }
+  .cf-landing .b1 { width: 112px; }
+  .cf-landing .b2 { width: 66px; }
+  .cf-landing .answer { width: 100%; max-width: 340px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cf-landing .ticker, .cf-landing .mq-track, .cf-landing .caret, .cf-landing .hero-art::before { animation: none; }
+}

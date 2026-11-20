@@ -1,0 +1,16 @@
+/* IllusChain (was the scoped style of IllusChain.vue); every rule sits under its root, .cf-ill.chain */
+.cf-ill.chain { border: 1px solid var(--cf-rule); }
+.chain .head { display: grid; gap: 10px; padding: 16px 20px; border-bottom: 1px solid var(--cf-rule); }
+.chain .gap { gap: 8px; }
+.chain .sep { color: var(--cf-ink-3); }
+.chain .trees { display: grid; grid-template-columns: 1fr 1fr; }
+.chain .tree { display: flex; align-items: flex-start; gap: 0; padding: 20px; min-width: 0; }
+.chain .tree + .tree { border-left: 1px solid var(--cf-rule); }
+.chain .kids { display: grid; gap: 12px; padding-top: 0; }
+.chain .kids .row { align-items: flex-start; flex-wrap: nowrap; }
+.chain .kids .link { margin-top: 18px; }
+.chain .kid-chip { margin: 7px 0 0 10px; }
+@media (max-width: 760px) {
+  .chain .trees { grid-template-columns: 1fr; }
+  .chain .tree + .tree { border-left: 0; border-top: 1px solid var(--cf-rule); }
+}

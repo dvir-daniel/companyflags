@@ -21,7 +21,8 @@
     "web/dist/**",
     "node_modules/**",
     "packages/*/dist/**",
-    "docs/.vitepress/cache/**",
-    "docs/.vitepress/dist/**"
+    "docs/.next/**",
+    "docs/.source/**",
+    "docs/out/**"
   ]
 }

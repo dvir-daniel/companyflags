@@ -37,11 +37,7 @@
       "runtimeArgs": [
         "--filter",
         "docs",
-        "exec",
-        "vitepress",
-        "preview",
-        "--port",
-        "4173"
+        "start"
       ],
       "port": 4173
     }

@@ -31,7 +31,7 @@ the console and serves it with the API on http://localhost:8787, as in productio
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
 | `packages/companyflags` | The npm package, built from `server/` and `web/dist` by `build.ts` (`pnpm pack:npm`; `pnpm test:npm` installs it and tries it). Not a workspace project: its version and dependencies are the root's |
 | `test/` | The server's and console's tests (`node --test`) |
-| `docs/` | The documentation site (VitePress); `docs/design/` holds design notes and decision records |
+| `docs/` | The documentation site (Next.js and Fumadocs, like better-auth.com): pages in `docs/content/docs/`, the landing page and illustrations in `docs/components/`; `docs/design/` holds design notes and decision records |
 | `examples/` | Example apps (React, Node, flagd), each its own package with its own `pnpm build`; not in the root's typecheck or lint. `seed.ts` sets up a server for them |
 | `GLOSSARY.md` | Words we use, and the ones we avoid |
 

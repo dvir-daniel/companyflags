@@ -1,0 +1,128 @@
+/* The docs site: Fumadocs' black-and-white theme, in better-auth.com's way (pure black or white, Geist, 1px rules,
+   square corners), and the colors our illustrations and landing page use (--cf-*). */
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/black.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../node_modules/fumadocs-ui/dist/**/*.js';
+@source '../components/**/*.tsx';
+@source '../content/**/*.{md,mdx}';
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root { --fd-nav-height: 48px; --cf-nav-height: 48px; }
+.dark { --color-fd-background: #000; --color-fd-card: #0a0a0a; --color-fd-popover: #0a0a0a; --color-fd-secondary: #0a0a0a; --color-fd-muted: #0a0a0a; --color-fd-border: #262626; }
+:root:not(.dark) { --color-fd-background: #fff; --color-fd-card: #fafafa; --color-fd-border: #e5e5e5; }
+
+html { -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-sans); }
+code, kbd, pre { font-family: var(--font-mono); }
+::selection { background: var(--cf-ink); color: var(--cf-page); }
+
+/* square corners everywhere, as better-auth.com */
+#nd-docs-layout *, #nd-home-layout *, [data-radix-popper-content-wrapper] *, [role='dialog'] *, .prose * { border-radius: 0 !important; }
+
+:root {
+  --cf-page: #ffffff;
+  --cf-panel: #fafafa;
+  --cf-panel-2: #f5f5f5;
+  --cf-ink: #0a0a0a;
+  --cf-ink-1: rgba(10, 10, 10, 0.8);
+  --cf-ink-nav: rgba(10, 10, 10, 0.6);
+  --cf-ink-2: #525252;
+  --cf-ink-3: #737373;
+  --cf-subtitle: #666666;
+  --cf-rule: #e5e5e5;
+  --cf-rule-2: #d4d4d4;
+  --cf-grid: rgba(10, 10, 10, 0.08);
+  --cf-wash: rgba(10, 10, 10, 0.04);
+  --cf-accent: #7c3aed;
+}
+.dark {
+  --cf-page: #000000;
+  --cf-panel: #0a0a0a;
+  --cf-panel-2: #121212;
+  --cf-ink: #fafafa;
+  --cf-ink-1: rgba(250, 250, 250, 0.8);
+  --cf-ink-nav: rgba(250, 250, 250, 0.65);
+  --cf-ink-2: #a3a3a3;
+  --cf-ink-3: #737373;
+  --cf-subtitle: #999999;
+  --cf-rule: #262626;
+  --cf-rule-2: #363636;
+  --cf-grid: rgba(255, 255, 255, 0.08);
+  --cf-wash: rgba(250, 250, 250, 0.05);
+  --cf-accent: #a78bfa;
+}
+/* ---- illustrations, in Better Auth's way: square icon tiles joined by thin lines, dashed "+" tiles, chips with a
+   status dot, a one-line terminal, mono labels, dotted backgrounds (Illus*.vue) */
+.cf-ill { --ok: #16a34a; --warn: #d97706; --bad: #dc2626; font-family: var(--font-sans); color: var(--cf-ink); }
+.dark .cf-ill { --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; }
+.cf-ill p { margin: 0; }
+.cf-ill .label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); }
+.cf-ill .row { display: flex; align-items: center; flex-wrap: wrap; row-gap: 10px; }
+.cf-ill .tile { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid var(--cf-rule-2); background: var(--cf-panel); color: var(--cf-ink-2); flex: none; }
+.cf-ill .tile svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.cf-ill .tile.on { color: var(--cf-ink); border-color: var(--cf-ink-3); }
+.cf-ill .tile.dashed { border-style: dashed; background: transparent; color: var(--cf-ink-3); font-family: var(--font-mono); font-size: 12px; }
+.cf-ill .link { width: 18px; height: 1px; background: var(--cf-rule-2); flex: none; }
+.cf-ill .link.long { width: 36px; }
+.cf-ill .node { display: grid; justify-items: center; gap: 6px; }
+.cf-ill .node .label { font-size: 10px; }
+.cf-ill .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--cf-rule); background: var(--cf-page); font-family: var(--font-mono); font-size: 11px; color: var(--cf-ink-2); white-space: nowrap; }
+.cf-ill .chip.dashed { border-style: dashed; color: var(--cf-ink-3); }
+.cf-ill .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cf-ink-3); }
+.cf-ill .chip.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.cf-ill .chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.cf-ill .chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.cf-ill .chip.ok .dot { background: var(--ok); } .cf-ill .chip.warn .dot { background: var(--warn); } .cf-ill .chip.bad .dot { background: var(--bad); }
+.cf-ill .term { display: block; padding: 8px 12px; border: 1px solid var(--cf-rule); background: var(--cf-panel); font-family: var(--font-mono); font-size: 12px; color: var(--cf-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cf-ill .term .p { color: var(--cf-accent); } .cf-ill .term .ok { color: var(--ok); } .cf-ill .term .dim { color: var(--cf-ink-3); }
+.cf-ill .dots { background-image: radial-gradient(var(--cf-grid) 1px, transparent 1px); background-size: 10px 10px; }
+.cf-ill .rule-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid var(--cf-rule); background: var(--cf-page); font-size: 13px; color: var(--cf-ink-2); }
+.cf-ill .rule-row + .rule-row { border-top: 0; }
+.cf-ill .rule-row b { color: var(--cf-ink); font-weight: 500; }
+.prose .cf-ill { margin: 24px 0; }
+/* illustrations: a dot runs along each line between tiles, as data does */
+@keyframes cf-flow { from { transform: translate(-4px, -50%); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } to { transform: translate(var(--cf-run, 18px), -50%); opacity: 0; } }
+.cf-ill .link { position: relative; overflow: visible; }
+.cf-ill .link::after {
+  content: ''; position: absolute; top: 50%; left: 0; width: 4px; height: 4px; background: var(--cf-ink-3);
+  animation: cf-flow 2.4s linear infinite;
+}
+.cf-ill .link.long { --cf-run: 36px; }
+.cf-ill .row > .link:nth-of-type(2)::after { animation-delay: 0.6s; }
+.cf-ill .row > .link:nth-of-type(3)::after { animation-delay: 1.2s; }
+.cf-ill .row > .link:nth-of-type(4)::after { animation-delay: 1.8s; }
+.cf-ill .tile { transition: border-color 200ms, color 200ms, transform 250ms var(--cf-ease); }
+.cf-ill .node:hover .tile { transform: translateY(-2px); border-color: var(--cf-ink-3); color: var(--cf-ink); }
+.cf-ill .chip .dot { transition: transform 200ms; }
+.cf-ill .chip.ok .dot, .cf-ill .chip.warn .dot { animation: cf-pulse 2.4s ease-in-out infinite; }
+@keyframes cf-pulse { 50% { opacity: 0.45; } }
+
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* ---- the landing page's bar, as better-auth.com's: 48px, the name on the left, the parts of the site on the right as
+   small-capital cells divided by 1px lines, GitHub inverted, then light or dark */
+#nd-home-layout { --fd-layout-width: 100vw; }
+#nd-home-layout #nd-nav, #nd-home-layout #nd-nav nav { height: var(--cf-nav-height); }
+#nd-home-layout #nd-nav nav { padding: 0 0 0 16px; }
+#nd-home-layout #nd-nav ul.flex { margin-left: auto; align-self: stretch; gap: 0; padding: 0; }
+#nd-home-layout #nd-nav ul.flex > li { display: flex; align-self: stretch; }
+#nd-home-layout #nd-nav ul.flex > li > a {
+  height: 100%; padding: 0 22px; border-left: 1px solid var(--color-fd-border);
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase;
+  color: var(--cf-ink-nav); transition: color 150ms, background-color 150ms; position: relative;
+}
+#nd-home-layout #nd-nav ul.flex > li > a:hover { color: var(--cf-ink); background: var(--cf-wash); }
+#nd-home-layout #nd-nav ul.flex > li > a[data-active='true'] { color: var(--cf-ink); }
+#nd-home-layout #nd-nav ul.flex > li > a[data-active='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--cf-ink-nav); }
+#nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com'] { background: var(--cf-ink); color: var(--cf-page); }
+#nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com']:hover { background: var(--cf-ink-1); }
+#nd-home-layout #nd-nav nav > div.flex-1 { flex: none; padding: 0 12px; border-left: 1px solid var(--color-fd-border); align-self: stretch; }

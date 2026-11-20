@@ -4,6 +4,11 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **The docs site runs on Next.js and Fumadocs,** as better-auth.com's does, instead of VitePress. The pages are the
+  same, at the same addresses, in `docs/content/docs/`. You get a sidebar of groups that open and close, a search box,
+  "Copy Markdown" and "Open in" on every page, and a progress bar on phones. `/llms.txt`, `/llms-full.txt` and each
+  page's `.md` are still there. It's still static files on GitHub Pages.
+
 - **The console's sidebar and Settings:** the sidebar is grouped as Flags (flags, releases, approvals, history),
   Targeting, Connect (API keys, webhooks, migration) and Settings. Settings is one page per subject, with its own menu:
   Environments, Dimensions, Services, People, Single sign-on, Appearance and CDN (`#/settings/<page>`). Webhooks have
