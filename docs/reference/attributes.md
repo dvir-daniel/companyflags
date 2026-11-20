@@ -24,7 +24,7 @@ The **Label** is what the rule editor shows. **Split** says whether a % of devic
 
 | Name | Label | Type | Source | Split | Known values |
 |---|---|---|---|---|---|
-| `project` | App | text | server: the API key or link | no | your apps' keys |
+| `project` | Flag set | text | server: the API key or link | no | your flag sets' keys |
 | `environment` | Environment | text | server: the API key or link | no | not offered in the editor (a rule already sits in one environment) |
 | `app.version` | App version | version | app | no | the marketing version, such as `6.0.0` |
 | `app.build` | App build number | whole number | app | no | |
@@ -112,7 +112,7 @@ Apps and backends put their attributes in the OpenFeature evaluation context, by
 - **Versions** may be sent as devices report them (`5.10`, `v5`, `6.0.0-beta.1`). One that can't be read at all, such
   as `abc`, leaves a version check undecided, like a missing value.
 
-See [OpenFeature](/sdk/openfeature) and [Apps](/guide/apps) for setting up the providers.
+See [OpenFeature](/sdk/openfeature) and [Flag sets](/guide/flag-sets) for setting up the providers.
 
 ## The country
 

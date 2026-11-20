@@ -9,28 +9,28 @@ An app gets its entity's values in one environment, in one of two ways: it reads
 (see [The app file](/sdk/app-file)), or it asks with OpenFeature's OFREP provider, using its app token
 (see [below](#app-tokens)). Apps never hold an API key.
 
-- **Values only.** Rules on the dimensions, the app and the environment are settled on the server before the file is
-  built. Lists of entities, other entities' values and the rules themselves never reach a device. Acme's web app gets
-  Acme's values, not Globex's, and not the rule that gave them.
+- **Values only.** Rules on the dimensions, the flag set and the environment are settled on the server before the
+  file is built. Lists of entities, other entities' values and the rules themselves never reach a device. Acme's web
+  app gets Acme's values, not Globex's, and not the rule that gave them.
 - **What only the device knows stays as small lines.** Checks on the device's model, OS, browser, app version,
   country, or its ID for a % of devices are left in the file as `when` lines the app checks itself. Those lines show
   the conditions and the values the entity could get, for example "6.0.0 and later get the new checkout". With
   OFREP the server checks those too, and the app gets only its answers.
-- **What an app says about itself is ignored.** Its entity, app and environment come from its link or token, never
-  from anything else it sends.
-- **The file before sign-in is public.** `GET /client/v1/flags/<env>/<app>` needs no secret: anyone who knows the
-  environment and app keys can read what every device gets before sign-in.
+- **What an app says about itself is ignored.** Its entity, flag set and environment come from its link or token,
+  never from anything else it sends.
+- **The file before sign-in is public.** `GET /client/v1/flags/<env>/<flag set>` needs no secret: anyone who knows
+  the environment and flag set keys can read what every device gets before sign-in.
 
 ## Secret links
 
-Each entity, at every level, has a secret link per environment and app:
+Each entity, at every level, has a secret link per environment and flag set for apps:
 
 ```text
 /client/v1/flags/prod/web/acme/<secret>
 ```
 
 - The secret is an HMAC-SHA256 of the entity and its link version, made with the environment's own secret, and cut
-  to 22 characters. It differs per environment; the app is in the path, not in the secret.
+  to 22 characters. It differs per environment; the flag set is in the path, not in the secret.
 - Anyone with the link can read the file. Treat it as a secret you hand to signed-in users of that entity: your
   backend gives it to the app at sign-in (see [Backends](/guide/backends#hand-links-to-apps)). Viewers can't see links
   in the console.
@@ -49,10 +49,10 @@ For OpenFeature's OFREP providers (web, Android, iOS), an app sends a token made
 Authorization: Bearer ffl_prod.web.acme.<secret>
 ```
 
-- It is `ffl_<environment>.<app>.<entity>.<secret>`, its secret made from the environment's secret, the app, the entity
-  and the link's version, so a token for `web` can't be turned into one for `ios`. Your backend gets it and the link
-  from `/sdk/v1/links` and hands them to the app at sign-in; the console shows it on the entity's **App link** as
-  **OpenFeature token**.
+- It is `ffl_<environment>.<flag set>.<entity>.<secret>`, its secret made from the environment's secret, the flag set,
+  the entity and the link's version, so a token for `web` can't be turned into one for `ios`. Your backend gets it and
+  the link from `/sdk/v1/links` and hands them to the app at sign-in; the console shows it on the entity's **App
+  link** as **OpenFeature token**.
 - A token asks about its own entity only, like an API key with scope `entity`. Naming another entity in the
   evaluation context gets `403`.
 - Replacing the link stops the token at the same moment. Every wrong token gets the same
@@ -62,11 +62,12 @@ Authorization: Bearer ffl_prod.web.acme.<secret>
 
 ## API keys
 
-Backends use an API key in the `Authorization` header (or OFREP's `X-API-Key`). Keys can only be made for backend
-apps: the server refuses a key for an app, which uses its link or token instead.
+Backends use an API key in the `Authorization` header (or OFREP's `X-API-Key`). Keys can only be made for flag sets
+for backends: the server refuses a key for a flag set for apps, whose apps use their link or token instead.
 
-- A key belongs to one environment and one backend app. Its secret is shown once, when it is made. The server keeps only its
-  SHA-256 hash and a readable prefix (`ff_prod_api_` and 4 characters of the secret), which the console shows.
+- A key belongs to one environment and one flag set for backends. Its secret is shown once, when it is made. The
+  server keeps only its SHA-256 hash and a readable prefix (`ff_prod_api_` and 4 characters of the secret), which the
+  console shows.
 - Its **scope** says which entities it may ask about: one entity (`entity`), one entity and every entity under it
   (`below`), or any (`all`).
 - The entity is named in the address (`/sdk/v1/flagd/company/acme`) or, for OFREP, in the evaluation context by its
@@ -120,8 +121,8 @@ See [Approvals and history](/guide/approvals).
 
 ## Roles
 
-Viewer, editor, approver, on call and admin. Viewers change nothing; only admins change Settings (environments, apps,
-dimensions, people, single sign-on, the CDN). The table is in [Sign-in → Roles](/self-hosting/sign-in#roles).
+Viewer, editor, approver, on call and admin. Viewers change nothing; only admins change Settings (environments, flag
+sets, dimensions, people, single sign-on, the CDN). The table is in [Sign-in → Roles](/self-hosting/sign-in#roles).
 
 ## The console page
 
@@ -139,9 +140,9 @@ protect its backups the same way.
 
 ## Don't put secrets in flag values
 
-Any flag can be sent to any app, and a value is whatever JSON you type. A value sent to an app is readable by anyone
-with the app and its link or key. Keep API keys, passwords and tokens out of flag values. Flags that can never be sent
-to an app, and values that are references to a secret store, are not built yet.
+Any flag can be in any flag set, and a value is whatever JSON you type. A value in a flag set is readable by anyone with
+its link or key. Keep API keys, passwords and tokens out of flag values. Flags that can never
+be in a flag set for apps, and values that are references to a secret store, are not built yet.
 
 ## Errors
 

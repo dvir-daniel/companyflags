@@ -82,23 +82,23 @@ test('key scopes: one entity, an entity and those under it, or any; the key is t
   };
   // an entity's key: only its entity, with the path or without
   assert.deepEqual([await id(own), await id(own, '/company/netflix'), await id(own, '/brand/nf-kids'), await id(own, '/company/acme')],
-    ['dev/netflix', 'dev/netflix', 403, 403]);
+    ['dev/server-wupserver/netflix', 'dev/server-wupserver/netflix', 403, 403]);
   // below: its entity and every entity under it, not its parent's others or other companies'
   assert.deepEqual([await id(below), await id(below, '/company/netflix'), await id(below, '/brand/nf-kids'), await id(below, '/brand/ms-xbox'), await id(below, '/company/acme')],
-    ['dev/netflix', 'dev/netflix', 'dev/nf-kids', 403, 403]);
+    ['dev/server-wupserver/netflix', 'dev/server-wupserver/netflix', 'dev/server-wupserver/nf-kids', 403, 403]);
   // all: any, named in the path
-  assert.deepEqual([await id(any, '/brand/nf-kids'), await id(any, '/brand/ms-xbox'), await id(any)], ['dev/nf-kids', 'dev/ms-xbox', 400]);
+  assert.deepEqual([await id(any, '/brand/nf-kids'), await id(any, '/brand/ms-xbox'), await id(any)], ['dev/server-wupserver/nf-kids', 'dev/server-wupserver/ms-xbox', 400]);
   // X-Customer-Id, from before dimensions, still names the entity for an `all` key; it never widens a narrower key
-  assert.equal(await id(any, '', { 'x-customer-id': 'nf-kids' }), 'dev/nf-kids');
-  assert.equal(await id(own, '', { 'x-customer-id': 'acme' }), 'dev/netflix', 'an entity’s key ignores it');
-  assert.equal(await id(below, '', { 'x-customer-id': 'acme' }), 'dev/netflix');
+  assert.equal(await id(any, '', { 'x-customer-id': 'nf-kids' }), 'dev/server-wupserver/nf-kids');
+  assert.equal(await id(own, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/netflix', 'an entity’s key ignores it');
+  assert.equal(await id(below, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/netflix');
   // moving Netflix Kids out from under Netflix takes it out of the `below` key's reach at once (the key cache is untouched)
   assert.equal((await dana.put('/dimensions/brand/nf-kids', { name: 'Netflix Kids', parent: 'microsoft' })).status, 200);
   await t.settle();
-  assert.deepEqual([await id(below, '/brand/nf-kids'), await id(any, '/brand/nf-kids')], [403, 'dev/nf-kids']);
+  assert.deepEqual([await id(below, '/brand/nf-kids'), await id(any, '/brand/nf-kids')], [403, 'dev/server-wupserver/nf-kids']);
   assert.equal((await dana.put('/dimensions/brand/nf-kids', { name: 'Netflix Kids', parent: 'netflix' })).status, 200);
   await t.settle();
-  assert.equal(await id(below, '/brand/nf-kids'), 'dev/nf-kids', 'and back in at once');
+  assert.equal(await id(below, '/brand/nf-kids'), 'dev/server-wupserver/nf-kids', 'and back in at once');
   // what's refused when a key is made
   const bad = async (body: Record<string, string>) => (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', ...body })).status;
   assert.deepEqual([await bad({ scope: 'below' }), await bad({ scope: 'entity', entity: 'nobody' }), await bad({ scope: 'customer', entity: 'acme' }),
@@ -209,7 +209,7 @@ test('the API key cache keeps the keys used most recently, so a spray of made-up
 test('a client app that doesn’t exist is answered from memory; adding it makes its file appear at once', async () => {
   assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 404);
   assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 404);
-  assert.equal((await t.as('dana').post('/apps', { key: 'tvos', kind: 'client' })).status, 201);
+  assert.equal((await t.as('dana').post('/flag-sets', { key: 'tvos', kind: 'client' })).status, 201);
   assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 200);
 });
 

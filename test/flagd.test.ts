@@ -131,7 +131,7 @@ test('the JSON for new_checkout: the override, the 20% as flagd’s fractional, 
   const snap = snapOf({ new_checkout: f }, { environment: 'prod', revision: 15 });
   assert.deepEqual(buildFlagdDoc(snap, 'server-ds', ENTITIES.microsoft), {
     $schema: FLAGD_SCHEMA,
-    metadata: { flagSetId: 'prod/microsoft', environment: 'prod', revision: 15 },
+    metadata: { flagSetId: 'prod/server-ds/microsoft', environment: 'prod', revision: 15 },
     flags: { new_checkout: {
       state: 'ENABLED', variants: { off: false, on: true }, defaultVariant: 'off',
       targeting: { if: [
@@ -214,7 +214,7 @@ test('GET /sdk/v1/flagd: an entity’s key gets its flag set; a shared key names
   const res = await flagdFor(own);
   assert.equal(res.status, 200, JSON.stringify(res.json));
   assert.equal(res.json.$schema, FLAGD_SCHEMA);
-  assert.deepEqual(res.json.metadata, { flagSetId: 'dev/netflix', environment: 'dev', revision: t.plane.get('dev').revision });
+  assert.deepEqual(res.json.metadata, { flagSetId: 'dev/server-ds/netflix', environment: 'dev', revision: t.plane.get('dev').revision });
   const snap = t.plane.get('dev');
   assert.deepEqual(Object.keys(res.json.flags), Object.keys(snap.flags).filter((k) => snap.flags[k].delivery.includes('server-ds')).sort(),
     'the flags sent to this backend, and only those');

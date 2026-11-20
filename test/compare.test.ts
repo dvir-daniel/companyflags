@@ -31,7 +31,7 @@ test('two apps: a flag sent to only one app is a difference', async () => {
   assert.equal(quick.same, false);
   assert.equal(quick.a.sent, true);
   assert.equal(quick.b.sent, false);
-  assert.match(quick.b.source, /Not sent to ios/);
+  assert.match(quick.b.source, /Not in ios/);
 });
 
 test('two environments: a change in one environment only is the difference', async () => {

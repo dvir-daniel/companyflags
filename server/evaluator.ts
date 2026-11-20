@@ -383,7 +383,7 @@ export function evaluate(snapshot: Snapshot, flagKey: string, ctx: EvalContext, 
     if (explain) trace.push({
       stage: 'delivery', layer: null, outcome: 'not_delivered',
       detail: !flag ? 'flag does not exist in this environment'
-        : `flag is not sent to "${ctx.project}"`,
+        : `flag is not in flag set "${ctx.project}"`,
     });
     return { key: flagKey, reason: 'ERROR', errorCode: 'FLAG_NOT_FOUND', errorDetails: 'flag not found', metadata: metaBase, decidedBy: NOT_SENT, trace };
   }

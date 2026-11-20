@@ -37,20 +37,20 @@ Open <http://localhost:8787> and **create the admin account**: the first person 
 console then walks you through four steps in **Settings**:
 
 1. **Environments.** Add Development, and Production with 1 approval needed.
-2. **Apps.** Add `web` (kind **App**). Add a backend later, with kind **Backend**.
+2. **Flag sets.** Add `web`, a flag set for apps. Add one for a backend later, a flag set for backends.
 3. **Dimensions.** Say what config is served per: pick a preset such as `company`, or name your own levels.
 4. **Your first flag.** Add an entity on its dimension's page (for example the company `acme`), then **Flags → + New
-   flag**: `new_checkout`, on or off, sent to `web`.
+   flag**: `new_checkout`, on or off, in the flag set `web`.
 
 ![The flags list](/screenshots/console-flags.png)
 
 Open the flag to give it rules: 10% of devices, everyone on app version 6 or later, or settings of its own for
-`acme`. The **Try it** panel answers for any entity, app and device, and explains each step.
+`acme`. The **Try it** panel answers for any entity, flag set and device, and explains each step.
 
 ## 3. Read the flag
 
-Every entity has an app link per environment, and from it an **OpenFeature token** for each app: open the entity's
-page, then **App link**. Ask with it as an app would, with what the device knows about itself:
+Every entity has an app link per environment, and from it an **OpenFeature token** for each flag set: open the
+entity's page, then **App link**. Ask with it as an app would, with what the device knows about itself:
 
 ```bash
 curl -X POST http://localhost:8787/ofrep/v1/evaluate/flags \
@@ -83,7 +83,7 @@ Change the flag in the console and the provider hears about it at once, through 
 
 ## Next
 
-- [How it fits together](/guide/concepts): environments, apps, dimensions, flags and rules.
-- [Apps](/guide/apps): how your backend hands each app its token at sign-in.
+- [How it fits together](/guide/concepts): environments, flag sets, dimensions, flags and rules.
+- [Flag sets](/guide/flag-sets): how your backend hands each app its token at sign-in.
 - [Docker](/self-hosting/docker) and the [production checklist](/self-hosting/production) when you're ready to run it
   for real.

@@ -51,7 +51,7 @@ function flagdAddress(k: Pick<KeyRow, 'scope' | 'entity' | 'dimension'>) {
   return k.scope === 'all' || !mine ? '/sdk/v1/flagd/<dimension>/<key>' : mine;
 }
 
-/** checkbox, key, environment, app, asks about, last used, created */
+/** checkbox, key, environment, flag set, asks about, last used, created */
 const COLS = 'grid grid-cols-[28px_minmax(0,2fr)_104px_minmax(0,0.8fr)_minmax(0,1.3fr)_96px_96px] max-xl:grid-cols-[28px_minmax(0,2fr)_104px_minmax(0,0.8fr)_96px_96px] max-md:grid-cols-[28px_minmax(0,1fr)_84px]';
 const XL = 'max-xl:hidden';
 const MD = 'max-md:hidden';
@@ -165,7 +165,7 @@ export function Keys() {
       { label: 'Retry', onClick: () => revokeAll(failed.map((f) => f.k)) });
   };
   const exportCsv = () => {
-    downloadCsv('api-keys.csv', ['prefix', 'label', 'environment', 'app', 'scope', 'entity', 'created_at', 'last_used_at', 'revoked_at'],
+    downloadCsv('api-keys.csv', ['prefix', 'label', 'environment', 'flag_set', 'scope', 'entity', 'created_at', 'last_used_at', 'revoked_at'],
       chosen.map((k) => [k.prefix, k.label, k.environment, k.project, k.scope, k.entity, k.createdAt, k.lastUsedAt, k.revokedAt]));
     toast(`Exported ${plural(chosen.length, 'key')} to api-keys.csv`);
   };
@@ -179,7 +179,7 @@ export function Keys() {
         actions={admin ? <Button onClick={() => setCreating(true)}>+ Create key</Button> : <span className="text-13 text-ink-3">Only admins make and revoke keys</span>}>
         <SearchField ref={search} className="w-[240px] max-md:w-auto max-md:flex-1 max-md:basis-full" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search keys by prefix or label" />
         <FilterSelect label="Environment" value={env} onChange={setEnv} options={[['', 'All'], ...meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])]} />
-        <FilterSelect label="App" value={app} onChange={setApp} options={[['', 'All'], ...meta.projects.map((p) => [p.key, p.key] as [string, string])]} />
+        <FilterSelect label="Flag set" value={app} onChange={setApp} options={[['', 'All'], ...meta.projects.map((p) => [p.key, p.key] as [string, string])]} />
         <FilterSelect<State> label="State" value={state} onChange={setState} options={[['active', 'Active'], ['revoked', 'Revoked'], ['all', 'All']]} />
         {filtered && <button type="button" onClick={clearFilters} className={barTextButton}>Reset</button>}
       </PageBar>
@@ -189,7 +189,7 @@ export function Keys() {
           <RowCheck checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all keys" />
           <SortHeader label="Key" sortKey="key" {...sortProps} />
           <span className={MD}><SortHeader label="Environment" sortKey="env" {...sortProps} /></span>
-          <span className={MD}>App</span>
+          <span className={MD}>Flag set</span>
           <ColumnHead className={XL} label="Asks about" help="Which entries of your dimensions the key may ask about. A backend names the one it wants in the address, by its dimension: /sdk/v1/flagd/<dimension>/<key>." />
           <SortHeader label="Last used" sortKey="used" {...sortProps} />
           <span className={MD}><SortHeader label="Created" sortKey="created" {...sortProps} /></span>
@@ -264,7 +264,7 @@ function KeyDrawer({ k, open, onClose, onRevoke }: { k: KeyRow | null; open: boo
           <DrawerRow label="Prefix"><code className="font-mono">{k.prefix}…</code></DrawerRow>
           <DrawerRow label="Label">{k.label ?? <span className="text-ink-3">—</span>}</DrawerRow>
           <DrawerRow label="Environment">{envName(k.environment)}</DrawerRow>
-          <DrawerRow label="App"><span className="font-mono">{k.project}</span> <span className="text-ink-3">· {k.projectKind}</span></DrawerRow>
+          <DrawerRow label="Flag set"><span className="font-mono">{k.project}</span> <span className="text-ink-3">· {k.projectKind === 'client' ? 'for apps' : 'for backends'}</span></DrawerRow>
           <DrawerRow label="Asks about">{scopeText(k, meta)}<span className="block text-ink-3">{SCOPE_HINT[k.scope]}</span></DrawerRow>
         </DrawerSection>
         <DrawerSection title="flagd JSON">
@@ -343,7 +343,7 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
             <Field label="Environment">
               <NativeSelect ref={firstField} className={selectField} value={env} onChange={(e) => setEnv(e.target.value)}>{meta.environments.map((e) => <option key={e.key} value={e.key}>{envName(e.key)}</option>)}</NativeSelect>
             </Field>
-            <Field label="Server">
+            <Field label="Flag set" hint="Only flag sets for backends use API keys.">
               <NativeSelect className={selectField} value={project} onChange={(e) => setProject(e.target.value)}>{servers.map((p) => <option key={p.key}>{p.key}</option>)}</NativeSelect>
             </Field>
           </div>

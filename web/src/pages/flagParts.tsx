@@ -359,13 +359,13 @@ function ValuePreview({ type, value }: { type: string; value: unknown }) {
 /** What PUT /flags/:key/delivery answers: `applied: false` (HTTP 202) where the environment needs approval. */
 type DeliveryResult = { applied?: boolean; changeSetId?: number };
 
-/** Which apps receive the flag, per environment. Changes in environments that need approval are confirmed first. */
+/** Which flag sets the flag is in, per environment. Changes in environments that need approval are confirmed first. */
 export function DeliveryPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: () => void }) {
   const { meta, toast, ask } = useApp();
   const { envName, isProtected } = useEnvs();
   const { error, run } = useAsync();
   const envs = meta.environments;
-  // Per environment, the apps sent while the flag hasn't reloaded with them yet (`basis`: its list when they were
+  // Per environment, the flag sets saved while the flag hasn't reloaded with them yet (`basis`: its list when they were
   // sent). The switches show them, and the next toggle builds on them, so two quick toggles never undo each other;
   // while one is on its way, that environment's switches wait.
   const [sent, setSent] = useState<Record<string, { basis: string; list: string[]; busy: boolean }>>({});
@@ -378,8 +378,8 @@ export function DeliveryPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: ()
     const reviewed = isProtected(env);
     if (reviewed) {
       const r = await ask({
-        title: on ? `Send ${flag.key} to ${project} in ${where}?` : `Stop sending ${flag.key} to ${project} in ${where}?`,
-        body: <p>{on ? `${project} starts receiving this flag, for everyone,` : `${project} stops receiving this flag, and every ${project} build falls back to the default in its own code,`} once an approver approves the change.</p>,
+        title: on ? `Put ${flag.key} in ${project} in ${where}?` : `Take ${flag.key} out of ${project} in ${where}?`,
+        body: <p>{on ? `Everything that reads ${project} gets this flag, for everyone,` : `Everything that reads ${project} stops getting this flag and uses the default in its own code,`} once an approver approves the change.</p>,
         actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'ok', label: 'Request review', tone: on ? 'primary' : 'danger' }],
       });
       if (r.action !== 'ok') return;
@@ -396,22 +396,22 @@ export function DeliveryPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: ()
       toast(`Sent for review: request #${res.changeSetId}`, 'ok', res.changeSetId ? { label: 'View', onClick: () => go(`approvals/${res.changeSetId}`) } : undefined);
     } else {
       setSent((s) => ({ ...s, [env]: { basis, list: next, busy: false } }));   // shown until the flag reloads with it
-      toast(`${project} ${on ? 'now receives' : 'no longer receives'} this flag in ${where}`);
+      toast(`${flag.key} is ${on ? 'now in' : 'no longer in'} ${project} in ${where}`);
     }
     onSaved();
   };
   const groups = useMemo(() => [
-    { title: 'Apps', sub: 'Get values only. Your rules never leave the server.', list: meta.projects.filter((p) => p.kind === 'client') },
-    { title: 'Servers', sub: 'Your own backends.', list: meta.projects.filter((p) => p.kind === 'server') },
+    { title: 'For apps', sub: 'Apps get values only. Your rules never leave the server.', list: meta.projects.filter((p) => p.kind === 'client') },
+    { title: 'For backends', sub: 'Your own backends, which get the rules.', list: meta.projects.filter((p) => p.kind === 'server') },
   ], [meta.projects]);
   return (
-    <section aria-label="Sent to" className="grid gap-3">
-      <p className="m-0 text-13 text-ink-2">Which of your apps receive this flag. An app that doesn’t get it uses the default in its code.</p>
+    <section aria-label="Flag sets" className="grid gap-3">
+      <p className="m-0 text-13 text-ink-2">Which flag sets this flag is in, per environment. An app or backend whose flag set doesn’t have it uses the default in its code.</p>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-13">
           <thead>
             <tr className="border-b border-rule">
-              <th className={cn(monoLabel, 'py-2 pr-4 text-left')}>App</th>
+              <th className={cn(monoLabel, 'py-2 pr-4 text-left')}>Flag set</th>
               {envs.map((e) => <th key={e.key} className={cn(monoLabel, 'w-[120px] py-2 pr-4 text-left max-sm:w-auto')}>{envName(e.key)}</th>)}
             </tr>
           </thead>

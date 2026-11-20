@@ -126,7 +126,7 @@ function ReleaseView({ flag, env, requests, onChanged, tab, setTab }: {
   );
   if (flag.archivedAt || flag.kind !== 'release' || !base) {
     return <>{bar}<div className="px-6 py-6 max-sm:px-4"><Callout>
-      {flag.archivedAt ? 'This release is archived: it’s no longer sent to any app.' : `${flag.key} isn’t a release (its purpose is ${flag.kind.replace('_', ' ')}).`}{' '}
+      {flag.archivedAt ? 'This release is archived: it’s in no flag set any more.' : `${flag.key} isn’t a release (its purpose is ${flag.kind.replace('_', ' ')}).`}{' '}
       <Button variant="link" onClick={() => go(flag.archivedAt ? `releases/${env}` : `flag/${flag.key}/${env}`)}>{flag.archivedAt ? 'Back to releases' : 'Open the flag'}</Button>
     </Callout></div></>;
   }
@@ -336,7 +336,7 @@ function RolloutCard({ flag, env, state, waiting, disabled, onChange, name, onEd
     : state.step === 'early' ? `${state.entities.length.toLocaleString()} in early access` : state.step === 'not_started' ? 'Nobody yet' : 'Custom rules';
   const list = (xs: string[]) => (xs.length <= 3 ? xs.join(', ') : `${xs.slice(0, 3).join(', ')} and ${xs.length - 3} more`);
   const targeted = state.entities.length ? `${list(state.entities.map(name))} on every device` : '';
-  const who = !apps.length ? 'It isn’t sent to any app here.'
+  const who = !apps.length ? 'It isn’t in any flag set here.'
     : off ? 'The flag is off here: nobody gets a value, and every app uses the default in its code. Turn it on (top right) to continue where it was.'
     : state.step === 'custom' ? 'Its rules don’t follow the stages (for example two % rules, or a % that doesn’t start at 0), so they’re edited on the flag page.'
     : state.paused ? 'Nobody new gets it: everyone gets the old value until you resume.'
@@ -386,7 +386,7 @@ function RolloutCard({ flag, env, state, waiting, disabled, onChange, name, onEd
       ) : (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-grid px-5 py-2.5 text-13 text-ink-3">
           {prot && <span className="inline-flex items-center gap-1.5 text-flag"><LockSimpleIcon aria-hidden className="size-3.5" />{envName(env)} needs approval: each step is a request</span>}
-          {apps.length > 0 && <span>Sent to {apps.join(', ')}</span>}
+          {apps.length > 0 && <span>In flag sets: {apps.join(', ')}</span>}
           {state.step === 'percent' && <span>Devices without a device ID get it at everyone</span>}
         </div>
       )}
@@ -433,7 +433,7 @@ function VersionCard({ flag, env, state, waiting, disabled, onChange, name, onEd
     : state.step === 'early' ? `${state.entities.length.toLocaleString()} in early access` : `Everyone on ${cur}`;
   const list = (xs: string[]) => (xs.length <= 3 ? xs.join(', ') : `${xs.slice(0, 3).join(', ')} and ${xs.length - 3} more`);
   const targeted = state.entities.length ? `${list(state.entities.map(name))} on every device` : '';
-  const who = !apps.length ? 'It isn’t sent to any app here.'
+  const who = !apps.length ? 'It isn’t in any flag set here.'
     : off ? 'The flag is off here: nobody gets a value, and every app uses the version built into it. Turn it on (top right) to continue where it was.'
     : state.step === 'custom' ? 'Its rules don’t follow the steps (for example two versions moving at once), so they’re edited in the rules below.'
     : state.paused ? `Everyone is on ${cur}. Resume puts the same ${share} back on ${v.target}.`
@@ -513,7 +513,7 @@ function VersionCard({ flag, env, state, waiting, disabled, onChange, name, onEd
       ) : (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-grid px-5 py-2.5 text-13 text-ink-3">
           {prot && <span className="inline-flex items-center gap-1.5 text-flag"><LockSimpleIcon aria-hidden className="size-3.5" />{envName(env)} needs approval: each step is a request{canBreakGlassRollback(flag.kind, meta.me.role) ? ', but you can roll back at once (logged)' : ''}</span>}
-          {apps.length > 0 && <span>Sent to {apps.join(', ')}</span>}
+          {apps.length > 0 && <span>In flag sets: {apps.join(', ')}</span>}
           {elsewhere.map((e) => <span key={e}>{e}</span>)}
         </div>
       )}
@@ -575,7 +575,7 @@ function CleanUp({ flag, envStates, open, disabled, onChanged }: {
   };
   const archive = async () => {
     const r = await ask({
-      title: `Archive ${flag.key}?`, body: <p>It stops being sent to every app in every environment, right away. Apps that still read it get the default in their code. Its history is kept.</p>,
+      title: `Archive ${flag.key}?`, body: <p>It leaves every flag set in every environment, right away. Apps that still read it get the default in their code. Its history is kept.</p>,
       actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'go', label: 'Archive', tone: 'danger' }],
     });
     if (r.action !== 'go') return;
@@ -594,7 +594,7 @@ function CleanUp({ flag, envStates, open, disabled, onChanged }: {
         <li><b className="font-medium text-ink">Remove {flag.key} from your code</b> and ship it. On mobile, old app versions still read it: keep sending it until they’re gone, or they go back to the default in their code.</li>
         {toStop.length > 0 && (
           <li>
-            <b className="font-medium text-ink">Stop sending it</b> where changes are reviewed. One request per environment turns it off and sends it to no app.
+            <b className="font-medium text-ink">Stop sending it</b> where changes are reviewed. One request per environment turns it off and takes it out of every flag set.
             <span className="mt-2 flex flex-wrap gap-2">
               {toStop.map((e) => {
                 const w = open.find((r) => r.environment === e.env);

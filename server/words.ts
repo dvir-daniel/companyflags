@@ -126,7 +126,7 @@ export const SECTION_LABEL: Record<Section, string> = {
 
 // The trace's steps, named like the sections above.
 export const STAGE_LABEL: Record<string, string> = {
-  delivery: 'Sent to this app?', enabled: 'Flag on?', locked: SECTION_LABEL.override, entity: SECTION_LABEL.entity_rule,
+  delivery: 'In this flag set?', enabled: 'Flag on?', locked: SECTION_LABEL.override, entity: SECTION_LABEL.entity_rule,
   entity_default: SECTION_LABEL.entity_default, base: SECTION_LABEL.everyone_rule, default: SECTION_LABEL.default,
 };
 
@@ -137,7 +137,7 @@ export function sourceText(d: DecidedBy, opts: { entity?: EntityWords | null; na
   const owner = d.owner ? ownerName(opts.entity, d.owner) ?? opts.nameOf?.(d.owner) ?? d.owner : undefined;
   let s: string;
   switch (d.section) {
-    case 'not_sent': s = opts.project ? `Not sent to ${opts.project}` : SECTION_LABEL.not_sent; break;
+    case 'not_sent': s = opts.project ? `Not in ${opts.project}` : SECTION_LABEL.not_sent; break;
     case 'entity_rule': s = owner ? `${owner}’s rule` : SECTION_LABEL.entity_rule; break;
     case 'entity_default': s = owner ? `${owner}’s default` : SECTION_LABEL.entity_default; break;
     case 'everyone_rule': s = who && d.namesEntity ? `Rule naming ${who}` : SECTION_LABEL.everyone_rule; break;

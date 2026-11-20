@@ -25,9 +25,10 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 2. **You set flags.** Each flag has rules for everyone ("10% of devices", "app version below 5.0"), and any entity can
    have settings of its own. An entity follows its parent's settings until it has its own. Locked rules apply to
    everyone, always.
-3. **Apps and backends ask with OpenFeature.** Apps use OpenFeature's own OFREP providers (web, Android, iOS) with
-   their entity's token; backends use an API key, or download their entity's rules as [flagd](https://flagd.dev) JSON
-   and evaluate them in-process. For very large fleets, each entity's values are also one file your CDN caches.
+3. **Apps and backends ask with OpenFeature.** Each reads a **flag set**: the flags you put in it. Apps use
+   OpenFeature's own OFREP providers (web, Android, iOS) with their entity's token; backends use an API key, or
+   download their entity's rules as [flagd](https://flagd.dev) JSON and evaluate them in-process. For very large
+   fleets, each entity's values are also one file your CDN caches.
 
 <IllusHowItWorks />
 
@@ -40,8 +41,8 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
   the rules for everyone. Each answer can be traced step by step in the console.
 - **OpenFeature, no SDK of ours.** Apps and backends use OpenFeature's own providers (OFREP, flagd), so you can switch
   to or from CompanyFeatures without touching the code that reads flags.
-- **Privacy by construction.** A device asks as its own entity, with a token it can't change. Checks on dimensions,
-  apps and environments are settled on the server, so a device never receives a list of customers, another customer's
+- **Privacy by construction.** A device asks as its own entity, with a token it can't change. Checks on dimensions, flag
+  sets and environments are settled on the server, so a device never receives a list of customers, another customer's
   value, or a rule.
 - **Change control built in.** Protected environments, approvals by someone other than the author, scheduled
   changes, break-glass for on call, an append-only history, and restore.
@@ -57,5 +58,5 @@ CompanyFeatures is before 1.0. It is tested (about 370 tests, on embedded and re
 ## Next
 
 - [Quickstart](/guide/quickstart): run it and read your first flag.
-- [How it fits together](/guide/concepts): environments, apps, dimensions, flags and rules.
+- [How it fits together](/guide/concepts): environments, flag sets, dimensions, flags and rules.
 - [Compared with others](/guide/comparison): when CompanyFeatures fits, and when it doesn't.

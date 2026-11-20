@@ -211,7 +211,7 @@ export async function api<T = any>(method: string, path: string, body?: unknown,
 // Friendly names for evaluation reasons
 export const REASON_LABEL: Record<string, string> = {
   TARGETING_MATCH: 'Rule matched', SPLIT: 'Rollout', DEFAULT: 'Default', STATIC: 'Default (no rules)',
-  DISABLED: 'Flag is off', ERROR: 'Error', FLAG_NOT_FOUND: 'Not sent to this app', TYPE_MISMATCH: 'Wrong value type',
+  DISABLED: 'Flag is off', ERROR: 'Error', FLAG_NOT_FOUND: 'Not in this flag set', TYPE_MISMATCH: 'Wrong value type',
 };
 export const reasonLabel = (r: string) => REASON_LABEL[r] ?? r;
 

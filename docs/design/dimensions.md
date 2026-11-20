@@ -27,7 +27,7 @@ and "no word left behind" test still apply (see "Words").
 - **An entity** is an entry of a dimension: the region `eu`, the chain `acme`, the store `acme-12`. It has a key, a name
   and, optionally, a parent, which is an entity of the dimension right above (`acme-12`'s parent is `acme`).
 - **Every entity is served, at any level.** It has everything a brand has today: its own settings on every flag, its
-  own app link and file per environment and app, API keys, its own page, Compare, approvals and History.
+  own app link and file per environment and flag set, API keys, its own page, Compare, approvals and History.
 - **An entity follows its parent** on a flag until it has its own settings there. Its parent follows its own parent, and
   so on up to the top, then everyone's settings. Today's brand is the two-level case.
 
@@ -48,7 +48,7 @@ Two dimensions with settings of their own side by side, say `customer` and `regi
   rate drops, and that cache is why delivery is cheap at billions of devices.
 - **"Why it gets this"** becomes a grid of combinations instead of a list of levels.
 
-Anything else you target by stays a rule attribute: country, app, app version, and the attributes you define.
+Anything else you target by stays a rule attribute: country, flag set, app version, and the attributes you define.
 See open decision 1.
 
 ## The order a request is decided in
@@ -119,7 +119,7 @@ they do today. A chain has at most 4 entity levels plus overrides and everyone's
 **App links.** Every entity, at any level, has its own link per environment, as each customer has today:
 
 ```
-/client/v1/flags/<env>/<app>/<entity>/<secret>     secret = HMAC(environment secret, "client-link/<entity>/<link version>")
+/client/v1/flags/<env>/<flag set>/<entity>/<secret>     secret = HMAC(environment secret, "client-link/<entity>/<link version>")
 ```
 
 - **Entity keys are unique across the installation**, not per dimension (open decision 2). So the link needs no
@@ -148,8 +148,8 @@ and say who is asking in the request itself (see "How others do it" below). So:
   ```
 
   - flagd's HTTP sync reads one URL per source, so a shared backend adds one source per entity it serves. The
-    document's `flagSetId` (`<environment>/<entity>`) names it, and that's what flagd's `selector` (`flagSetId=…`)
-    filters on.
+    document's `flagSetId` (`<environment>/<flag set>/<entity>`, such as `prod/api/acme`) names it, and that's what
+    flagd's `selector` (`flagSetId=…`) filters on. It was `<environment>/<entity>` until apps were renamed flag sets.
   - An `entity` key may leave the path off: `GET /sdk/v1/flagd` is its own entity, as today.
   - The dimension must be the entity's, else 404. Keys are unique across the installation, so the server doesn't need
     it, but the address reads like the rules ("Store is acme-12") and a wrong one fails clearly.
@@ -211,7 +211,7 @@ Migration `0012_dimensions.sql` (the next free number: `0011` is the version rel
    read as those.
 
 **Nothing served changes.** After the migration, every entity's file and flagd JSON are byte for byte what they were
-before, for every environment and app (the migration test checks this), and every link and key still works.
+before, for every environment and flag set (the migration test checks this), and every link and key still works.
 
 **What people read does change.** "Customers" in the sidebar becomes "Companies" and "Brands". A rule "Customer is Lumen"
 reads "Company or brand is Lumen". "Company is Globex" reads as before. An admin who wants other words changes them in
@@ -258,10 +258,11 @@ create unique index dimension_one_top on dimension ((true)) where parent_id is n
 ### App files and flagd JSON
 
 - `buildClientFile(snap, app, entity)` and `buildFlagdDoc(snap, app, entity)` work as today and call `forEntity`.
-- **One file per environment, app and entity, at any level.** The CDN caches by path, a publish purges the
+- **One file per environment, flag set and entity, at any level.** The CDN caches by path, a publish purges the
   environment's tag, and a file is built only when a device first asks for it. More levels don't mean more files per
   device, only more entities that could have one.
-- flagd's `flagSetId` stays `<environment>/<entity>`, the same string as today's `<environment>/<customer>`.
+- flagd's `flagSetId` stays `<environment>/<entity>`, the same string as today's `<environment>/<customer>`. (Later,
+  when apps were renamed flag sets, it became `<environment>/<flag set>/<entity>`, such as `prod/api/acme`.)
 - **Running on Cloudflare (not built):** the KV entry `v1/<env>/customer/<customer>` ("its own
   layers, plus its company's") becomes `v1/<env>/entity/<entity>`, holding the entity's own layers only. The edge reads
   the entries of its path (up to 4) at once. One entry per entity with its whole chain would mean rewriting every
@@ -303,7 +304,7 @@ The management API is used only by the console today, so `/api/customers` gets n
 | `GET /api/dimensions/:dimension/:key`, `PUT …` | One entity; `{ name, parent }` |
 | `GET /api/dimensions/:dimension/:key/flags` | What it gets on every flag, with the `levels` of its chain (was `/customers/:key/flags`) |
 | `GET /api/dimensions/:dimension/:key/children` | It and the entities right under it, side by side (was `/customers/:key/brands`) |
-| `GET /api/dimensions/:dimension/:key/link`, `POST …/link/rotate` | Its app link |
+| `GET /api/dimensions/:dimension/:key/link`, `POST …/link/rotate` | Its app link. With `?flagSet=web`, that flag set's path and token; without it, the path has `:flagSet` in place of the key |
 | `GET /api/meta` | Adds `dimensions`; `entities` replaces `customers` (see Limits) |
 | `POST /api/api-keys` | `{ scope: 'entity' \| 'below' \| 'all', entity }` |
 | `PUT /api/flags/:key/layers/:env/:entity` | The same path, for any entity |
@@ -333,7 +334,7 @@ Admins only, like the rest of Settings. No approval; recorded in History as "Cha
   - adding one in the middle: refused while the dimension below it has entities with parents, since each would need a
     new parent; add it at the top or bottom, or move those entities first;
   - removing one: only while it has no entities and no rule uses it.
-- **Setup:** a new installation starts with no dimensions, as it starts with no apps. Settings → Dimensions comes
+- **Setup:** a new installation starts with no dimensions, as it starts with no flag sets. Settings → Dimensions comes
   before the first entity in the setup steps. Until then every app gets everyone's file.
 
 ### A page per dimension
@@ -411,7 +412,7 @@ The equivalence tests matter most, and they must hold for 1 to 4 levels.
 - **`evaluate()` and `forEntity()` with `answerFor()` agree** for every flag, every entity at every level (top, middle,
   bottom, with no parent) and no entity, over many requests.
 - **App files (`test/client-file.test.ts`):** the device's pick from the file equals `evaluate()`, value and group, for
-  every flag, entity at every level, app and device, at 1–4 levels.
+  every flag, entity at every level, flag set and device, at 1–4 levels.
 - **flagd (`test/flagd.test.ts`):** flagd's answer from the JSON equals ours, for the same cases.
 - **Nothing private reaches a file or flagd JSON:** no dimension attribute, `entity` or alias in either, for any entity.
   That includes a chain under rules on "Store is …", and no entity at all.
@@ -468,8 +469,8 @@ The equivalence tests matter most, and they must hold for 1 to 4 levels.
    without brands can remove the empty `brand` dimension and call `company` "customer" in Settings.
 7. **Rename the database's `customer` table and columns?** Recommended: yes, in 0012. A `customer` table holding regions
    and stores misleads every developer, and every query that touches it changes anyway.
-8. **Which entities can have apps?** Recommended: every entity at every level, as every customer and brand can today. A
-   link costs nothing until a device uses it, so there's no switch per dimension.
+8. **Which entities can have app links?** Recommended: every entity at every level, as every customer and brand can
+   today. A link costs nothing until a device uses it, so there's no switch per dimension.
 9. **Add the `below` key scope (an entity and those under it)?** Recommended: yes. A chain's backend serving its stores
    shouldn't need an `all` key that can read every other chain.
 10. **How does a backend say which entity it's asking for?** Recommended: by its dimension, in the request, never in a

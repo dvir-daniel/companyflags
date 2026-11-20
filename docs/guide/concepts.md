@@ -1,6 +1,6 @@
 # How it fits together
 
-CompanyFeatures has a few parts that build on each other. You set up **environments**, **apps** and your
+CompanyFeatures has a few parts that build on each other. You set up **environments**, **flag sets** and your
 **dimensions** once. Then you create **flags**, give them **values** and **rules**, and let any **entity** (a customer,
 a company and its brands, a store) have settings of its own. Every answer, whether over OFREP, in a backend's flagd
 JSON or in the console's trace, comes from the same evaluator.
@@ -18,7 +18,7 @@ One flag, in one environment, asked by a device of Acme Kids, is decided in this
 An environment is a separate copy of every flag's settings: Development, Staging, Production. You add them in
 **Settings → Environments**. Each one has:
 
-- its own settings on every flag (on or off, rules, defaults), and its own list of apps each flag is sent to;
+- its own settings on every flag (on or off, rules, defaults), and its own list of the flag sets each flag is in;
 - **Approvals needed**, from 0 to 5. With 1 or more it is a protected environment: every change there is reviewed by
   someone other than its author before it applies. See [Approvals and history](/guide/approvals);
 - numbered **versions**. Every change that alters what the environment serves makes a new one, and you can restore an
@@ -28,22 +28,23 @@ An environment is a separate copy of every flag's settings: Development, Staging
 A flag exists in every environment. A new flag starts off in every protected environment, and every flag starts off in
 an environment you add later: turning it on there is a change like any other.
 
-## Apps and backends
+## Flag sets
 
-In **Settings → Apps** you add what flags are sent to: apps that run on your users' devices (`web`, `ios`,
-`android`) and backends (`api`). The app's key never changes. On each flag you choose which apps it is sent to, per
-environment. A flag that isn't sent to an app doesn't exist for that app.
+A **flag set** is a group of flags sent together. In **Settings → Flag sets** you add one for each app that runs on
+your users' devices (`web`, `ios`, `android`: a flag set **for apps**) and each backend (`api`: a flag set **for
+backends**). Its key never changes. On each flag you choose which flag sets it is in, per environment. A flag that
+isn't in a flag set doesn't exist for the app or backend that reads it.
 
 Both get their flags through [OpenFeature](https://openfeature.dev), with OpenFeature's own providers:
 
 | Who | How |
 |---|---|
-| Apps | OFREP (OpenFeature Remote Evaluation Protocol), with their app token (made from their entity's app link, for that app): the server evaluates the flags for that entity and the device's context. |
+| Apps | OFREP (OpenFeature Remote Evaluation Protocol), with their app token (made from their entity's app link, for their flag set): the server evaluates the flags for that entity and the device's context. |
 | Backends | OFREP with an API key, naming the entity in the evaluation context; or flagd JSON (one entity's flags, evaluated in-process by flagd or OpenFeature's flagd provider). |
 
-The credential decides the environment, the app, and which entities a request may be about: an app's token is its own
-entity only; a backend's API key is its entity, the ones below it, or any. Apps never hold an API key. See
-[Apps](/guide/apps), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
+The credential decides the environment, the flag set, and which entities a request may be about: an app's token is
+its own entity only; a backend's API key is its entity, the ones below it, or any. Apps never hold an API key. See
+[Flag sets](/guide/flag-sets), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
 
 ## Dimensions and entities
 
@@ -68,7 +69,7 @@ values** you type straight into the rules and defaults. See [Flags and rules](/g
 A rule is a list of checks and what to serve when they all pass: one value, or a % of devices. A check reads an
 **attribute**:
 
-- what the server works out from who is asking: the app (from its link or API key), and one attribute per dimension
+- what the server works out from who is asking: the flag set (from the link or API key), and one attribute per dimension
   ("Company is Globex" covers Globex, Lumen and Bolt), plus `entity` for exactly the one asking;
 - what the app reports about itself: `app.version`, `device.id`, `device.os`, `locale.language`, `geo.country` and so on.
 
@@ -122,14 +123,14 @@ flagd JSON has no place for group names.
 place the order above is written. It is behind:
 
 - **OFREP answers.** The server evaluates each flag for the entity and the attributes in the request.
-- **flagd JSON for backends.** For one entity, the server settles everything it knows (the app, the environment, every
-  dimension) and writes the rest as flagd's JsonLogic, so flagd or OpenFeature's flagd provider gives the same answers in
-  your backend. No list of entities and no other entity's value is in it.
-- **App files.** The same settling, as a values-only file per environment, app and entity, built on publish and cached
-  by a CDN. What only the device knows stays as short `when` lines.
-- **The trace.** The flag page's **Debug** tab runs the evaluator for an entity, an app and the attributes you type, and
-  shows each step: which levels were checked, each check with the value it read, the device's bucket, what was skipped
-  and why.
+- **flagd JSON for backends.** For one entity, the server settles everything it knows (the flag set, the environment,
+  every dimension) and writes the rest as flagd's JsonLogic, so flagd or OpenFeature's flagd provider gives the same
+  answers in your backend. No list of entities and no other entity's value is in it.
+- **App files.** The same settling, as a values-only file per environment, flag set and entity, built on publish and
+  cached by a CDN. What only the device knows stays as short `when` lines.
+- **The trace.** The flag page's **Debug** tab runs the evaluator for an entity, a flag set and the attributes you type,
+  and shows each step: which levels were checked, each check with the value it read, the device's bucket, what was
+  skipped and why.
 
 The server's tests check that flagd's answer from the JSON, and a pick from an app file, always equal the evaluator's.
 

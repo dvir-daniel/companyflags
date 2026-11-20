@@ -163,7 +163,7 @@ export function SignInPage() {
   return (
     <Frame tab={shown} onTab={switchTo}
       title={signup ? 'Create the admin account' : 'Sign in'}
-      intro={signup ? 'Nobody has an account here yet: the first one is the admin’s. The admin sets up environments and apps, and invites everyone else.'
+      intro={signup ? 'Nobody has an account here yet: the first one is the admin’s. The admin sets up environments and flag sets, and invites everyone else.'
         : 'Enter your email below to sign in to your account'}
       footer={signup ? 'If this server was used before, use your admin email.' : INVITE_ONLY}>
       <form className="grid gap-4" onSubmit={submit}>

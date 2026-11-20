@@ -5,10 +5,10 @@ remote evaluation and the health checks. All of them answer JSON. The examples u
 
 | Endpoint | Who calls it | Auth |
 |---|---|---|
-| `GET /client/v1/flags/<env>/<app>` | apps, before sign-in | none |
-| `GET /client/v1/flags/<env>/<app>/<entity>/<secret>` | apps | the secret link |
+| `GET /client/v1/flags/<env>/<flag set>` | apps, before sign-in | none |
+| `GET /client/v1/flags/<env>/<flag set>/<entity>/<secret>` | apps | the secret link |
 | `GET /sdk/v1/flagd/<dimension>/<entity>`, `GET /sdk/v1/flagd` | backends, flagd | API key |
-| `GET /sdk/v1/links/<dimension>/<entity>?app=<app>` | backends | API key |
+| `GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>` | backends | API key |
 | `POST /ofrep/v1/evaluate/flags`, `POST /ofrep/v1/evaluate/flags/<key>` | OpenFeature OFREP providers | an app's token, or a backend's API key |
 | `GET /ofrep/v1/events/<env>/<signature>` | OpenFeature OFREP providers (change events) | the signature from an answer |
 | `GET /healthz`, `GET /readyz` | load balancers, orchestrators | none |
@@ -29,12 +29,13 @@ own errors the OFREP way (below).
 ## App files
 
 ```http
-GET /client/v1/flags/<env>/<app>
-GET /client/v1/flags/<env>/<app>/<entity>/<secret>
+GET /client/v1/flags/<env>/<flag set>
+GET /client/v1/flags/<env>/<flag set>/<entity>/<secret>
 ```
 
-The first is what every device of that app gets before sign-in. The second is one entity's file, at its secret link;
-the console shows it on the entity's page, and backends get it from `/sdk/v1/links` (below). `HEAD` works too.
+`<flag set>` is the key of a flag set for apps, such as `web`. The first is what every device reading it gets before
+sign-in. The second is one entity's file, at its secret link; the console shows it on the entity's page, and backends
+get it from `/sdk/v1/links` (below). `HEAD` works too.
 
 ```json
 {
@@ -68,12 +69,12 @@ kept for a day. See [CDN](/self-hosting/cdn) for caching them.
 |---|---|
 | `404 {"error":"no file at this link"}` | the entity doesn't exist or the secret is wrong: the same answer for every wrong link |
 | `404 {"error":"environment \"<env>\" not found"}` | no such environment |
-| `404 {"error":"app \"<app>\" not found"}` | no such app, or it is a backend (backends have no file) |
+| `404 {"error":"flag set \"<key>\" not found"}` | no such flag set, or it is for backends (they have no file) |
 
 ## Backends
 
 All backend endpoints take an API key: `Authorization: Bearer <key>`. A key belongs to one environment and one
-backend app, and its scope (`entity`, `below` or `all`) says which entities it may ask about. See
+flag set for backends, and its scope (`entity`, `below` or `all`) says which entities it may ask about. See
 [Backends](/guide/backends).
 
 ### flagd JSON
@@ -83,8 +84,9 @@ GET /sdk/v1/flagd/<dimension>/<entity>
 GET /sdk/v1/flagd
 ```
 
-One entity's flags as one flagd flag set, `flagSetId` `<env>/<entity>`. The path-less form is for a key scoped to one
-entity (or `below` one, for its own). `Cache-Control: private, no-cache`; `ETag` and `If-None-Match` → `304`.
+The key's flag set for one entity, as one flagd flag set: `flagSetId` is `<env>/<flag set>/<entity>`, such as
+`prod/api/acme`. The path-less form is for a key scoped to one entity (or `below` one, for its own).
+`Cache-Control: private, no-cache`; `ETag` and `If-None-Match` → `304`.
 
 | Status | When |
 |---|---|
@@ -97,13 +99,13 @@ entity (or `below` one, for its own). `Cache-Control: private, no-cache`; `ETag`
 ### An entity's app link
 
 ```http
-GET /sdk/v1/links/<dimension>/<entity>?app=<app>
+GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>
 ```
 
 ```json
 {
   "environment": "prod",
-  "app": "web",
+  "flagSet": "web",
   "entity": "acme",
   "path": "/client/v1/flags/prod/web/acme/<secret>",
   "token": "ffl_prod.web.acme.<secret>"
@@ -115,10 +117,10 @@ key's environment. `Cache-Control: no-store`.
 
 | Status | When |
 |---|---|
-| `400` | no `?app=` |
+| `400` | no `?flagSet=`: `{"error":"name the flag set the link is for: ?flagSet=<key>, e.g. ?flagSet=web"}` |
 | `401` | no key, or an unknown or revoked one |
 | `403` | the entity is outside the key's scope |
-| `404` | no such dimension, entity or app, or the app is a backend |
+| `404` | no such dimension, entity or flag set, or the flag set is for backends |
 
 ## OpenFeature remote evaluation (OFREP)
 
@@ -126,7 +128,7 @@ For OpenFeature's OFREP providers, in apps (web, Android, iOS) and on servers. R
 [OFREP specification](https://github.com/open-feature/protocol) (0.4).
 
 ```http
-POST /ofrep/v1/evaluate/flags            every flag sent to the app, at once
+POST /ofrep/v1/evaluate/flags            every flag in the flag set, at once
 POST /ofrep/v1/evaluate/flags/<key>      one flag
 Authorization: Bearer <credential>       or OFREP's X-API-Key: <credential>
 Content-Type: application/json
@@ -134,10 +136,11 @@ Content-Type: application/json
 { "context": { "targetingKey": "d-1", "company": "acme", "app": { "version": "6.0.0" } } }
 ```
 
-**The credential** says the environment, the app and which entities it may ask about:
+**The credential** says the environment, the flag set and which entities it may ask about:
 
-- an **app** sends its app token, `ffl_<env>.<app>.<entity>.<secret>`, made from its entity's link for that app (from `/sdk/v1/links` or the
-  entity's **App link** in the console). It asks as that entity only. Apps never hold an API key;
+- an **app** sends its app token, `ffl_<env>.<flag set>.<entity>.<secret>`, made from its entity's link for its flag set
+  (from `/sdk/v1/links` or the entity's **App link** in the console). It asks as that entity only. Apps never hold an
+  API key;
 - a **backend** sends its API key, within its scope (`entity`, `below` or `all`).
 
 **The context:**
@@ -148,14 +151,14 @@ Content-Type: application/json
   entity, which is what every device gets before sign-in.
 - The rest is what the device or request knows about itself, nested or dotted (`{"app": {"version": "6.0.0"}}` is
   `app.version`). `targetingKey` is the device ID a % of devices is decided by, unless the context has `device.id`.
-  What it says about the app or environment is ignored.
+  What it says about the flag set or environment is ignored.
 
 **Answers:**
 
 - One flag: `{ "key", "reason", "variant", "value", "metadata" }`. `metadata.group` is a % rule's group name, when it
   has one. `Cache-Control: no-store`.
-- Every flag: `{ "flags": [ … ], "metadata": { "environment": "prod" } }`, one answer per flag sent to the app, with a
-  weak `ETag` and `Cache-Control: private, no-cache`. `If-None-Match` with the ETag → `304` while nothing changed.
+- Every flag: `{ "flags": [ … ], "metadata": { "environment": "prod" } }`, one answer per flag in the flag set, with
+  a weak `ETag` and `Cache-Control: private, no-cache`. `If-None-Match` with the ETag → `304` while nothing changed.
 - A flag that uses the app's code default answers with a `reason` and no `value`, so the provider returns the default
   in the app's code.
 - An error for a flag or a request is `{ "key", "errorCode", "errorDetails" }` (`key` only for one flag).
@@ -167,7 +170,7 @@ Content-Type: application/json
 | `400` | `PARSE_ERROR`: the body isn't JSON; `INVALID_CONTEXT`: no `context`, an entity that doesn't exist, or one not under the entity named above it; for one flag, `GENERAL` when it can't be evaluated |
 | `401` | `{"error":"unknown or replaced app link"}` for a wrong token, `{"error":"unknown or revoked API key"}` for a wrong key, `{"error":"missing API key (Authorization: Bearer <key>)"}` without one |
 | `403` | `GENERAL`: the entity is outside the credential's scope |
-| `404` | one flag: `FLAG_NOT_FOUND`, the flag doesn't exist or isn't sent to this app |
+| `404` | one flag: `FLAG_NOT_FOUND`, the flag doesn't exist or isn't in this flag set |
 
 **Change events.** The answer for every flag also has `eventStreams`: one server-sent events stream,
 `GET /ofrep/v1/events/<env>/<signature>`, for the whole environment. It sends `{"type":"refetchEvaluation","etag":"<revision>"}`

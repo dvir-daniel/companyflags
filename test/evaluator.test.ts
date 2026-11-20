@@ -73,7 +73,7 @@ test('evaluate() says which section decided, and words.ts names it', () => {
   assert.equal(sourceText(r.decidedBy), 'Rule for everyone');
   assert.equal(evaluate(snapOf(flag({ enabled: false })), 'f', ctx).decidedBy.section, 'off');
   assert.equal(evaluate(snapOf(f), 'f', { ...ctx, project: 'ios' }).decidedBy.section, 'not_sent');
-  assert.equal(sourceText(evaluate(snapOf(f), 'f', { ...ctx, project: 'ios' }).decidedBy, { project: 'ios' }), 'Not sent to ios');
+  assert.equal(sourceText(evaluate(snapOf(f), 'f', { ...ctx, project: 'ios' }).decidedBy, { project: 'ios' }), 'Not in ios');
 });
 
 test('who is asking: the console simulates exactly what the app would send', () => {

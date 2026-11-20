@@ -108,7 +108,7 @@ If your proxy adds headers of its own, don't loosen these.
 ## 10. Running more than one instance
 
 Several instances on one Postgres server are supported: each picks up a publish within about a second by watching the
-environments' revision numbers; API keys, links and apps are cached for up to a minute per instance. With the
+environments' revision numbers; API keys, links and flag sets are cached for up to a minute per instance. With the
 embedded database, run one.
 
 When you run several:

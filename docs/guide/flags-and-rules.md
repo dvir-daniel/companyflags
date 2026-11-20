@@ -120,8 +120,8 @@ A % rule can name its groups: one name per part, and one for devices the rule ap
 Names use letters, digits, `_`, `-` and `.`, up to 64 characters, each different.
 
 The answer then carries the device's group in its metadata (`group`), for your own analytics. Devices the rule doesn't
-apply to (another app, an older version, no device ID) get no group. A device outside a named % keeps the outside name
-even when a later rule decides its value. flagd JSON has no place for group names.
+apply to (another flag set, an older version, no device ID) get no group. A device outside a named % keeps the outside
+name even when a later rule decides its value. flagd JSON has no place for group names.
 
 The sample's `new_checkout` serves `on` to 10% of devices, named `new-checkout`, and names the devices outside it
 `old-checkout`.
@@ -132,8 +132,8 @@ An override is a **locked** rule for everyone. Overrides come first in the flag'
 entity's own settings, and no entity can change them. Entities can't have overrides of their own.
 
 Overrides **fail closed**: a check that can't be decided counts as a match. The sample's override on `new_checkout`,
-"App is android and App version is below 5.0.0 → off", keeps the new checkout off for an Android build that doesn't
-report its version.
+"Flag set is android and App version is below 5.0.0 → off", keeps the new checkout off for an Android build that
+doesn't report its version.
 
 ::: warning
 An override on a dimension attribute matches every request that names no entity, since the value is missing there.
@@ -158,7 +158,7 @@ Each flag has an On/Off switch per environment, on its defaults. Entities' own s
 
 **Off sends nothing.** Every app and backend uses the default in its own code: the answer's reason is `DISABLED`, and
 in flagd JSON the flag's state is `DISABLED`. Write your code defaults so that "off" is the safe value. A flag that
-isn't sent to an app at all is `FLAG_NOT_FOUND` for it.
+isn't in a flag set at all is `FLAG_NOT_FOUND` for whoever reads that flag set.
 
 ## Why a device gets its value
 
@@ -171,23 +171,23 @@ Each answer has a reason:
 | `DEFAULT` | A default, after rules that didn't match |
 | `STATIC` | Everyone's default, with no rules in play |
 | `DISABLED` | The flag is off |
-| `ERROR` | `FLAG_NOT_FOUND` (not sent to this app) or `TYPE_MISMATCH` |
+| `ERROR` | `FLAG_NOT_FOUND` (not in this flag set) or `TYPE_MISMATCH` |
 
 ### The Debug tab
 
 On a flag's page, the **Debug** tab answers "why does this device get this value?". Under **Test a device** you pick
-the entity, the app, an app version, a device ID (or a random one) and any other attribute an app reports. It runs the
-same evaluator in your browser, on the rules on the page, unpublished edits included.
+the entity, the flag set, an app version, a device ID (or a random one) and any other attribute an app reports. It runs
+the same evaluator in your browser, on the rules on the page, unpublished edits included.
 
 It shows the value and what decided it ("Globex's rule", "Rule for everyone · % of devices"), the group sent to the
 app, and **How it was decided**, step by step:
 
-- whether the flag is sent to that app, and whether it is on;
+- whether the flag is in that flag set, and whether it is on;
 - each level of the chain: overrides, the entity's own rules, those of each entity above it, the rules for everyone,
   the default;
 - each check with the value it read and whether it passed, with a note when a missing value counted as a match;
 - for a %, the ID used, the salt, the bucket and the part it fell in;
 - rules skipped because an entity uses "Own settings only", and whose choice it was.
 
-`POST /api/trace` gives the same answer from the API. To see two sides at once (two entities, environments or apps,
-flag by flag), use **Compare** in the sidebar.
+`POST /api/trace` gives the same answer from the API. To see two sides at once (two entities, environments or flag
+sets, flag by flag), use **Compare** in the sidebar.

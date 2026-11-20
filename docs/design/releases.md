@@ -21,7 +21,7 @@ approvals, history and app files. There is no migration.
 |---|---|---|
 | **Not started** | Nobody | The default is false, or the in-app default. None of the rules below exist. A new flag in a protected environment starts off, and reads as not started too. |
 | **Targeted customers** | These customers, on every device, whatever the % | A rule for everyone, "Customer is one of …", serving true |
-| **% of devices** | The targeted customers, plus N% of everyone's devices | A rule serving true to one range `[0, N%)`, split by device ID (the salt is the flag key). It may be limited to some apps. |
+| **% of devices** | The targeted customers, plus N% of everyone's devices | A rule serving true to one range `[0, N%)`, split by device ID (the salt is the flag key). It may be limited to some flag sets. |
 | **Everyone** | Every device, with an ID or without | The default is true; the release's rules are removed |
 | **Paused** | Nobody new | The release's rules are kept, switched off, so resuming brings back the same devices |
 | **Off** | Nobody gets a value | The flag's switch: apps use the default in their code |
@@ -33,8 +33,8 @@ approvals, history and app files. There is no migration.
   shrinks the same range, so the devices that keep the feature are the ones that had it longest.
 - **Everyone sets the default, not a 100% rule.** A device without an ID never matches a % rule, so a 100% rule
   would leave it out.
-- **Back from everyone goes to 50%** of every app's devices, the same half as before (same salt). A % limited to
-  some apps on the flag page isn't brought back.
+- **Back from everyone goes to 50%** of every device, the same half as before (same salt). A % limited to some flag
+  sets on the flag page isn't brought back.
 - **Rules are recognised by their shape, not their names.** `dark_mode_v2`'s "Beta customers" rule reads as
   targeted customers. Overrides and other rules stay where they are, and the release page lists them under
   **Not part of the steps**.
@@ -49,7 +49,7 @@ approvals, history and app files. There is no migration.
   owner, the remove-by date (red once past), and any request still waiting.
   - **Filters:** search, **Show** (rolling out or not started in that environment, ready to clean up, overdue) and
     owner. `GET /releases?environment=` applies "rolling out" and "not started" to that environment.
-  - **+ New release:** name, key, description, owner, remove-by date (90 days ahead by default), tags and apps. It
+  - **+ New release:** name, key, description, owner, remove-by date (90 days ahead by default), tags and flag sets. It
     starts not started everywhere.
 - **`#/release/<key>/<env>`, one release,** in two tabs like a flag's page. The bar holds the Environment picker
   (its menu shows the step in each) and the flag's switch.
@@ -81,11 +81,11 @@ Every step is one save of the base layer, `PUT /flags/:key/layers/:env/base`, wi
 
 ## Cleanup
 
-Once everyone has it in every environment it's sent to, the release page shows **Clean up** and the list marks it
-**Ready to clean up**:
+Once everyone has it in every environment where it's in a flag set, the release page shows **Clean up** and the list
+marks it **Ready to clean up**:
 
 1. **Remove the flag from your code.** On mobile, keep sending it until old app versions are gone.
-2. **Stop sending it.** In each protected environment, one request turns it off and sends it to no app:
+2. **Stop sending it.** In each protected environment, one request turns it off and takes it out of every flag set:
    `POST /change-sets` with a layer item and a delivery item, applied in one version.
 3. **Archive it.** It leaves every environment and the list.
 
@@ -106,7 +106,7 @@ Nothing else changed: no migration, no new way to save, no change to who may do 
   - keep overrides and other rules in place;
   - read back as the step they were;
   - the ladder up and back down, back from everyone, pause and resume.
-- **Rules made on the flag page:** a % on some apps, a name of its own, a backup ID; and custom shapes.
+- **Rules made on the flag page:** a % on some flag sets, a name of its own, a backup ID; and custom shapes.
 - **End to end:**
   - the list and its filters;
   - in dev, the devices in at 5% are still in at 25%, back to 5% keeps them, pause and resume bring them back, and

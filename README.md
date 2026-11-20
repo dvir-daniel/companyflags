@@ -71,7 +71,7 @@ docker run -d -p 8787:8787 -v companyfeatures:/data \
 ```
 
 Open <http://localhost:8787>, create the admin account, and the console walks you through four steps: environments,
-apps, dimensions, and your first flag.
+flag sets, dimensions, and your first flag.
 
 For production, run it with Postgres:
 
@@ -91,8 +91,8 @@ pnpm serve           # builds the console and serves it with the API on http://l
 
 ## Read flags with OpenFeature
 
-Your backend gets each app's token when someone signs in (`GET /sdk/v1/links/<dimension>/<entity>?app=web`, with an
-API key). The app uses OpenFeature's own OFREP provider:
+Each app reads a flag set: the flags you put in it. Your backend gets the app's token when someone signs in
+(`GET /sdk/v1/links/<dimension>/<entity>?flagSet=web`, with an API key). The app uses OpenFeature's own OFREP provider:
 
 ```ts
 import { OpenFeature } from '@openfeature/web-sdk';
@@ -136,7 +136,7 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 | | |
 |---|---|
 | [Introduction](https://dvir-daniel.github.io/companyfeatures/guide/introduction) | What it is, who it's for, what it doesn't do yet |
-| [Concepts](https://dvir-daniel.github.io/companyfeatures/guide/concepts) | Environments, apps, dimensions, flags, rules |
+| [Concepts](https://dvir-daniel.github.io/companyfeatures/guide/concepts) | Environments, flag sets, dimensions, flags, rules |
 | [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) | Web, React, Android, iOS and backends |
 | [Self-hosting](https://dvir-daniel.github.io/companyfeatures/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
 | [HTTP API](https://dvir-daniel.github.io/companyfeatures/reference/http-api) | OFREP, app files, flagd JSON, links, health |

@@ -82,7 +82,7 @@ compare it with the others, and show it everywhere. The strict check is a new fu
 | **Everyone on 1.0.1** | Every device, with an ID or without | The default is 1.0.1. None of the release's rules exist, and no higher version exists. A new release starts here, on its first version. |
 | **Not started: 1.0.2 is ready** | Everyone is still on 1.0.1 | The same defaults, but a higher version exists. If there are several, the newest. |
 | **Targeted customers** | These customers on 1.0.2 on every device; everyone else on 1.0.1 | A rule "Customer is one of …" serving 1.0.2 |
-| **% of devices** | The targeted customers, plus N% of devices, on 1.0.2 | A rule serving 1.0.2 to one range `[0, N%)` by device ID, salted `<flag key>/<version>` (`web_bundle/1.0.2`). It may be limited to some apps. |
+| **% of devices** | The targeted customers, plus N% of devices, on 1.0.2 | A rule serving 1.0.2 to one range `[0, N%)` by device ID, salted `<flag key>/<version>` (`web_bundle/1.0.2`). It may be limited to some flag sets. |
 | **Rolled back** | Everyone on 1.0.1 again | The release's rules are kept but switched off (what **Pause** does today), so **Resume** puts the same devices back on 1.0.2 |
 | **Off** | Nobody gets a value | The flag's switch: apps use the version built into them |
 | **Custom** | Depends on the rules | Anything else. For example, two versions moving at once, a % serving a version that isn't higher than the default, or another rule serving the version that's moving. It's edited on the flag page. |
@@ -99,13 +99,13 @@ compare it with the others, and show it everywhere. The strict check is a new fu
 
 ## From 1.0.0 to 1.0.1, in the console
 
-The example is `web_bundle`, sent to `web`. Development needs no review; Production does.
+The example is `web_bundle`, in the flag set `web`. Development needs no review; Production does.
 
-1. **Create it.** **+ New release** now asks first: **What does it release?** with two choices, **A feature (on or off)**
-   and **Versions**. For Versions the form has a name and key (*Web bundle*, `web_bundle`), a **First version**
-   (`1.0.0`, checked as you type), owner, tags and apps. There's no remove-by date. The form's note says: "Your code
-   reads the version and loads it. Turned off, the flag sends nothing, and apps use the version built into them." It
-   starts on 1.0.0 in every environment, and off where changes are reviewed, like any new flag.
+1. **Create it.** **+ New release** now asks first: **What does it release?** with two choices, **A feature (on or
+   off)** and **Versions**. For Versions the form has a name and key (*Web bundle*, `web_bundle`), a **First version**
+   (`1.0.0`, checked as you type), owner, tags and flag sets. There's no remove-by date. The form's note says: "Your
+   code reads the version and loads it. Turned off, the flag sends nothing, and apps use the version built into them."
+   It starts on 1.0.0 in every environment, and off where changes are reviewed, like any new flag.
 2. **Add 1.0.1.** The release page's bar has **+ New version**. It opens a small dialog:
    - The version input is filled with the next patch, `1.0.1`. Three chips, **Patch 1.0.1 · Minor 1.1.0 · Major 2.0.0**,
      set it (bumps follow `npm version`). A prerelease is typed by hand.
