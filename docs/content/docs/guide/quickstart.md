@@ -81,7 +81,7 @@ curl -X POST http://localhost:8787/ofrep/v1/evaluate/flags \
 }
 ```
 
-In a web app that is OpenFeature's own OFREP provider (see [OpenFeature](/sdk/openfeature)):
+In a web app that is OpenFeature's own OFREP provider (see [OpenFeature](/reading/overview)):
 
 ```ts
 import { OpenFeature } from '@openfeature/web-sdk';

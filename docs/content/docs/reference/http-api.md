@@ -84,7 +84,7 @@ get it from `/sdk/v1/links` (below). `HEAD` works too.
 ```
 
 `revision` is the environment's publish number. The flags hold values only; the format of each flag, its `when`
-lines and how an app reads them are in [The CDN file](/sdk/cdn-file).
+lines and how an app reads them are in [The CDN file](/reading/local-apps).
 
 Headers:
 
@@ -111,7 +111,7 @@ kept for a day. See [CDN](/self-hosting/cdn) for caching them.
 All backend endpoints take a backend service's key: `Authorization: Bearer <key>`. A key belongs to one environment
 and one service, and its scope (`entity`, `below` or `all`) says which entities it may ask about. An app service's
 key gets `403` here, and so does a backend's key sent with an `Origin` header (from a browser). See
-[Backends](/guide/backends).
+[Backends](/reading/overview).
 
 ### flagd JSON
 

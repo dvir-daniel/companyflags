@@ -140,9 +140,9 @@ const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme
 Or it runs [flagd](https://flagd.dev) next to it, which downloads the entity's rules as flagd JSON, and evaluates every
 flag in memory. To pin an app to its own entity, a backend can hand it a signed app link at sign-in
 (`GET /sdk/v1/links/<dimension>/<entity>?service=web`); that is optional. See
-[OpenFeature](https://dvir-daniel.github.io/companyflags/sdk/openfeature),
+[OpenFeature](https://dvir-daniel.github.io/companyflags/reading/overview),
 [Services](https://dvir-daniel.github.io/companyflags/guide/services) and
-[Backends](https://dvir-daniel.github.io/companyflags/guide/backends).
+[Backends](https://dvir-daniel.github.io/companyflags/reading/overview).
 
 ## Examples
 
@@ -212,7 +212,7 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 |---|---|
 | [Introduction](https://dvir-daniel.github.io/companyflags/guide/introduction) | What it is, who it's for, what it doesn't do yet |
 | [Concepts](https://dvir-daniel.github.io/companyflags/guide/concepts) | Environments, services, dimensions, flags, rules |
-| [OpenFeature](https://dvir-daniel.github.io/companyflags/sdk/openfeature) | Web, React, Android, iOS and backends |
+| [OpenFeature](https://dvir-daniel.github.io/companyflags/reading/overview) | Web, React, Android, iOS and backends |
 | [Migration](https://dvir-daniel.github.io/companyflags/guide/migration) | Moving from another system, import, export, webhooks |
 | [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
 | [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources) | `llms.txt`, a skill for your agents, and OpenFeature's MCP server |

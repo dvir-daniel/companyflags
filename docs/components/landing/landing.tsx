@@ -283,9 +283,9 @@ export function Landing() {
               ))}</code></pre>
             </div>
             <div className="side">
-              <Link href="/sdk/openfeature#web-apps" className={usageTab === 'Web app' ? 'on' : undefined}>Apps: OFREP</Link>
-              <Link href="/sdk/openfeature#backends" className={usageTab === 'Backend' ? 'on' : undefined}>Backends: OFREP</Link>
-              <Link href="/guide/backends" className={usageTab === 'flagd' ? 'on' : undefined}>Backends: flagd</Link>
+              <Link href="/reading/remote-apps#web-apps" className={usageTab === 'Web app' ? 'on' : undefined}>Apps: OFREP</Link>
+              <Link href="/reading/remote-backends#ask-with-ofrep" className={usageTab === 'Backend' ? 'on' : undefined}>Backends: OFREP</Link>
+              <Link href="/reading/overview" className={usageTab === 'flagd' ? 'on' : undefined}>Backends: flagd</Link>
               <p>No SDK of ours: OpenFeature’s own providers, on the web, Android, iOS and servers. An app reads with its service’s public key; a backend keeps its own key secret.</p>
             </div>
           </div>

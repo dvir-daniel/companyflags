@@ -114,7 +114,7 @@ Apps and backends put their attributes in the OpenFeature evaluation context, by
 - **Versions** may be sent as devices report them (`5.10`, `v5`, `6.0.0-beta.1`). One that can't be read at all, such
   as `abc`, leaves a version check undecided, like a missing value.
 
-See [OpenFeature](/sdk/openfeature) and [Services](/guide/services) for setting up the providers.
+See [OpenFeature](/reading/overview) and [Services](/guide/services) for setting up the providers.
 
 ## The country
 

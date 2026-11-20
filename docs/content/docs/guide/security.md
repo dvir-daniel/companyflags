@@ -7,7 +7,7 @@ description: "This page says what each part of an installation can see and do: a
 
 An app gets values for one app service in one environment, never the rules. It reads them in one of three ways: over
 OFREP with its app service's key (see [API keys](#api-keys)), over OFREP with a token from its entity's signed app
-link (see [App tokens](#app-tokens)), or as its entity's file at a secret link (see [The CDN file](/sdk/cdn-file)).
+link (see [App tokens](#app-tokens)), or as its entity's file at a secret link (see [The CDN file](/reading/local-apps)).
 A backend service's key never goes in an app.
 
 - **Values only.** Rules on the dimensions, the service and the environment are settled on the server before the
@@ -44,7 +44,7 @@ entity:
 - The secret is an HMAC-SHA256 of the entity and its link version, made with the environment's own secret, and cut
   to 22 characters. It differs per environment; the service is in the path, not in the secret.
 - Anyone with the link can read the file. Treat it as a secret you hand to signed-in users of that entity: your
-  backend gives it to the app at sign-in (see [Backends](/guide/backends#hand-links-to-apps)). Viewers can't see links
+  backend gives it to the app at sign-in (see [Backends](/reading/context#signed-app-links)). Viewers can't see links
   in the console.
 - **Replacing** an entity's link (its page → **App link** → **Replace link**) gives it a new version in every
   environment. The old link and its token stop working at once on the instance that replaced it and within a minute

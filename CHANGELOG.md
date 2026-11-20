@@ -4,6 +4,10 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **Docs: "Reading flags" by who decides.** Six pages: an overview with the four ways (an app or a backend, and the
+  server or your code deciding), the evaluation context, remote evaluation in apps and in backends (OFREP), and local
+  evaluation in apps (the CDN file, formerly the app file) and in backends (flagd). The old pages point to the new ones.
+
 - **The docs site runs on Next.js and Fumadocs,** as better-auth.com's does, instead of VitePress. The pages are the
   same, at the same addresses, in `docs/content/docs/`. You get a sidebar of groups that open and close, a search box,
   "Copy Markdown" and "Open in" on every page, and a progress bar on phones. `/llms.txt`, `/llms-full.txt` and each

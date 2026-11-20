@@ -53,7 +53,7 @@ Without a purge, a change reaches apps once the CDN's copy is a minute old and t
 With a purge, CompanyFlags drops the environment's files from Cloudflare right after each publish, so apps get the
 change in seconds.
 
-The purge is the [`cloudflare()` plugin](/reference/plugins#cloudflare-options). It runs unless your config file
+The purge is the [`cloudflare()` plugin](/reference/plugins#cloudflareoptions). It runs unless your config file
 lists plugins without it, and its zone and token can be set there too: `cloudflare({ zoneId, token })`.
 
 The purge is one API request per publish:
@@ -95,7 +95,7 @@ then see that **Settings → CDN** shows the purge went through and that the nex
 
 Rules can check `geo.country`, a two-letter country code. The file never varies by country: the server doesn't know
 where a device is. The app reads the country from a `CF-IPCountry` response header next to the file, and checks the
-file's country lines itself (see [The CDN file](/sdk/cdn-file)).
+file's country lines itself (see [The CDN file](/reading/local-apps)).
 
 Cloudflare sends `CF-IPCountry` to your server, not to the device. To give it to apps, add a **Transform Rule**:
 

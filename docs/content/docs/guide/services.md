@@ -14,7 +14,7 @@ Each service has a key, such as `web`, which never changes, and a kind:
 | Kind | Read by | Gets | Its API key |
 |---|---|---|---|
 | **App** | Android, iOS and web apps, on your users' devices | Values only, for the context the app sends | Public: it goes in the app |
-| **Backend** | Your servers | Values over OFREP, or the rules as flagd JSON. It also hands out app links | Secret: it stays on your servers. See [Backends](/guide/backends) |
+| **Backend** | Your servers | Values over OFREP, or the rules as flagd JSON. It also hands out app links | Secret: it stays on your servers. See [Backends](/reading/overview) |
 
 ## A service isn't a customer
 
@@ -48,11 +48,11 @@ environment, the service, what the key **asks about**, and a label. The key is s
 
 What a key asks about is its scope: one entity (`entity`), one entity and every one under it (`below`), or any
 (`all`). An app built for Acme alone can have a key for Acme only. See
-[Backends](/guide/backends#create-a-service-and-an-api-key).
+[Backends](/reading/remote-backends#create-a-service-and-an-api-key).
 
 ## Read flags with OpenFeature
 
-Apps read their flags with [OpenFeature](/sdk/openfeature): OpenFeature's SDK for the platform, with its OFREP
+Apps read their flags with [OpenFeature](/reading/overview): OpenFeature's SDK for the platform, with its OFREP
 provider pointed at CompanyFlags and the app service's key. There is no SDK of ours to install.
 
 ```ts
@@ -71,7 +71,7 @@ OpenFeature.getClient().getBooleanValue('new_checkout', false);
 Android and iOS work the same way with OpenFeature's Kotlin and Swift SDKs and their OFREP providers. The context
 says what the device knows about itself: its app version, platform, OS, language, and an install ID for a % of
 devices (`targetingKey`). Once someone signs in, the context can name their entity by its dimension, as rules do:
-`company: 'acme'`. See [OpenFeature](/sdk/openfeature) for React, backends and every answer's meaning.
+`company: 'acme'`. See [OpenFeature](/reading/overview) for React, backends and every answer's meaning.
 
 ## Signed app links
 
@@ -84,7 +84,7 @@ Each entity has a secret app link per environment. An app uses it in one of two 
 | Form | Looks like | Used by |
 |---|---|---|
 | OpenFeature token | `ffl_prod.web.acme.Vx8…` | OpenFeature's OFREP providers: `Authorization: Bearer <token>`, in place of the app's key. One per service: a `web` token can't read `ios` |
-| CDN file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [CDN file](/sdk/cdn-file) from your CDN. The service is in the path, not in the secret: the same secret reads the entity's other app services |
+| CDN file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [CDN file](/reading/local-apps) from your CDN. The service is in the path, not in the secret: the same secret reads the entity's other app services |
 
 Your backend knows which entity someone belongs to. When they sign in, it asks CompanyFlags for the entity's link
 with its backend service's key, naming the app's service, and returns the token with the session:
@@ -132,10 +132,10 @@ environment, service and entity, built once per publish and cached by your [CDN]
 entity's values and the few checks only the device can make. Nothing runs per request; the CDN answers.
 
 There is no OpenFeature provider for the CDN file. Reading it is about a hundred lines of code, described completely
-in [The CDN file](/sdk/cdn-file).
+in [The CDN file](/reading/local-apps).
 
 ## Next
 
-- [OpenFeature](/sdk/openfeature): web, React, Android, iOS and backends, and what each answer means.
-- [Backends](/guide/backends): backend services, their keys, OFREP per request, or flagd in-process.
+- [OpenFeature](/reading/overview): web, React, Android, iOS and backends, and what each answer means.
+- [Backends](/reading/overview): backend services, their keys, OFREP per request, or flagd in-process.
 - [Attributes](/reference/attributes): every name a context can use.
