@@ -294,6 +294,14 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
           cursor = next.cursor;
           continue;
         }
+        // `values` are what this save made: wait until this server's snapshot of each environment has its revision. The
+        // publisher runs beside this worker (another instance catches up from the database), so it's a moment at most;
+        // the next round (wake, or everyMs) tries again.
+        const behind = next.message.some((r) => {
+          const snap = r.revision !== null && r.environment ? plane.snapshots.get(r.environment) : undefined;
+          return !!snap && snap.revision < r.revision!;
+        });
+        if (behind) break;
         let sent: Sent;
         try {
           const n = await names(next.message);
