@@ -1,23 +1,23 @@
 'use client';
 // The bar across the top of the docs' pages on a wide screen, as better-auth.com's: the parts of the site as small
-// capital cells divided by 1px lines, the open part underlined, a RESOURCES menu, GitHub inverted. (On a phone the
+// capital cells divided by 1px lines, the open part underlined, PRODUCTS and RESOURCES menus, GitHub inverted. (On a phone the
 // docs' own bar shows.)
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { BASE, REPO } from '@/lib/source';
-import { RESOURCES } from '@/lib/resources';
+import { PRODUCTS, RESOURCES } from '@/lib/resources';
 
+const PARTS = ['/sdk/', '/self-hosting/', '/reference/'];
 const TABS: { text: string; url: string; match: (p: string) => boolean }[] = [
   { text: 'Readme', url: '/', match: (p) => p === '/' },
-  { text: 'Docs', url: '/guide/introduction', match: (p) => p.startsWith('/guide/') && p !== '/guide/security' && p !== '/guide/enterprise' },
-  { text: 'OpenFeature', url: '/sdk/openfeature', match: (p) => p.startsWith('/sdk/') },
-  { text: 'Self-hosting', url: '/self-hosting/docker', match: (p) => p.startsWith('/self-hosting/') },
-  { text: 'Reference', url: '/reference/http-api', match: (p) => p.startsWith('/reference/') || p === '/guide/security' },
+  { text: 'Docs', url: '/guide/introduction', match: (p) => p.startsWith('/guide/') && p !== '/guide/enterprise' },
+];
+const AFTER: typeof TABS = [
   { text: 'Enterprise', url: '/guide/enterprise', match: (p) => p === '/guide/enterprise' },
 ];
 
-function Resources() {
+function Menu({ label, items, active }: { label: string; items: { text: string; description: string; url: string; external?: boolean }[]; active?: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const path = usePathname();
@@ -31,14 +31,14 @@ function Resources() {
     return () => { removeEventListener('mousedown', away); removeEventListener('keydown', esc); };
   }, [open]);
   return (
-    <div ref={box} className="cf-tabs-menu" data-open={open || undefined}>
+    <div ref={box} className="cf-tabs-menu" data-open={open || undefined} data-active={active || undefined}>
       <button type="button" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen((o) => !o)}>
-        Resources
+        {label}
         <svg viewBox="0 0 16 16" width="10" height="10" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg>
       </button>
       {open && (
         <div className="cf-tabs-panel" role="menu">
-          {RESOURCES.map((r) => {
+          {items.map((r) => {
             const body = <><b>{r.text}</b><span>{r.description}</span></>;
             return r.external
               ? <a key={r.text} role="menuitem" href={r.url === '/llms.txt' ? `${BASE}/llms.txt` : r.url}>{body}</a>
@@ -57,7 +57,11 @@ export function SiteTabs() {
       {TABS.map((t) => (
         <Link key={t.url} href={t.url} data-active={t.match(path) || undefined}>{t.text}</Link>
       ))}
-      <Resources />
+      <Menu label="Products" items={PRODUCTS} active={PARTS.some((p) => path.startsWith(p))} />
+      {AFTER.map((t) => (
+        <Link key={t.url} href={t.url} data-active={t.match(path) || undefined}>{t.text}</Link>
+      ))}
+      <Menu label="Resources" items={RESOURCES} />
       <a href={REPO} className="cf-tabs-github">GitHub</a>
     </nav>
   );

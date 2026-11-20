@@ -196,6 +196,7 @@ code, kbd, pre { font-family: var(--font-mono); }
     text-transform: uppercase; color: var(--cf-ink-nav); transition: color 150ms, background-color 150ms;
   }
   .cf-tabs-menu > button:hover, .cf-tabs-menu[data-open] > button { color: var(--cf-ink); background: var(--cf-wash); }
+  .cf-tabs-menu[data-active] > button { color: var(--cf-ink); box-shadow: inset 0 -2px 0 var(--cf-ink-nav); }
   .cf-tabs-menu[data-open] > button svg { transform: rotate(180deg); }
   .cf-tabs-panel {
     position: absolute; top: 100%; right: 0; z-index: 50; display: grid; grid-template-columns: 1fr 1fr; width: 520px;
