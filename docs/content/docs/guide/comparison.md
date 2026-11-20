@@ -38,7 +38,7 @@ so you can tell quickly whether it fits.
 | A hosted server evaluating per request | That server | One answer per request | Requests |
 | SDKs with the rule set | The device | Every rule, often with the lists in them | Devices × checks (mostly cached) |
 | **CompanyFlags, OFREP** | The server, per request, in memory | Its entity's answers for its context | Requests (small, mostly 304s) |
-| **CompanyFlags, app file** | The server, once per publish; device facts on the device | Its entity's values, plus checks on its own facts | Publishes and cache misses |
+| **CompanyFlags, CDN file** | The server, once per publish; device facts on the device | Its entity's values, plus checks on its own facts | Publishes and cache misses |
 
 ## Standards
 

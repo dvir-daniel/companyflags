@@ -154,14 +154,14 @@ function CdnDrawer({ state, onClose, onSaved }: { state: CdnState; onClose: () =
   };
   return (
     <Drawer open onClose={onClose} title={state.source ? 'Change Cloudflare purge' : 'Set up Cloudflare purge'} initialFocus={first}
-      subtitle="After each publish, Cloudflare drops that environment’s app files, so apps get the change in seconds."
+      subtitle="After each publish, Cloudflare drops that environment’s CDN files, so apps get the change in seconds."
       footer={<>
         <Button disabled={busy || !ready} onClick={save}>{busy ? 'Checking with Cloudflare…' : 'Check and save'}</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </>}>
       <div className="grid gap-4">
         <ol className="m-0 grid list-decimal gap-2 pl-5 text-13 text-ink-2 marker:text-ink-3">
-          <li>In Cloudflare, open the domain the app files are served from. On its <b>Overview</b> page, under <b>API</b>, copy the <b>Zone ID</b>.</li>
+          <li>In Cloudflare, open the domain the CDN files are served from. On its <b>Overview</b> page, under <b>API</b>, copy the <b>Zone ID</b>.</li>
           <li>Go to <b>My Profile → API Tokens → Create Token → Custom token</b>. Give it the permission <b>Zone · Cache Purge · Purge</b>,
             and under Zone Resources choose <b>Include · Specific zone</b> and that domain. Nothing else is needed.</li>
           <li>Paste both here. Saving checks them with Cloudflare first.</li>

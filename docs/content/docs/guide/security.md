@@ -7,7 +7,7 @@ description: "This page says what each part of an installation can see and do: a
 
 An app gets values for one app service in one environment, never the rules. It reads them in one of three ways: over
 OFREP with its app service's key (see [API keys](#api-keys)), over OFREP with a token from its entity's signed app
-link (see [App tokens](#app-tokens)), or as its entity's file at a secret link (see [The app file](/sdk/app-file)).
+link (see [App tokens](#app-tokens)), or as its entity's file at a secret link (see [The CDN file](/sdk/cdn-file)).
 A backend service's key never goes in an app.
 
 - **Values only.** Rules on the dimensions, the service and the environment are settled on the server before the

@@ -8,7 +8,7 @@ same way if it honours `Cache-Control` and can purge by tag.
 
 ## What a CDN can cache
 
-Only the app files at `/client/v1/flags/…`:
+Only the CDN files at `/client/v1/flags/…`:
 
 | Address | What it is |
 |---|---|
@@ -32,7 +32,7 @@ doesn't change a file still answers `304` for it.
 Everything else is not for a CDN: `/sdk/v1/…` answers are `private, no-cache` or `no-store`, OpenFeature remote
 evaluation (`POST /ofrep/v1/…`) is answered by the server on every request, and the console's `/api` needs a session.
 
-## Cache the app files
+## Cache the CDN files
 
 Cloudflare doesn't cache JSON at an address without a file extension by default. Add a **Cache Rule** for the app
 files:
@@ -95,7 +95,7 @@ then see that **Settings → CDN** shows the purge went through and that the nex
 
 Rules can check `geo.country`, a two-letter country code. The file never varies by country: the server doesn't know
 where a device is. The app reads the country from a `CF-IPCountry` response header next to the file, and checks the
-file's country lines itself (see [The app file](/sdk/app-file)).
+file's country lines itself (see [The CDN file](/sdk/cdn-file)).
 
 Cloudflare sends `CF-IPCountry` to your server, not to the device. To give it to apps, add a **Transform Rule**:
 

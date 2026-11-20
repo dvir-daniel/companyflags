@@ -49,7 +49,7 @@ page. You can set it in the console, or in the config file so it's kept in Git. 
 
 - **Your own Postgres:** use your backups and replicas.
 - **Several instances:** run them behind a load balancer, on one database.
-- **A CDN for app files:** each file is cached per entity, so very large fleets of devices read from the cache. With
+- **CDN files:** each file is cached per entity, so very large fleets of devices read from the cache. With
   Cloudflare set up, each publish clears it within seconds.
 - **Operations:** health checks and graceful shutdown. Upgrades migrate the database when the server starts.
 

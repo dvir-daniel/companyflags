@@ -2,7 +2,7 @@
 title: "HTTP API"
 ---
 
-These are the public endpoints of a CompanyFlags server: the app files, the backends' endpoints, OpenFeature
+These are the public endpoints of a CompanyFlags server: the CDN files, the backends' endpoints, OpenFeature
 remote evaluation and the health checks. All of them answer JSON. The examples use `https://flags.example.com`.
 
 | Endpoint | Who calls it | Auth |
@@ -61,7 +61,7 @@ as it arrives, also when it's sent in chunks with no `Content-Length`.
 | `/api/migration/` (imports) | 4 MB |
 | everything else | 1 MB |
 
-## App files
+## CDN files
 
 ```http
 GET /client/v1/flags/<env>/<service>
@@ -84,7 +84,7 @@ get it from `/sdk/v1/links` (below). `HEAD` works too.
 ```
 
 `revision` is the environment's publish number. The flags hold values only; the format of each flag, its `when`
-lines and how an app reads them are in [The app file](/sdk/app-file).
+lines and how an app reads them are in [The CDN file](/sdk/cdn-file).
 
 Headers:
 
@@ -149,7 +149,7 @@ GET /sdk/v1/links/<dimension>/<entity>?service=<key>
 ```
 
 `service` names the app service the link is for (`?flagSet=<key>`, from 0.2, still works until 0.4). `path` is the
-entity's app file, only when the `appFiles()` plugin runs. `token` is made from the same link, with a secret of its
+entity's CDN file, only when the `appFiles()` plugin runs. `token` is made from the same link, with a secret of its
 own for this service: an app's signed credential for OFREP (below). Both are for the key's environment.
 `Cache-Control: no-store`.
 

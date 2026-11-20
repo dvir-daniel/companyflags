@@ -1,6 +1,6 @@
 ---
 title: "Docker"
-description: "CompanyFlags is one image: the server, the console and the app files. It needs Postgres for real use, and runs on its own embedded database for trying it."
+description: "CompanyFlags is one image: the server, the console and the CDN files. It needs Postgres for real use, and runs on its own embedded database for trying it."
 ---
 
 ```text

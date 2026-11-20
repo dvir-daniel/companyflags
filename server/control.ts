@@ -605,7 +605,7 @@ function refuseInUse(appKey: string, use: AppUse, what: string) {
 /** Changes a service's kind (its key can't change). Only while nothing uses it; audited. */
 export async function updateProject(db: Db, key: string, input: { key?: unknown; kind?: unknown }, actor: Actor) {
   if (input.key !== undefined && input.key !== key) {
-    throw new HttpError(422, `a service’s key can’t change: its app files and API keys use "${key}". Add a new service instead, and delete this one once nothing uses it.`);
+    throw new HttpError(422, `a service’s key can’t change: its CDN files and API keys use "${key}". Add a new service instead, and delete this one once nothing uses it.`);
   }
   if (!isAppKind(input.kind)) throw new HttpError(422, APP_KIND);
   const kind = input.kind;

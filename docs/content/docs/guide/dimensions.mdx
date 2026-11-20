@@ -112,7 +112,7 @@ Each dimension is a rule attribute, named by its key. Its value is **the asking 
 
 The server works these values out itself: from the entity the request names, within its API key's scope (or from an
 entity's app link), and from its own data for the levels above. A check on them is settled on the server, so no entity
-list ever reaches an app file or a backend's flagd JSON.
+list ever reaches a CDN file or a backend's flagd JSON.
 
 **Below the asker's own level, the value is "none", not missing.** For Globex's own file, "Brand is Lumen" is false,
 even in an override, and "Brand is not set" is true. Only "is not", "is not set" and "don't include" pass.

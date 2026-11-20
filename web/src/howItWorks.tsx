@@ -108,7 +108,7 @@ function HowItWorksPanel({ open, onClose }: { open: boolean; onClose: () => void
         <DrawerSection title="Where it’s worked out">
           <ul className="m-0 grid list-disc gap-1.5 pl-5 text-13 text-ink-2">
             {ofrep && <li>Apps ask with OpenFeature’s OFREP provider and send what the device knows (app version, platform, device ID). The server answers with values only, never the rules.</li>}
-            {files && <li>With app files, the file carries the values and the checks only the device knows (app version, platform, a % of devices), and the app picks its line{cdn ? '. Your CDN serves the file' : ''}.</li>}
+            {files && <li>With CDN files, the file carries the values and the checks only the device knows (app version, platform, a % of devices), and the app picks its line{cdn ? '. Your CDN serves the file' : ''}.</li>}
             <li>Nothing about anyone else reaches a device. Backend servers download the rules and decide in-process, the same way.</li>
           </ul>
         </DrawerSection>

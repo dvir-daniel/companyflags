@@ -120,4 +120,4 @@ See [OpenFeature](/sdk/openfeature) and [Services](/guide/services) for setting 
 
 `geo.country` is a two-letter code, uppercase. The server doesn't look up a country itself: put it in the evaluation
 context. A common source is your CDN, which can tell the country from the IP address (Cloudflare adds a `CF-IPCountry`
-header). An app file never varies by country: a check on `geo.country` stays in the file as a line for its reader.
+header). A CDN file never varies by country: a check on `geo.country` stays in the file as a line for its reader.

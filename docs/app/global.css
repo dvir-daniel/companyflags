@@ -144,7 +144,10 @@ code, kbd, pre { font-family: var(--font-mono); }
 .cf-page-actions > button svg { width: 13px; height: 13px; }
 /* "On this page": the open section shaded, as better-auth.com's, with no line beside the list */
 #nd-toc .relative.flex.flex-col > div.absolute { display: none; }
-#nd-toc .relative.flex.flex-col > a { padding: 5px 10px !important; margin: 0; transition: color 150ms, background-color 150ms; }
+#nd-toc .relative.flex.flex-col > a > svg { display: none; }   /* each link's piece of the line */
+#nd-toc .relative.flex.flex-col > a { padding-block: 5px !important; padding-inline-end: 10px; margin: 0; transition: color 150ms, background-color 150ms; }
+#nd-toc .relative.flex.flex-col > a[style*='20px'] { padding-inline-start: 10px !important; }
+#nd-toc .relative.flex.flex-col > a:not([style*='20px']) { padding-inline-start: 24px !important; }   /* a heading one level deeper */
 #nd-toc .relative.flex.flex-col > a:hover { background: var(--cf-wash); }
 #nd-toc .relative.flex.flex-col > a[data-active='true'] { background: var(--cf-wash); color: var(--color-fd-foreground); }
 /* "Ask AI", in the corner */

@@ -84,7 +84,7 @@ Each entity has a secret app link per environment. An app uses it in one of two 
 | Form | Looks like | Used by |
 |---|---|---|
 | OpenFeature token | `ffl_prod.web.acme.Vx8…` | OpenFeature's OFREP providers: `Authorization: Bearer <token>`, in place of the app's key. One per service: a `web` token can't read `ios` |
-| App file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [app file](/sdk/app-file) from your CDN. The service is in the path, not in the secret: the same secret reads the entity's other app services |
+| CDN file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [CDN file](/sdk/cdn-file) from your CDN. The service is in the path, not in the secret: the same secret reads the entity's other app services |
 
 Your backend knows which entity someone belongs to. When they sign in, it asks CompanyFlags for the entity's link
 with its backend service's key, naming the app's service, and returns the token with the session:
@@ -94,7 +94,7 @@ with its backend service's key, naming the app's service, and returns the token 
 const res = await fetch(`https://flags.example.com/sdk/v1/links/company/${user.companyKey}?service=web`, {
   headers: { Authorization: `Bearer ${process.env.FLAGS_API_KEY}` },
 });
-const { token } = await res.json();     // ffl_prod.web.acme.Vx8…   (and `path`, the app file's address)
+const { token } = await res.json();     // ffl_prod.web.acme.Vx8…   (and `path`, the CDN file's address)
 session.flagsToken = token;
 ```
 
@@ -124,15 +124,15 @@ can also copy each token from the console.
    Modified`, a few bytes. Something changed: the new answers, and a `ConfigurationChanged` event with the flags that
    changed. Where the stream can't stay open, the provider polls instead (`pollInterval`).
 
-## Very large fleets: the app file
+## Very large fleets: the CDN file
 
 OFREP answers come from the server: one small request per device and check, evaluated in memory. For fleets of
-millions of devices you may prefer that no request reaches the server at all. The **app file** is that: one file per
+millions of devices you may prefer that no request reaches the server at all. The **CDN file** is that: one file per
 environment, service and entity, built once per publish and cached by your [CDN](/self-hosting/cdn), with the
 entity's values and the few checks only the device can make. Nothing runs per request; the CDN answers.
 
-There is no OpenFeature provider for the app file. Reading it is about a hundred lines of code, described completely
-in [The app file](/sdk/app-file).
+There is no OpenFeature provider for the CDN file. Reading it is about a hundred lines of code, described completely
+in [The CDN file](/sdk/cdn-file).
 
 ## Next
 

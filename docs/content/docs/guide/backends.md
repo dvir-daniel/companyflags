@@ -132,7 +132,7 @@ See [Attributes](/reference/attributes) for the names.
 
 The test suite evaluates the flagd JSON the way flagd does (a reference written from flagd's documented behaviour) for
 random flags, every entity at every level and many requests, and compares each answer with the server's own
-evaluator. A % of devices is flagd's `fractional`, with the same hash as the server and the app files, so a device
+evaluator. A % of devices is flagd's `fractional`, with the same hash as the server and the CDN files, so a device
 is in the same group everywhere.
 
 flagd has changed its `fractional` hash before. Pin the flagd version you run, and treat an upgrade that changes
@@ -201,7 +201,7 @@ Authorization: Bearer ff_prod_api_…
 
 - The link is for the key's environment. `service` is the key of an app service (`web`, `ios`, `android`); a
   backend service has no file. (`?flagSet=` from 0.2 still works until 0.4.)
-- For the app file, the app reads `path` from the address apps use, usually the CDN in front of your server:
+- For the CDN file, the app reads `path` from the address apps use, usually the CDN in front of your server:
   `https://flags.example.com/client/v1/flags/prod/ios/lumen/…`. `path` is there only when the `appFiles()` plugin
   runs.
 - For OFREP, the app's provider sends `Authorization: Bearer <token>`. The token asks as that entity only.

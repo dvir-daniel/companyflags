@@ -54,7 +54,7 @@ console only over `https`.
 - Each request body has a size limit: 64 KB for OFREP, 256 KB for sign-in, 1 MB for webhooks in and the console's
   API, 4 MB for imports. A larger one gets `413`, also when it's sent in chunks. Let your proxy pass bodies that big.
 
-## 4. A CDN for the app files
+## 4. A CDN in front of the CDN files
 
 Put Cloudflare (or another CDN) in front of `/client/v1/flags/`, with a cache rule and purge on publish. See
 [CDN](/self-hosting/cdn).

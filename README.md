@@ -202,7 +202,7 @@ See [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins),
   </picture>
 </p>
 
-One evaluator decides every answer: OFREP's, the app files', the backends' flagd JSON and the console's trace. The
+One evaluator decides every answer: OFREP's, the CDN files', the backends' flagd JSON and the console's trace. The
 tests check each against it, with OpenFeature's own providers and flagd's own logic, for many entities and devices
 (hundreds of tests, on embedded and real Postgres). Several server instances can share one Postgres database.
 
@@ -217,7 +217,7 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 | [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
 | [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources) | `llms.txt`, a skill for your agents, and OpenFeature's MCP server |
 | [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyflags/reference/cli) | The built-in plugins, writing your own, and the `companyflags` command |
-| [HTTP API](https://dvir-daniel.github.io/companyflags/reference/http-api) | Keys, OFREP, app files, flagd JSON, links, health |
+| [HTTP API](https://dvir-daniel.github.io/companyflags/reference/http-api) | Keys, OFREP, CDN files, flagd JSON, links, health |
 
 The docs are in [`docs/`](docs) and run locally with `pnpm docs:dev`.
 

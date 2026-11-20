@@ -111,7 +111,7 @@ const features: { title: string; text: string; chips: string[] }[] = [
 ];
 
 const runIt: { label: string; text: string }[] = [
-  { label: 'One image', text: 'The server, the console and the app files in one container, with health checks.' },
+  { label: 'One image', text: 'The server, the console and the CDN files in one container, with health checks.' },
   { label: 'Postgres', text: 'Your own Postgres 15+, or an embedded one to try it. Migrations run at start.' },
   { label: 'Any scale', text: 'Several instances on one database, and a CDN-cached file per entity for very large fleets.' },
 ];

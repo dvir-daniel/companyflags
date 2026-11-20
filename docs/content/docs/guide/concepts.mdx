@@ -134,13 +134,13 @@ place the order above is written. It is behind:
 - **flagd JSON for backends.** For one entity, the server settles everything it knows (the service, the environment,
   every dimension) and writes the rest as flagd's JsonLogic, so flagd or OpenFeature's flagd provider gives the same
   answers in your backend. No list of entities and no other entity's value is in it.
-- **App files.** The same settling, as a values-only file per environment, service and entity, built on publish and
+- **CDN files.** The same settling, as a values-only file per environment, service and entity, built on publish and
   cached by a CDN. What only the device knows stays as short `when` lines.
 - **The trace.** The flag page's **Debug** tab runs the evaluator for an entity, a service and the attributes you type,
   and shows each step: which levels were checked, each check with the value it read, the device's bucket, what was
   skipped and why.
 
-The server's tests check that flagd's answer from the JSON, and a pick from an app file, always equal the evaluator's.
+The server's tests check that flagd's answer from the JSON, and a pick from a CDN file, always equal the evaluator's.
 
 ## Where to next
 

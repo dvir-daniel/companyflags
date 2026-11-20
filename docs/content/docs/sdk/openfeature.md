@@ -169,4 +169,4 @@ flagd JSON. The server's tests check this with OpenFeature's own web and server 
 
 OFREP answers come from the server, one request per context and refresh, not from the CDN's cache: the server
 evaluates every flag for the request in memory (microseconds per flag). For very large fleets, the
-[app file](/sdk/app-file) is the CDN-cached alternative: one file per entity, read on the device by code of your own.
+[CDN file](/sdk/cdn-file) is the alternative: one file per entity, read on the device by code of your own.
