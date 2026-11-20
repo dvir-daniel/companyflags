@@ -98,7 +98,7 @@ code, kbd, pre { font-family: var(--font-mono); }
 .cf-ill .row > .link:nth-of-type(3)::after { animation-delay: 1.2s; }
 .cf-ill .row > .link:nth-of-type(4)::after { animation-delay: 1.8s; }
 .cf-ill .tile { transition: border-color 200ms, color 200ms, transform 250ms var(--cf-ease); }
-.cf-ill .node:hover .tile { transform: translateY(-2px); border-color: var(--cf-ink-3); color: var(--cf-ink); }
+.cf-ill .node:hover .tile { border-color: var(--cf-ink-3); color: var(--cf-ink); }
 .cf-ill .chip .dot { transition: transform 200ms; }
 .cf-ill .chip.ok .dot, .cf-ill .chip.warn .dot { animation: cf-pulse 2.4s ease-in-out infinite; }
 @keyframes cf-pulse { 50% { opacity: 0.45; } }

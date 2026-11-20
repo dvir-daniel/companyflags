@@ -34,7 +34,7 @@
 @keyframes cf-art-in { from { opacity: 0; } }
 
 /* the mark: three stepped bars (the layers, from the defaults down to one entity) that snap in from the left, with
-   flag keys running through them, and spread apart when pointed at */
+   flag keys running through them; pointed at, the keys only get clearer */
 .cf-landing .mark { position: absolute; left: 20%; top: 16%; display: grid; gap: 14px; pointer-events: auto; }
 .cf-landing .bar {
   position: relative; height: 46px; overflow: hidden;
@@ -46,9 +46,6 @@
 .cf-landing .b1 { width: 156px; animation-delay: 260ms; }
 .cf-landing .b2 { width: 92px; animation-delay: 370ms; }
 @keyframes cf-snap { from { opacity: 0; transform: translateX(-28px) rotate(-3deg); } to { opacity: 1; transform: none; } }
-.cf-landing .mark:hover .b0 { transform: translateX(-10px); }
-.cf-landing .mark:hover .b1 { transform: translateX(8px); }
-.cf-landing .mark:hover .b2 { transform: translateX(26px); }
 .cf-landing .ticker {
   position: absolute; inset: 0; display: flex; align-items: center; gap: 18px; width: max-content; padding-left: 10px;
   font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.4px; color: var(--cf-ink-3); opacity: 0.55;
@@ -95,7 +92,6 @@
 .cf-landing .pill { transition: border-color 200ms, background-color 200ms; }
 .cf-landing .pill:hover { border-color: var(--cf-rule-2); }
 .cf-landing .pill > span:last-child { display: inline-block; transition: transform 250ms var(--cf-ease); }
-.cf-landing .pill:hover > span:last-child { transform: translateX(3px); }
 .cf-landing .pill b { color: var(--cf-ink); font-weight: 500; }
 .cf-landing .pill .tri { font-size: 10px; color: var(--cf-ink); }
 .cf-landing h1 { margin: 0 0 24px; font-size: clamp(30px, 2.7vw, 40px); line-height: 1.15; font-weight: 400; letter-spacing: -0.03em; max-width: 13em; }
@@ -103,20 +99,13 @@
 .cf-landing .btn { position: relative; display: inline-flex; align-items: center; height: 38px; padding: 0 20px; font-size: 14px; font-weight: 500; }
 .cf-landing .btn { transition: background-color 200ms, transform 200ms var(--cf-ease); }
 .cf-landing .btn:active { transform: translateY(1px); }
-/* the main button: a light sweeps across it when pointed at */
 .cf-landing .btn.primary { overflow: hidden; background: var(--cf-ink); color: var(--cf-page); }
 .cf-landing .btn.primary span { position: relative; z-index: 1; }
-.cf-landing .btn.primary::after {
-  content: ''; position: absolute; inset: 0; transform: translateX(-110%);
-  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--cf-page) 28%, transparent) 50%, transparent 80%);
-}
-.cf-landing .btn.primary:hover::after { transform: translateX(110%); transition: transform 700ms var(--cf-ease); }
 .cf-landing .btn.ghost { border: 1px solid var(--cf-rule-2); color: var(--cf-ink); }
 .cf-landing .btn.ghost:hover { background: var(--cf-wash); }
-/* the corner marks step out when pointed at */
+/* the corner marks darken when pointed at */
 .cf-landing .corner { position: absolute; width: 7px; height: 7px; border-color: var(--cf-ink-3); border-style: solid; transition: transform 250ms var(--cf-ease), border-color 200ms; }
-.cf-landing .btn.ghost:hover .corner.tl, .cf-landing .cell:hover .corner.tl { transform: translate(-2px, -2px); border-color: var(--cf-ink); }
-.cf-landing .btn.ghost:hover .corner.br, .cf-landing .cell:hover .corner.br { transform: translate(2px, 2px); border-color: var(--cf-ink); }
+.cf-landing .btn.ghost:hover .corner, .cf-landing .cell:hover .corner { border-color: var(--cf-ink); }
 .cf-landing .corner.tl { top: -4px; left: -4px; border-width: 1px 0 0 1px; }
 .cf-landing .corner.br { bottom: -4px; right: -4px; border-width: 0 1px 1px 0; }
 .cf-landing .hero-foot {
@@ -167,7 +156,7 @@
 .cf-landing .copy.done svg { animation: cf-pop 300ms var(--cf-ease); }
 @keyframes cf-pop { from { transform: scale(0.4); opacity: 0; } }
 
-/* the languages OpenFeature reads flags in, running past, slower when pointed at */
+/* the languages OpenFeature reads flags in, running past, paused when pointed at */
 .cf-landing .marquee { display: flex; align-items: center; gap: 16px; margin-top: 18px; padding: 10px 0; border-top: 1px solid var(--cf-rule); border-bottom: 1px solid var(--cf-rule); }
 .cf-landing .mq-label { flex: none; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); }
 .cf-landing .mq-window { flex: 1; min-width: 0; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
@@ -185,15 +174,12 @@
 .cf-landing .cell .corner.tl { top: -1px; left: -1px; }
 .cf-landing .cell .corner.br { bottom: -1px; right: -1px; }
 .cf-landing .num { transition: color 200ms, letter-spacing 300ms var(--cf-ease); }
-.cf-landing .cell:hover .num { color: var(--cf-ink); letter-spacing: 1.2px; }
+.cf-landing .cell:hover .num { color: var(--cf-ink); }
 .cf-landing .num { margin: 0 0 10px; font-family: var(--font-mono); font-size: 12px; color: var(--cf-ink-3); letter-spacing: 0.4px; }
 .cf-landing .cell h3 { margin: 0 0 8px; font-size: 15px; font-weight: 500; }
 .cf-landing .cell p:not(.num) { margin: 0; font-size: 14px; line-height: 1.6; color: var(--cf-ink-2); }
 .cf-landing .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .cf-landing .chips span { padding: 2px 7px; font-family: var(--font-mono); font-size: 11px; color: var(--cf-ink-2); border: 1px solid var(--cf-rule); background: var(--cf-page); transition: transform 250ms var(--cf-ease), border-color 200ms, color 200ms; }
-/* pointed at, a card's chips light up one after the other, the way a release steps */
-.cf-landing .cell:hover .chips span { animation: cf-chip 0.6s var(--cf-ease) calc(var(--i) * 90ms) both; }
-@keyframes cf-chip { 40% { transform: translateY(-3px); border-color: var(--cf-ink-3); color: var(--cf-ink); } 100% { transform: none; border-color: var(--cf-rule-2); color: var(--cf-ink); } }
 
 .cf-landing .split { display: grid; grid-template-columns: 1fr 230px; }
 .cf-landing .editor { min-width: 0; border-right: 1px solid var(--cf-rule); }
@@ -216,7 +202,7 @@
 .cf-landing .diagram { border: 1px solid var(--cf-rule); background: var(--cf-panel); font-size: 12.5px; color: var(--cf-ink-2); }
 .cf-landing .links { display: flex; flex-wrap: wrap; gap: 24px; margin: 18px 0 0; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.4px; text-transform: uppercase; }
 .cf-landing .links a { color: var(--cf-ink-2); transition: color 150ms, letter-spacing 300ms var(--cf-ease); }
-.cf-landing .links a:hover { color: var(--cf-ink); letter-spacing: 1px; }
+.cf-landing .links a:hover { color: var(--cf-ink); }
 .cf-landing .cta { padding-top: 56px; padding-bottom: 72px; }
 .cf-landing .cta h2 { margin: 0 0 22px; font-size: 26px; font-weight: 400; letter-spacing: -0.02em; border: 0; padding: 0; }
 
