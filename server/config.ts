@@ -16,6 +16,7 @@
 
 import type { AuthSettings } from './betterAuth.ts';
 import type { Plugin } from './plugin.ts';
+import type { Appearance } from './appearance.ts';
 
 export type Config = {
   database?: {
@@ -35,6 +36,9 @@ export type Config = {
   auth?: Partial<Omit<AuthSettings, 'production'>>;
   /** What reads flags besides the console, and what runs after a publish (plugins/). Left out: all the built-in ones. */
   plugins?: Plugin[];
+  /** How the console looks: its name, logo, accent color and the rest (Settings → Appearance). Set here, it can't be
+   *  changed in the console. Images are a file next to the config file ('./logo.svg') or a data URL. */
+  appearance?: Partial<Appearance>;
 };
 
 /** Types a config file's default export. */

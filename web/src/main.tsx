@@ -19,6 +19,8 @@ import { Button } from '@companyflags/ui/components/button';
 import { AppFrame, MainPane } from '@companyflags/ui/components/app-frame';
 import { Toaster, notify } from '@companyflags/ui/components/toast';
 import { initTheme } from '@companyflags/ui/lib/theme';
+import { applyLook, currentLook, loadLook, lookName, useLook } from './appearanceKit.ts';
+import { Banner } from './look.tsx';
 import './index.css';
 
 // Each page is its own chunk, fetched the first time it's opened (or when a link to it is hovered: paths.ts).
@@ -114,7 +116,7 @@ function titleFor([page, a, b]: string[], meta: Meta | null): string {
     : page === 'settings' && a === 'people' ? 'People · Settings'
     : page === 'settings' && a === 'dimensions' ? 'Dimensions · Settings'
     : name[page] ?? 'Page not found';
-  return `${title} · CompanyFlags`;
+  return `${title} · ${lookName()}`;
 }
 
 function useGuardedRoute(isDirty: () => boolean, confirmLeave: () => Promise<boolean>, load: (hash: string) => Promise<unknown>) {
@@ -174,6 +176,7 @@ const fetchMeta = () => {
 };
 
 function App() {
+  useLook();                                   // the name in the tab's title follows Settings → Appearance
   const [meta, setMeta] = useState<Meta | null>(null);
   const [tick, setTick] = useState(0);
   const [pending, setPending] = useState(0);
@@ -353,8 +356,8 @@ function App() {
   // an invite link opens its own page, signed in or not; while their code downloads, the sign-in pages show their shape
   if (page === 'join' && route[1]) return <Suspense fallback={<JoinSkeleton />}>{title}<JoinPage token={route[1]} /></Suspense>;
   // a password reset link too: it works signed in or not
-  if (page === 'reset' && route[1]) return <Suspense fallback={<ResetSkeleton />}><title>New password · CompanyFlags</title><ResetPage token={route[1]} /></Suspense>;
-  if (!meta && bootError?.status === 401) return <Suspense fallback={<SignInSkeleton />}><title>Sign in · CompanyFlags</title><SignInPage /></Suspense>;
+  if (page === 'reset' && route[1]) return <Suspense fallback={<ResetSkeleton />}><title>{`New password · ${lookName()}`}</title><ResetPage token={route[1]} /></Suspense>;
+  if (!meta && bootError?.status === 401) return <Suspense fallback={<SignInSkeleton />}><title>{`Sign in · ${lookName()}`}</title><SignInPage /></Suspense>;
   if (!meta && bootError) {
     // which it is comes from the status: nothing answered (0), no access (403), or an answer that is an error
     const problem = bootProblem(bootError.status, bootError.message);
@@ -369,7 +372,7 @@ function App() {
   // While /meta answers (the first load): someone who was signed out last time most likely signs in now, so the
   // sign-in page's shape; someone who was signed in gets the console's frame with the page's shape in it (loading.tsx).
   // A browser that hasn't opened the console yet shows nothing until the server says which.
-  if (!meta && signedInBefore === false) return <><title>Sign in · CompanyFlags</title><SignInSkeleton /></>;
+  if (!meta && signedInBefore === false) return <><title>{`Sign in · ${lookName()}`}</title><SignInSkeleton /></>;
   if (!meta && signedInBefore === null) return title;
   // nothing is set up yet: every page needs an environment, so Settings comes first
   const setUp = !meta || meta.environments.length > 0 || page === 'settings';
@@ -382,13 +385,13 @@ function App() {
     <AppContext value={ctx}>
       {title}
       <AppFrame
-        titleBar={<TitleBar synced={synced} />}
+        titleBar={<><Banner banner={meta?.banner} /><TitleBar synced={synced} /></>}
         sidebar={<Sidebar meta={meta} page={page} sub={route[1]} pending={pending} onSearch={searchFlags} className="max-md:hidden" />}
         footer={<><Footer meta={meta} /><MobileNav meta={meta} page={page} sub={route[1]} pending={pending} onSearch={searchFlags} /></>}>
           {/* on a phone the sidebar is hidden, so the page takes the frame's second row (the first stays empty) */}
           <MainPane id="main" wide fluid={DENSE.has(page)} key={meta?.me.key} ref={pane} aria-busy={waiting || !meta || undefined} className="max-md:row-start-2">
               {waiting && <div data-nav-progress aria-hidden
-                className="sticky top-0 z-30 -mb-0.5 h-0.5 origin-left bg-ink [animation:nav-progress_.3s_ease-out_.12s_both]" />}
+                className="sticky top-0 z-30 -mb-0.5 h-0.5 origin-left bg-tint [animation:nav-progress_.3s_ease-out_.12s_both]" />}
               {!meta ? skeleton : (
                 // Outside the page's own boundary, so it stays the same one from page to page: a page whose code is still
                 // downloading keeps the old page on screen (useGuardedRoute's transition). The first page shows its shape.
@@ -461,6 +464,9 @@ function DialogView({ d, onDone }: { d: DialogOpts; onDone: (r: Answer) => void 
 }
 
 initTheme();
+// the installation's look: as this browser last saw it at once, then as the server says now (appearanceKit.ts)
+applyLook(currentLook());
+void loadLook();
 createRoot(document.getElementById('root')!, {
   onUncaughtError: (error, info) => console.error('Uncaught error', error, info.componentStack),
 }).render(<ErrorBoundary where="app"><App /></ErrorBoundary>);

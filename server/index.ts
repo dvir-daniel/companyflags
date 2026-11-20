@@ -15,7 +15,9 @@ import { OAUTH_PREFIXES, oauthRoutes } from './oauth.ts';
 import { FolderInUseError, HttpError, openDb, type Db } from './db.ts';
 import { MigrationError } from './migrate.ts';
 import { createIdentity, signInFromEnv, type SignIn } from './identity.ts';
-import { loadConfig, resolveConfig, type Resolved } from './configFile.ts';
+import { configDir, loadConfig, resolveConfig, type Resolved } from './configFile.ts';
+import { createAppearance } from './appearanceStore.ts';
+import { AppearanceError } from './appearance.ts';
 import { createAccess } from './access.ts';
 import { authSecret, betterAuthAccounts, createAuth, rateLimitsOn, SetupError, setupTokenFor } from './betterAuth.ts';
 import { discoverOverHttp, singleSignOn, vouchingConnections, type Discover } from './sso.ts';
@@ -45,6 +47,8 @@ export type AppOptions = {
   env?: NodeJS.ProcessEnv;
   /** tests: their own hook after each publish instead of the plugins' onPublish (publish.test.ts) */
   onPublish?: OnPublish;
+  /** The config file's appearance (configFile.ts): set, it can't be changed in the console. */
+  appearance?: unknown;
 };
 
 export async function createApp(opts: AppOptions = {}) {
@@ -108,6 +112,7 @@ export async function createApp(opts: AppOptions = {}) {
     drain: async () => { await publisher.drain(); for (const w of background) await w.drain(); },
   };
 
+  const appearance = createAppearance(db, opts.appearance);   // checked now: a mistake in the config file stops here
   const app = new Hono();
   app.onError(errorHandler(log));
   // Every response: no sniffing, never in a frame, no referrer beyond the origin. HSTS is left to whatever ends TLS in
@@ -128,8 +133,9 @@ export async function createApp(opts: AppOptions = {}) {
     }
   });
   app.route('/api', identity.routes);                    // sign-in pages and Better Auth: open to everyone
+  app.route('/api', appearance.routes());                // the name, logo and note the sign-in page shows: open too
   const tokens = createTokens(db);
-  app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins }));
+  app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins, appearance }));
   app.route('/', linkRoutes({ db, plane, links, keys, services: apps }, { files: on.has('app-files') }));   // app links, for backends
   for (const p of plugins) if (p.parts.routes) app.route('/', p.parts.routes);
   // OAuth sign-in for MCP clients (oauth.ts): on with the mcp plugin
@@ -148,8 +154,8 @@ export async function createApp(opts: AppOptions = {}) {
   if (existsSync(dist)) {
     // index.html is read on every request and never cached, so a rebuild shows up on the next reload;
     // the hashed /assets files can be cached forever.
-    const page = (c: Context) => {
-      const html = readFileSync(`${dist}/index.html`, 'utf8');
+    const page = async (c: Context) => {
+      const html = await appearance.page(readFileSync(`${dist}/index.html`, 'utf8'));
       c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
       c.header('Content-Security-Policy', consolePolicy(html));
       return c.html(html);
@@ -262,7 +268,7 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
   try {
     const loaded = await loadConfig(o);
     file = loaded.file;
-    resolved = resolveConfig(loaded.config, env);
+    resolved = resolveConfig(loaded.config, env, configDir(loaded.file, o.cwd));
   } catch (e) { return fail((e as Error).message); }
   const { port, host, signIn } = resolved;
   // the port first: a second copy started by mistake stops here, before it opens any data
@@ -270,8 +276,8 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
     fail(`port ${port} is already in use: CompanyFlags may already be running (open http://localhost:${port}), or choose another port with server.port in companyflags.config.ts or PORT`);
   }
   if (file) log(`config: ${file}`);
-  const ctx = await createApp({ databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, env, log })
-    .catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError ? fail(e.message) : Promise.reject(e)));
+  const ctx = await createApp({ databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, appearance: resolved.appearance ?? undefined, env, log })
+    .catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError || e instanceof AppearanceError ? fail(e.message) : Promise.reject(e)));
   log(`plugins: ${ctx.plugins.join(', ') || 'none'}`);
   const local = `http://${host === '0.0.0.0' || host === '::' ? 'localhost' : host}:${port}`;
   if (signIn.kind === 'better-auth') {

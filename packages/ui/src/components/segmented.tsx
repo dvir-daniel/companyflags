@@ -42,7 +42,7 @@ function Segmented<T extends string>({
             className={cn(
               "h-7 cursor-default border-0 px-3 font-mono text-xs leading-none tracking-[0.6px] uppercase whitespace-nowrap outline-none transition-colors [&+&]:border-l [&+&]:border-rule-2",
               "focus-visible:outline-1 focus-visible:-outline-offset-2 focus-visible:outline-ink disabled:opacity-40",
-              on ? "bg-ink text-background" : "bg-transparent text-ink-nav hover:bg-wash hover:text-ink"
+              on ? "bg-tint text-tint-ink" : "bg-transparent text-ink-nav hover:bg-wash hover:text-ink"
             )}
           >
             {o.label}

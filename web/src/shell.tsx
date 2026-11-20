@@ -5,8 +5,8 @@ import { dimensionHref, preload } from './paths.ts';
 import { readPersistent } from './persist.ts';
 import { signOut } from './session.ts';
 import {
-  Avatar, BrandMark, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, SidebarLabel, SidebarSearch,
-  TitleBar as Top, TitleBarBrand, TitleBarStatus, WindowLights, Wordmark,
+  Avatar, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, SidebarLabel, SidebarSearch,
+  TitleBar as Top, TitleBarBrand, TitleBarStatus, WindowLights,
 } from '@companyflags/ui/components/app-frame';
 import { ThemeToggle } from '@companyflags/ui/components/theme-toggle';
 import { Button } from '@companyflags/ui/components/button';
@@ -15,6 +15,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@companyflags/ui/compon
 import { useBottomReserve } from '@companyflags/ui/components/toast';
 import { cn } from '@companyflags/ui/lib/utils';
 import { roleInfo } from '../../server/policy.ts';
+import { Brand, LookLinks } from './look.tsx';
+import { lookName, useLook } from './appearanceKit.ts';
 
 /* This console's window, built from the shared Company OS frame (@companyflags/ui, app-frame.tsx):
    the title bar, the sidebar and the mono footer with who is signed in. On a phone the sidebar and the footer
@@ -83,6 +85,7 @@ const personColor = (meta: Meta, u: User) => `var(--person-${PERSON[Math.max(0, 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 export function TitleBar({ synced }: { synced: boolean }) {
+  const look = useLook();
   return (
     <Top>
       {/* the first stop for the keyboard: past the title bar and the sidebar, to the page (MainPane, id "main"). The
@@ -93,9 +96,8 @@ export function TitleBar({ synced }: { synced: boolean }) {
       </a>
       <TitleBarBrand>
         <WindowLights className="max-sm:hidden" />
-        <a href="#/flags" className="flex items-center gap-2.5 text-ink hover:no-underline" aria-label="CompanyFlags, go to flags">
-          <BrandMark />
-          <Wordmark>COMPANYFLAGS.</Wordmark>
+        <a href="#/flags" className="flex min-w-0 items-center text-ink hover:no-underline" aria-label={`${lookName(look)}, go to flags`}>
+          <Brand />
         </a>
       </TitleBarBrand>
       <span className="flex-1" />
@@ -112,7 +114,7 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
   const me = meta?.me;
   const ahead = (href: string) => { if (meta) void preload(href, meta); };
   return (
-    <Nav aria-label="CompanyFlags" className={className}>
+    <Nav aria-label="Console" className={className}>
       <SidebarSearch onClick={onSearch} icon={<Icon name="search" />} shortcut={isMac ? '⌘K' : 'Ctrl K'}>Search flags</SidebarSearch>
       {navOf(meta).map((g) => (
         <SidebarGroup key={g.group} label={g.group}>
@@ -156,6 +158,13 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
   );
 }
 
+/** Get help, where the installation set a link for it (Settings → Appearance). */
+function HelpLink() {
+  const { helpUrl } = useLook();
+  if (!helpUrl) return null;
+  return <a href={helpUrl} target="_blank" rel="noopener noreferrer" className="-mt-1 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Get help</a>;
+}
+
 /** Who is signed in, at the foot of the sidebar: a button that opens their account menu, with their access tokens and Sign out. */
 function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
   const [busy, setBusy] = useState(false);
@@ -178,6 +187,7 @@ function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
           <span className="text-ink-3">{roleInfo(me.role).label}</span>
         </div>
         <a href="#/tokens" onClick={() => setOpen(false)} className="border-t border-rule pt-3 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Access tokens</a>
+        <HelpLink />
         {meta.signIn === 'better-auth' ? (
           <Button variant="secondary" className="w-full" disabled={busy} onClick={() => { setBusy(true); void signOut(); }}>{busy ? 'Signing out…' : 'Sign out'}</Button>
         ) : (
@@ -198,6 +208,7 @@ export function Footer({ meta }: { meta: Meta | null }) {
         {me ? <span className="min-w-0 truncate">Signed in as {me.key}, {roleInfo(me.role).label.toLowerCase()}</span> : <Bone className="w-48" />}
       </span>
       <span className="flex-1" />
+      <LookLinks />
       {meta?.signIn === 'better-auth' && <button type="button" onClick={() => void signOut()} className="cursor-pointer text-ink hover:underline">Sign out</button>}
     </Bar>
   );
@@ -231,10 +242,10 @@ export function MobileNav({ meta, page, sub, pending, onSearch }: { meta: Meta |
   }, []);
   const tabs = tabsOf(meta);
   const inMore = !tabs.some((t) => t.current(page, sub));
-  const marker = <span aria-hidden className="absolute inset-x-4 top-0 h-0.5 bg-ink" />;
+  const marker = <span aria-hidden className="absolute inset-x-4 top-0 h-0.5 bg-tint" />;
   return (
     <>
-      <nav ref={reserve} aria-label="CompanyFlags" className="hidden shrink-0 grid-cols-5 border-t border-rule bg-sidebar pb-[env(safe-area-inset-bottom)] max-md:grid">
+      <nav ref={reserve} aria-label="Console" className="hidden shrink-0 grid-cols-5 border-t border-rule bg-sidebar pb-[env(safe-area-inset-bottom)] max-md:grid">
         {tabs.map((t) => {
           const current = t.current(page, sub);
           const href = t.href ?? `#/${t.key}`;
@@ -246,7 +257,7 @@ export function MobileNav({ meta, page, sub, pending, onSearch }: { meta: Meta |
                 <Icon name={t.icon} size={20} />
                 {t.key === 'approvals' && pending > 0 && (
                   <span aria-label={`${pending} waiting for your review`}
-                    className="absolute -top-1.5 left-3.5 grid h-4 min-w-4 place-items-center bg-ink px-1 font-mono text-[10px] leading-none text-background">{pending}</span>
+                    className="absolute -top-1.5 left-3.5 grid h-4 min-w-4 place-items-center bg-tint px-1 font-mono text-[10px] leading-none text-tint-ink">{pending}</span>
                 )}
               </span>
               <span className="max-w-full truncate">{t.label}</span>

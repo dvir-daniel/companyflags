@@ -125,6 +125,9 @@ export const KINDS = {
   'cdn.update': { serves: null, restore: false },
   'cdn.remove': { serves: null, restore: false },
   'cdn.purge': { serves: null, restore: false },
+  // how the console looks (appearanceStore.ts): changed, or back to the default. History keeps a hash for each image
+  'appearance.update': { serves: null, restore: false },
+  'appearance.reset': { serves: null, restore: false },
   // the dimensions (dimensions.ts): their words, one added at the top or the bottom, an empty one removed. Nothing served
   // changes: an entity added in a new dimension, or moved, is an entity change of its own.
   'dimensions.update': { serves: null, restore: false },

@@ -35,6 +35,10 @@ Light or Dark (two choices, no System) with `ThemeToggle` in the title bar; `src
   - green for on and done;
   - purple (#B48CF5) for agent tool calls.
 - There is no brand color. The primary is the text color: white in dark, near-black in light.
+- **An installation's accent** (Settings → Appearance, `server/appearance.ts`) is the one exception. It recolors `--tint`,
+  the color of primary actions: `bg-primary` buttons, `bg-tint`/`text-tint-ink` for switches, segmented and pager
+  choices, counts and the selected sidebar item's edge (`--tint-mark`). Draw a primary action with those tokens,
+  never `bg-ink`, so it follows the accent. With no accent, `--tint` is the text color and the look doesn't change.
 
 ## Type
 

@@ -90,6 +90,7 @@ export default defineConfig({
           { text: 'Configuration', link: '/self-hosting/configuration' },
           { text: 'Sign-in and single sign-on', link: '/self-hosting/sign-in' },
           { text: 'CDN (Cloudflare)', link: '/self-hosting/cdn' },
+          { text: 'Appearance', link: '/self-hosting/appearance' },
           { text: 'Production checklist', link: '/self-hosting/production' },
         ],
       },

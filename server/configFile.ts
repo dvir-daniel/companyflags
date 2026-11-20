@@ -2,9 +2,9 @@
 // folder they run in, or the file FF_CONFIG names. Then works out the settings a server runs with: the file's, else
 // the environment's, else the defaults.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { isAbsolute, join, resolve } from 'node:path';
+import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { authSettingsFromEnv } from './betterAuth.ts';
 import { ConfigError, type Config } from './config.ts';
@@ -12,6 +12,7 @@ import type { SignIn } from './identity.ts';
 import type { Plugin } from './plugin.ts';
 import { defaultPlugins } from './plugins/index.ts';
 import { PACKAGE_FOLDER } from './packageFolder.ts';
+import type { Appearance } from './appearance.ts';
 
 export const CONFIG_FILE = 'companyflags.config.ts';
 
@@ -68,11 +69,13 @@ export type Resolved = {
   host: string;
   signIn: SignIn;
   plugins: Plugin[];
+  /** The config file's appearance, with its images read into data URLs (null: set in the console). */
+  appearance: Partial<Appearance> | null;
 };
 
 /** The settings a server runs with: the config file's, else the environment's, else the defaults. Whether it runs as
  *  production is NODE_ENV's alone, so a file can't turn off the production checks. */
-export function resolveConfig(config: Config, env: NodeJS.ProcessEnv = process.env): Resolved {
+export function resolveConfig(config: Config, env: NodeJS.ProcessEnv = process.env, dir = process.cwd()): Resolved {
   const port = config.server?.port ?? Number(env.PORT || 8787);          // an empty PORT is the default, not port 0
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new ConfigError(`server.port (or PORT) must be a port number, not ${port}`);
   const fromEnv = authSettingsFromEnv(env);
@@ -83,8 +86,27 @@ export function resolveConfig(config: Config, env: NodeJS.ProcessEnv = process.e
     host: config.server?.host || env.HOST || '0.0.0.0',
     signIn: { kind: 'better-auth', settings: { ...fromEnv, ...stripUndefined(config.auth ?? {}), production: fromEnv.production } },
     plugins: config.plugins ?? defaultPlugins(),
+    appearance: config.appearance ? withImages(config.appearance, dir) : null,
   };
 }
+
+const IMAGE_FILE: Record<string, string> = {
+  '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.ico': 'image/x-icon',
+};
+/** The config file's images: a data URL as it is, or a file beside the config file read into one. */
+function withImages(a: Partial<Appearance>, dir: string): Partial<Appearance> {
+  const read = (v: string | null | undefined, what: string) => {
+    if (!v || v.startsWith('data:')) return v;
+    const type = IMAGE_FILE[extname(v).toLowerCase()];
+    if (!type) throw new ConfigError(`appearance.${what}: ${v} isn’t an image file (.png, .svg, .webp, .jpg, .gif or .ico)`);
+    const path = isAbsolute(v) ? v : resolve(dir, v);
+    if (!existsSync(path)) throw new ConfigError(`appearance.${what}: no file ${path}`);
+    return `data:${type};base64,${readFileSync(path).toString('base64')}`;
+  };
+  return { ...a, logo: read(a.logo, 'logo'), logoDark: read(a.logoDark, 'logoDark'), icon: read(a.icon, 'icon') };
+}
+/** The folder a config file's relative paths start from. */
+export const configDir = (file: string | null, cwd = process.cwd()) => (file ? dirname(file) : cwd);
 
 /** A setting written as undefined in the file (e.g. process.env.X that isn't set) leaves the environment's in place. */
 function stripUndefined<T extends object>(o: T): Partial<T> {

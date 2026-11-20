@@ -16,6 +16,7 @@ import { ROLE_OPTIONS, roleName, selectField, useRefresh } from './settingsKit.t
 import { SingleSignOn } from './sso.tsx';
 import { Cdn } from './cdn.tsx';
 import { DimensionsSection } from './dimensions.tsx';
+import { AppearanceSection } from './appearance.tsx';
 import { needsReview, roleInfo, ROLES } from '../../../server/policy.ts';
 
 /*
@@ -87,6 +88,8 @@ export function Settings({ section }: { section?: string }) {
         </section>
 
         <SingleSignOn />
+
+        <AppearanceSection />
 
         {/* the Cloudflare plugin's settings (server/plugins/cloudflare.ts), when this server runs it */}
         {meta.plugins?.includes('cloudflare') && <Cdn />}

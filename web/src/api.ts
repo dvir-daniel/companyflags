@@ -102,6 +102,8 @@ export type Meta = {
   pendingApprovals?: number;
   /** the plugins this server runs (server/plugin.ts): 'ofrep', 'flagd', 'app-files', 'cloudflare', or its own */
   plugins: string[];
+  /** the notice an admin set for everyone signed in (Settings → Appearance; older servers don't send it) */
+  banner?: { text: string; tone: 'info' | 'warn' | 'danger' } | null;
 };
 export type TraceStep = {
   stage: string; layer: 'base' | 'entity' | null; owner?: string; ruleKey?: string; ruleName?: string | null;

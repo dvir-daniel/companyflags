@@ -107,6 +107,12 @@
 
 /* ---- shadcn/ui semantic tokens, the same in both themes */
 :root {
+  /* The accent: what buttons, switches, focus rings and the selected item are drawn in. Ink unless an installation
+     picks a color (Settings → Appearance, server/appearance.ts accentCss sets these per theme). */
+  --tint: var(--ink);
+  --tint-ink: var(--page); /* text on the accent */
+  --tint-mark: transparent; /* the selected sidebar item's edge: only with an accent */
+
   --black: var(--page); /* older name for the page color */
   --background: var(--page);
   --foreground: var(--ink);
@@ -114,8 +120,8 @@
   --card-foreground: var(--ink);
   --popover: var(--panel);
   --popover-foreground: var(--ink);
-  --primary: var(--ink);
-  --primary-foreground: var(--page);
+  --primary: var(--tint);
+  --primary-foreground: var(--tint-ink);
   --secondary: var(--rule);
   --secondary-foreground: var(--ink);
   --muted: var(--panel);
@@ -125,7 +131,7 @@
   --destructive: var(--live);
   --border: var(--rule);
   --input: var(--rule-2);
-  --ring: var(--ink);
+  --ring: var(--tint);
   --chart-1: var(--ink);
   --chart-2: var(--ink-2);
   --chart-3: var(--ink-3);
@@ -134,12 +140,12 @@
   --radius: 0rem;
   --sidebar: var(--page);
   --sidebar-foreground: var(--ink-nav);
-  --sidebar-primary: var(--ink);
-  --sidebar-primary-foreground: var(--page);
+  --sidebar-primary: var(--tint);
+  --sidebar-primary-foreground: var(--tint-ink);
   --sidebar-accent: var(--hover-wash);
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: var(--rule);
-  --sidebar-ring: var(--ink);
+  --sidebar-ring: var(--tint);
 }
 
 @theme inline {
@@ -172,6 +178,8 @@
   --color-underline: var(--underline);
   --color-overlay: var(--overlay);
   --color-primary-hover: var(--primary-hover);
+  --color-tint: var(--tint);
+  --color-tint-ink: var(--tint-ink);
   --color-person-ink: var(--person-ink);
   --color-wash: var(--hover-wash);
   --color-ink: var(--ink);

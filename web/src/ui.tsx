@@ -338,7 +338,7 @@ const agoText = (d: Date) => {
 
 /* ---------------------------------------------------------------- paging */
 
-const pagerBtn = 'h-7 min-w-7 cursor-default border border-rule bg-transparent px-2 font-mono text-xs text-ink-2 hover:border-rule-2 hover:text-ink disabled:opacity-40 aria-[current=page]:border-ink aria-[current=page]:bg-ink aria-[current=page]:text-background';
+const pagerBtn = 'h-7 min-w-7 cursor-default border border-rule bg-transparent px-2 font-mono text-xs text-ink-2 hover:border-rule-2 hover:text-ink disabled:opacity-40 aria-[current=page]:border-tint aria-[current=page]:bg-tint aria-[current=page]:text-tint-ink';
 
 // ‹ 1 2 3 … N ›  plus "51–100 of 5,009 flags". `matched` is the count after searching and filters.
 export function Pager({ page, size, matched, noun, onPage, className }: { page: number; size: number; matched: number; noun: string; onPage: (p: number) => void; className?: string }) {

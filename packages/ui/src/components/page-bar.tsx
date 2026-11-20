@@ -224,7 +224,7 @@ function ViewMenu<V>({
           <button
             type="submit"
             disabled={!name.trim()}
-            className="h-8 shrink-0 cursor-default border-0 bg-ink px-3 text-13 font-medium text-background disabled:opacity-40"
+            className="h-8 shrink-0 cursor-default border-0 bg-tint px-3 text-13 font-medium text-tint-ink disabled:opacity-40"
           >
             Save
           </button>

@@ -12,6 +12,7 @@ import { may, mustBeAllowed, type Access, type Person } from './access.ts';
 import { serviceProvider, type SingleSignOn } from './sso.ts';
 import type { PluginParts } from './plugin.ts';
 import type { Tokens, TokenPerson } from './tokens.ts';
+import type { AppearanceStore } from './appearanceStore.ts';
 import { applyImport, fromValues, planImport, toValues } from './values.ts';
 import { appToken, clientLink } from './delivery.ts';
 import { notRolledBack, RESTORABLE } from './journal.ts';
@@ -40,7 +41,7 @@ import { planFlags, pullFlags, pushFlags, type Done } from './flagsAsCode.ts';
 
 // `db` is the app's journaled database (journal.ts): what a change does after it commits (waking the publisher,
 // forgetting cached links and keys, building a new environment's snapshot) happens there, not in the routes.
-type Deps = { db: Db; plane: DataPlane; hub: EventHub; identity: Identity; access: Access; sso: SingleSignOn; tokens: Tokens; plugins: { id: string; parts: PluginParts }[] };
+type Deps = { db: Db; plane: DataPlane; hub: EventHub; identity: Identity; access: Access; sso: SingleSignOn; tokens: Tokens; plugins: { id: string; parts: PluginParts }[]; appearance: AppearanceStore };
 type User = Person;
 
 // The only POSTs a viewer may make: they run the evaluator and change nothing. Exact addresses: an entity or
@@ -68,7 +69,7 @@ type GridRow = { key: string; valueType: FlagDef['valueType']; enabled: boolean;
 type Outcome = { sent: boolean; value: unknown; codeDefault: boolean; variant: string | null; source: string; rule: string | null; byDevice: boolean };
 type CompareRow = { key: string; a: Outcome; b: Outcome; same: boolean };
 
-export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins }: Deps) {
+export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins, appearance }: Deps) {
   const app = new Hono<{ Variables: { user: User } }>();
 
   // who is asking, and may they change anything at all: an access token (tokens.ts), or the console's sign-in
@@ -147,7 +148,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
 
   // ------------------------------------------------------------ meta
   app.get('/meta', async (c) => {
-    const [environments, projects, dimensions, entities, users, fieldRows, pending] = await Promise.all([
+    const [environments, projects, dimensions, entities, users, fieldRows, pending, look] = await Promise.all([
       all(db, `select key, name, min_approvals as "minApprovals", revision from environment order by id`),
       all(db, `select key, kind from project order by id`),
       dimensionsNow(),
@@ -164,12 +165,13 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
       all<ChangeSetFacts>(db, `select cs.author, cs.status, coalesce((select json_agg(json_build_object('reviewer', r.reviewer,
           'decision', r.decision, 'current', r.for_content_hash = cs.content_hash)) from change_set_review r where r.change_set_id = cs.id), '[]') as reviews
         from change_set cs where cs.status = 'in_review'`),
+      appearance.state(),
     ]);
     const dataPlane = Object.fromEntries([...plane.snapshots].map(([k, s]) => [k, { revision: s.revision, builtAt: s.builtAt }]));
     const { removed: _, ...me } = c.get('user');
     const pendingApprovals = pending.filter((cs) => mayApprove(me, cs)).length;
     const fields = fieldRows.map((r) => fieldInfo(r, dimensions));
-    return c.json({ me, signIn: identity.kind, environments, projects, dimensions, entities, users, fields, dataPlane, pendingApprovals, plugins: plugins.map((p) => p.id) });
+    return c.json({ me, signIn: identity.kind, environments, projects, dimensions, entities, users, fields, dataPlane, pendingApprovals, plugins: plugins.map((p) => p.id), banner: look.banner });
   });
 
   // ------------------------------------------------------------ flags
@@ -839,6 +841,23 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   app.delete('/people/:key', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await access.remove(c.req.param('key'), actor(c.get('user'))));
+  });
+
+  // ------------------------------------------------------------ appearance (appearanceStore.ts): admins change it
+  // The settings with their images, for the form; everyone may look, as at the rest of Settings.
+  app.get('/appearance/settings', async (c) => {
+    const s = await appearance.state();
+    return c.json({ ...(await appearance.settings()), source: s.source, updatedAt: s.updatedAt, updatedBy: s.updatedBy });
+  });
+  app.put('/appearance', async (c) => {
+    adminOnly(c.get('user'));
+    await appearance.save(await c.req.json(), actor(c.get('user')));
+    return c.json(await appearance.state());
+  });
+  app.delete('/appearance', async (c) => {
+    adminOnly(c.get('user'));
+    await appearance.reset(actor(c.get('user')));
+    return c.json(await appearance.state());
   });
 
   // ------------------------------------------------------------ single sign-on (sso.ts): admins add connections

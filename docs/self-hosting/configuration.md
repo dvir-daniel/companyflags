@@ -46,6 +46,7 @@ go. In a folder made by `npm init`, add `"type": "module"` to its `package.json`
 | `server.port`, `server.host` | `PORT`, `HOST` | Where the server listens. |
 | `auth` | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, the providers' variables, … | Sign-in with Better Auth: `secret`, `baseURL`, `google`, `github`, `microsoft`, `signupDomains`, `trustedOrigins`, `clientIp`, `rateLimit` ([below](#auth)). Each one left out comes from its variable. |
 | `plugins` | — | What reads flags besides the console, and what runs after a publish. Left out: all of them. See [Plugins](/reference/plugins). |
+| `appearance` | Settings → Appearance | The console's name, logo, icon, accent color, default look, notice, sign-in note and links. Set here, they can't be changed in the console. See [Appearance](/self-hosting/appearance). |
 
 - The file is TypeScript, run by Node directly (type stripping): no build step. The npm package has the types. It can read `process.env`, so secrets stay in
   the environment.

@@ -1,10 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { BuildingsIcon, EyeIcon, EyeSlashIcon, GithubLogoIcon, GoogleLogoIcon, WindowsLogoIcon } from '@phosphor-icons/react';
 import { Button } from '@companyflags/ui/components/button';
-import { BrandMark, Wordmark } from '@companyflags/ui/components/app-frame';
 import { Input } from '@companyflags/ui/components/input';
 import { cn } from '@companyflags/ui/lib/utils';
 import { Bone } from './loading.tsx';
+import { Brand } from './look.tsx';
+import { lookName, useLook } from './appearanceKit.ts';
 import { field, INVITE_ONLY, SETUP_HINT, type Provider } from './signinKit.ts';
 
 /*
@@ -30,7 +31,7 @@ export function Frame({ tab, onTab, title, intro, footer, children }: {
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(ellipse_at_50%_35%,black_10%,transparent_70%)]"
         style={{ backgroundImage: 'linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
       <div className="relative w-full max-w-md">
-        <span className="mb-4 flex items-center gap-2.5 text-ink"><BrandMark /><Wordmark>COMPANYFLAGS.</Wordmark></span>
+        <Brand className="mb-4 text-ink" />
         {tab && (
           <div role="group" aria-label="Sign in or sign up" className="flex">
             {TABS.map(([t, label]) => (
@@ -50,8 +51,21 @@ export function Frame({ tab, onTab, title, intro, footer, children }: {
           {children}
           {footer && <p className="m-0 border-t border-rule pt-4 text-center text-13 text-ink-3">{footer}</p>}
         </section>
+        <LookNote />
       </div>
     </main>
+  );
+}
+
+/** Under the card: the installation's note (who may sign in, that use is logged) and its help link. */
+function LookNote() {
+  const { signInNote, helpUrl } = useLook();
+  if (!signInNote && !helpUrl) return null;
+  return (
+    <div className="mt-4 grid gap-2 text-center text-13 text-ink-3">
+      {signInNote && <p className="m-0 whitespace-pre-line">{signInNote}</p>}
+      {helpUrl && <a href={helpUrl} target="_blank" rel="noopener noreferrer" className="text-ink-2 underline decoration-ink-4 underline-offset-4 hover:text-ink">Get help</a>}
+    </div>
   );
 }
 
@@ -135,7 +149,7 @@ export function ResetSkeleton() {
 /** An invite link's page before the invite is in: who it's for is a bone, the fields wait. */
 export function JoinSkeleton() {
   return (
-    <Frame tab="signup" title="Join CompanyFlags" intro={<>You’re invited as <Bone className="w-40" />.</>}>
+    <Frame tab="signup" title={`Join ${lookName()}`} intro={<>You’re invited as <Bone className="w-40" />.</>}>
       <form aria-busy className="grid gap-4" onSubmit={(e) => e.preventDefault()}>
         <Labeled id="sk-name" label="Your name"><Input id="sk-name" className={field} disabled placeholder="Sam Lee" /></Labeled>
         <Labeled id="sk-new" label="Choose a password" hint="At least 10 characters."><PasswordInput id="sk-new" disabled /></Labeled>

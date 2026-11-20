@@ -4,6 +4,13 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **Appearance:** Settings → Appearance sets the console's name, logo (and one for dark), browser tab icon, an accent
+  color (seven of ours or your own), and light or dark for people who haven't chosen. It also sets a notice across
+  the top of every page, a note on the sign-in page, a help link and up to four footer links. The server puts the
+  name, icon and colors into the page it sends, so nothing flashes. Images are kept in the database and served with
+  a policy that runs nothing. `appearance` in `companyflags.config.ts` sets it in Git, read-only in the console.
+  Changes are in History. Migration 0019. See [Appearance](docs/self-hosting/appearance.md).
+
 ## 0.6.0 (2026-11-20)
 
 - **On npm as `companyflags`:** `npx companyflags start` runs the server and the console from any folder, and every

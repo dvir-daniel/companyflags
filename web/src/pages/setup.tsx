@@ -5,6 +5,7 @@ import { cn } from '@companyflags/ui/lib/utils';
 import { useApp } from '../app.ts';
 import { roleInfo } from '../../../server/policy.ts';
 import { roleName } from './settingsKit.ts';
+import { lookName } from '../appearanceKit.ts';
 import { nextStep, setupSteps } from './setupKit.ts';
 
 /*
@@ -60,7 +61,7 @@ export function GetStarted() {
   return (
     <div className="grid max-w-[760px] content-start gap-8 p-12 max-sm:p-6">
       <div className="grid gap-3">
-        <h1 className="m-0 text-28 font-semibold text-ink">Welcome to CompanyFlags</h1>
+        <h1 className="m-0 text-28 font-semibold text-ink">Welcome to {lookName()}</h1>
         <p className="m-0 text-15 text-subtitle">Five steps, and your apps read their first flag.</p>
       </div>
       {admin ? (

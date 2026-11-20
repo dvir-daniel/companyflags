@@ -8,7 +8,7 @@ import { cn } from "../lib/utils.ts"
  */
 const sidebarItemClass = cn(
   "flex w-full cursor-default items-center gap-2.5 px-3 py-[5px] text-sm text-ink-nav hover:text-ink hover:no-underline",
-  "aria-[current=page]:bg-wash aria-[current=page]:text-ink [&_svg]:shrink-0 [&_svg]:opacity-85"
+  "aria-[current=page]:bg-wash aria-[current=page]:text-ink aria-[current=page]:shadow-[inset_2px_0_0_var(--tint-mark)] aria-[current=page]:[&_svg]:text-tint [&_svg]:shrink-0 [&_svg]:opacity-85"
 )
 
 /** Classes for a prototype-only control in the footer: dashed and labeled "Demo /". */

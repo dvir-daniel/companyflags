@@ -234,7 +234,8 @@ The console talks to the server under `/api`: `/api/auth/*` is the sign-in (Bett
 console's own API. It is for the console, not a stable public API yet: its addresses and answers may change in any
 release.
 
-Some of it needs no session: the sign-in (`/api/auth/*` and `GET /api/sign-in`), and these two.
+Some of it needs no session: the sign-in (`/api/auth/*` and `GET /api/sign-in`), the console's
+[appearance](/self-hosting/appearance) (`GET /api/appearance` and its images), and these two.
 
 - `GET /api/setup/<secret>` is the [setup link](/self-hosting/sign-in#the-first-account) a new server prints. It
   keeps the secret in a cookie and redirects to the console. A wrong secret, or a server that has accounts, gets

@@ -22,7 +22,7 @@ const badgeVariants = cva(
         warn: "border-flag/35 text-flag",
         ok: "border-ok/35 text-ok",
         agent: "border-tool/40 text-tool",
-        count: "min-w-[19px] justify-center border-0 bg-ink px-[5px] leading-[17px] font-medium tracking-normal text-background",
+        count: "min-w-[19px] justify-center border-0 bg-tint px-[5px] leading-[17px] font-medium tracking-normal text-tint-ink",
       },
     },
     defaultVariants: { variant: "default" },

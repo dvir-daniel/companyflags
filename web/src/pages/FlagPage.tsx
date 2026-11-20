@@ -794,7 +794,7 @@ function Option({ checked, disabled, onSelect, title, desc, children }: { checke
     <div className={cn('relative -mt-px border p-3.5', checked && !disabled ? 'z-[1] border-ink' : 'border-grid')}>
       <label className="flex cursor-default items-start gap-3">
         <input type="radio" name="ac-kind" checked={checked} disabled={disabled} onChange={onSelect}
-          className="mt-[3px] size-3.5 shrink-0 cursor-default appearance-none rounded-none border border-rule-2 bg-background p-0 outline-none checked:border-ink checked:bg-ink checked:shadow-[inset_0_0_0_3px_var(--page)] focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ink" />
+          className="mt-[3px] size-3.5 shrink-0 cursor-default appearance-none rounded-none border border-rule-2 bg-background p-0 outline-none checked:border-tint checked:bg-tint checked:shadow-[inset_0_0_0_3px_var(--page)] focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ink" />
         <span className="grid gap-0.5"><b className="text-sm font-medium text-ink">{title}</b><span className="text-13 text-ink-2">{desc}</span></span>
       </label>
       {children && <div className="mt-3 pl-[26px]">{children}</div>}
