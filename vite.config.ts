@@ -23,7 +23,8 @@ export default defineConfig({
   build: { outDir: 'dist', emptyOutDir: true },
   server: {
     port: 5173,
-    proxy: { '/api': api, '/sdk': api, '/client': api },
+    // every address the server answers besides the console: the API, the plugins (OFREP, webhooks, MCP), OAuth discovery
+    proxy: { '/api': api, '/sdk': api, '/client': api, '/ofrep': api, '/hooks': api, '/mcp': api, '/oauth': api, '/.well-known': api, '/healthz': api, '/readyz': api },
     fs: { allow: [import.meta.dirname, ui] },
   },
 });

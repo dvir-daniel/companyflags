@@ -25,8 +25,9 @@ its own). Docs: https://dvir-daniel.github.io/companyflags/ (every page also as 
 ## With the MCP server
 
 If a `companyflags` MCP server is connected, use it instead of guessing: `explain` and `evaluate` before you change
-anything, `get_flag` for a flag's rules and services, `stale_flags` for cleanup. Change tools show a plan first; call
-them with `apply: true` only after the person agreed. In production they open a request; tell the person its number.
+anything, `get_flag` for a flag's rules and services, `compare` for two entities or environments, `stale_flags` for
+cleanup. Change tools show a plan first; call them with `apply: true` only after the person agreed. In production they
+open a request; tell the person its number, and check it with `request_status`.
 
 ## Reading a flag
 

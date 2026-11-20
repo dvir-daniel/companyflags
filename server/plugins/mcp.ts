@@ -2,7 +2,8 @@
 //   POST /mcp   JSON-RPC 2.0 in, application/json out (Streamable HTTP, stateless: no sessions, no streams)
 //   GET  /mcp   405: this server doesn't stream
 //
-// The caller sends an access token (Authorization: Bearer cfp_…, ../tokens.ts). Every tool calls the console's API
+// The caller sends an access token (Authorization: Bearer cfp_…, ../tokens.ts): one made in the console, or one an MCP
+// client got by signing its person in with OAuth (../oauth.ts; without a token, the 401 says where). Every tool calls the console's API
 // with that token (PluginContext.request), so its role, the approvals and History hold as for any script: an agent's
 // change in an environment that needs approval is a request a person approves. The token goes to this server's own
 // API and nowhere else. A request from a web page on another site (its Origin header) is refused, against DNS
@@ -12,6 +13,9 @@ import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { definePlugin, type PluginContext } from '../plugin.ts';
 import { FLAG_KINDS } from '../flagsAsCode.ts';
+import { applyChange, backChange, changeText, LADDER, nextChange, releaseState, stepText, type Change } from '../release.ts';
+import { whenText } from '../words.ts';
+import { RESOURCE_METADATA_PATH } from '../oauth.ts';
 
 export const MCP_PROTOCOL = '2025-11-25';
 const PROTOCOLS = new Set([MCP_PROTOCOL, '2025-06-18', '2025-03-26']);
@@ -60,7 +64,10 @@ function apiFor(request: PluginContext['request'], token: string) {
     return { status: res.status, json };
   };
   const ok = (r: Answer) => {
-    if (r.status >= 400) throw new ToolError(r.json?.error ?? `the API answered ${r.status}`);
+    if (r.status >= 400) {
+      const why: unknown[] = Array.isArray(r.json?.errors) ? r.json.errors : [];
+      throw new ToolError(`${r.json?.error ?? `the API answered ${r.status}`}${why.length ? `: ${why.join('; ')}` : ''}`);
+    }
     return r.json;
   };
   const api: Api = {
@@ -76,7 +83,7 @@ function apiFor(request: PluginContext['request'], token: string) {
 const seg = (s: unknown) => encodeURIComponent(String(s));
 
 // ------------------------------------------------------------------ tools
-type Schema = { type: 'object'; properties: Record<string, { type: string; description?: string; enum?: readonly string[]; items?: unknown }>; required?: string[] };
+type Schema = { type: 'object'; properties: Record<string, { type: string | string[]; description?: string; enum?: readonly string[]; items?: unknown }>; required?: string[] };
 type Args = Record<string, any>;
 type Tool = {
   name: string; description: string; inputSchema: Schema; readOnly: boolean; destructive?: boolean;
@@ -104,8 +111,9 @@ function checkArgs(schema: Schema, a: unknown): Args {
     if (!p) throw new ToolError(`unknown argument ${k}`);
     if (v === undefined || v === null) continue;
     const is = Array.isArray(v) ? 'array' : typeof v === 'number' && Number.isInteger(v) ? 'integer' : typeof v;
-    const fits = is === p.type || (p.type === 'number' && is === 'integer') || (p.type === 'integer' && is === 'integer');
-    if (!fits) throw new ToolError(`${k}: a${/^[aeiou]/.test(p.type) ? 'n' : ''} ${p.type}`);
+    const types = Array.isArray(p.type) ? p.type : [p.type];
+    const fits = types.some((t) => is === t || (t === 'number' && is === 'integer'));
+    if (!fits) throw new ToolError(`${k}: ${types.map((t) => `a${/^[aeiou]/.test(t) ? 'n' : ''} ${t}`).join(' or ')}`);
     if (p.enum && !p.enum.includes(v)) throw new ToolError(`${k}: one of ${p.enum.join(', ')}`);
   }
   return args;
@@ -130,6 +138,86 @@ async function baseOf(api: Api, flag: string, env: string) {
   if (!base) throw new ToolError(`${flag} has no settings in ${env}`);
   const { version, updatedAt: _a, updatedBy: _b, ...layer } = base;
   return { f, version: version as number, layer: layer as Args };
+}
+
+/** A flag's layer in one environment: the defaults, or an entity's own settings (null when it has none yet). */
+async function layerOf(api: Api, flag: string, env: string, entity: string | undefined) {
+  if (!entity) return { ...(await baseOf(api, flag, env)), path: 'base' };
+  const [f, meta] = await Promise.all([api.get(`/flags/${seg(flag)}`), api.get('/meta')]);
+  if (!(meta.entities as { key: string }[]).some((e) => e.key === entity)) throw new ToolError(`no entity "${entity}" (list_dimensions)`);
+  if (!f.layers?.[env]) throw new ToolError(`${flag} has no settings in ${env}`);
+  const own = (f.layers[env].entities as { entity: string; layer: Args }[]).find((x) => x.entity === entity)?.layer;
+  if (!own) return { f, version: null, layer: null as Args | null, path: seg(entity) };
+  const { version, updatedAt: _a, updatedBy: _b, ...layer } = own;
+  return { f, version: version as number, layer: layer as Args | null, path: seg(entity) };
+}
+
+/** Where a change is, in words: "dev", "dev, acme’s own settings". */
+const where = (env: string, entity?: string) => (entity ? `${env}, ${entity}’s own settings` : env);
+
+/** A rule as an agent writes it ({conditions, serve} or {conditions, split: {"on": 25}}), as the API keeps it. */
+function ruleFrom(r: Args, name: unknown, variants: string[], freeValues: boolean) {
+  if (!r || typeof r !== 'object' || Array.isArray(r)) throw new ToolError('rule: an object, e.g. {"conditions": [...], "serve": "on"}');
+  for (const k of Object.keys(r)) if (!['conditions', 'serve', 'split', 'by'].includes(k)) throw new ToolError(`rule: unknown field ${k}`);
+  const conditions = (r.conditions ?? []) as Args[];
+  if (!Array.isArray(conditions)) throw new ToolError('rule.conditions: a list of {"field", "op", "values"}');
+  const conds = conditions.map((c, i) => {
+    if (!c || typeof c.field !== 'string' || typeof c.op !== 'string') throw new ToolError(`rule.conditions[${i}]: {"field": "app.version", "op": "semver_gte", "values": ["5.0.0"]}`);
+    const values = c.values === undefined ? [] : Array.isArray(c.values) ? c.values : [c.values];
+    return { field: c.field, op: c.op, values };
+  });
+  const known = (v: string) => freeValues || variants.includes(v);
+  if ((r.serve === undefined) === (r.split === undefined)) throw new ToolError('rule: serve a variant, or a split, not both');
+  let split = null;
+  if (r.split !== undefined) {
+    if (!r.split || typeof r.split !== 'object' || Array.isArray(r.split)) throw new ToolError('rule.split: variant → % of devices, e.g. {"on": 25}');
+    let from = 0;
+    const ranges = Object.entries(r.split as Record<string, unknown>).map(([variation, p]) => {
+      if (!known(variation)) throw new ToolError(`rule.split: no variant "${variation}": the variants are ${variants.join(', ')}`);
+      if (typeof p !== 'number' || !(p > 0) || Math.abs(p * 100 - Math.round(p * 100)) > 1e-6) {
+        throw new ToolError(`rule.split.${variation}: a % above 0, e.g. 25 or 2.5`);
+      }
+      const range = { variation, from, to: from + Math.round(p * 100) };
+      from = range.to;
+      return range;
+    });
+    if (!ranges.length) throw new ToolError('rule.split: at least one variant');
+    if (from > 10000) throw new ToolError('rule.split: the %s add up to more than 100');
+    split = { by: typeof r.by === 'string' ? r.by : 'device.id', fallbackBy: null, ranges };
+  } else if (typeof r.serve !== 'string' || !known(r.serve)) {
+    throw new ToolError(`rule.serve: one of the variants (${variants.join(', ')})`);
+  }
+  return {
+    ruleKey: globalThis.crypto.randomUUID(), name: typeof name === 'string' && name.trim() ? name.trim() : null, locked: false, disabled: false,
+    conditions: conds, serveVariation: split ? null : r.serve as string, split,
+  };
+}
+
+/** A rule in a plan: its name, when it matches and what it gives. */
+const ruleText = (r: any) => ({
+  ruleKey: r.ruleKey, name: r.name ?? null, when: whenText(r.conditions ?? []),
+  gives: r.split ? Object.fromEntries(r.split.ranges.map((g: any) => [g.variation, `${(g.to - g.from) / 100}%`])) : r.serveVariation,
+  ...(r.disabled ? { disabled: true } : {}), ...(r.locked ? { override: true } : {}),
+});
+
+/** One side of compare: an entity in `environment`, an environment (everyone), or {environment, entity, service}. */
+function sideOf(x: unknown, what: string, envKeys: string[], entityKeys: Set<string>, environment: string | undefined, service: string) {
+  if (typeof x === 'string') {
+    const isEnv = envKeys.includes(x);
+    const isEntity = entityKeys.has(x);
+    if (isEnv && isEntity) throw new ToolError(`${what}: "${x}" is an environment and an entity: say which, e.g. {"environment": "${x}"} or {"entity": "${x}"}`);
+    if (isEnv) return { environment: x, project: service, entity: null };
+    if (!isEntity) throw new ToolError(`${what}: no environment or entity "${x}"`);
+    if (!environment) throw new ToolError(`${what}: an entity needs environment`);
+    return { environment, project: service, entity: x };
+  }
+  if (!x || typeof x !== 'object' || Array.isArray(x)) throw new ToolError(`${what}: an entity or environment key, or {"environment", "entity", "service"}`);
+  const o = x as Args;
+  const env = o.environment ?? environment;
+  if (!env) throw new ToolError(`${what}: environment is needed`);
+  if (!envKeys.includes(env)) throw new ToolError(`${what}: no environment "${env}"`);
+  if (o.entity != null && !entityKeys.has(o.entity)) throw new ToolError(`${what}: no entity "${o.entity}"`);
+  return { environment: env as string, project: (o.service ?? service) as string, entity: (o.entity ?? null) as string | null };
 }
 
 /** What a change tool answers once it called the API: applied, or a request where approval is needed. */
@@ -238,6 +326,22 @@ const TOOLS: Tool[] = [
     })),
   },
   {
+    name: 'request_status', readOnly: true,
+    description: 'One change request: its status, the approvals it has and needs, its reviews and its changes. Call it to see whether a person approved it.',
+    inputSchema: { type: 'object', properties: { id: { type: 'integer', description: 'The request’s number' } }, required: ['id'] },
+    run: async (a, api) => {
+      const r = await api.get(`/change-sets/${seg(a.id)}`);
+      const approvals = (r.reviews as { decision: string; current: boolean }[]).filter((x) => x.decision === 'approve' && x.current).length;
+      return {
+        id: r.id, environment: r.environment, status: r.status, author: r.author, byAgent: !!r.byAgent, reason: r.reason, createdAt: r.createdAt,
+        scheduledAt: r.scheduledAt, appliedRevision: r.appliedRevision, error: r.lastError ?? undefined,
+        approvals: { has: approvals, needs: r.minApprovals },
+        reviews: r.reviews.map((x: any) => ({ by: x.reviewer, decision: x.decision, comment: x.comment, current: x.current, at: x.createdAt })),
+        items: r.items.map((i: any) => ({ kind: i.kind, flag: i.flag, entity: i.entity, before: i.before, proposed: i.proposed })),
+      };
+    },
+  },
+  {
     name: 'stale_flags', readOnly: true,
     description: 'Releases to clean up: past their remove-by date, or done (everyone gets the same value everywhere).',
     inputSchema: { type: 'object', properties: {} },
@@ -273,6 +377,30 @@ const TOOLS: Tool[] = [
         key: r.key, value: r.codeDefault ? null : r.value, variant: r.variant, codeDefault: !!r.codeDefault, reason: r.reason, decidedBy: r.decidedBy,
         steps: r.trace.map((s: any) => ({ stage: s.stage, outcome: s.outcome, detail: s.detail, rule: s.ruleName ?? undefined, owner: s.owner,
           conditions: s.conditions, split: s.split })),
+      };
+    },
+  },
+  {
+    name: 'compare', readOnly: true,
+    description: 'Compare what two entities, or two environments, get flag by flag for one service, and why.',
+    inputSchema: { type: 'object', properties: {
+      environment: str('Environment key, for sides that are entities'), service: TARGET.service,
+      a: { type: ['string', 'object'], description: 'An entity key, an environment key, or {"environment", "entity", "service"}' },
+      b: { type: ['string', 'object'], description: 'The other side, the same way' },
+      attrs: TARGET.attrs, onlyDiff: { type: 'boolean', description: 'Only the flags that differ (default false)' }, q: str('Part of a flag key'),
+    }, required: ['service', 'a', 'b'] },
+    run: async (a, api, ok) => {
+      const meta = await api.get('/meta');
+      const envKeys = (meta.environments as { key: string }[]).map((e) => e.key);
+      const entityKeys = new Set((meta.entities as { key: string }[]).map((e) => e.key));
+      if (a.environment && !envKeys.includes(a.environment)) throw new ToolError(`no environment "${a.environment}" (list_environments)`);
+      const A = sideOf(a.a, 'a', envKeys, entityKeys, a.environment, a.service);
+      const B = sideOf(a.b, 'b', envKeys, entityKeys, a.environment, a.service);
+      const r = ok(await api.send('POST', '/compare', { a: A, b: B, attrs: a.attrs ?? {}, onlyDiff: !!a.onlyDiff, q: a.q, page: 0, size: 200 }));
+      const side = (x: any) => ({ sent: x.sent, value: x.value, variant: x.variant, codeDefault: x.codeDefault, source: x.source, ...(x.rule ? { rule: x.rule } : {}) });
+      return {
+        a: A, b: B, different: r.different, matched: r.matched,
+        flags: r.rows.map((x: any) => ({ key: x.key, same: x.same, a: side(x.a), b: side(x.b) })),
       };
     },
   },
@@ -367,6 +495,141 @@ const TOOLS: Tool[] = [
       if (!a.apply) return plan(env, { flag: a.flag, environment: env.key, default: { from: layer.defaultVariation ?? null, to: a.variant } });
       const reason = a.reason ?? `Give ${a.variant} by default for ${a.flag} in ${env.key}`;
       return outcome(await api.send('PUT', `/flags/${seg(a.flag)}/layers/${seg(env.key)}/base`, { layer: { ...layer, defaultVariation: a.variant }, expectedVersion: version, reason }), ok, env.key);
+    },
+  },
+  {
+    name: 'add_rule',
+    readOnly: false,
+    description: 'Add a rule to a flag in one environment: for everyone, or to an entity’s own settings. It checks conditions and serves a variant or a % of devices.',
+    inputSchema: { type: 'object', properties: {
+      flag: str('Flag key'), environment: str('Environment key'), entity: str('An entity key: add it to that entity’s own settings (default: for everyone)'),
+      rule: { type: 'object', description: 'What it checks and gives: {"conditions": [{"field": "app.version", "op": "semver_gte", "values": ["5.0.0"]}], "serve": "on"}, '
+        + 'or a % of devices: "split": {"on": 25}. No conditions: every request. The attributes: the companyflags://attributes resource' },
+      name: str('A name for the rule, e.g. Beta testers'),
+      position: { type: 'integer', description: 'Where it goes: 1 is first (default: last). Rules are checked in order; the first that matches decides' },
+      reason: REASON, apply: APPLY,
+    }, required: ['flag', 'environment', 'rule'] },
+    run: async (a, api, ok) => {
+      const env = await environment(api, a.environment);
+      const { f, version, layer, path } = await layerOf(api, a.flag, env.key, a.entity);
+      const variants = (f.variations as { key: string }[]).map((v) => v.key);
+      const rule = ruleFrom(a.rule, a.name, variants, !!f.freeValues);
+      const rules: Args[] = [...(layer?.rules ?? [])];
+      const at = a.position ?? rules.length + 1;
+      if (at < 1 || at > rules.length + 1) throw new ToolError(`position: 1 to ${rules.length + 1}`);
+      rules.splice(at - 1, 0, rule);
+      const place = where(env.key, a.entity);
+      if (!a.apply) return plan(env, { flag: a.flag, environment: env.key, entity: a.entity ?? null, add: ruleText(rule), position: at, rules: rules.map(ruleText) });
+      const reason = a.reason ?? `Add the rule ${rule.name ? `“${rule.name}” ` : ''}to ${a.flag} in ${place}`;
+      // an entity without settings of its own gets them: rules only, then what it gets without them
+      const next = layer ? { ...layer, rules } : { inherit: 'base_rules_then_base_default', defaultVariation: null, rules };
+      return { ...outcome(await api.send('PUT', `/flags/${seg(a.flag)}/layers/${seg(env.key)}/${path}`, { layer: next, expectedVersion: version, reason }), ok, env.key), ruleKey: rule.ruleKey };
+    },
+  },
+  {
+    name: 'remove_rule',
+    readOnly: false, destructive: true,
+    description: 'Remove one rule of a flag in one environment, for everyone or from an entity’s own settings. Name it by its ruleKey or its name (get_flag).',
+    inputSchema: { type: 'object', properties: {
+      flag: str('Flag key'), environment: str('Environment key'), entity: str('An entity key: remove it from that entity’s own settings (default: for everyone)'),
+      ruleKey: str('The rule’s ruleKey'), name: str('The rule’s name, when no other rule there has it'), reason: REASON, apply: APPLY,
+    }, required: ['flag', 'environment'] },
+    run: async (a, api, ok) => {
+      if (!a.ruleKey === !a.name) throw new ToolError('ruleKey or name: one of them');
+      const env = await environment(api, a.environment);
+      const { version, layer, path } = await layerOf(api, a.flag, env.key, a.entity);
+      const place = where(env.key, a.entity);
+      if (!layer) throw new ToolError(`${a.entity} has no settings of its own on ${a.flag} in ${env.key}`);
+      const rules: Args[] = layer.rules ?? [];
+      const hits = rules.filter((r) => (a.ruleKey ? r.ruleKey === a.ruleKey : r.name === a.name));
+      if (!hits.length) throw new ToolError(`no rule ${a.ruleKey ?? `named “${a.name}”`} in ${place}: its rules are ${rules.map((r) => r.name ?? r.ruleKey).join(', ') || 'none'}`);
+      if (hits.length > 1) throw new ToolError(`${hits.length} rules are named “${a.name}” in ${place}: name one by its ruleKey (${hits.map((r) => r.ruleKey).join(', ')})`);
+      const gone = hits[0];
+      const after = rules.filter((r) => r !== gone);
+      if (!a.apply) return plan(env, { flag: a.flag, environment: env.key, entity: a.entity ?? null, remove: ruleText(gone), rules: after.map(ruleText) });
+      const reason = a.reason ?? `Remove the rule ${gone.name ? `“${gone.name}” ` : ''}from ${a.flag} in ${place}`;
+      return outcome(await api.send('PUT', `/flags/${seg(a.flag)}/layers/${seg(env.key)}/${path}`, { layer: { ...layer, rules: after }, expectedVersion: version, reason }), ok, env.key);
+    },
+  },
+  {
+    name: 'set_entity_value',
+    readOnly: false,
+    description: 'Set the variant an entity gets by default in one environment (its own default, after the rules for everyone). variant null removes its own settings: it gets what it would without them.',
+    inputSchema: { type: 'object', properties: {
+      flag: str('Flag key'), environment: str('Environment key'), entity: str('Entity key (list_dimensions)'),
+      variant: { type: ['string', 'null'], description: 'A variant key of the flag, or null to remove the entity’s own settings' },
+      reason: REASON, apply: APPLY,
+    }, required: ['flag', 'environment', 'entity'] },
+    run: async (a, api, ok) => {
+      if (a.variant === undefined) throw new ToolError('variant: a variant key, or null to remove the entity’s own settings');
+      const env = await environment(api, a.environment);
+      const { f, version, layer, path } = await layerOf(api, a.flag, env.key, a.entity);
+      const url = `/flags/${seg(a.flag)}/layers/${seg(env.key)}/${path}`;
+      if (a.variant === null) {
+        if (!layer) return { applied: false, unchanged: true, message: `${a.entity} has no settings of its own on ${a.flag} in ${env.key}` };
+        if (!a.apply) return plan(env, { flag: a.flag, environment: env.key, entity: a.entity, remove: { default: layer.defaultVariation ?? null, rules: (layer.rules ?? []).map(ruleText) } });
+        const reason = a.reason ?? `Remove ${a.entity}’s own settings on ${a.flag} in ${env.key}`;
+        return outcome(await api.send('DELETE', url, { expectedVersion: version, reason }), ok, env.key);
+      }
+      const variants = (f.variations as { key: string }[]).map((v) => v.key);
+      if (!f.freeValues && !variants.includes(a.variant)) throw new ToolError(`${a.flag} has no variant "${a.variant}": its variants are ${variants.join(', ')}`);
+      const own = layer?.inherit === 'base_rules_then_base_default' || !layer ? null : layer.defaultVariation ?? null;
+      if (own === a.variant) return { applied: false, unchanged: true, message: `${a.entity} already gets ${a.variant} by default on ${a.flag} in ${env.key}` };
+      if (!a.apply) return plan(env, { flag: a.flag, environment: env.key, entity: a.entity, default: { from: own, to: a.variant } });
+      // "Own settings only" stays; otherwise the rules for everyone, then its own default
+      const inherit = layer?.inherit === 'customer_only' ? 'customer_only' : 'base_rules_then_customer_default';
+      const next = { ...(layer ?? { rules: [] }), inherit, defaultVariation: a.variant };
+      const reason = a.reason ?? `Give ${a.entity} ${a.variant} by default for ${a.flag} in ${env.key}`;
+      return outcome(await api.send('PUT', url, { layer: next, expectedVersion: version, reason }), ok, env.key);
+    },
+  },
+  {
+    name: 'rollout_step',
+    readOnly: false,
+    description: `Move a release along its steps in one environment: next (${LADDER.join('%, ')}%, then everyone), back, a % of devices, or everyone. pause: true pauses it, false resumes it.`,
+    inputSchema: { type: 'object', properties: {
+      flag: str('A release’s flag key'), environment: str('Environment key'),
+      step: { type: ['string', 'number'], description: 'next, back, everyone, or a % of devices such as 25 (0 removes the %)' },
+      pause: { type: 'boolean', description: 'true: pause (its devices go back, kept for resuming); false: resume. Instead of step' },
+      reason: REASON, apply: APPLY,
+    }, required: ['flag', 'environment'] },
+    run: async (a, api, ok) => {
+      if ((a.step === undefined) === (a.pause === undefined)) throw new ToolError('step or pause: one of them');
+      const env = await environment(api, a.environment);
+      const { f, version, layer } = await baseOf(api, a.flag, env.key);
+      if (f.kind !== 'release') throw new ToolError(`${a.flag} isn’t a release (its purpose is ${f.kind}): use add_rule, set_default or set_enabled`);
+      const variants = f.variations as { key: string; value: unknown }[];
+      const state = releaseState(variants, layer as any);
+      let change: Change;
+      if (a.pause !== undefined) {
+        if (state.paused === a.pause) return { applied: false, unchanged: true, message: `${a.flag} is ${a.pause ? 'already paused' : 'not paused'} in ${env.key}` };
+        change = { kind: a.pause ? 'pause' : 'resume' };
+      } else if (a.step === 'next') {
+        const c = nextChange(state);
+        if (!c) throw new ToolError(`no next step for ${a.flag} in ${env.key}: it is at ${stepText(state)}`);
+        change = c;
+      } else if (a.step === 'back') {
+        const c = backChange(state);
+        if (!c) throw new ToolError(`no step back for ${a.flag} in ${env.key}: it is at ${stepText(state)}`);
+        change = c;
+      } else if (a.step === 'everyone') {
+        change = { kind: 'everyone' };
+      } else {
+        const p = typeof a.step === 'number' ? a.step : Number(String(a.step).replace(/%$/, '').trim());
+        if (!Number.isFinite(p) || String(a.step).trim() === '') throw new ToolError('step: next, back, everyone, or a % such as 25');
+        change = { kind: 'percent', percent: p };
+      }
+      let next;
+      try { next = applyChange(variants, layer as any, change, f.key); } catch (e) { throw new ToolError((e as Error).message); }
+      const after = releaseState(variants, next);
+      const words = changeText(state, after) ?? stepText(after);
+      const same = (x: Args) => JSON.stringify([!!x.enabled, x.defaultVariation, x.rules]);
+      if (same(layer) === same(next)) {
+        return { applied: false, unchanged: true, message: `${a.flag} is already at ${stepText(state)} in ${env.key}` };
+      }
+      if (!a.apply) return plan(env, { flag: a.flag, environment: env.key, step: { from: stepText(state), to: stepText(after) }, change: words });
+      const reason = `${a.flag} in ${env.key}: ${words}${a.reason ? `. ${a.reason}` : ''}`;
+      return { ...outcome(await api.send('PUT', `/flags/${seg(a.flag)}/layers/${seg(env.key)}/base`, { layer: next, expectedVersion: version, reason }), ok, env.key), step: stepText(after) };
     },
   },
   {
@@ -507,9 +770,12 @@ export const mcp = () => definePlugin({
       const origin = c.req.header('origin');
       if (origin && origin !== new URL(c.req.url).origin && origin !== own) return c.json({ error: 'this Origin may not use /mcp' }, 403);
       const token = c.req.header('authorization')?.match(/^Bearer\s+(cfp_\S+)$/i)?.[1];
+      // without a token, or with one that doesn't work: where to sign in (oauth.ts), for clients that sign in with OAuth
+      const challenge = (error?: string) => c.header('WWW-Authenticate',
+        `Bearer resource_metadata="${own ?? new URL(c.req.url).origin}${RESOURCE_METADATA_PATH}"${error ? `, error="${error}"` : ''}`);
       if (!token) {
-        c.header('WWW-Authenticate', 'Bearer realm="companyflags"');
-        return c.json({ error: 'an access token is needed: Authorization: Bearer cfp_…' }, 401);
+        challenge();
+        return c.json({ error: 'sign in: with OAuth, or an access token (Authorization: Bearer cfp_…)' }, 401);
       }
       const version = c.req.header('mcp-protocol-version');
       if (version && !PROTOCOLS.has(version)) return c.json({ error: `unsupported MCP-Protocol-Version: ${version} (this server speaks ${MCP_PROTOCOL})` }, 400);
@@ -522,7 +788,7 @@ export const mcp = () => definePlugin({
       // the token itself: unknown, expired or revoked is a 401 before anything else
       const who = await call('GET', '/dimensions');
       if (who.status === 401) {
-        c.header('WWW-Authenticate', 'Bearer realm="companyflags", error="invalid_token"');
+        challenge('invalid_token');
         return c.json({ error: who.json?.error ?? 'unknown, expired or revoked access token' }, 401);
       }
       // a notification, or the client's answer to something: nothing to answer

@@ -35,7 +35,7 @@ settings without `cloudflare()`, for example, the app file's address without `ap
 | `appFiles()` | `app-files` | [App files](/sdk/app-file): one values-only file per environment, service and entity, made to sit behind a CDN. `GET /client/v1/flags/…`. |
 | `cloudflare(options?)` | `cloudflare` | [Purges Cloudflare's cache](/self-hosting/cdn#purge-on-publish) after each publish, and adds **Settings → CDN** to the console. |
 | `webhooks(options?)` | `webhooks` | [Webhooks](/guide/webhooks): out, after each change (signed JSON, Slack, or your own shape), and in, `POST /hooks/v1/<token>`. Adds them to the console's **Migration** page. |
-| `mcp()` | `mcp` | An MCP server for AI agents at `POST /mcp` (Streamable HTTP, stateless), with an access token (`Authorization: Bearer cfp_…`). Its tools read, explain and change flags through the console's API, so roles and approvals hold: where an environment needs approval, a change is a request. For clients that only start local servers: `companyflags mcp`. |
+| `mcp()` | `mcp` | An MCP server for AI agents at `POST /mcp` (Streamable HTTP, stateless), with an access token (`Authorization: Bearer cfp_…`). Its tools read, explain and compare flags, and change them through the console's API (flags, services, defaults, rules, an entity's own default, release steps), so roles and approvals hold: where an environment needs approval, a change is a request, and `request_status` follows it. For clients that only start local servers: `companyflags mcp`. |
 
 App links stay in the core: `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` always answers with the OFREP
 token, and with the app file's `path` when `appFiles()` runs.

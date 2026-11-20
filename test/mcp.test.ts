@@ -34,6 +34,12 @@ const tool = async (name: string, args: Record<string, unknown>, token = agent) 
   const text = r.result.content[0].text;
   return { isError: r.result.isError as boolean, text, json: r.result.isError ? null : JSON.parse(text) };
 };
+const layers = async (flag: string, env: string) => (await t.as('alice').get(`/flags/${flag}`)).json.layers[env];
+/** The newest History entry of a flag in one environment. */
+const newest = async (flag: string, env: string) => {
+  const h = (await t.as('alice').get(`/history?flag=${flag}&environment=${env}`)).json;
+  return (Array.isArray(h) ? h : h.rows)[0];
+};
 const enabledIn = async (flag: string, env: string) => (await t.as('alice').get(`/flags/${flag}`)).json.layers[env].base.enabled as boolean;
 
 test('initialize, then the tools', async () => {
@@ -46,7 +52,8 @@ test('initialize, then the tools', async () => {
   assert.deepEqual((await rpc('ping')).result, {});
   const names = (await rpc('tools/list')).result.tools.map((x: { name: string }) => x.name);
   for (const n of ['list_flags', 'get_flag', 'list_services', 'list_environments', 'list_dimensions', 'history', 'list_requests', 'stale_flags',
-    'evaluate', 'explain', 'create_flag', 'set_services', 'set_enabled', 'set_default', 'archive_flag']) assert.ok(names.includes(n), n);
+    'evaluate', 'explain', 'compare', 'request_status', 'create_flag', 'set_services', 'set_enabled', 'set_default', 'add_rule', 'remove_rule',
+    'set_entity_value', 'rollout_step', 'archive_flag']) assert.ok(names.includes(n), n);
   assert.equal((await t.call('GET', '/mcp')).status, 405, 'no stream');
 });
 
@@ -118,6 +125,117 @@ test('create_flag and set_default go through the API', async () => {
   assert.equal((await tool('evaluate', { environment: 'dev', service: 'web', flag: 'mcp_made' })).json.value, true);
   assert.ok((await tool('set_default', { flag: 'mcp_made', environment: 'dev', variant: 'maybe' })).isError);
   assert.ok((await tool('create_flag', { key: 'no_date', apply: true })).isError, 'a release needs a remove-by date');
+});
+
+test('add_rule and remove_rule: a plan, then the whole layer saved by an agent; a request in prod; a bad rule is an error', async () => {
+  await tool('create_flag', { key: 'mcp_rules', removeBy: '2027-06-30', services: ['web'], apply: true });
+  const rule = { conditions: [{ field: 'app.version', op: 'semver_gte', values: ['5.0.0'] }], serve: 'on' };
+  const plan = await tool('add_rule', { flag: 'mcp_rules', environment: 'dev', rule, name: 'New apps' });
+  assert.equal(plan.json.applied, false);
+  assert.match(plan.json.plan.add.when, /5\.0\.0/);
+  assert.equal(plan.json.plan.add.gives, 'on');
+  assert.equal((await layers('mcp_rules', 'dev')).base.rules.length, 0, 'nothing changed');
+
+  const done = await tool('add_rule', { flag: 'mcp_rules', environment: 'dev', rule, name: 'New apps', apply: true });
+  assert.equal(done.json.applied, true, done.text);
+  const base = (await layers('mcp_rules', 'dev')).base;
+  assert.deepEqual(base.rules.map((r: { name: string }) => r.name), ['New apps']);
+  assert.equal(base.rules[0].ruleKey, done.json.ruleKey);
+  assert.equal((await newest('mcp_rules', 'dev')).actorType, 'agent');
+
+  // first, for one entity: a % of its devices, in settings of its own made for it
+  const split = await tool('add_rule', { flag: 'mcp_rules', environment: 'dev', entity: 'acme', rule: { split: { on: 25 } }, name: 'A quarter', position: 1, apply: true });
+  assert.equal(split.json.applied, true, split.text);
+  const own = (await layers('mcp_rules', 'dev')).entities.find((e: { entity: string }) => e.entity === 'acme').layer;
+  assert.deepEqual(own.rules[0].split.ranges.map((g: { variation: string; from: number; to: number }) => [g.variation, g.from, g.to]), [['on', 0, 2500]]);
+
+  const bad = await tool('add_rule', { flag: 'mcp_rules', environment: 'dev', rule: { conditions: [{ field: 'shoe.size', op: 'in', values: ['44'] }], serve: 'on' }, apply: true });
+  assert.equal(bad.isError, true);
+  assert.match(bad.text, /unknown attribute “shoe\.size”/);
+  assert.ok((await tool('add_rule', { flag: 'mcp_rules', environment: 'dev', rule: { serve: 'maybe' } })).isError, 'an unknown variant');
+
+  const asked = await tool('add_rule', { flag: 'mcp_rules', environment: 'prod', rule, apply: true });
+  assert.equal(asked.json.applied, false);
+  assert.equal(typeof asked.json.request, 'number');
+  assert.equal((await layers('mcp_rules', 'prod')).base.rules.length, 0, 'nothing applied in prod');
+
+  const keep = await tool('remove_rule', { flag: 'mcp_rules', environment: 'dev', name: 'New apps' });
+  assert.equal(keep.json.applied, false);
+  assert.equal((await layers('mcp_rules', 'dev')).base.rules.length, 1, 'nothing changed');
+  assert.equal((await tool('remove_rule', { flag: 'mcp_rules', environment: 'dev', name: 'New apps', apply: true })).json.applied, true);
+  assert.equal((await layers('mcp_rules', 'dev')).base.rules.length, 0);
+  assert.equal((await newest('mcp_rules', 'dev')).actorType, 'agent');
+  assert.equal((await tool('remove_rule', { flag: 'mcp_rules', environment: 'dev', entity: 'acme', ruleKey: own.rules[0].ruleKey, apply: true })).json.applied, true);
+  assert.ok((await tool('remove_rule', { flag: 'mcp_rules', environment: 'dev', name: 'nope' })).isError);
+});
+
+test('set_entity_value: an entity’s own default, then its own settings removed', async () => {
+  const ownOf = async () => (await layers('welcome_message', 'dev')).entities.find((e: { entity: string }) => e.entity === 'initech')?.layer ?? null;
+  assert.equal(await ownOf(), null);
+  const plan = await tool('set_entity_value', { flag: 'welcome_message', environment: 'dev', entity: 'initech', variant: 'beta' });
+  assert.deepEqual(plan.json.plan.default, { from: null, to: 'beta' });
+  assert.equal(await ownOf(), null, 'nothing changed');
+  assert.equal((await tool('set_entity_value', { flag: 'welcome_message', environment: 'dev', entity: 'initech', variant: 'beta', apply: true })).json.applied, true);
+  const own = await ownOf();
+  assert.deepEqual([own.inherit, own.defaultVariation], ['base_rules_then_customer_default', 'beta']);
+  assert.equal((await newest('welcome_message', 'dev')).actorType, 'agent');
+  await t.settle();
+  assert.equal((await tool('evaluate', { environment: 'dev', service: 'web', flag: 'welcome_message', entity: 'initech' })).json.variant, 'beta');
+
+  assert.equal((await tool('set_entity_value', { flag: 'welcome_message', environment: 'dev', entity: 'initech', variant: null })).json.applied, false);
+  assert.ok(await ownOf(), 'nothing changed');
+  assert.equal((await tool('set_entity_value', { flag: 'welcome_message', environment: 'dev', entity: 'initech', variant: null, apply: true })).json.applied, true);
+  assert.equal(await ownOf(), null);
+  assert.ok((await tool('set_entity_value', { flag: 'welcome_message', environment: 'dev', entity: 'nobody', variant: 'beta' })).isError);
+  assert.ok((await tool('set_entity_value', { flag: 'welcome_message', environment: 'dev', entity: 'initech', variant: 'nope' })).isError);
+});
+
+test('rollout_step: the release’s steps in dev, a request in prod, and request_status on it', async () => {
+  await tool('create_flag', { key: 'mcp_rollout', removeBy: '2027-06-30', services: ['web'], apply: true });
+  /** Where the Releases page says it is (read from what's published) */
+  const step = async (env: string) => {
+    await t.settle();
+    return (await t.as('alice').get('/releases')).json.rows.find((r: { key: string }) => r.key === 'mcp_rollout').envs[env].text as string;
+  };
+  assert.equal(await step('dev'), 'Not started');
+  const plan = await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', step: 'next' });
+  assert.deepEqual(plan.json.plan.step, { from: 'Not started', to: '1% of devices' });
+  assert.equal(await step('dev'), 'Not started', 'nothing changed');
+
+  assert.equal((await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', step: 'next', apply: true })).json.step, '1% of devices');
+  assert.equal((await newest('mcp_rollout', 'dev')).actorType, 'agent');
+  assert.equal((await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', step: 25, apply: true })).json.step, '25% of devices');
+  assert.equal((await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', step: 'back', apply: true })).json.step, '5% of devices');
+  assert.equal((await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', pause: true, apply: true })).json.step, 'Paused · 5% of devices');
+  assert.ok((await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', step: 'next' })).isError, 'no next step while paused');
+  assert.equal((await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', pause: false, apply: true })).json.step, '5% of devices');
+  assert.equal((await tool('rollout_step', { flag: 'mcp_rollout', environment: 'dev', step: 'everyone', apply: true })).json.step, 'Everyone');
+  assert.equal(await step('dev'), 'Everyone');
+  assert.ok((await tool('rollout_step', { flag: 'welcome_message', environment: 'dev', step: 'next' })).isError, 'not a release');
+
+  const asked = await tool('rollout_step', { flag: 'mcp_rollout', environment: 'prod', step: 'next', apply: true });
+  assert.equal(asked.json.applied, false, asked.text);
+  assert.equal(typeof asked.json.request, 'number');
+  assert.equal(await step('prod'), 'Not started', 'nothing applied in prod');
+
+  const status = await tool('request_status', { id: asked.json.request });
+  assert.equal(status.json.status, 'in_review');
+  assert.equal(status.json.byAgent, true);
+  assert.deepEqual(status.json.approvals, { has: 0, needs: 1 });
+  assert.deepEqual(status.json.items.map((i: { flag: string }) => i.flag), ['mcp_rollout']);
+  assert.ok((await tool('request_status', { id: 999999 })).isError);
+});
+
+test('compare: two entities, two environments', async () => {
+  const two = await tool('compare', { environment: 'dev', service: 'web', a: 'acme', b: 'globex', onlyDiff: true });
+  assert.ok(two.json.different > 0);
+  assert.ok(two.json.flags.every((f: { same: boolean }) => !f.same));
+  const dark = two.json.flags.find((f: { key: string }) => f.key === 'dark_mode_v2');
+  assert.equal(dark.b.value, true, 'globex is a beta customer');
+  const envs = await tool('compare', { service: 'web', a: 'dev', b: { environment: 'prod' } });
+  assert.deepEqual([envs.json.a.environment, envs.json.b.environment], ['dev', 'prod']);
+  assert.ok(envs.json.flags.length > 0);
+  assert.ok((await tool('compare', { service: 'web', a: 'acme', b: 'globex' })).isError, 'an entity needs an environment');
 });
 
 test('resources and prompts', async () => {

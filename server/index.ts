@@ -11,6 +11,7 @@ import { routePath } from 'hono/route';
 import { secureHeaders } from 'hono/secure-headers';
 import { consoleApi } from './api.ts';
 import { createTokens } from './tokens.ts';
+import { OAUTH_PREFIXES, oauthRoutes } from './oauth.ts';
 import { FolderInUseError, HttpError, openDb, type Db } from './db.ts';
 import { MigrationError } from './migrate.ts';
 import { createIdentity, signInFromEnv, type SignIn } from './identity.ts';
@@ -130,11 +131,13 @@ export async function createApp(opts: AppOptions = {}) {
   app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins }));
   app.route('/', linkRoutes({ db, plane, links, keys, services: apps }, { files: on.has('app-files') }));   // app links, for backends
   for (const p of plugins) if (p.parts.routes) app.route('/', p.parts.routes);
+  // OAuth sign-in for MCP clients (oauth.ts): on with the mcp plugin
+  if (on.has('mcp')) app.route('/', oauthRoutes({ db, identity, access, baseURL: settings?.baseURL }));
   // An unknown address under the API, the app files or the backend downloads is a 404 with a JSON error,
   // never the console's page (which answers every other address, below). The built-in plugins' prefixes stay JSON
   // even when the plugin is off.
   const noSuchEndpoint = (c: Context) => c.json({ error: `no such endpoint: ${c.req.method} ${c.req.path}` }, 404);
-  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', '/hooks', '/mcp', ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
+  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', '/hooks', '/mcp', ...(on.has('mcp') ? OAUTH_PREFIXES : []), ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
   for (const prefix of prefixes) {
     app.all(prefix, noSuchEndpoint);
     app.all(`${prefix}/*`, noSuchEndpoint);

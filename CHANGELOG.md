@@ -4,6 +4,14 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+## 0.5.0 (2026-11-20)
+
+- **OAuth sign-in for MCP clients:** add `https://<server>/mcp` to Claude, Cursor or VS Code with no token. The client
+  opens the browser, you sign in to the console and allow it as an agent (Viewer or Editor), and it gets a token that
+  shows on your Access tokens page as "*client* (OAuth)". OAuth 2.1 with PKCE, dynamic client registration, refresh
+  and revoke. Migration 0018 adds its tables.
+- More MCP tools: `add_rule`, `remove_rule`, `set_entity_value`, `rollout_step`, `request_status`, `compare`.
+
 ## 0.4.0 (2026-11-20)
 
 For AI agents and AI features ([plan](https://github.com/dvir-daniel/companyflags/blob/main/docs/design/ai.md)).

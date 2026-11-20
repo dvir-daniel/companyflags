@@ -49,6 +49,8 @@ type Tab = 'flags' | 'versions' | 'conditions';
 const COLS = 'grid grid-cols-[28px_minmax(0,2fr)_minmax(0,1fr)_64px_104px_minmax(0,1fr)_88px_84px] max-xl:grid-cols-[28px_minmax(0,2fr)_minmax(0,1fr)_64px_84px] max-md:grid-cols-[28px_minmax(0,1fr)_104px]';
 const XL = 'max-xl:hidden';
 const MD = 'max-md:hidden';
+/** The OpenFeature call that reads a flag of each type, for the Key field's hint. */
+const READER: Record<string, string> = { bool: 'getBooleanValue', string: 'getStringValue', number: 'getNumberValue', json: 'getObjectValue' };
 /** a row's height: two lines (the name, then the key and tags), as tall as a release's row (Releases.tsx);
  *  placeholder rows are the same */
 const ROW = 'min-h-[76px] py-3.5';
@@ -459,7 +461,7 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
           <Input data-autofocus value={name} placeholder="New search ranking" aria-invalid={!!nameError} onChange={(e) => onName(e.target.value)} />
         </Field>
         <Field label="Key" required hint={keyError ? <span className="text-live">{keyError}</span> : (
-          <>What your code reads, e.g. <span className="font-mono text-ink-2">getBooleanValue("{key || 'new_search_ranking'}")</span>. It can’t be changed later.</>
+          <>What your code reads, e.g. <span className="font-mono text-ink-2">{READER[valueType] ?? 'getBooleanValue'}("{key || 'new_search_ranking'}")</span>. It can’t be changed later.</>
         )}>
           <Input className="font-mono" value={key} placeholder="new_search_ranking" aria-invalid={!!keyError}
             onChange={(e) => setKey(e.target.value.toLowerCase().replace(/[\s-]+/g, '_'))} />

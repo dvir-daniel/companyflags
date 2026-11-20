@@ -48,6 +48,32 @@ CompanyFlags has an MCP server at `/mcp`. An agent in Claude, Cursor, VS Code or
 flags, see what a flag gives a company, find releases to clean up, and propose changes. Each change tool first says
 what it would do; with `apply: true` it does it, and where changes need approval it opens a request a person approves.
 
+Add the server to your client with its address only. The first time, the client opens your browser: you sign in to
+the console as usual, and choose what the agent may do (**Editor** or **Viewer**). The client then gets a token that
+acts as you, as an agent: History shows its changes as an agent's.
+
+```bash
+# Claude Code
+claude mcp add --transport http companyflags https://flags.example.com/mcp
+```
+
+```json
+// Cursor (.cursor/mcp.json), VS Code and other clients that take a URL
+{
+  "mcpServers": {
+    "companyflags": { "url": "https://flags.example.com/mcp" }
+  }
+}
+```
+
+The sign-in is OAuth 2.1 with PKCE. The client finds it by itself (`/.well-known/oauth-protected-resource`) and
+registers itself. Its token lasts an hour, and the client renews it for as long as it's used. It shows on your
+**Access tokens** page as "*client* (OAuth)": revoke it there to sign the client out.
+
+### With an access token
+
+For a client without OAuth sign-in, make a token yourself and send it in a header:
+
 1. **Make a token for the agent:** in the console, your name → **Access tokens** → **+ New token**, with *For an
    agent* ticked. It is Viewer or Editor, and History shows its changes as an agent's.
 2. **Add the server to your client**, with the token in a header:
@@ -83,12 +109,16 @@ For a client that only starts local servers, run the bridge from the Docker imag
 
 | Tools | |
 |---|---|
-| Read | `list_flags`, `get_flag`, `list_services`, `list_environments`, `list_dimensions`, `history`, `list_requests`, `stale_flags` |
-| Explain | `evaluate` (what flags give a context), `explain` (why, step by step) |
-| Change | `create_flag`, `set_services`, `set_enabled`, `set_default`, `archive_flag` |
+| Read | `list_flags`, `get_flag`, `list_services`, `list_environments`, `list_dimensions`, `history`, `stale_flags` |
+| Explain | `evaluate` (what flags give a context), `explain` (why, step by step), `compare` (two entities or two environments, flag by flag) |
+| Change | `create_flag`, `set_services`, `set_enabled`, `set_default`, `add_rule`, `remove_rule`, `set_entity_value` (an entity's own default, or null to remove its own settings), `rollout_step` (a release's next or last step, a %, everyone, pause), `archive_flag` |
+| Requests | `list_requests`, `request_status` (its status, approvals, reviews and changes) |
+
+Each change tool answers with a plan of what it would change. Call it again with `apply: true` to change it. Where an
+environment needs approval, it answers with the number of the request a person approves.
 
 It also has the prompts `put_behind_a_flag` and `clean_up_releases`, and each flag as a resource
-(`companyflags://flags/<key>`). Sign-in is with an access token for now; OAuth sign-in from the client is planned.
+(`companyflags://flags/<key>`).
 
 ### Or OpenFeature's MCP server
 
