@@ -4,6 +4,8 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+## 0.7.0 (2026-11-20)
+
 - **Appearance:** Settings → Appearance sets the console's name, logo (and one for dark), browser tab icon, an accent
   color (seven of ours or your own), and light or dark for people who haven't chosen. It also sets a notice across
   the top of every page, a note on the sign-in page, a help link and up to four footer links. The server puts the
