@@ -125,7 +125,7 @@ test('the purge runs once more a round and a margin later, once for a burst of p
   const hook = async (env: string) => { calls.push(env); return 'purged' as const; };
   const own = await boot({ onPublish: hook });
   await own.workers.stop();                     // its own workers wait the full time: these run with a short one
-  const workers = startWorkers(own.db, own.plane, own.hub, () => {}, hook, { purgeAgainAfterMs: 40 });
+  const workers = startWorkers(own.db, own.plane, own.hub, () => {}, hook, { purgeAgainAfterMs: 400 }); // longer than a publish takes, even on a slow Postgres
   c.after(async () => { await workers.stop(); await own.stop(); });
   assert.ok(PURGE_AGAIN_MS > ROUND_MS, 'after other servers’ next round');
 
@@ -133,13 +133,13 @@ test('the purge runs once more a round and a margin later, once for a burst of p
   assert.equal((await flip(false)).status, 200);
   await workers.drain();
   assert.deepEqual(calls, ['dev'], 'at once');
-  for (let i = 0; i < 100 && calls.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 300 && calls.length < 2; i++) await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(calls, ['dev', 'dev'], 'and once more');
 
   calls.length = 0;
   for (const on of [true, false, true]) { assert.equal((await flip(on)).status, 200); await workers.drain(); }
   assert.deepEqual(calls, ['dev', 'dev', 'dev'], 'each publish at once');
-  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 800));
   assert.deepEqual(calls, ['dev', 'dev', 'dev', 'dev'], 'and one more for the burst');
 });
 
