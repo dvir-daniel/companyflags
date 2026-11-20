@@ -35,6 +35,7 @@ export default defineConfig({
     sidebar: [
       {
         text: 'Getting started',
+        collapsed: true,
         items: [
           { text: 'Introduction', link: '/guide/introduction' },
           { text: 'Quickstart', link: '/guide/quickstart' },
@@ -44,6 +45,7 @@ export default defineConfig({
       },
       {
         text: 'Concepts',
+        collapsed: true,
         items: [
           { text: 'How it fits together', link: '/guide/concepts' },
           { text: 'Architecture', link: '/guide/architecture' },
@@ -54,6 +56,7 @@ export default defineConfig({
       },
       {
         text: 'Reading flags',
+        collapsed: true,
         items: [
           { text: 'OpenFeature (web, mobile, servers)', link: '/sdk/openfeature' },
           { text: 'Backends', link: '/guide/backends' },
@@ -62,6 +65,7 @@ export default defineConfig({
       },
       {
         text: 'Changing flags',
+        collapsed: true,
         items: [
           { text: 'Releases', link: '/guide/releases' },
           { text: 'Approvals and history', link: '/guide/approvals' },
@@ -72,6 +76,7 @@ export default defineConfig({
       },
       {
         text: 'Plugins',
+        collapsed: true,
         items: [
           { text: 'Plugins', link: '/reference/plugins' },
           { text: 'Webhooks', link: '/guide/webhooks' },
@@ -79,12 +84,14 @@ export default defineConfig({
       },
       {
         text: 'Migration',
+        collapsed: true,
         items: [
           { text: 'Moving from another system', link: '/guide/migration' },
         ],
       },
       {
         text: 'Self-hosting',
+        collapsed: true,
         items: [
           { text: 'Docker', link: '/self-hosting/docker' },
           { text: 'Configuration', link: '/self-hosting/configuration' },
@@ -96,6 +103,7 @@ export default defineConfig({
       },
       {
         text: 'Reference',
+        collapsed: true,
         items: [
           { text: 'HTTP API', link: '/reference/http-api' },
           { text: 'CLI', link: '/reference/cli' },
