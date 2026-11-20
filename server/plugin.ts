@@ -10,13 +10,15 @@
 // mounted by createApp (index.ts): its routes at the root, its console routes under /api behind the console's sign-in
 // (after the core's own, so a core route always wins), and its onPublish after each environment publishes (workers.ts).
 
-import { Hono } from 'hono';
+import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { HttpError, type Db } from './db.ts';
 import type { EventHub } from './events.ts';
 import type { KeyCache } from './auth.ts';
 import type { AppCache, LinkCache } from './delivery.ts';
 import type { Person } from './access.ts';
 import type { Actor } from './layers.ts';
+import type { Sealer } from './sealed.ts';
+import type { PublishState } from './workers.ts';
 import { contextFor, evaluate, sortedFlagKeys, UnknownEntityError, type EvalResult, type Snapshot } from './evaluator.ts';
 
 /** What each environment serves now, one snapshot per environment. A snapshot never changes once built. */
@@ -64,6 +66,12 @@ export type PluginContext = {
    *  goes through it, never around it (the mcp plugin). It works once the server is built, so call it from a
    *  request, not from setup. */
   request: (input: string, init?: RequestInit) => Promise<Response>;
+  /** Seals a secret a plugin keeps for another system before it goes into the database, and opens it again
+   *  (sealed.ts: AES-GCM, with a key from BETTER_AUTH_SECRET). `open` throws a SealError for a value sealed with
+   *  another secret. */
+  secrets: Sealer;
+  /** How far each environment's publishing is behind, as /readyz reports it (workers.ts). */
+  publishState: () => Promise<PublishState[]>;
   /** @internal, for the built-in plugins: API keys, app-link secrets and services, kept in memory and cleared when
    *  they change (journal.ts). */
   keys: KeyCache;
@@ -78,17 +86,29 @@ export type ConsoleHelpers = {
   actor: (u: Person) => Actor;
   /** Refuses (403) anyone who isn't an admin. */
   adminOnly: (u: Person) => void;
+  /** The request's JSON body, an object: an empty body is a 400 (bad_json), or {} when `optional`. A body that
+   *  isn't a JSON object never gets this far. */
+  body: <T = Record<string, unknown>>(c: Context, optional?: boolean) => Promise<T>;
 };
 export type ConsoleRoutes = Hono<{ Variables: { user: Person } }>;
 /** A plugin's console routes, to fill in and return from its `console`. */
 export const consoleRoutes = (): ConsoleRoutes => new Hono<{ Variables: { user: Person } }>();
 
+/** A plugin's root routes, to fill in and return as its `routes`: made with the server's own Hono, so the types
+ *  match whatever copy of hono the plugin's folder has. */
+export const pluginRoutes = (): Hono => new Hono();
+
 export type PluginParts = {
-  /** Served at the root, for apps and backends (e.g. /ofrep/v1/…). */
+  /** Served at the root, for apps and backends (e.g. /ofrep/v1/…). Every route is under one of its `prefixes`: one
+   *  that isn't stops the start. */
   routes?: Hono;
-  /** Its own address prefixes, such as '/ofrep': an unknown address under one is a JSON 404, never the console's
-   *  page. Each starts with '/', and none is the core's (/api, /sdk) or another plugin's. */
+  /** Its own address prefixes, such as '/ofrep': its routes live under them, and an unknown address under one is a
+   *  JSON 404, never the console's page. Each starts with '/', and none is the core's (CORE_PREFIXES) or another
+   *  plugin's. */
   prefixes?: string[];
+  /** Runs on every request, before the routes (the metrics plugin counts them): call `await next()` to go on. It
+   *  sees each answer once it's made. It may add headers, never change who may do what. */
+  middleware?: MiddlewareHandler;
   /** Served under /api for the console, signed in, as its other routes are (e.g. a settings page's). The core's own
    *  routes come first: a plugin can't answer in their place. */
   console?: (h: ConsoleHelpers) => ConsoleRoutes;
@@ -111,9 +131,23 @@ export const definePlugin = (p: Plugin): Plugin => p;
 
 export class PluginError extends Error {}
 
-/** The address prefixes of the core: the console's API, and the app links for backends. */
-const CORE_PREFIXES = ['/api', '/sdk'];
+/** The address prefixes of the core: the console's API, the app links for backends, OAuth sign-in for MCP clients
+ *  (oauth.ts), the health checks and the console's own files. A plugin can claim none of them, nor anything under
+ *  them. (/sdk is shared: the core's links, and the flagd plugin's /sdk/v1/flagd.) */
+export const CORE_PREFIXES = ['/api', '/sdk/v1/links', '/oauth', '/.well-known', '/healthz', '/readyz', '/assets', '/index.html'];
 const within = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+/** Whether an address (a route's path, '/ofrep/*' or '/hooks/v1/:token') is under a prefix. */
+const under = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
+
+/** The plugin's routes that aren't under one of its prefixes (a route for every address, '*', is under none). */
+function strayRoutes(parts: PluginParts): string[] {
+  const routes = parts.routes?.routes ?? [];
+  const mine = parts.prefixes ?? [];
+  return routes.filter((r) => {
+    const path = r.path.replace(/\/?\*$/, '') || '/';
+    return !mine.some((p) => under(path, p));
+  }).map((r) => `${r.method === 'ALL' ? '' : `${r.method} `}${r.path}`);
+}
 
 /** Each plugin's setup, in order, once every entry is known to be a plugin with a name of its own. If one setup
  *  fails, the background work of those before it is stopped, and the error is passed on. */
@@ -141,6 +175,14 @@ export async function setUpPlugins(plugins: readonly Plugin[], ctx: PluginContex
         const other = claimed.find((c) => within(prefix, c.prefix));
         if (other) throw new PluginError(`the plugin "${p.id}": the prefix ${prefix} is taken by the plugin "${other.id}" (${other.prefix})`);
         claimed.push({ prefix, id: p.id });
+      }
+      const stray = strayRoutes(parts);
+      if (stray.length) {
+        const where = parts.prefixes?.length ? `its prefixes (${parts.prefixes.join(', ')})` : 'a prefix of its own: add prefixes: [\'/…\']';
+        throw new PluginError(`the plugin "${p.id}": the route ${stray[0]} isn’t under ${where}`);
+      }
+      if (parts.middleware !== undefined && typeof parts.middleware !== 'function') {
+        throw new PluginError(`the plugin "${p.id}": middleware is a function (c, next) => …`);
       }
     }
   } catch (e) {

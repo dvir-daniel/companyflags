@@ -59,7 +59,7 @@ test('rolling back to a version puts every later flag setting back, as a new ver
   assert.equal((await base('dark_mode_v2', 'dev')).enabled, true);
   const v = (await t.as('alice').get('/environments/dev/versions?page=0&size=1')).json.rows[0];
   assert.equal(v.revision, r.json.revision);
-  assert.match(v.comment, /^Roll back to version \d+: checkout broke/);
+  assert.match(v.comment, /^Roll back to revision \d+: checkout broke/);
 
   // nothing left to undo, a version that isn't earlier, and production asks for review instead of applying
   assert.equal((await t.as('alice').post(`/environments/dev/versions/${before - 1}/restore`, {})).status, 422);

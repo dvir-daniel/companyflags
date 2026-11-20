@@ -1,20 +1,20 @@
 import type { ReactNode } from 'react';
 import { HomeLayout } from 'fumadocs-ui/layouts/home';
 import { Logo } from '@/components/logo';
-import { BASE, REPO } from '@/lib/source';
-import { RESOURCES } from '@/lib/resources';
+import { REPO } from '@/lib/source';
+import { RESOURCES, resourceHref } from '@/lib/resources';
 
-// The landing page's bar: the name, then the parts of the site in small capitals, as better-auth.com's. No search here:
-// it's on the docs' pages.
+// The landing page's bar below 1024px (above it, the site's bar takes over): the name, then the parts of the site in
+// small capitals, as better-auth.com's, and light or dark in the phone's menu. No search here: it's on the docs' pages.
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <HomeLayout nav={{ title: <Logo />, url: '/' }} searchToggle={{ enabled: false }} themeSwitch={{ enabled: false }}
+    <HomeLayout nav={{ title: <Logo />, url: '/' }} searchToggle={{ enabled: false }}
       links={[
-        { text: 'Readme', url: '/', active: 'url' },
+        { text: 'Home', url: '/', active: 'url' },
         { text: 'Docs', url: '/guide/introduction' },
         { text: 'Enterprise', url: '/guide/enterprise' },
         { type: 'menu', text: 'Resources', items: RESOURCES.map((r) => ({
-          text: r.text, description: r.description, url: r.url === '/llms.txt' ? `${BASE}/llms.txt` : r.url, external: r.external,
+          text: r.text, description: r.description, url: resourceHref(r), external: r.external,
         })) },
         { text: 'GitHub', url: REPO, external: true },
       ]}>

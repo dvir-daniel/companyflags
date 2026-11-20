@@ -12,7 +12,7 @@
 // memoryStorage() and an HTTP adapter over the app's own request handler.
 import { needsReview } from '../../server/policy.ts';
 import { errorCode, type ErrorCode, type FlagDetail, type Meta } from './api.ts';
-import { changes, lineProblem, ownIdsOf, sortLines, summarize, toDraft, valuesToCreate, type Draft, type Line, type PublishItem } from './lines.ts';
+import { changes, lineProblem, ownIdsOf, sortLines, summarize, toDraft, valueEdits, valuesToCreate, type Draft, type Line, type PublishItem } from './lines.ts';
 
 /** How the session reaches the server (api() in the browser). A failure throws an error carrying the server's `code`. */
 export type Http = <T = any>(method: string, path: string, body?: unknown) => Promise<T>;
@@ -28,8 +28,13 @@ export type BasedOn = Pick<FlagDetail, 'valueType' | 'kind' | 'variations'> & { 
 
 export type LineProblem = { line: string; problem: string };
 export type DraftItem = PublishItem & { flag: string };
-/** One flag in the draft, as people read it. */
-export type DraftFlag = { key: string; items: DraftItem[]; sentences: string[]; problems: LineProblem[]; stale: boolean; at: string };
+/** One flag in the draft, as people read it. `before`: each changed layer as it was (by entity, '' for everyone's),
+ *  so the review shows it before and after, as the approver sees it. */
+export type DraftFlag = {
+  key: string; items: DraftItem[]; before: Record<string, EnvLayers['base'] | null>; sentences: string[]; problems: LineProblem[]; stale: boolean; at: string;
+  /** named variants given a new value (the same in every environment) */
+  values: { key: string; value: unknown; was: unknown }[];
+};
 /** The draft in this environment. */
 export type DraftSummary = {
   flags: DraftFlag[];
@@ -114,7 +119,7 @@ const isObj = (v: unknown): v is Record<string, any> => !!v && typeof v === 'obj
 const isLayer = (l: unknown) => isObj(l) && typeof l.version === 'number' && Array.isArray(l.rules);
 const isLine = (l: unknown) => isObj(l) && typeof l.id === 'string' && Array.isArray(l.conditions);
 const isDraft = (d: unknown): d is Draft => isObj(d) && typeof d.fallback === 'string' && Array.isArray(d.lines) && d.lines.every(isLine)
-  && isObj(d.newValues) && isObj(d.afterEveryone);
+  && isObj(d.newValues) && isObj(d.afterEveryone) && (d.variantValues === undefined || isObj(d.variantValues));
 
 function isStoredFlag(e: unknown): e is StoredFlag {
   if (!isObj(e) || typeof e.at !== 'string' || !isObj(e.ownIds) || !isObj(e.based) || !isDraft(e.draft)) return false;
@@ -278,7 +283,7 @@ export class DraftSession {
     const next = change(before);
     if (next === before) return;
     const draft = next.lines === before.lines ? next : { ...next, lines: sortLines(next.lines) };
-    if (changes(inEnv(this.env, based.layers), this.env, orig, draft).length) this.entries.set(key, { based, orig, draft, at: now() });
+    if (differs(based, this.env, orig, draft)) this.entries.set(key, { based, orig, draft, at: now() });
     else this.entries.delete(key);
     this.bump();
     this.schedule();
@@ -334,7 +339,7 @@ export class DraftSession {
       const theirs = toDraft(c.flag, this.env, ownIdsOf(e.orig));
       const draft = keepMine(e.orig, e.draft, theirs);
       const based = basedOf(c.flag, this.env);
-      if (changes(inEnv(this.env, based.layers), this.env, theirs, draft).length) this.entries.set(k, { based, orig: theirs, draft, at: now() });
+      if (differs(based, this.env, theirs, draft)) this.entries.set(k, { based, orig: theirs, draft, at: now() });
       else this.entries.delete(k);
       done.push(k);
     }
@@ -363,12 +368,20 @@ export class DraftSession {
       const create = valuesToCreate(this.copies.get(k)?.flag ?? e.based, e.draft);
       if (create.length) await this.http('PUT', `/flags/${k}/variations`, { variations: create });
     }
+    // then the new values of named variants (the same in every environment). The server refuses one that an environment
+    // needing approval serves, or that a request waiting there uses (control.ts upsertVariations), so a value never
+    // changes under an approver; a request sent below keeps the values it was sent with.
+    for (const [k, e] of sent) {
+      const edits = valueEdits(e.based, e.draft);
+      if (edits.length) await this.http('PUT', `/flags/${k}/variations`, { variations: edits.map(({ key, value }) => ({ key, value })) });
+    }
     const said = s.flags.flatMap((f) => f.sentences.map((l) => `${f.key}: ${l}`)).join('\n');
+    const items = s.flags.flatMap((f) => f.items.map((i) => ({ ...i, allowReshuffle: o.allowReshuffle || undefined })));
     let res: { applied: boolean; revision?: number; changeSetId?: number };
     try {
-      res = await this.http('POST', `/environments/${this.env}/publish`, {
-        items: s.flags.flatMap((f) => f.items.map((i) => ({ ...i, allowReshuffle: o.allowReshuffle || undefined }))),
-        reason: reason ? `${reason}\n\n${said}` : said,
+      // only new values of variants: nothing in this environment's settings to publish
+      res = !items.length ? { applied: true } : await this.http('POST', `/environments/${this.env}/publish`, {
+        items, reason: reason ? `${reason}\n\n${said}` : said,
       });
     } catch (e) {
       // changed in the moment between the check and the submit: the same refusal, for the flag the server names
@@ -421,7 +434,12 @@ export class DraftSession {
     if (!e) return false;
     if (this.outdated.has(key)) return true;
     const c = this.copies.get(key);
-    return !!c && versions(c.flag.layers[this.env]) !== versions(e.based.layers);
+    if (!c) return false;
+    // a variant whose value the draft changes, changed by someone else since
+    const was = new Map(e.based.variations.map((v) => [v.key, JSON.stringify(v.value)]));
+    const changedUnder = Object.keys(e.draft.variantValues ?? {})
+      .some((k) => was.get(k) !== JSON.stringify(c.flag.variations.find((v) => v.key === k)?.value));
+    return changedUnder || versions(c.flag.layers[this.env]) !== versions(e.based.layers);
   }
 
   private setCopy(key: string, flag: FlagDetail) {
@@ -469,10 +487,13 @@ export class DraftSession {
     if (c && c.entry === entry && c.copy === copy && c.meta === meta && c.stale === stale) return c.value;
     // the checks know the newest variants: one may have been added since the draft began
     const facts = { key, kind: copy?.flag.kind ?? entry.based.kind, valueType: copy?.flag.valueType ?? entry.based.valueType, variations: copy?.flag.variations ?? entry.based.variations };
+    const items = changes(inEnv(this.env, entry.based.layers), this.env, entry.orig, entry.draft).map((i) => ({ ...i, flag: key }));
+    const layers = entry.based.layers;
     const value: DraftFlag = {
-      key, stale, at: entry.at,
-      items: changes(inEnv(this.env, entry.based.layers), this.env, entry.orig, entry.draft).map((i) => ({ ...i, flag: key })),
+      key, stale, at: entry.at, items,
+      before: Object.fromEntries(items.map((i) => [i.entity ?? '', i.entity ? layers.entities.find((c) => c.entity === i.entity)?.layer ?? null : layers.base])),
       sentences: summarize(facts, entry.orig, entry.draft, meta),
+      values: valueEdits(facts, entry.draft),
       problems: entry.draft.lines.flatMap((l) => {
         const problem = lineProblem(l, facts, entry.draft, meta.fields);
         return problem ? [{ line: l.id, problem }] : [];
@@ -601,7 +622,13 @@ function keepMine(orig: Draft, mine: Draft, theirs: Draft): Draft {
     lines: sortLines(ids.map(line)),
     newValues: { ...theirs.newValues, ...mine.newValues },
     afterEveryone,
+    ...(mine.variantValues ? { variantValues: mine.variantValues } : {}),
   };
+}
+
+/** The draft changes something: a layer in this environment, or a variant's value. */
+function differs(based: BasedOn, env: string, orig: Draft, draft: Draft): boolean {
+  return changes(inEnv(env, based.layers), env, orig, draft).length > 0 || valueEdits(based, draft).length > 0;
 }
 
 // ---------------------------------------------------------------- the console's sessions

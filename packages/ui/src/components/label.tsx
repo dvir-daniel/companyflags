@@ -2,7 +2,9 @@ import * as React from "react"
 import { cn } from "../lib/utils.ts"
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
+  // the control is the caller's: inside it, or named by htmlFor
   return (
+    // oxlint-disable-next-line jsx-a11y/label-has-associated-control
     <label
       data-slot="label"
       className={cn(

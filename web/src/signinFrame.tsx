@@ -45,7 +45,7 @@ export function Frame({ tab, onTab, title, intro, footer, children }: {
         )}
         <section className="grid gap-5 border border-rule-2 bg-background p-6 shadow-[0_24px_64px_var(--shadow-strong)] max-sm:p-5">
           <div className="grid gap-1.5">
-            <h1 className="m-0 text-lg leading-tight font-semibold">{title}</h1>
+            <h1 className="m-0 text-22 font-semibold">{title}</h1>
             {intro && <p className="m-0 text-13 text-ink-2">{intro}</p>}
           </div>
           {children}

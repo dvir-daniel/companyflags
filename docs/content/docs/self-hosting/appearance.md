@@ -1,5 +1,6 @@
 ---
 title: "Appearance"
+description: "Give the console and the sign-in page your own name, logo and colors."
 ---
 
 Each server can show its own name, logo and colors, in the console and on the sign-in page. An admin sets them in
@@ -23,8 +24,11 @@ Each server can show its own name, logo and colors, in the console and on the si
 - **Images:** PNG, SVG, WebP, JPEG, GIF or ICO, up to 200 KB each. The icon can be up to 50 KB. They're kept in the
   database, so the console needs no file storage and works with no internet access.
 - **Links:** must start with `https://` or `mailto:`.
-- **Contrast:** the form warns when an accent is hard to see on the light or the dark page. Text on the accent is
-  black or white, whichever reads better.
+- **Accent:** primary buttons and the selected page take it. Switches and focus rings stay black and white, and
+  there are no red, green, amber or purple accents: those colors mean production and danger, on, waiting and agents.
+- **Contrast:** an accent is text too, so it needs 4.5:1 on the page. Your own color is used as it is where it
+  reads, and made darker on the light page or lighter on the dark page where it doesn't; the form shows the shade it
+  uses. Text on the accent is black or white, whichever reads better.
 - **Live preview:** while the form is open, the page shows the accent and the look you picked. Cancel puts them back.
 - **History:** every change is recorded under **Appearance**. History keeps a short hash of each image, never the
   image itself.
@@ -45,7 +49,7 @@ export default defineConfig({
     logo: './brand/logo.svg',
     logoDark: './brand/logo-white.svg',
     icon: './brand/icon.png',
-    accent: 'custom',               // none, blue, indigo, violet, teal, green, orange, rose or custom
+    accent: 'custom',               // none, blue, indigo, teal or custom
     accentColor: '#0f766e',         // for custom
     mode: 'device',                 // device, light or dark
     banner: { text: 'Production changes need two approvals.', tone: 'info' },   // info, warn or danger

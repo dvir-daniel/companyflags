@@ -14,9 +14,10 @@
 // and its own id for a % of devices.
 //
 // Backend servers, with an API key: GET /sdk/v1/flagd/:dimension/:entity, one entity's flags as flagd JSON (flagd.ts),
-// for flagd or an OpenFeature flagd provider evaluating in-process; GET /sdk/v1/links/:dimension/:entity?service=<key>, the
-// entity's app link, to hand to the app at sign-in. The entity is named by its dimension in the path, as the rules name
-// it ("Store is acme-12"): headers carry only the key.
+// for flagd or an OpenFeature flagd provider evaluating in-process, or GET /sdk/v1/flagd/service, every entity the key
+// may ask about in one document; GET /sdk/v1/links/:dimension/:entity?service=<key>, the entity's app link, to hand to
+// the app at sign-in; PUT /sdk/v1/entities/:dimension/:entity, an entity added as it signs up. The entity is named by
+// its dimension in the path, as the rules name it ("Store is acme-12"): headers carry only the key.
 
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -28,7 +29,10 @@ import { all, HttpError, one, type Db } from './db.ts';
 import { appTokenSecret, authenticate, clientSecret, LruCache, mayAsk, sameSecret, type KeyCache, type Principal } from './auth.ts';
 import type { Snapshot } from './evaluator.ts';
 import type { Snapshots } from './plugin.ts';
-import { buildFlagdDoc } from './flagd.ts';
+import { buildFlagdDoc, buildServiceDoc } from './flagd.ts';
+import { entityKeyProblem } from './checks.ts';
+import { upsertEntity } from './control.ts';
+import type { Actor } from './layers.ts';
 
 const gzipAsync = promisify(gzip);
 /** A short sha256 of an answer, for its ETag (CDN files, flagd JSON, OFREP): 22 base64url characters. */
@@ -72,6 +76,15 @@ const cdnDownload = (snap: Snapshot, service: string, entity: string | null) =>
 const flagdDocs: Files = new WeakMap();
 const flagdDownload = (snap: Snapshot, service: string, entity: string) =>
   download(flagdDocs, snap, `${service}|${entity}`, () => flagdJson(snap, service, entity));
+// One document for every entity a key may ask about (flagd.ts buildServiceDoc): per service and per key's reach (every
+// entity, or one and those under it), built once per publish like the others.
+const serviceDownload = (snap: Snapshot, service: string, below: string | null) =>
+  download(flagdDocs, snap, `${service}|*${below ?? ''}`, () => {
+    const entities = Object.values(snap.entities).filter((e) => below === null || e.path.includes(below));
+    const doc = buildServiceDoc(snap, service, entities, below === null ? null : snap.entities[below]);
+    const content = JSON.stringify(doc.flags);
+    return { content, json: `{"$schema":${JSON.stringify(doc.$schema)},"metadata":${JSON.stringify(doc.metadata)},"flags":${content}}` };
+  });
 
 // The link secrets: environment secret + each entity's link version, read once a minute at most, by each app
 // (createApp makes its own LinkCache), one request at a time (the others wait for it). Replacing an entity's link,
@@ -205,8 +218,9 @@ export function cdnFileRoutes({ db, plane, links, services: apps }: Parts) {
   return app;
 }
 
-/** App links for backends (core): GET /sdk/v1/links/<dimension>/<entity>?service=<key>. `files`: whether CDN files
- *  are served (the cdn-files plugin), so the answer has the file's path as well as the OFREP token. */
+/** App links and new entities for backends (core): GET /sdk/v1/links/<dimension>/<entity>?service=<key>, and
+ *  PUT /sdk/v1/entities/<dimension>/<entity>. `files`: whether CDN files are served (the cdn-files plugin), so a
+ *  link's answer has the file's path as well as the OFREP token. */
 export function linkRoutes({ db, plane, keys, services: apps }: Parts, o: { files: boolean }) {
   const app = new Hono();
   const snapshotFor = (env: string) => snapshotIn(plane, env);
@@ -220,7 +234,12 @@ export function linkRoutes({ db, plane, keys, services: apps }: Parts, o: { file
     const snap = snapshotFor(p.environment);
     const { dimension, entity } = c.req.param();
     const info = Object.hasOwn(snap.entities, entity) ? snap.entities[entity] : null;
-    if (!info || info.dimension !== dimension) throw new HttpError(404, `no ${dimension} "${entity}"`);
+    // a key scoped to an entity (or those below one) gets the same 403 for one that doesn't exist as for one outside
+    // its scope, as OFREP does: it can't learn which entities exist
+    if (!info || info.dimension !== dimension) {
+      if (p.scope !== 'all') throw new HttpError(403, `this key can’t ask about "${entity}"`);
+      throw new HttpError(404, `no ${dimension} "${entity}"`);
+    }
     if (!mayAsk(p, entity, info.path)) throw new HttpError(403, `this key can’t ask about "${entity}"`);
     const appKey = c.req.query('service');
     if (!appKey) throw new HttpError(400, 'name the service the link is for: ?service=<key>, e.g. ?service=web');
@@ -228,6 +247,53 @@ export function linkRoutes({ db, plane, keys, services: apps }: Parts, o: { file
     c.header('Cache-Control', 'no-store');
     return c.json({ environment: p.environment, service: appKey, entity, ...(o.files ? { path: await cdnFilePath(db, p.environment, entity, appKey) } : {}),
       token: await appToken(db, p.environment, entity, appKey) });
+  });
+
+  // Backend servers add an entity the moment it signs up, so its first request already asks as it:
+  // PUT /sdk/v1/entities/<dimension>/<entity> {"name": "…", "parent": "<key>"}, with a backend's key that may ask about
+  // every entity (scope `all`). Idempotent: an entity that is there already is left as it is (200), or renamed when
+  // the name differs; one under another parent is refused (409), as moving changes what it gets: that is the console's.
+  // The key's environment knows it when the answer comes (the others, and other servers, within a second).
+  app.put('/sdk/v1/entities/:dimension/:entity', async (c) => {
+    const p = await authenticate(db, { authorization: c.req.header('authorization'), origin: c.req.header('origin') }, keys);
+    if (p.kind !== 'server') throw new HttpError(403, 'an app’s key can’t add entities: ask with a backend’s key');
+    if (p.scope !== 'all') throw new HttpError(403, 'only a key that may ask about every entity (scope all) adds entities');
+    const { dimension, entity } = c.req.param();
+    const problem = entityKeyProblem(entity);
+    if (problem) throw new HttpError(422, problem);
+    let body: unknown;
+    try { body = await c.req.json(); } catch { throw new HttpError(400, 'the body isn’t JSON: {"name": "…", "parent": "<key>"}'); }
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'the body is an object: {"name": "…", "parent": "<key>"}');
+    const { name, parent } = body as { name?: unknown; parent?: unknown };
+    if (name !== undefined && typeof name !== 'string') throw new HttpError(422, 'name is text');
+    if (parent !== undefined && parent !== null && typeof parent !== 'string') throw new HttpError(422, 'parent is an entity’s key, or null');
+    const actor: Actor = { name: `API key ${(await one<{ key_prefix: string }>(db, `select key_prefix from api_key where id = $1`, [p.keyId]))?.key_prefix ?? p.keyId}`, type: 'service_token' };
+    const now = async () => one<{ key: string; name: string; dimension: string; parent: string | null }>(db, `select c.key, c.name, d.key as dimension, p.key as parent
+      from entity c join dimension d on d.id = c.dimension_id left join entity p on p.id = c.parent_id where c.key = $1 and c.archived_at is null`, [entity]);
+    let created = false;
+    let row = await now();
+    if (!row) {
+      try {
+        await upsertEntity(db, dimension, entity, { name: (name ?? '').trim() || entity, parent: parent ?? null }, actor, true);
+        created = true;
+      } catch (e) {
+        if (!(e instanceof HttpError && e.status === 409)) throw e;    // added at the same moment by another request
+      }
+      row = await now();
+      if (!row) throw new HttpError(409, `“${entity}” is taken already (keys are unique across every dimension)`);
+    }
+    if (row.dimension !== dimension) throw new HttpError(409, `“${entity}” is in another dimension: keys are unique across every dimension`);
+    if (!created && parent !== undefined && (parent ?? null) !== row.parent) {
+      throw new HttpError(409, `“${entity}” is under ${row.parent ? `“${row.parent}”` : 'no parent'}: move it in the console, as that changes what it gets`);
+    }
+    if (!created && typeof name === 'string' && name.trim() && name.trim() !== row.name) {
+      await upsertEntity(db, dimension, entity, { name: name.trim() }, actor, false);
+      row = (await now())!;
+    }
+    // this environment answers for it from now on; the publisher brings the others along
+    if (plane.refresh && !Object.hasOwn(plane.snapshots.get(p.environment)?.entities ?? {}, entity)) await plane.refresh(db, p.environment);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ key: row.key, name: row.name, dimension: row.dimension, parent: row.parent, created }, created ? 201 : 200);
   });
   return app;
 }
@@ -239,8 +305,9 @@ export function flagdRoutes({ db, plane, keys }: Parts) {
   app.use('/sdk/v1/flagd/*', etag());
   const snapshotFor = (env: string) => snapshotIn(plane, env);
 
-  // Backend servers: one entity's flags as flagd JSON. A flagd document is one entity's flags in the key's service
-  // (flagd.ts), so a backend serving several entities asks for each, for example as one flagd source per entity. The key says which it may ask about.
+  // Backend servers: one entity's flags as flagd JSON, in the key's service (flagd.ts). A backend serving several
+  // entities reads them all in one document (/sdk/v1/flagd/service, below), or one per entity. The key says which it
+  // may ask about.
   const flagdFor = async (c: Context, named: { dimension: string; entity: string } | null) => {
     const p = await authenticate(db, { authorization: c.req.header('authorization'), origin: c.req.header('origin') }, keys);
     if (p.kind !== 'server') throw new HttpError(403, 'an app’s key reads values only (OFREP): the rules as flagd JSON are for a backend’s key');
@@ -248,6 +315,7 @@ export function flagdRoutes({ db, plane, keys }: Parts) {
     const entity = named ? named.entity : ownEntity(p);
     const info = Object.hasOwn(snap.entities, entity) ? snap.entities[entity] : null;
     if (!info || (named && info.dimension !== named.dimension)) {
+      if (named && p.scope !== 'all') throw new HttpError(403, `this key can’t ask about "${entity}"`);    // as for the links, above
       throw new HttpError(404, named ? `no ${named.dimension} "${named.entity}"` : `"${entity}" not found`);
     }
     if (!mayAsk(p, entity, info.path)) throw new HttpError(403, `this key can’t ask about "${entity}"`);
@@ -256,13 +324,24 @@ export function flagdRoutes({ db, plane, keys }: Parts) {
   app.get('/sdk/v1/flagd/:dimension/:entity', (c) => flagdFor(c, { dimension: c.req.param('dimension'), entity: c.req.param('entity') }));
   // A key for one entity (or one below, for its own) needs no path.
   app.get('/sdk/v1/flagd', (c) => flagdFor(c, null));
+  // Every entity the key may ask about in one document, with the entity picked inside it by the request's dimension
+  // keys (flagd.ts buildServiceDoc): one flagd source for a backend shared by many entities. An `all` key's holds every
+  // entity, and no entity for a request that names none; a `below` key's, its entity and those under it.
+  app.get('/sdk/v1/flagd/service', async (c) => {
+    const p = await authenticate(db, { authorization: c.req.header('authorization'), origin: c.req.header('origin') }, keys);
+    if (p.kind !== 'server') throw new HttpError(403, 'an app’s key reads values only (OFREP): the rules as flagd JSON are for a backend’s key');
+    const snap = snapshotFor(p.environment);
+    if (p.scope === 'entity') throw new HttpError(400, 'this key asks about one entity: read its own document, GET /sdk/v1/flagd');
+    if (p.scope === 'below' && !(p.entity && Object.hasOwn(snap.entities, p.entity))) throw new HttpError(403, `this key’s entity "${p.entity}" is gone`);
+    return send(c, await serviceDownload(snap, p.project, p.scope === 'all' ? null : p.entity), 'private, no-cache');
+  });
 
   return app;
 }
 
 function ownEntity(p: Principal): string {
   if (p.entity) return p.entity;
-  throw new HttpError(400, 'flagd JSON is one entity’s flags: name it in the path, /sdk/v1/flagd/<dimension>/<entity>');
+  throw new HttpError(400, 'name the entity in the path, /sdk/v1/flagd/<dimension>/<entity>, or read every entity in one document, /sdk/v1/flagd/service');
 }
 
 export async function ensureClientApp(db: Db, apps: AppCache, appKey: string) {

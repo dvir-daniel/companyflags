@@ -79,7 +79,7 @@ await make('flag max_upload_mb', '/flags', {
 }, '/flags/max_upload_mb');
 
 const key = async (project: string) => {
-  const r = await call('POST', '/api-keys', { environment: ENV, project, scope: 'all', label: `examples: ${project}` });
+  const r = await call('POST', '/api-keys', { environment: ENV, service: project, scope: 'all', label: `examples: ${project}` });
   if (r.status >= 300) throw new Error(`key for ${project}: ${r.status} ${JSON.stringify(r.body)}`);
   return r.body.key as string;
 };

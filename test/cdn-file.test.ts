@@ -67,7 +67,7 @@ test('still equal with named % groups, inside and outside, by device and by enti
 });
 
 test('a device that sends only targetingKey: the same % group from the file (flagd-core) as over OFREP', async () => {
-  const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'web', scope: 'all' })).json.key;
+  const key = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'web', scope: 'all' })).json.key;
   const file = (await t.cdnFile('dev', 'web', 'acme')).json;
   const snap = t.plane.get('dev');
   const split = Object.keys(file.flags).filter((k) => JSON.stringify(file.flags[k].targeting ?? null).includes('fractional'));

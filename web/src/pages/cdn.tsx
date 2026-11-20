@@ -125,7 +125,7 @@ function Publishes({ publishes, names }: { publishes: Publish[]; names: Record<s
   return (
     <div role="table" aria-label="Recent publishes">
       <div role="row" className={cn(COLS, tableHeadClass)}>
-        <span role="columnheader">Environment</span><span role="columnheader" className={MD}>Version</span>
+        <span role="columnheader">Environment</span><span role="columnheader" className={MD}>Revision</span>
         <span role="columnheader" className={MD}>Published</span><span role="columnheader">Cloudflare</span>
       </div>
       {publishes.map((p) => (

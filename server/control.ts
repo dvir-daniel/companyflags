@@ -9,12 +9,16 @@ import {
   canonical, createChangeSet, deliveredTo, flagSetupProblems, normalizeLayer, projectIds, variantsUsed, writeLayer, type Actor, type LayerDoc,
 } from './layers.ts';
 import { audit, change, changeEverywhere, type Env } from './journal.ts';
+import { loadLayers } from './snapshot.ts';
 import { CODE_DEFAULT, HIDDEN_PREFIX, hiddenKey } from './evaluator.ts';
 import { needsRemoveBy, cleanTags, flagNameProblem, isVersionFlag, reservedKeyProblem } from './checks.ts';
 import { newVersionProblem, releaseVersionProblem } from './semver.ts';
-import { mayMoveEntities, needsReview, type EnvFacts } from './policy.ts';
+import { hasSafeValue, mayMoveEntities, maySetSafeValue, needsReview, type EnvFacts } from './policy.ts';
 import { capital, chainOrder, checkDimensions, cleanDimension, count, type Dimension } from './dimensions.ts';
 import { firstMismatch, schemaProblem, type JsonSchema } from './jsonSchema.ts';
+
+/** A flag's key, as the schema checks it (0001_init.sql). */
+const FLAG_KEY = /^[a-z][a-z0-9_]*$/;
 
 type EnvRow = { id: number; key: string };
 const envs = (q: Db | Tx) => all<EnvRow>(q, `select id, key from environment order by id`);
@@ -76,6 +80,16 @@ export type NewFlag = {
 // In a protected environment, a new flag starts switched off whatever the request says: turning it on there is a
 // reviewed change like any other.
 export async function createFlag(db: Db, f: NewFlag, actor: Actor) {
+  if (typeof f.key !== 'string' || !FLAG_KEY.test(f.key)) {
+    throw new HttpError(422, 'A flag’s key is lowercase letters, digits and underscores, and starts with a letter: new_checkout');
+  }
+  if (!['bool', 'string', 'number', 'json'].includes(f.valueType)) throw new HttpError(422, 'valueType: bool, string, number or json');
+  if (!Array.isArray(f.variations)) throw new HttpError(422, 'variations: a list of { key, value }');
+  if (!f.base || typeof f.base !== 'object') throw new HttpError(422, 'base: the flag’s defaults, for every environment or per environment');
+  if (f.delivery !== undefined && (!f.delivery || typeof f.delivery !== 'object' || Array.isArray(f.delivery))) {
+    throw new HttpError(422, 'delivery: the services per environment, { "<environment>": ["<service>"] }');
+  }
+  f = { ...f, delivery: f.delivery ?? {} };
   const name = f.name?.trim() || null;
   const tags = cleanTags(f.tags);
   if (name && flagNameProblem(name)) throw new HttpError(422, flagNameProblem(name)!);
@@ -93,6 +107,12 @@ export async function createFlag(db: Db, f: NewFlag, actor: Actor) {
   mustMatch(schema, f.variations ?? []);
   return db.transaction(async (tx) => {
     if (!(await envs(tx)).length) throw new HttpError(422, 'add an environment in Settings before creating flags');
+    // an archived flag keeps its key: code that still reads it must never get another flag's values
+    const taken = await one<{ archived: boolean }>(tx, `select archived_at is not null as archived from flag where key = $1`, [f.key]);
+    if (taken) {
+      throw new HttpError(409, taken.archived ? `“${f.key}” is taken already, by an archived flag (archived flags keep their key)` : `“${f.key}” is taken already`,
+        { flag: f.key }, 'already_exists');
+    }
     const reviewed = new Set((await protectedEnvs(tx)).map((e) => e.id));
     const row = await one<{ id: string }>(tx, `insert into flag (key, name, tags, value_type, kind, description, owner, remove_by, free_values, json_schema)
       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
@@ -125,10 +145,12 @@ export async function createFlag(db: Db, f: NewFlag, actor: Actor) {
 // Which apps a flag is sent to in an environment. In a protected environment (policy.ts needsReview) this is a
 // request (kind 'delivery', layers.ts: applied through applyItems once approved) and nothing changes yet; elsewhere it
 // applies now. `before`: the apps the console saw; if they changed in the meantime the change is refused (409)
-// instead of undoing someone else's.
-export type DeliveryChange = { before?: string[]; reason?: string | null };
+// instead of undoing someone else's. `reuse` (flags push): a request already open for exactly this change (in review,
+// approved or scheduled, with this one change) is answered again instead of filing another, so a re-run of the push
+// files nothing new. The console always files its own: its request carries the person's reason.
+export type DeliveryChange = { before?: string[]; reason?: string | null; reuse?: boolean };
 export async function setDelivery(db: Db, flagKey: string, envKey: string, projectKeys: string[], actor: Actor, opts: DeliveryChange = {}):
-  Promise<{ applied: true; revision: number } | { applied: false; changeSetId: number }> {
+  Promise<{ applied: true; revision: number } | { applied: false; changeSetId: number; reused?: true }> {
   const env = await one<EnvRow & EnvFacts>(db, `select id, key, min_approvals as "minApprovals" from environment where key = $1`, [envKey]);
   const flag = await one<{ id: string }>(db, `select id from flag where key = $1`, [flagKey]);
   if (!flag || !env) throw new HttpError(404, 'flag or environment not found');
@@ -142,6 +164,12 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
     changed(now);
     const projects = (await projectIds(db, projectKeys)).map((p) => p.key);
     if (canonical(projects) === canonical(now)) throw new HttpError(422, `${flagKey} is already in exactly these services in ${envKey}`);
+    const open = opts.reuse && await one<{ id: string }>(db, `select cs.id from change_set cs join change_set_item i on i.change_set_id = cs.id
+      where cs.environment_id = $1 and i.flag_id = $2 and i.kind = 'delivery' and cs.status in ('in_review', 'approved', 'scheduled')
+        and (select count(*) from change_set_item j where j.change_set_id = cs.id) = 1
+        and i.proposed -> 'projects' = $3::jsonb and i.before -> 'projects' = $4::jsonb
+      order by cs.id limit 1`, [env.id, flag.id, JSON.stringify(projects), JSON.stringify(now)]);
+    if (open) return { applied: false, changeSetId: Number(open.id), reused: true };
     const sets = (l: string[]) => (l.length ? `services ${l.join(', ')}` : 'no service');
     const reason = opts.reason?.trim() || `Put ${flagKey} in ${sets(projects)} (now: ${sets(now)})`;
     const cs = await createChangeSet(db, envKey, [{ kind: 'delivery', flag: flagKey, entity: null, expectedLayerVersion: null, proposed: null,
@@ -157,7 +185,8 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
     for (const p of projects) {
       await tx.query(`insert into flag_delivery (flag_id, project_id, environment_id) values ($1,$2,$3)`, [flag.id, p.id, env.id]);
     }
-    const revision = await change(tx, env, actor, { kind: 'delivery.update', flag: flagKey, before, after: projects.map((p) => p.key) });
+    const revision = await change(tx, env, actor, { kind: 'delivery.update', flag: flagKey, before, after: projects.map((p) => p.key),
+      comment: opts.reason?.trim() || null });
     return { applied: true, revision };
   });
 }
@@ -270,6 +299,63 @@ export async function archiveFlag(db: Db, flagKey: string, actor: Actor) {
   });
 }
 
+// Restoring an archived flag brings back the same flag (its key stays unique: nothing else could take it meanwhile),
+// with its settings, variants and services in every environment as they were when it was archived. Nothing about it
+// changed while it was archived, except that an environment may have become protected since: there it comes back off
+// and in no service, both recorded (turning it on there, or putting it in a service, is a reviewed change).
+export async function unarchiveFlag(db: Db, flagKey: string, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const f = await one<{ id: string }>(tx, `update flag set archived_at = null where key = $1 and archived_at is not null returning id`, [flagKey]);
+    if (!f) {
+      const exists = await one(tx, `select 1 from flag where key = $1`, [flagKey]);
+      throw new HttpError(exists ? 409 : 404, exists ? `${flagKey} isn’t archived` : 'flag not found');
+    }
+    for (const env of await protectedEnvs(tx)) {
+      const live = await one<{ id: string; enabled: boolean }>(tx, `select id, enabled from flag_layer where flag_id = $1 and environment_id = $2 and entity_id is null
+        for update`, [f.id, env.id]);
+      const sentTo = await deliveredTo(tx, f.id, env.id);
+      const entries: Parameters<typeof change>[3] = [];
+      if (live?.enabled) {
+        // History keeps whole layers (a restore of a version puts one back)
+        const { version: _v, updatedAt: _a, updatedBy: _b, ...was } = (await loadLayers(tx, env.id, [f.id])).find((l) => l.entityKey === null)!.layer;
+        await tx.query(`update flag_layer set enabled = false, version = version + 1, updated_at = now(), updated_by = $2 where id = $1`, [live.id, actor.name]);
+        entries.push({ kind: 'layer.update', flag: flagKey, entity: null, before: was, after: { ...was, enabled: false },
+          comment: `Restored from the archive off: ${env.key} needs approval to turn it on` });
+      }
+      if (sentTo.length) {
+        await tx.query(`delete from flag_delivery where flag_id = $1 and environment_id = $2`, [f.id, env.id]);
+        entries.push({ kind: 'delivery.update', flag: flagKey, before: sentTo, after: [],
+          comment: `Restored from the archive in no service: ${env.key} needs approval to put it in one` });
+      }
+      if (entries.length) await change(tx, env, actor, entries);
+    }
+    await changeEverywhere(tx, actor, { kind: 'flag.unarchive', flag: flagKey });
+  });
+}
+
+// A kill switch's or ops flag's safe value (policy.ts hasSafeValue): the variant "Serve the safe value" (layers.ts
+// serveSafeValue) gives everyone. null: none (break-glass can only stop sending). Break-glass serves it without review,
+// so while any environment is protected only admins name or change it (policy.ts maySetSafeValue). In every
+// environment's History as a change of the flag's details.
+export async function setSafeVariant(db: Db, flagKey: string, variant: string | null, user: { key: string; role: string }, actor: Actor) {
+  if (variant !== null && typeof variant !== 'string') throw new HttpError(422, 'variant: a variant key, or null for none');
+  return db.transaction(async (tx) => {
+    const f = await one<{ id: string; kind: string; safe: string | null }>(tx, `select f.id, f.kind, v.key as safe from flag f
+      left join flag_variation v on v.id = f.safe_variation_id where f.key = $1 and f.archived_at is null for update of f`, [flagKey]);
+    if (!f) throw new HttpError(404, 'flag not found');
+    if (f.safe === variant) return { safeVariant: variant };
+    if (!maySetSafeValue(user, await envFacts(tx))) {
+      throw new HttpError(403, 'Only admins name a safe value while an environment needs approval: break-glass serves it without review');
+    }
+    if (variant !== null && !hasSafeValue(f.kind)) throw new HttpError(422, `Only kill switches and ops flags have a safe value (${flagKey} is ${f.kind.replace('_', ' ')})`);
+    const v = variant === null ? null : await one<{ id: string }>(tx, `select id from flag_variation where flag_id = $1 and key = $2 and not is_code_default`, [f.id, variant]);
+    if (variant !== null && !v) throw new HttpError(422, `${flagKey} has no variant “${variant}”`);
+    await tx.query(`update flag set safe_variation_id = $2 where id = $1`, [f.id, v?.id ?? null]);
+    await changeEverywhere(tx, actor, { kind: 'flag.update', flag: flagKey, before: { safeVariant: f.safe }, after: { safeVariant: variant } });
+    return { safeVariant: variant };
+  });
+}
+
 export type FlagMeta = {
   name?: string | null; tags?: string[]; description?: string | null; owner?: string | null; kind?: string; removeBy?: string | null; freeValues?: boolean;
   /** a JSON flag's JSON Schema; null removes it. Every value it can serve is checked against a new one. */
@@ -314,9 +400,11 @@ export async function updateFlagMeta(db: Db, flagKey: string, m: FlagMeta, actor
       const errors = await flagSetupProblems(tx, { id: before.id, key: flagKey }, next.kind);
       if (errors.length) throw new HttpError(422, `These rules don’t fit a ${next.kind.replace('_', ' ')} flag — change them first`, { errors });
     }
-    await tx.query(`update flag set name = $2, tags = $3, description = $4, owner = $5, kind = $6, remove_by = $7, free_values = $8, json_schema = $9 where id = $1`,
+    // a purpose without a safe value (policy.ts hasSafeValue) drops the one it had
+    await tx.query(`update flag set name = $2, tags = $3, description = $4, owner = $5, kind = $6, remove_by = $7, free_values = $8, json_schema = $9,
+        safe_variation_id = case when $10::bool then safe_variation_id end where id = $1`,
       [before.id, next.name, next.tags, next.description, next.owner, next.kind, next.remove_by, next.free_values,
-        next.json_schema === null ? null : JSON.stringify(next.json_schema)]);
+        next.json_schema === null ? null : JSON.stringify(next.json_schema), hasSafeValue(next.kind)]);
     await changeEverywhere(tx, actor, { kind: 'flag.update', flag: flagKey, before: { ...before, id: undefined }, after: next });
     return next;
   });
@@ -425,7 +513,7 @@ export async function upsertEntity(db: Db, dimension: string, key: string, doc: 
     if (!dim) throw new HttpError(404, `no dimension “${dimension}”`);
     if (typeof doc.name !== 'string' || !doc.name.trim()) throw new HttpError(422, 'Add a name');
     const existing = await one<{ id: string; parent_id: string | null; dimension_id: number }>(tx, `select id, parent_id, dimension_id from entity where key = $1`, [key]);
-    if (create && existing) throw new HttpError(409, `“${key}” is taken already (keys are unique across every dimension)`);
+    if (create && existing) throw new HttpError(409, `“${key}” is taken already (keys are unique across every dimension)`, {}, 'already_exists');
     if (!create && (!existing || Number(existing.dimension_id) !== Number(dim.id))) throw new HttpError(404, `no ${dimension} “${key}”`);
     const before = existing ? await entityState(tx, existing.id) : null;
     const parent = await parentId(tx, key, dim, doc.parent);
@@ -452,7 +540,14 @@ export async function upsertEntity(db: Db, dimension: string, key: string, doc: 
 
 // A service's key in one environment: an app's is public, a backend's secret (auth.ts). Which entities it may ask about
 // is its scope (auth.ts mayAsk); `entity` and `below` keys name their entity.
-export async function createApiKey(db: Db, p: { environment: string; project: string; scope: string; entity?: string | null; label?: string }, actor: Actor) {
+/** The most days an API key may be given before it expires. Without days, it works until it is revoked. */
+export const API_KEY_MAX_DAYS = 1095;
+
+export async function createApiKey(db: Db, p: { environment: string; project: string; scope: string; entity?: string | null; label?: string; days?: unknown }, actor: Actor) {
+  const days = p.days === undefined || p.days === null ? null : Number(p.days);
+  if (days !== null && (!Number.isInteger(days) || days < 1 || days > API_KEY_MAX_DAYS)) {
+    throw new HttpError(422, `days: a whole number from 1 to ${API_KEY_MAX_DAYS}, or none for a key that works until it is revoked`);
+  }
   return db.transaction(async (tx) => {
     const env = await one<EnvRow>(tx, `select id, key from environment where key = $1`, [p.environment]);
     // shared: the service can't change kind or be deleted until this key is made (updateProject, deleteProject)
@@ -463,10 +558,11 @@ export async function createApiKey(db: Db, p: { environment: string; project: st
     const ent = p.entity ? await one<{ id: string }>(tx, `select id from entity where key = $1 and archived_at is null`, [p.entity]) : null;
     if (p.scope !== 'all' && !ent) throw new HttpError(422, p.entity ? `“${p.entity}” not found` : 'say whose key it is: the entity it’s for');
     const k = newApiKey(env.key, p.project);
-    const row = await one<{ id: string }>(tx, `insert into api_key (key_hash, key_prefix, label, environment_id, project_id, scope, entity_id)
-      values ($1,$2,$3,$4,$5,$6,$7) returning id`, [k.hash, k.prefix, p.label ?? null, env.id, proj.id, p.scope, p.scope === 'all' ? null : ent!.id]);
-    await audit(tx, actor, { kind: 'api_key.create', environment: env.id, after: { id: row!.id, prefix: k.prefix, project: p.project, scope: p.scope, entity: p.scope === 'all' ? null : p.entity } });
-    return { id: Number(row!.id), key: k.raw, prefix: k.prefix };
+    const row = await one<{ id: string; expiresAt: string | null }>(tx, `insert into api_key (key_hash, key_prefix, label, environment_id, project_id, scope, entity_id, expires_at)
+      values ($1,$2,$3,$4,$5,$6,$7, case when $8::int is null then null else now() + make_interval(days => $8::int) end)
+      returning id, expires_at as "expiresAt"`, [k.hash, k.prefix, p.label ?? null, env.id, proj.id, p.scope, p.scope === 'all' ? null : ent!.id, days]);
+    await audit(tx, actor, { kind: 'api_key.create', environment: env.id, after: { id: row!.id, prefix: k.prefix, project: p.project, scope: p.scope, entity: p.scope === 'all' ? null : p.entity, days } });
+    return { id: Number(row!.id), key: k.raw, prefix: k.prefix, expiresAt: row!.expiresAt };
   });
 }
 
@@ -528,7 +624,7 @@ export async function createEnvironment(db: Db, input: EnvironmentInput, actor: 
   const name = String(input.name ?? '').trim() || key;
   const minApprovals = approvals(input.minApprovals);
   return db.transaction(async (tx) => {
-    if (await one(tx, `select 1 from environment where key = $1`, [key])) throw new HttpError(409, `there is already an environment "${key}"`);
+    if (await one(tx, `select 1 from environment where key = $1`, [key])) throw new HttpError(409, `there is already an environment "${key}"`, {}, 'already_exists');
     const env = (await one<{ id: number }>(tx, `insert into environment (key, name, min_approvals, link_secret) values ($1,$2,$3,$4) returning id`,
       [key, name, minApprovals, randomSecret()]))!;
     // the flag's off and default variants, from the oldest other environment
@@ -571,7 +667,7 @@ export async function createProject(db: Db, input: { key?: string; kind?: string
   if (problem) throw new HttpError(422, problem);
   if (!isAppKind(input.kind)) throw new HttpError(422, APP_KIND);
   return db.transaction(async (tx) => {
-    if (await one(tx, `select 1 from project where key = $1`, [key])) throw new HttpError(409, `there is already a service "${key}"`);
+    if (await one(tx, `select 1 from project where key = $1`, [key])) throw new HttpError(409, `there is already a service "${key}"`, {}, 'already_exists');
     await tx.query(`insert into project (key, kind) values ($1, $2)`, [key, input.kind]);
     await audit(tx, actor, { kind: 'app.create', after: { key, kind: input.kind } });
     return { key, kind: input.kind };

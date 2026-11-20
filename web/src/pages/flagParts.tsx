@@ -12,11 +12,11 @@ import { Actions, ErrorList, Field, InAppDefault, Modal, Switch, Val } from '../
 import { denseField, monoLabel, useAsync } from '../uiKit.ts';
 import { useEnvs } from './envs.ts';
 import { resolveTyped, searchable, searchEntities } from './entityPickerKit.ts';
-import { pathIn, switchPlan } from '../../../server/policy.ts';
+import { hasSafeValue, pathIn, switchPlan } from '../../../server/policy.ts';
 import { isVersionFlag } from '../../../server/checks.ts';
 import { blankRow, fromText, nameError, rowError, toText, valueError, ValueInput, ValuesEditor, type ValueRow } from '../values.tsx';
 import { plural } from '../text.ts';
-import { hiddenKey, isHidden, valueOf, type Draft, type Line } from '../lines.ts';
+import { hiddenKey, isHidden, servedBy, setVariantValues, valueEdits, valueOf, type Draft, type Line } from '../lines.ts';
 import { useDraft } from '../useDraft.ts';
 
 export type SaveResult = { applied: boolean; revision?: number; changeSetId?: number; bypass?: boolean };
@@ -205,7 +205,9 @@ export function NewValue({ flag, onClose, onCreated }: { flag: FlagDetail; onClo
 /**
  * Turn the flag on or off in one environment, as policy.ts switchPlan says (the Flags page's bulk bar asks the same):
  * where nothing is reviewed it acts at once with Undo; in a protected environment it asks first and sends the change
- * for review or, for on call turning a kill switch or ops flag off, offers break-glass. The switch is never drafted
+ * for review or, for on call turning any flag off, offers break-glass. A kill switch or ops flag that names a safe value
+ * offers two ways off, each said plainly: serve the safe value to everyone, or stop sending (DISABLED: each app uses
+ * the default in its own code, which the console can't see). The switch is never drafted
  * (README M7): with a saved draft of this flag it offers "Discard and turn off" instead of a dead end, and it tells
  * the draft session what it changed, so a draft made since is known to be stale.
  */
@@ -237,17 +239,48 @@ export function PowerSwitch({ flag, env, onSaved }: { flag: FlagDetail; env: str
     }
     const off = on;
     const emergency = path === 'break-glass';
-    // forgiveness: where nothing is reviewed, act at once and offer Undo
-    const r = path === 'now' ? { action: 'now', reason: '' } : await ask({
+    // the safe value, when this kill switch or ops flag names one: the first way off
+    const safe = off && hasSafeValue(flag.kind) && flag.safeVariant ? flag.safeVariant : null;
+    const safeShown = safe ? fmtValue(flag.variations.find((v) => v.key === safe)?.value) : '';
+    const stopText = <><b>Stop sending:</b> no value is sent. Each app uses the default in its own code, which CompanyFlags can’t see.</>;
+    const body = !off ? <p>Apps get values from the rules again.</p> : <>
+      {safe ? <>
+        <p><b>Serve the safe value:</b> every device gets <Val>{safe}</Val> ({safeShown}). The rules are switched off and kept.</p>
+        <p>{stopText}</p>
+      </> : <p>{stopText}{hasSafeValue(flag.kind) && ' To serve a value you know instead, name a safe value in the flag’s settings.'}</p>}
+      {emergency && <p className="text-ink-3">You can use break-glass, so you can do this right away. It’s logged for review.</p>}
+    </>;
+    // forgiveness: where nothing is reviewed, act at once and offer Undo (with a safe value, it asks which way off)
+    const needsWhy = path !== 'now';
+    const r = path === 'now' && !safe ? { action: 'now', reason: '' } : await ask({
       title: `${off ? 'Turn off' : 'Turn on'} ${flag.key} in ${envName(env).toLowerCase()}?`,
-      body: off ? <><p><b>Nobody will get a value.</b> Every app uses the default in its own code.</p>{emergency && <p className="text-ink-3">You can use break-glass, so you can do this right away. It’s logged for review.</p>}</>
-        : <p>Apps get values from the rules again.</p>,
-      reason: { label: 'Why? (required)', placeholder: off ? 'INC-123: payment provider outage' : 'Issue resolved' },
+      body,
+      ...(needsWhy ? { reason: { label: 'Why? (required)', placeholder: off ? 'INC-123: payment provider outage' : 'Issue resolved' } } : {}),
       actions: [{ id: 'cancel', label: 'Cancel' },
-        ...(emergency ? [{ id: 'now', label: 'Turn off now', tone: 'danger' as const, needsReason: true }] : []),
-        { id: 'request', label: 'Request review', tone: emergency ? 'default' as const : 'primary' as const, needsReason: true }],
+        ...(path === 'now' ? [{ id: 'now', label: 'Stop sending' }, { id: 'safe', label: `Serve ${safe}`, tone: 'danger' as const }]
+          : [
+            ...(emergency && safe ? [{ id: 'safe', label: `Serve ${safe} now`, tone: 'danger' as const, needsReason: true }] : []),
+            ...(emergency ? [{ id: 'now', label: 'Stop sending now', tone: safe ? 'default' as const : 'danger' as const, needsReason: true }] : []),
+            ...(!emergency && safe ? [{ id: 'safe-request', label: `Request: serve ${safe}`, needsReason: true }] : []),
+            { id: 'request', label: safe ? 'Request: stop sending' : 'Request review', tone: emergency ? 'default' as const : 'primary' as const, needsReason: true },
+          ])],
     });
     if (!r.action || r.action === 'cancel') return;
+    if (r.action === 'safe' || r.action === 'safe-request') {
+      if (plan.drafted.length) drafts.discard(plan.drafted);
+      inFlight.current = true;
+      try {
+        const res = await api<SaveResult>('POST', `/flags/${flag.key}/layers/${env}/safe-value`, { reason: r.reason || undefined, request: r.action === 'safe-request' });
+        const where = `in ${envName(env).toLowerCase()}`;
+        if (res.applied) void drafts.noteChanged([flag.key]);
+        toast(res.applied ? `Serving ${safe} to everyone ${where}${res.bypass ? ' (break-glass, logged)' : ''}` : `Sent for review: request #${res.changeSetId}`, 'ok',
+          res.applied ? undefined : { label: 'View', onClick: () => go(`approvals/${res.changeSetId}`) });
+        reload().catch(() => {});
+        onSaved();
+      } catch (e) { toast(e as Error); }
+      finally { inFlight.current = false; }
+      return;
+    }
     // the edits go only once the switch does: cancelling above keeps them
     if (plan.drafted.length) drafts.discard(plan.drafted);
     inFlight.current = true;
@@ -285,51 +318,80 @@ export function PowerSwitch({ flag, env, onSaved }: { flag: FlagDetail; env: str
   );
 }
 
-/** The Variants tab: the values a flag can send, and editing them. */
-export function ValuesPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: () => void }) {
+/** The Variants tab: the values a flag can send, and editing them. A new variant is added at once (nobody gets it
+ *  until a rule serves it); a new value for one that exists goes into the draft, like every other change, and goes
+ *  out when the draft is published. A variant's value is the same in every environment. */
+export function ValuesPanel({ flag, env, draft, setDraft, onSaved }: { flag: FlagDetail; env: string; draft: Draft; setDraft: (d: Draft) => void; onSaved: () => void }) {
   const { toast, setDirty } = useApp();
-  const toRows = (): ValueRow[] => flag.variations.filter((v) => !isHidden(v.key)).map((v) => ({ key: v.key, text: toText(flag.valueType, v.value), isNew: false }));
+  const { envName } = useEnvs();
+  const named = flag.variations.filter((v) => !isHidden(v.key));
+  const toRows = (): ValueRow[] => named.map((v) => ({ key: v.key, text: toText(flag.valueType, valueOf(flag, draft, v.key)), isNew: false }));
   const [editing, setEditing] = useState(false);
-  // the rows being edited, taken from the flag when editing starts
+  // the rows being edited, taken from the flag (and the draft's new values) when editing starts
   const [rows, setRows] = useState(toRows);
   const { busy, error, run } = useAsync();
   const startEditing = () => { setRows(toRows()); setEditing(true); };
   const dirty = editing && JSON.stringify(rows) !== JSON.stringify(toRows());
   useEffect(() => { setDirty(`values:${flag.key}`, dirty); return () => setDirty(`values:${flag.key}`, false); }, [dirty, flag.key, setDirty]);
   const invalid = rows.some((r) => rowError(flag.valueType, r, rows));
+  const edits = valueEdits(flag, draft);
   const save = async () => {
-    if (await run(() => api('PUT', `/flags/${flag.key}/variations`, { variations: rows.map((r) => ({ key: r.key, value: fromText(flag.valueType, r.text) })) }))) {
-      toast(`Saved ${plural(rows.length, 'variant')} for ${flag.key}`); setEditing(false); onSaved();
-    }
+    const added = rows.filter((r) => r.isNew).map((r) => ({ key: r.key, value: fromText(flag.valueType, r.text) }));
+    const changed = Object.fromEntries(rows.filter((r) => !r.isNew).map((r) => [r.key, fromText(flag.valueType, r.text)]));
+    if (added.length && !(await run(() => api('PUT', `/flags/${flag.key}/variations`, { variations: added })))) return;
+    const next = setVariantValues(flag, draft, changed);
+    const inDraft = valueEdits(flag, next).length;
+    if (next !== draft) setDraft(next);
+    toast([added.length ? `Added ${plural(added.length, 'variant')}` : '', inDraft ? `${plural(inDraft, 'new value')} in your draft: publish to send ${inDraft === 1 ? 'it' : 'them'}` : '']
+      .filter(Boolean).join('. ') || 'Nothing changed');
+    setEditing(false);
+    if (added.length) onSaved();
   };
   const row = 'grid grid-cols-[minmax(0,220px)_minmax(0,1fr)] items-baseline gap-6 border-b border-grid py-3 max-sm:grid-cols-1 max-sm:gap-1.5';
-  // a version release's values are its versions, typed in (free values): each is added on its release page
+  // a version release's values are its versions, typed in (free values): each is added on its Rollout tab
   const versions = flag.kind === 'release' && isVersionFlag({ valueType: flag.valueType, variants: flag.variations });
   // free values: any value is typed into the rules and the default; named variants from before still work
   const free = !!flag.freeValues && !versions;
+  const where = envName(env).toLowerCase();
+  /** Where it's served here: "Served by 2 rules and the default in staging." */
+  const usedText = (key: string) => {
+    const u = servedBy(draft, key);
+    const parts = [u.rules ? plural(u.rules, 'rule') : '', u.defaults ? plural(u.defaults, 'default') : ''].filter(Boolean);
+    return parts.length ? `Served by ${parts.join(' and ')} in ${where}` : `Not served in ${where}`;
+  };
   return (
     <section aria-label="Variants">
       <div className="flex min-h-[39px] flex-wrap items-center justify-between gap-3 border-b border-rule pb-3">
         {versions ? (
           <p className="m-0 max-w-[640px] text-13 text-ink-2">
-            A version release has no variants: each version is typed in. Add the next one on <a href={`#/release/${encodeURIComponent(flag.key)}`}>its release page</a> (+ New version).
+            A version release has no variants: each version is typed in. Add the next one on <a href={`#/flag/${encodeURIComponent(flag.key)}/${encodeURIComponent(env)}/rollout`}>its Rollout tab</a> (+ New version).
           </p>
         ) : free ? (
           <p className="m-0 max-w-[640px] text-13 text-ink-2">
             Variants are off: type any value into the rules and the default. Turn them on in Settings to pick from named values instead.
-            {flag.variations.some((v) => !isHidden(v.key)) && ' The named values below are from before, and still work where rules use them.'}
+            {named.length > 0 && ' The named values below are from before, and still work where rules use them.'}
           </p>
-        ) : <p className="m-0 max-w-[640px] text-13 text-ink-2">The values this flag can send. Rules pick from this list, so changing a variant here changes it everywhere it’s used.</p>}
+        ) : <p className="m-0 max-w-[640px] text-13 text-ink-2">The values this flag can send. Rules pick from this list. A variant’s value is the same in every environment: a new value goes into your draft, and out when you publish it.</p>}
         {!editing && !versions && !free && <Button variant="secondary" onClick={startEditing}>Edit variants</Button>}
       </div>
       {!editing ? (
         <ul className="m-0 list-none p-0">
-          {flag.variations.filter((v) => !isHidden(v.key)).map((v) => (
-            <li key={v.key} className={row}>
-              <span className="truncate font-mono text-13 text-ink" title={v.key}>{v.key}</span>
-              <span className="min-w-0"><ValuePreview type={flag.valueType} value={v.value} /></span>
-            </li>
-          ))}
+          {named.map((v) => {
+            const edit = edits.find((e) => e.key === v.key);
+            return (
+              <li key={v.key} className={row}>
+                <span className="grid min-w-0 gap-0.5">
+                  <span className="truncate font-mono text-13 text-ink" title={v.key}>{v.key}</span>
+                  {!versions && !free && <span className="text-xs text-ink-3">{usedText(v.key)}</span>}
+                </span>
+                <span className="flex min-w-0 flex-wrap items-baseline gap-2">
+                  {edit && <><span className="line-through opacity-60"><ValuePreview type={flag.valueType} value={edit.was} /></span><span className="text-ink-3">→</span></>}
+                  <ValuePreview type={flag.valueType} value={edit ? edit.value : v.value} />
+                  {edit && <span className="text-13 text-flag">in your draft</span>}
+                </span>
+              </li>
+            );
+          })}
           <li className={row}>
             <span><InAppDefault /></span>
             <span className="text-13 text-ink-2">Always there. Sends nothing, so the app uses the default written in its code.</span>
@@ -339,10 +401,10 @@ export function ValuesPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: () =
         <div className="grid gap-3">
           <ValuesEditor type={flag.valueType} rows={rows} onChange={setRows} />
           <div><Button variant="link" onClick={() => setRows([...rows, blankRow(flag.valueType, rows)])}>+ Add variant</Button></div>
-          <p className="m-0 text-13 text-ink-3">Existing variant names can’t change, because rules may already use them.</p>
+          <p className="m-0 text-13 text-ink-3">Existing variant names can’t change, because rules may already use them. New values for them go into your draft; new variants are added right away, since nobody gets them until a rule serves them.</p>
           <ErrorList error={error} />
           <Actions className="justify-start">
-            <Button disabled={busy || invalid || !dirty} onClick={save}>{busy ? 'Saving…' : 'Save variants'}</Button>
+            <Button disabled={busy || invalid || !dirty} onClick={() => void save()}>{busy ? 'Saving…' : 'Save variants'}</Button>
             <Button variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
           </Actions>
         </div>
@@ -390,7 +452,7 @@ export function DeliveryPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: ()
     const now = listIn(env).filter((p) => p !== project);
     const next = on ? [...now, project] : now;
     setSent((s) => ({ ...s, [env]: { basis, list: next, busy: true } }));
-    const res = await run(async () => (await api<DeliveryResult | null>('PUT', `/flags/${flag.key}/delivery`, { environment: env, projects: next })) ?? {});
+    const res = await run(async () => (await api<DeliveryResult | null>('PUT', `/flags/${flag.key}/delivery`, { environment: env, services: next })) ?? {});
     if (!res) { forget(env); return; }                      // refused: the switches show what the server has
     if (res.applied === false) {
       // nothing changed yet: an approver reviews it first
@@ -403,9 +465,9 @@ export function DeliveryPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: ()
     onSaved();
   };
   const groups = useMemo(() => [
-    { title: 'Apps', sub: 'Apps get their values and the checks only the device makes. The rest of your rules stays on the server.', list: meta.projects.filter((p) => p.kind === 'client') },
-    { title: 'Backends', sub: 'Your own backends, which get the rules.', list: meta.projects.filter((p) => p.kind === 'server') },
-  ], [meta.projects]);
+    { title: 'Apps', sub: 'Apps get their values and the checks only the device makes. The rest of your rules stays on the server.', list: meta.services.filter((p) => p.kind === 'client') },
+    { title: 'Backends', sub: 'Your own backends, which get the rules.', list: meta.services.filter((p) => p.kind === 'server') },
+  ], [meta.services]);
   return (
     <section aria-label="Services" className="grid gap-3">
       <p className="m-0 text-13 text-ink-2">Which services this flag is in, per environment. An app or backend whose service doesn’t have it uses the default in its code.</p>

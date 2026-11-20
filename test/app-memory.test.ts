@@ -19,7 +19,7 @@ test('an app checks a link against its own environments’ secrets', async () =>
 });
 
 test('an API key made in one app isn’t accepted by another', async () => {
-  const key = (await a.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+  const key = (await a.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
   const get = (app: typeof a) => app.call('GET', '/sdk/v1/flagd/company/acme', undefined, { authorization: `Bearer ${key}` });
   assert.equal((await get(a)).status, 200);                           // a now has it in memory
   assert.equal((await get(b)).status, 401);

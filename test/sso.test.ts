@@ -15,7 +15,7 @@ import type { AppOptions } from '../server/index.ts';
 import { browser, startApp } from './helpers.ts';
 
 // ---------------------------------------------------------------- the identity provider
-type IdpUser = { sub: string; email: string; name: string; email_verified?: boolean };
+type IdpUser = { sub: string; email: string; name: string; email_verified?: boolean; groups?: string[] };
 let idp: Server;
 let IDP = '';
 let key: CryptoKey;
@@ -61,13 +61,13 @@ async function idpHandler(req: import('node:http').IncomingMessage, res: import(
     if (!grant || id !== 'console-app' || secret !== 'idp-secret' || grant.clientId !== id) return json({ error: 'invalid_grant' }, 400);
     codes.delete(form.get('code')!);
     const { user, nonce } = grant;
-    const idToken = await new SignJWT({ email: user.email, email_verified: user.email_verified ?? true, name: user.name, ...(nonce ? { nonce } : {}) })
+    const idToken = await new SignJWT({ email: user.email, email_verified: user.email_verified ?? true, name: user.name, ...(user.groups ? { groups: user.groups } : {}), ...(nonce ? { nonce } : {}) })
       .setProtectedHeader({ alg: 'RS256', kid: 'k1' }).setIssuer(IDP).setAudience(id).setSubject(user.sub).setIssuedAt().setExpirationTime('5m').sign(key);
     return json({ access_token: `at-${user.sub}`, token_type: 'Bearer', expires_in: 300, id_token: idToken });
   }
   if (url.pathname === '/userinfo') {
     const user = [...codes.values()][0]?.user ?? signingInAs;
-    return json({ sub: user.sub, email: user.email, email_verified: user.email_verified ?? true, name: user.name });
+    return json({ sub: user.sub, email: user.email, email_verified: user.email_verified ?? true, name: user.name, ...(user.groups ? { groups: user.groups } : {}) });
   }
   json({ error: 'not found' }, 404);
 }
@@ -149,6 +149,28 @@ describe('OIDC, start to finish (in order)', () => {
     assert.equal((await call('GET', '/api/sign-in')).json.sso, true, 'the sign-in page offers single sign-on');
   });
 
+  test('a connection is edited in place; it can’t be required before anyone has signed in with it', async () => {
+    const admin = await app.admin();
+    const put = (body: unknown) => call('PUT', '/api/sso/okta', { cookie: admin, body });
+    const early = await put({ requireSso: true });
+    assert.equal(early.status, 409, 'not tested yet');
+    assert.match(early.json.error ?? early.json.message, /Test sign-in/);
+    assert.equal((await call('POST', '/api/sso', { cookie: admin, body: { ...okta(), id: 'okta3', domains: 'corp-eu.example', requireSso: true } })).status, 409, 'nor when it is added');
+
+    const edited = await put({ domains: 'corp.example, corp-labs.example, corp-eu.example', clientSecret: 'idp-secret' });
+    assert.equal(edited.status, 200, JSON.stringify(edited.json));
+    assert.deepEqual(edited.json.domains, ['corp.example', 'corp-labs.example', 'corp-eu.example']);
+    assert.equal(edited.json.lastSignInAt, null);
+    assert.equal((await put({ domains: 'not a domain' })).status, 422);
+    assert.equal((await put({ type: 'saml' })).status, 422, 'the protocol stays');
+    assert.equal((await put({ groupRoles: { claim: 'groups', roles: { admins: 'owner' } } })).status, 422, 'a group’s role is a role');
+    assert.equal((await put({ domains: 'corp.example, corp-labs.example' })).status, 200);
+    const config = JSON.parse((await ctx.db.query<{ c: string }>(`select oidc_config as c from sso_provider where provider_id = 'okta'`)).rows[0].c);
+    assert.deepEqual([config.clientId, config.clientSecret, config.issuer], ['console-app', 'idp-secret', IDP], 'its settings as the SSO plugin reads them');
+    const h = ((await call('GET', '/api/history?type=sso.update', { cookie: admin })).json as any[]);
+    assert.ok(h.length >= 2 && !JSON.stringify(h).includes('idp-secret'), 'History has the edits, never the secret');
+  });
+
   test('people at the company’s domains sign in with the identity provider and join as viewers', async () => {
     const pat = await signInWithSso('pat@corp.example', { sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz' });
     assert.equal(pat.status, 302);
@@ -226,16 +248,22 @@ describe('OIDC, start to finish (in order)', () => {
     assert.deepEqual([(await meta(again.cookie)).json.me.key, (await meta(again.cookie)).json.me.role], [lou.email, 'viewer'], 'invited again, the identity provider signs them in');
   });
 
-  test('a connection can require single sign-on: no passwords at its domains, except admins', async () => {
+  test('a connection can require single sign-on: no passwords at its domains, except the break-glass admin', async () => {
     const admin = await app.admin();
     const { invite } = (await call('POST', '/api/people', { cookie: admin, body: { email: 'sam@corp.example' } })).json;
     const pat = await signInWithSso('pat@corp.example', { sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz' });
+    const used = (await call('GET', '/api/sso', { cookie: admin })).json.connections[0];
+    assert.ok(used.lastSignInAt, 'someone signed in with it: it works');
+    const signIns = ((await call('GET', '/api/history?type=sign_in', { cookie: admin })).json as any[]).filter((r) => r.changeType === 'sign_in');
+    assert.deepEqual(signIns[0].after, { person: 'pat@corp.example', with: 'sso', connection: 'okta' }, 'History says how');
     assert.equal((await call('PUT', '/api/sso/okta', { cookie: pat.cookie, body: { requireSso: true } })).status, 403, 'admins only');
+    // Ann keeps her password: she is the break-glass admin
+    assert.equal((await call('PUT', '/api/sign-in-rules', { cookie: admin, body: { breakGlassAdmin: 'ann@corp.example' } })).status, 200);
     assert.equal((await call('PUT', '/api/sso/okta', { cookie: admin, body: { requireSso: true } })).json.requireSso, true);
 
     const signUp = await call('POST', '/api/auth/sign-up/email', { headers: { 'x-invite': invite }, body: { email: 'sam@corp.example', name: 'Sam', password: PASSWORD } });
     assert.equal(signUp.status, 403, 'not even with an invite');
-    await app.admin();                               // an admin still can: a broken provider must not lock everyone out
+    await app.admin();                               // the break-glass admin still can: a broken provider must not lock everyone out
     // a non-admin with a password from before: refused, and told to use single sign-on
     await call('PUT', '/api/sso/okta', { cookie: admin, body: { requireSso: false } });
     const kim = (await call('POST', '/api/people', { cookie: admin, body: { email: 'kim@corp.example' } })).json.invite;
@@ -247,11 +275,40 @@ describe('OIDC, start to finish (in order)', () => {
     await call('PUT', '/api/sso/okta', { cookie: stillAdmin, body: { requireSso: true } });
     assert.equal((await meta(made.cookie)).status, 401, 'required from now: a password session from before ends');
     assert.equal((await meta(patAgain.cookie)).status, 401, 'everyone at its domains signs in again, with single sign-on');
-    assert.equal((await meta(stillAdmin)).status, 200, 'except the admins');
+    assert.equal((await meta(stillAdmin)).status, 200, 'except the break-glass admin');
     const refused = await call('POST', '/api/auth/sign-in/email', { body: { email: 'kim@corp.example', password: PASSWORD } });
     assert.equal(refused.status, 403);
     assert.match(refused.json.message, /single sign-on/);
+    const failed = ((await call('GET', '/api/history?type=sign_in.failed', { cookie: stillAdmin })).json as any[])[0];
+    assert.deepEqual(failed.after, { person: 'kim@corp.example', with: 'password', why: 'sso_required' }, 'a refused sign-in is in History');
     assert.equal((await call('POST', '/api/auth/sign-in/email', { body: { email: 'someone@other.example', password: PASSWORD } })).status, 401, 'other domains as before');
+  });
+
+  test('where single sign-on is required, a session ends after FF_SSO_SESSION_HOURS, and the identity provider is asked again', async () => {
+    const pat = await signInWithSso('pat@corp.example', { sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz' });
+    assert.equal((await meta(pat.cookie)).status, 200);
+    await ctx.db.query(`update auth_session set created_at = now() - interval '13 hours'
+      where user_id = (select id from auth_user where email = 'pat@corp.example')`);
+    assert.equal((await meta(pat.cookie)).status, 401, 'older than 12 hours: signed out');
+    assert.equal((await ctx.db.query(`select 1 from auth_session where user_id = (select id from auth_user where email = 'pat@corp.example')`)).rows.length, 0, 'the session is gone');
+    const admin = await app.admin();
+    await ctx.db.query(`update auth_session set created_at = now() - interval '13 hours' where user_id = (select id from auth_user where email = 'ann@corp.example')`);
+    assert.equal((await meta(admin)).status, 200, 'the break-glass admin’s password session goes on');
+  });
+
+  test('group roles: the identity provider’s groups give a role, each sign-in; none named gives the join role', async () => {
+    const admin = await app.admin();
+    const set = await call('PUT', '/api/sso/okta', { cookie: admin, body: { groupRoles: { claim: 'groups', roles: { 'flag-approvers': 'approver', 'flag-editors': 'editor' } } } });
+    assert.equal(set.status, 200, JSON.stringify(set.json));
+    const as = (groups: string[]) => ({ sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz', groups });
+    const role = async (groups: string[]) => (await meta((await signInWithSso('pat@corp.example', as(groups))).cookie)).json.me.role;
+    assert.equal(await role(['flag-editors', 'flag-approvers', 'everyone']), 'approver', 'the highest of their groups');
+    assert.equal(await role(['flag-editors']), 'editor');
+    assert.equal(await role(['everyone']), 'viewer', 'none named: the join role');
+    const changes = ((await call('GET', '/api/history?type=person.role', { cookie: admin })).json as any[]).filter((r) => r.after?.from === 'groups');
+    assert.equal(changes[0].changedBy, 'sso:okta', 'History says the identity provider’s groups did it');
+    assert.equal((await call('PUT', '/api/sso/okta', { cookie: admin, body: { groupRoles: null } })).json.groupRoles, null);
+    assert.equal(await role(['flag-editors']), 'viewer', 'without group roles, the role stays as it is');
   });
 
   test('removing a connection: nobody signs in with it any more, everyone who did is signed out; it’s all in History', async () => {

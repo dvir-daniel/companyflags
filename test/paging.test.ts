@@ -80,7 +80,7 @@ test('entity page: one page, with counts for the whole list', async () => {
 });
 
 test('compare: counts cover every flag, rows are one filtered page', async () => {
-  const body = { a: { environment: 'dev', project: 'android', entity: 'vandelay' }, b: { environment: 'dev', project: 'android', entity: 'wonka' }, attrs: { 'app.version': '6.2.0' } };
+  const body = { a: { environment: 'dev', service: 'android', entity: 'vandelay' }, b: { environment: 'dev', service: 'android', entity: 'wonka' }, attrs: { 'app.version': '6.2.0' } };
   const full = (await t.as('alice').post('/compare', body)).json;
   const paged = (await t.as('alice').post('/compare', { ...body, onlyDiff: true, page: 0, size: 1 })).json;
   assert.equal(paged.all, full.all);                       // same meaning as every other list: all = before filters

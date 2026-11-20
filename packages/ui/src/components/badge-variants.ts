@@ -3,14 +3,13 @@
 import { cva } from "class-variance-authority"
 
 /**
- * A label in a 1px box, in Geist Mono caps: kinds, states, environments. Not a pill
- * (rounded pills are only for announcements and phase tags, see `Pill`).
+ * A label in a 1px box, in Geist Mono caps: kinds, states, environments. Not a pill.
  * - default: grey label.
- * - live: red, for production, problems and recording.
+ * - live: red, for production, problems and destructive actions.
  * - warn: amber, for things waiting on someone.
  * - ok: green, for things that are on or done.
  * - agent: purple, for what an AI agent did or asked for.
- * - count: inverted white block with a number, as on a sidebar item.
+ * - count: an amber block with a number (something waits on you), as on a sidebar item. Never the accent.
  */
 const badgeVariants = cva(
   "inline-flex shrink-0 items-center gap-1 whitespace-nowrap border px-1.5 font-mono text-11 leading-[18px] font-normal tracking-[0.55px] uppercase",
@@ -22,7 +21,7 @@ const badgeVariants = cva(
         warn: "border-flag/35 text-flag",
         ok: "border-ok/35 text-ok",
         agent: "border-tool/40 text-tool",
-        count: "min-w-[19px] justify-center border-0 bg-tint px-[5px] leading-[17px] font-medium tracking-normal text-tint-ink",
+        count: "min-w-[19px] justify-center border-0 bg-flag px-[5px] leading-[17px] font-medium tracking-normal text-background",
       },
     },
     defaultVariants: { variant: "default" },

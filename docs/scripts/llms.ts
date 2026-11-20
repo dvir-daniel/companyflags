@@ -2,7 +2,8 @@
 //   /llms.txt        an index of every page, with a link to its Markdown
 //   /llms-full.txt   every page in one file
 //   /<page>.md       each page as Markdown: /guide/quickstart.md
-// DOCS_SITE (the site's origin, from GitHub Pages) and DOCS_BASE make the links in llms.txt full addresses.
+// DOCS_SITE (the site's origin, from GitHub Pages) and DOCS_BASE make the links full addresses: in llms.txt, and the
+// pages' own links (/guide/services) in every Markdown file, which would otherwise miss the base path (/companyflags).
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 
@@ -11,6 +12,12 @@ const content = join(root, 'content/docs');
 const out = join(root, 'out');
 const base = (process.env.DOCS_BASE ?? '/').replace(/\/$/, '');
 const site = `${process.env.DOCS_SITE ?? ''}${base}`;
+
+// A page's own links start at the site's root ("](/guide/services#keys)", "href=\"/llms.txt\""): give them the site's
+// address. Code blocks are left as they are.
+const linkHere = (md: string) => md.split(/(^```[\s\S]*?^```$)/m).map((part, i) => (i % 2 ? part : part
+  .replace(/\]\(\/(?!\/)/g, `](${site}/`)
+  .replace(/(href|src)="\/(?!\/)/g, `$1="${site}/`))).join('');
 
 const files = (dir: string): string[] => readdirSync(dir).flatMap((n) => {
   const p = join(dir, n);
@@ -33,7 +40,7 @@ const pages: Page[] = files(content).sort().map((file) => {
     .replace(/^:::(warning|tip|info|danger)(?:\[(.*)\])?\n([\s\S]*?)^:::\n?/gm, (_m, kind: string, label: string | undefined, text: string) =>
       `> **${label || kind[0].toUpperCase() + kind.slice(1)}**\n>\n${text.trimEnd().split('\n').map((l) => `> ${l}`.trimEnd()).join('\n')}\n`)
     .replace(/^(```[a-z]*) tab="([^"]+)"$/gm, '$1 title="$2"');
-  const markdown = `# ${title}\n\n${description ? `> ${description}\n\n` : ''}${body.trim()}\n`;
+  const markdown = `# ${title}\n\n${description ? `> ${description}\n\n` : ''}${linkHere(body.trim())}\n`;
   return { url: `/${relative(content, file).replace(/\.mdx?$/, '')}`, title, description, markdown };
 });
 

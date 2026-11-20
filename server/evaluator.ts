@@ -127,7 +127,9 @@ export type TraceStep = {
   ruleName?: string | null;
   outcome: 'match' | 'no_match' | 'skipped' | 'disabled' | 'served' | 'not_delivered' | 'info';
   detail: string;
-  conditions?: { field: string; op: Op; values?: unknown[]; actual: unknown; result: boolean; note?: string }[];
+  // `missing`: the value wasn't sent (or couldn't be read), so the result is the rule's choice, not the request's:
+  // a rule doesn't match, an override does. The console says such an answer depends on the device.
+  conditions?: { field: string; op: Op; values?: unknown[]; actual: unknown; result: boolean; note?: string; missing?: true }[];
   split?: { unit: string | null; unitValue?: string; bucket?: number; range?: SplitRange | null; salt: string; hashVersion: number };
 };
 
@@ -245,7 +247,7 @@ function evalRule(rule: Rule, layer: 'base' | 'entity', stage: TraceStep['stage'
       const note = actual === NONE ? 'none: the one asking is above this dimension'
         : r === null ? (rule.locked ? 'missing or unparseable → treated as match (an override fails closed)' : 'missing or unparseable → no match')
         : undefined;
-      step.conditions!.push({ field: c.field, op: c.op, values: c.values, actual: actual === NONE ? null : actual ?? null, result, note });
+      step.conditions!.push({ field: c.field, op: c.op, values: c.values, actual: actual === NONE ? null : actual ?? null, result, note, ...(r === null ? { missing: true as const } : {}) });
     }
     if (!result) {
       if (step) step.detail = 'doesn’t match';

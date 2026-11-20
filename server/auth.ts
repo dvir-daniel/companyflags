@@ -50,7 +50,11 @@ export type Principal = {
   entity: string | null;             // the key's own entity (null for an `all` key)
 };
 
-type KeyRow = { id: string; env_key: string; project_key: string; project_kind: 'client' | 'server'; scope: KeyScope; entity_key: string | null };
+type KeyRow = {
+  id: string; env_key: string; project_key: string; project_kind: 'client' | 'server'; scope: KeyScope; entity_key: string | null;
+  /** when it stops working (ms since 1970), or null: until it is revoked */
+  expires: number | null;
+};
 
 /** A map that keeps at most `max` entries, dropping the one used longest ago (a Map keeps insertion order:
  *  a hit is moved to the end, so the first key is the least recently used). */
@@ -86,15 +90,20 @@ export class KeyCache {
   forget() { this.keys.clear(); this.misses.clear(); }
 }
 
+const expired = (k: Pick<KeyRow, 'expires'>) => k.expires !== null && Number(k.expires) <= Date.now();
+
 async function findKey(db: Db, raw: string, cache: KeyCache): Promise<KeyRow | null> {
   const hash = sha256(raw);
   const hit = cache.keys.get(hash);
-  if (hit && Date.now() - hit.at < KEY_TTL_MS) return hit.row;
+  // a key that expired while remembered stops at once, not when the memory of it ends
+  if (hit && Date.now() - hit.at < KEY_TTL_MS) return expired(hit.row) ? null : hit.row;
   const missed = cache.misses.get(hash);
   if (missed !== undefined && Date.now() - missed < KEY_TTL_MS) return null;
-  const row = await one<KeyRow>(db, `select k.id, e.key as env_key, p.key as project_key, p.kind as project_kind, k.scope, c.key as entity_key
+  const found = await one<KeyRow>(db, `select k.id, e.key as env_key, p.key as project_key, p.kind as project_kind, k.scope, c.key as entity_key,
+      (extract(epoch from k.expires_at) * 1000)::float8 as expires
     from api_key k join environment e on e.id = k.environment_id join project p on p.id = k.project_id
     left join entity c on c.id = k.entity_id where k.key_hash = $1 and k.revoked_at is null`, [hash]);
+  const row = found && !expired(found) ? { ...found, expires: found.expires === null ? null : Number(found.expires) } : null;
   if (row) { cache.keys.set(hash, { row, at: Date.now() }); cache.misses.delete(hash); }
   else { cache.keys.delete(hash); cache.misses.set(hash, Date.now()); }
   return row ?? null;
@@ -108,7 +117,7 @@ export async function authenticate(db: Db, headers: AuthHeaders, cache: KeyCache
   const raw = headers.authorization?.replace(/^Bearer\s+/i, '').trim();
   if (!raw) throw new HttpError(401, 'missing API key (Authorization: Bearer <key>)');
   const k = await findKey(db, raw, cache);
-  if (!k) throw new HttpError(401, 'unknown or revoked API key');
+  if (!k) throw new HttpError(401, 'unknown, expired or revoked API key');
   if (k.project_kind === 'server' && headers.origin) {
     throw new HttpError(403, 'a backend’s key can’t be used from a browser: give the app its app service’s key instead');
   }

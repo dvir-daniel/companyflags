@@ -15,7 +15,31 @@ export type WorkerOptions = {
   onRemoteChange?: () => void;
   /** How long after a publish its onPublish (the CDN purge) runs once more: PURGE_AGAIN_MS. */
   purgeAgainAfterMs?: number;
+  /** Days the publish log keeps a publish (retention.publishLogDays): default 30. */
+  publishLogDays?: number;
+  /** tests: how often old publish log rows are dropped (PRUNE_EVERY_MS) */
+  pruneEveryMs?: number;
 };
+
+/** How often old publish log rows are dropped. */
+const PRUNE_EVERY_MS = 60 * 60 * 1000;
+
+/** Per environment: the revision it is at (the database's), the one this server serves, and the oldest publish
+ *  still waiting, with the error of its last try (a snapshot that can't be built). */
+export type PublishState = { environment: string; revision: number; serving: number | null; waitingSince: string | null; lagSeconds: number; error: string | null };
+
+/** How far each environment's publishing is behind (index.ts /readyz, the metrics plugin). */
+export async function publishState(db: Db, plane: Pick<DataPlane, 'snapshots'>): Promise<PublishState[]> {
+  const rows = await all<{ key: string; revision: string; since: string | null; lag: number | null; error: string | null }>(db, `
+    select e.key, e.revision, w.created_at as since, extract(epoch from now() - w.created_at)::float8 as lag, w.last_error as error
+    from environment e left join lateral (select q.created_at, q.last_error from publish_queue q
+      where q.environment_id = e.id and q.published_at is null order by q.id limit 1) w on true
+    order by e.id`);
+  return rows.map((r) => ({
+    environment: r.key, revision: Number(r.revision), serving: plane.snapshots.get(r.key)?.revision ?? null,
+    waitingSince: r.since ? new Date(r.since).toISOString() : null, lagSeconds: Math.max(0, Math.round(Number(r.lag ?? 0))), error: r.error,
+  }));
+}
 
 /** How often each server process runs a round: publishing, scheduled changes, catching up with the others. */
 export const ROUND_MS = 1000;
@@ -60,7 +84,12 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
         tell(env, snap.revision);
         log(`published ${env}@${snap.revision}`);
       } catch (e) {
-        await db.query(`update publish_queue set last_error = $2 where id = any($1::bigint[])`, [ids, String(e)]);
+        // what an environment serves is stuck at its old snapshot until this works: said in the log every time, and
+        // /readyz fails while any publish waits with an error (index.ts readiness)
+        const said = (e as Error)?.message ?? String(e);
+        const top = list.reduce((a, r) => Math.max(a, Number(r.revision)), 0);
+        log(`publishing ${env}@${top} failed (it serves what it served before; trying again in 30 seconds): ${said}`);
+        await db.query(`update publish_queue set last_error = $2 where id = any($1::bigint[])`, [ids, said]);
         continue;
       }
       // The plugins' onPublish (a CDN purge) runs on its own, after the rows are marked: a slow or failed purge only
@@ -137,6 +166,18 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
     if (changed) opts.onRemoteChange?.();
   }
 
+  // The publish log (publish_queue) gets a row per publish: rows older than the retention are dropped, once an hour,
+  // keeping each environment's newest (Settings → CDN shows how the last purges went).
+  let prunedAt = 0;
+  async function pruneOnce() {
+    if (Date.now() - prunedAt < (opts.pruneEveryMs ?? PRUNE_EVERY_MS)) return;
+    prunedAt = Date.now();
+    const r = await db.query(`delete from publish_queue q where q.published_at is not null
+        and q.published_at < now() - make_interval(days => $1)
+        and q.id <> (select max(n.id) from publish_queue n where n.environment_id = q.environment_id)`, [opts.publishLogDays ?? 30]);
+    if (r.affected) log(`dropped ${r.affected} publish log rows older than ${opts.publishLogDays ?? 30} days`);
+  }
+
   let stopped = false;
   let current: Promise<void> | null = null;
   const loop = (): Promise<void> => {
@@ -146,6 +187,7 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
       await scheduleOnce();
       while ((await publishOnce()) > 0) { /* drain */ }
       await catchUp().catch((e) => log(`catching up with other servers: ${(e as Error).message ?? e}`));
+      await pruneOnce().catch((e) => log(`dropping old publish log rows: ${(e as Error).message ?? e}`));
     })().finally(() => { current = null; });
     return current;
   };

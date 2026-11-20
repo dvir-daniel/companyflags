@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -12,14 +12,14 @@ import { secureHeaders } from 'hono/secure-headers';
 import { consoleApi } from './api.ts';
 import { createTokens } from './tokens.ts';
 import { OAUTH_PREFIXES, oauthRoutes } from './oauth.ts';
-import { FolderInUseError, HttpError, openDb, type Db } from './db.ts';
+import { codeOf, FolderInUseError, FolderVersionError, HttpError, openDb, type Db, type ErrorCode } from './db.ts';
 import { MigrationError } from './migrate.ts';
 import { createIdentity, signInFromEnv, type SignIn } from './identity.ts';
 import { configDir, loadConfig, resolveConfig, type Resolved } from './configFile.ts';
 import { createAppearance } from './appearanceStore.ts';
 import { AppearanceError } from './appearance.ts';
 import { createAccess } from './access.ts';
-import { authSecret, betterAuthAccounts, createAuth, rateLimitsOn, SetupError, setupTokenFor } from './betterAuth.ts';
+import { authSecret, betterAuthAccounts, createAuth, localSecret, rateLimitsOn, SetupError, setupTokenFor } from './betterAuth.ts';
 import { discoverOverHttp, singleSignOn, vouchingConnections, type Discover } from './sso.ts';
 import { EventHub } from './events.ts';
 import { AppCache, LinkCache, linkRoutes } from './delivery.ts';
@@ -29,8 +29,10 @@ import { evaluatorFor, PluginError, publishHooks, setUpPlugins, type OnPublish, 
 import { defaultPlugins } from './plugins/index.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
-import { startWorkers } from './workers.ts';
-import { CONSOLE_FOLDER } from './packageFolder.ts';
+import { publishState, startWorkers, type PublishState } from './workers.ts';
+import { sealer, sealStoredSecrets } from './sealed.ts';
+import { CONSOLE_FOLDER, VERSION } from './packageFolder.ts';
+import { flagsFileSchema } from './flagsAsCode.ts';
 
 export type AppOptions = {
   databaseUrl?: string;                  // a Postgres server; without it, embedded Postgres in dataDir (or in memory)
@@ -49,12 +51,21 @@ export type AppOptions = {
   onPublish?: OnPublish;
   /** The config file's appearance (configFile.ts): set, it can't be changed in the console. */
   appearance?: unknown;
+  /** false: don't apply migrations, only check the schema has them (--no-migrate, FF_MIGRATE=off). Default true. */
+  migrate?: boolean;
+  /** At most this many connections to a Postgres server (database.pool, FF_DB_POOL). */
+  pool?: number;
+  /** Days the publish log is kept (retention.publishLogDays). */
+  publishLogDays?: number;
+  /** tests: a migrated in-memory database to start from (db.ts embeddedTemplate) */
+  template?: Blob;
 };
 
 export async function createApp(opts: AppOptions = {}) {
   const log = opts.log ?? (() => {});
-  const { db: store, fresh, applied } = await openDb({ url: opts.databaseUrl, dataDir: opts.dataDir, log });
+  const { db: store, fresh, applied, newer } = await openDb({ url: opts.databaseUrl, dataDir: opts.dataDir, log, migrate: opts.migrate, pool: opts.pool, template: opts.template });
   if (applied.length) log(`database: applied ${applied.join(', ')}`);
+  if (newer.length) log(`warning: the database has migrations of a newer version (${newer.join(', ')}): this server keeps running, but upgrade it soon`);
   await syncFields(store);
   if (fresh && opts.setup) await opts.setup(store);          // before the app runs: nothing in memory to tell yet
   const plane = new DataPlane();
@@ -82,9 +93,17 @@ export async function createApp(opts: AppOptions = {}) {
   // Better Auth (betterAuth.ts), which keeps the accounts and asks the access module whenever someone joins.
   const signIn = opts.signIn ?? signInFromEnv();
   const settings = signIn.kind === 'better-auth' ? signIn.settings : undefined;
-  // the setup link's secret: the first account (the admin's) is made only with it (access.ts)
-  const setupToken = settings ? setupTokenFor(await authSecret(store, settings).catch(async (e) => { await store.close(); throw e; })) : undefined;
-  const access = createAccess(db, { accounts: betterAuthAccounts, connections: vouchingConnections, signupDomains: settings?.signupDomains, setupToken });
+  // The server's secret (BETTER_AUTH_SECRET, or away from production one it made for itself): it makes the setup link,
+  // whose secret the first account (the admin's) is made only with (access.ts), and seals the secrets kept for other
+  // systems (sealed.ts). Those saved before they were sealed are sealed now.
+  const secret = await (settings ? authSecret(store, settings) : localSecret(store)).catch(async (e) => { await store.close(); throw e; });
+  const setupToken = settings ? setupTokenFor(secret) : undefined;
+  const secrets = sealer(secret);
+  const sealedNow = await sealStoredSecrets(store, secrets).catch(async (e) => { await store.close(); throw e; });
+  if (sealedNow) log(`sealed the secrets of ${sealedNow} saved settings (the CDN token, webhooks) with a key from BETTER_AUTH_SECRET`);
+  const access = createAccess(db, {
+    accounts: betterAuthAccounts, connections: vouchingConnections, signupDomains: settings?.signupDomains, setupToken, ssoSessionHours: settings?.ssoSessionHours,
+  });
   const auth = settings ? await createAuth(store, settings, access).catch(async (e) => { await store.close(); throw e; }) : undefined;
   const identity = createIdentity(signIn, access, auth);
   const sso = singleSignOn(db, {
@@ -98,11 +117,12 @@ export async function createApp(opts: AppOptions = {}) {
     return built.request(input, init);
   };
   const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: { fetch: undefined }, webhooks: { fetch: undefined } }), {
-    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, request, keys, links, services: apps,
+    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, request, secrets,
+    publishState: () => publishState(store, plane), keys, links, services: apps,
   }).catch(async (e) => { await store.close(); throw e; });
   const on = new Set(plugins.map((p) => p.id));
   const publisher = startWorkers(db, plane, hub, log, opts.onPublish ?? publishHooks(plugins), {
-    onRemoteChange: () => { links.forget(); keys.forget(); apps.forget(); },
+    onRemoteChange: () => { links.forget(); keys.forget(); apps.forget(); }, publishLogDays: opts.publishLogDays,
   });
   // The plugins' own background work (sending webhooks) runs beside the publisher: a slow address never holds it up.
   const background = plugins.map((p) => p.parts.worker).filter((w): w is NonNullable<typeof w> => !!w);
@@ -115,6 +135,8 @@ export async function createApp(opts: AppOptions = {}) {
   const appearance = createAppearance(db, opts.appearance);   // checked now: a mistake in the config file stops here
   const app = new Hono();
   app.onError(errorHandler(log));
+  // the plugins' middleware (plugin.ts): first, so it sees every request and every answer (the metrics plugin)
+  for (const p of plugins) if (p.parts.middleware) app.use('*', p.parts.middleware);
   // Every response: no sniffing, never in a frame, no referrer beyond the origin. HSTS is left to whatever ends TLS in
   // front of this server; the CDN files set their own CORS (delivery.ts), so no Cross-Origin-Resource-Policy here.
   app.use('*', secureHeaders({
@@ -122,15 +144,27 @@ export async function createApp(opts: AppOptions = {}) {
     xFrameOptions: 'DENY', referrerPolicy: 'strict-origin-when-cross-origin',
   }));
   app.use('*', bodyLimits());
-  // For load balancers and orchestrators: /healthz answers while the process runs, /readyz once the database answers.
-  app.get('/healthz', (c) => c.json({ ok: true }));
+  // For load balancers and orchestrators: /healthz answers while the process runs, /readyz while the database answers
+  // and every environment's publishes go out. Both say the version.
+  app.get('/healthz', (c) => c.json({ ok: true, version: VERSION }));
+  app.get('/flags.schema.json', (c) => c.json(flagsFileSchema()));   // flags as code's file, for editors (flagsAsCode.ts)
   app.get('/readyz', async (c) => {
+    let state: PublishState[];
     try {
-      await store.query('select 1');
-      return c.json({ ok: true, environments: plane.snapshots.size });
+      state = await publishState(store, plane);
     } catch {
-      return c.json({ ok: false, error: 'the database isn’t answering' }, 503);
+      return c.json({ ok: false, version: VERSION, error: 'the database isn’t answering', code: 'unavailable' }, 503);
     }
+    // what each environment serves, and how far its publishing is behind. A snapshot that can't be built keeps the old
+    // values serving, and nothing else would say so: then this fails, and the log says why (workers.ts)
+    const environments = Object.fromEntries(state.map((s) => [s.environment, {
+      revision: s.revision, serving: s.serving, lagSeconds: s.lagSeconds, failing: !!s.error,
+    }]));
+    const failing = state.filter((s) => s.error).map((s) => s.environment);
+    if (failing.length) {
+      return c.json({ ok: false, version: VERSION, error: `publishing fails in ${failing.join(', ')}: the server’s log says why`, code: 'unavailable', environments }, 503);
+    }
+    return c.json({ ok: true, version: VERSION, environments });
   });
   app.route('/api', identity.routes);                    // sign-in pages and Better Auth: open to everyone
   app.route('/api', appearance.routes());                // the name, logo and note the sign-in page shows: open too
@@ -143,7 +177,7 @@ export async function createApp(opts: AppOptions = {}) {
   // An unknown address under the API, the CDN files or the backend downloads is a 404 with a JSON error,
   // never the console's page (which answers every other address, below). The built-in plugins' prefixes stay JSON
   // even when the plugin is off.
-  const noSuchEndpoint = (c: Context) => c.json({ error: `no such endpoint: ${c.req.method} ${c.req.path}` }, 404);
+  const noSuchEndpoint = (c: Context) => c.json({ error: `no such endpoint: ${c.req.method} ${c.req.path}`, code: 'not_found' }, 404);
   const prefixes = new Set(['/api', '/cdn', '/sdk', '/ofrep', '/hooks', '/mcp', ...(on.has('mcp') ? OAUTH_PREFIXES : []), ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
   for (const prefix of prefixes) {
     app.all(prefix, noSuchEndpoint);
@@ -191,7 +225,7 @@ export const BODY_MAX = 1024 * KB;
  *  (with no Content-Length) is cut off too, before it is all in memory. */
 function bodyLimits(): MiddlewareHandler {
   const size = (bytes: number) => (bytes >= 1000 * KB ? `${Math.round(bytes / (1024 * KB))} MB` : `${Math.round(bytes / KB)} KB`);
-  const limit = (bytes: number) => bodyLimit({ maxSize: bytes, onError: (c) => c.json({ error: `the request body is larger than ${size(bytes)}` }, 413) });
+  const limit = (bytes: number) => bodyLimit({ maxSize: bytes, onError: (c) => c.json({ error: `the request body is larger than ${size(bytes)}`, code: 'too_large' }, 413) });
   const byPrefix = BODY_LIMITS.map(([prefix, bytes]) => [prefix, limit(bytes)] as const);
   const rest = limit(BODY_MAX);
   return (c, next) => (byPrefix.find(([prefix]) => c.req.path.startsWith(prefix))?.[1] ?? rest)(c, next);
@@ -218,26 +252,41 @@ export function consolePolicy(html: string): string {
 
 // Postgres: invalid text for a type (22P02), a number out of range (22003), a bad date or time (22007, 22008)
 const BAD_VALUE = new Set(['22P02', '22003', '22007', '22008']);
+/** Postgres's constraint violations (class 23), said plainly: its own words name tables and constraints, so they go
+ *  to the log, never into the answer. */
+const REFUSED: Record<string, [status: 409 | 422, code: ErrorCode, words: string]> = {
+  '23505': [409, 'already_exists', 'that key is taken already'],
+  '23P01': [409, 'blocked', 'that overlaps something saved already'],
+  '23503': [422, 'invalid', 'the request names something that doesn’t exist, or removes something still in use'],
+  '23502': [422, 'invalid', 'a value the request needs is missing'],
+  '23514': [422, 'invalid', 'a value in the request isn’t allowed'],
+};
 
-/** How an error becomes a response, by what it is, never by its wording:
- *  - HttpError (ours) or HTTPException (Hono's): its status and message (and an HttpError's `code`, which the
- *    console reads instead of the wording);
- *  - a Postgres constraint violation (class 23) or an exception raised by a trigger (P0001): 422 with the
- *    database's message, the schema doing its job;
+/** How an error becomes a response, by what it is, never by its wording. Every answer is { error, code }: the
+ *  sentence, and a stable code (db.ts ERROR_CODES) for callers to act on.
+ *  - HttpError (ours) or HTTPException (Hono's): its status and message, and an HttpError's `code` and body;
+ *  - a Postgres constraint violation (class 23): 409 or 422, said plainly (REFUSED), with the database's own words
+ *    in the log only;
+ *  - an exception raised by one of our triggers (P0001): 422 with its words, which the migrations wrote;
  *  - a value of the wrong form (BAD_VALUE): 400, said plainly;
  *  - anything else is a bug: logged with its stack, and a 500 that gives nothing away. The log names the route, not the
  *    address: an app link's or a webhook's address is its secret. */
 export function errorHandler(log: (m: string) => void): ErrorHandler {
   return (err, c) => {
-    if (err instanceof HttpError) return c.json({ error: err.message, ...err.body, ...(err.code ? { code: err.code } : {}) }, err.status as 400);
-    if (err instanceof HTTPException) return c.json({ error: err.message }, err.status);       // Hono's own (e.g. a body too big)
+    if (err instanceof HttpError) return c.json({ ...err.body, error: err.message, code: err.code }, err.status as 400);
+    if (err instanceof HTTPException) return c.json({ error: err.message, code: codeOf(err.status) }, err.status);       // Hono's own (e.g. a body too big)
     const code = (err as { code?: unknown }).code;
     if (typeof code === 'string') {
-      if (BAD_VALUE.has(code)) return c.json({ error: 'a number, date or ID in the request isn’t valid' }, 400);
-      if (code.startsWith('23') || code === 'P0001') return c.json({ error: err.message }, 422);
+      if (BAD_VALUE.has(code)) return c.json({ error: 'a number, date or ID in the request isn’t valid', code: 'bad_request' }, 400);
+      if (code === 'P0001') return c.json({ error: err.message, code: 'invalid' }, 422);
+      if (code.startsWith('23')) {
+        const [status, said, words] = REFUSED[code] ?? [422, 'invalid', 'the request doesn’t fit what is saved'];
+        log(`refused by the database: ${c.req.method} ${loggedPath(c)}: ${err.message}`);
+        return c.json({ error: words, code: said }, status);
+      }
     }
     log(`error: ${c.req.method} ${loggedPath(c)}: ${err.stack ?? err.message ?? String(err)}`);
-    return c.json({ error: 'internal error' }, 500);
+    return c.json({ error: 'internal error', code: 'internal' }, 500);
   };
 }
 
@@ -275,7 +324,7 @@ const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
 
 /** Starts the server as configured (configFile.ts): the port first, then the database, then the requests. Used when this
  *  file is run (node server/index.ts) and by the CLI's start (cli.ts). */
-export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
+export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv; migrate?: boolean } = {}) {
   const fail = (m: string): never => { console.error(`[companyflags] ${m}`); process.exit(1); };
   const log = (m: string) => console.log(`[companyflags] ${m}`);
   const env = o.env ?? process.env;
@@ -291,9 +340,15 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
   if (!(await portFree(port, host))) {
     fail(`port ${port} is already in use: CompanyFlags may already be running (open http://localhost:${port}), or choose another port with server.port in companyflags.config.ts or PORT`);
   }
+  log(`CompanyFlags ${VERSION}`);
   if (file) log(`config: ${file}`);
-  const ctx = await createApp({ databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, appearance: resolved.appearance ?? undefined, env, log })
-    .catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError || e instanceof AppearanceError ? fail(e.message) : Promise.reject(e)));
+  const migrate = o.migrate !== false && resolved.migrate;
+  if (!migrate) log('migrations: not applied at the start (--no-migrate or FF_MIGRATE=off): checking the schema has them');
+  const ctx = await createApp({
+    databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, appearance: resolved.appearance ?? undefined, env, log,
+    migrate, pool: resolved.pool, publishLogDays: resolved.publishLogDays,
+  })
+    .catch((e: Error) => (e instanceof FolderInUseError || e instanceof FolderVersionError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError || e instanceof AppearanceError ? fail(e.message) : Promise.reject(e)));
   log(`plugins: ${ctx.plugins.join(', ') || 'none'}`);
   const local = `http://${host === '0.0.0.0' || host === '::' ? 'localhost' : host}:${port}`;
   // without web/dist (a clone running pnpm dev), the console is Vite's, which passes /api on to this server
@@ -309,7 +364,12 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
     }
   }
   const server = serve({ fetch: ctx.app.fetch, port, hostname: host }, () => {
-    log(`CompanyFlags on ${local}`);
+    log(`CompanyFlags ${VERSION} on ${local}`);
+    // the port it listens on, for a health check that can't read the config file (the Docker image's, FF_PORT_FILE)
+    if (env.FF_PORT_FILE) {
+      const actual = (server.address() as { port?: number } | null)?.port ?? port;
+      try { writeFileSync(env.FF_PORT_FILE, `${actual}\n`); } catch (e) { log(`warning: couldn’t write FF_PORT_FILE ${env.FF_PORT_FILE}: ${(e as Error).message}`); }
+    }
     // a new server: the admin account is made with this link, so whoever reaches the server first can't make it
     void ctx.needsSetup().then((needed) => {
       if (needed && ctx.setupToken) log(`nobody has an account yet: make the admin account at ${consoleAddress}/api/setup/${ctx.setupToken}`);

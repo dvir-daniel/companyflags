@@ -1,5 +1,6 @@
 ---
 title: "Flags in the age of AI"
+description: "Ship AI-written code behind a flag, and roll models and prompts out and back as JSON flags."
 ---
 
 AI writes code faster than people can read it, and AI features change behavior with a new model or a new prompt. Both
@@ -69,9 +70,14 @@ Change any of it before you create the flag. The schema keeps a config whole: a 
 
 ## An alert turns a kill switch off
 
-When an alert fires, it can turn a kill switch off at once: `POST /api/alerts/kill`, with the access token of
-an *On call* or *Admin* person ([Access tokens](/guide/security#access-tokens): your name → Access tokens in the
-console).
+When an alert fires, it can turn a kill switch off at once: `POST /api/alerts/kill`, with an **alerts token**.
+An *On call* or *Admin* person makes one: your name → Access tokens → **+ New token**, and tick **For alerts only**
+([Access tokens](/guide/security#access-tokens)).
+
+An alerts token is On call, since turning a flag off without a review is break-glass, but it does nothing else: it
+reads, changes and approves nothing, and every other address refuses it (403). So the secret in your alert tool can't
+be used to approve a request or read your flags. Don't give an alert tool an ordinary On call token: it could do all
+of that.
 
 ```bash
 curl -X POST https://flags.example.com/api/alerts/kill \
@@ -80,8 +86,9 @@ curl -X POST https://flags.example.com/api/alerts/kill \
 ```
 
 - **Only kill switches.** A flag with another purpose is refused (422).
-- **At once, without a review.** It is break-glass, as when on call presses *Turn off now*: only the flag's On/Off
-  switch, only off. History shows it as break-glass, under the token's person, with the comment
+- **At once, without a review.** It is break-glass, as when on call presses *Stop sending now*: only the flag's On/Off
+  switch, only off. It doesn't serve the [safe value](/guide/approvals#the-safe-value); on call does that in the
+  console. History shows it as break-glass, under the token's person, with the comment
   *Turned off by the alert “Payments error rate”*.
 - **Off already?** Nothing changes, and the answer says `"alreadyOff": true`. An alert that fires twice is fine.
 - **Not for agents, editors or browsers.** An agent's token is Viewer or Editor, so it is refused (403), and so is
@@ -123,7 +130,8 @@ Then mention it in the monitor's message, only for the alert (not the recovery):
 {{#is_alert}}@webhook-companyflags-kill{{/is_alert}}
 ```
 
-Make the token for this alone (your name → Access tokens), and keep it in the alert tool's secrets.
+Make an alerts token for each alert tool (your name → Access tokens → **For alerts only**), and keep it in the alert
+tool's secrets. It expires like any token (90 days by default, a year at most): make the next one before it does.
 
 ## Agents can manage flags too
 

@@ -69,7 +69,7 @@
 @keyframes cf-blink { 50% { opacity: 0; } }
 .cf-landing .got { display: flex; gap: 10px; margin-top: 8px !important; padding-top: 8px; border-top: 1px dashed var(--cf-rule); }
 .cf-landing .got .val { color: var(--cf-ink); }
-.cf-landing .got .why { margin-left: auto; color: #16a34a; letter-spacing: 0.5px; }
+.cf-landing .got .why { margin-left: auto; color: #15803d; letter-spacing: 0.5px; }
 .dark .cf-landing .got .why { color: #4ade80; }
 
 /* the hero's words rise in, one after the other */
@@ -158,11 +158,12 @@
 .cf-landing .copy svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .cf-landing .copy:hover { color: var(--cf-ink); border-color: var(--cf-rule-2); }
 .cf-landing .copy:active { transform: scale(0.96); }
-.cf-landing .copy.done { color: #16a34a; border-color: color-mix(in srgb, #16a34a 40%, transparent); }
+.cf-landing .copy.done { color: #15803d; border-color: color-mix(in srgb, #15803d 40%, transparent); }
+.dark .cf-landing .copy.done { color: #4ade80; border-color: color-mix(in srgb, #4ade80 40%, transparent); }
 .cf-landing .copy.done svg { animation: cf-pop 300ms var(--cf-ease); }
 @keyframes cf-pop { from { transform: scale(0.4); opacity: 0; } }
 
-/* the languages OpenFeature reads flags in, running past, paused when pointed at */
+/* the platforms the docs read flags in with OpenFeature, running past, paused when pointed at */
 .cf-landing .marquee { display: flex; align-items: center; gap: 16px; margin-top: 18px; padding: 10px 0; border-top: 1px solid var(--cf-rule); border-bottom: 1px solid var(--cf-rule); }
 .cf-landing .mq-label { flex: none; font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); }
 .cf-landing .mq-window { flex: 1; min-width: 0; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
@@ -238,6 +239,10 @@
   .cf-landing .b1 { width: 112px; }
   .cf-landing .b2 { width: 66px; }
   .cf-landing .answer { width: 100%; max-width: 340px; }
+  /* the tabs scroll sideways rather than widen the page; the file's name gives way */
+  .cf-landing .tabs { overflow-x: auto; scrollbar-width: none; }
+  .cf-landing .tabs button { flex: none; white-space: nowrap; }
+  .cf-landing .tabs .file { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -32,7 +32,7 @@ export const OUT_FORMAT_HINT: Record<string, string> = {
   slack: 'A short message for a Slack channel’s incoming webhook. Discord takes it too, at its webhook address plus /slack.',
   jsonata: 'Your expression makes the body from the JSON message: the shape another system’s API takes. Nothing: not sent.',
 };
-export const EVENT_NAMES: Record<string, string> = { changes: 'Changes', reviews: 'Reviews' };
+export const EVENT_NAMES: Record<string, string> = { changes: 'Changes', reviews: 'Reviews', security: 'Security events' };
 
 /** Starting points for a JSONata expression, so nobody starts from an empty box. */
 export const SAMPLE_IN = '{ "flags": settings{ name: { "value": value } } }';

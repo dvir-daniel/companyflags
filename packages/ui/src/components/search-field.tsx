@@ -17,7 +17,7 @@ function SearchField({
     <label
       data-slot="search-field"
       className={cn(
-        "flex min-w-0 items-center gap-3 border border-rule-2 focus-within:border-ink hover:border-ink-3",
+        "flex min-w-0 items-center gap-3 border border-control-edge focus-within:border-ink hover:border-ink-3",
         size === "lg" ? "bg-panel px-4" : "bg-background px-3",
         className
       )}

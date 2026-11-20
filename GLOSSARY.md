@@ -34,17 +34,17 @@ _Avoid_: global override
 The rules that apply after the own settings of an entity and those above it have not decided.
 _Avoid_: base rules, global rules
 
-**Rules only**:
+**Follow what's above**:
 The choice where an entity's rules come first and, if none match, it gets what it would have got without settings of its own: what its parent gets.
-_Avoid_: base_rules_then_base_default
+_Avoid_: Rules only, base_rules_then_base_default
 
-**Rules + own default**:
-The choice where an entity's rules come first, then the rules of the levels above it and for everyone, then its own default.
-_Avoid_: Rules + default, base_rules_then_customer_default
+**Own default last**:
+The choice where an entity's rules come first, then the rules of the levels above it and for everyone, then its own default. On the flag page: a default "after the rules for everyone".
+_Avoid_: Rules + own default, base_rules_then_customer_default
 
-**Own settings only**:
-The choice where only the entity's own rules and default count; every level above it and the rules for everyone are skipped, but overrides for everyone still apply.
-_Avoid_: Customer only, customer_only
+**Skip what's above**:
+The choice where only the entity's own rules and default count; every level above it and the rules for everyone are skipped, but overrides for everyone still apply. On the flag page: a default "instead of the rules for everyone".
+_Avoid_: Own settings only, Customer only, customer_only
 
 **Code default**:
 The value written in an app's own code, which it uses whenever a flag sends nothing.

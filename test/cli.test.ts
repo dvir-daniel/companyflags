@@ -14,6 +14,20 @@ import { createApp } from '../server/index.ts';
 import { sampleInstallation } from './sample.ts';
 import { testDatabase } from './helpers.ts';
 import { readFlags } from '../server/flagsAsCode.ts';
+import { buildFlagdDoc } from '../server/flagd.ts';
+import { buildSnapshot } from '../server/snapshot.ts';
+
+test('in CI, the flags commands need a server or a database URL: a missing secret fails, never an embedded database', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  writeFileSync(join(dir, 'flags.json'), JSON.stringify({ flags: {} }));
+  for (const args of [['flags', 'plan'], ['flags', 'push'], ['flags', 'pull'], ['flags', 'export', '--flagd', '--env', 'dev', '--service', 'web']]) {
+    const r = await run(args, dir, { CI: 'true', DATABASE_URL: '' });
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.text, /^companyflags: no server to work on: set COMPANYFLAGS_URL and COMPANYFLAGS_TOKEN \(or DATABASE_URL\)/);
+  }
+  assert.ok(!existsSync(join(dir, 'data')), 'no embedded database was made');
+});
 
 /** Runs the command and returns its exit code and what it printed. */
 async function run(args: string[], cwd: string, env: NodeJS.ProcessEnv) {
@@ -127,10 +141,17 @@ test('flags as code: pull writes the flags; plan and push make CompanyFlags matc
   assert.match(pushed.text, /^✓ create dark_mode/m);
   assert.match(pushed.text, /^→ request #\d+: services of new_checkout in prod/m);
 
-  // what's there now: the new flag and description at once; production waits for its request
-  const after = await run(['flags', 'plan'], dir, env);
-  assert.equal(after.text.split('\n').filter((l) => /^[+~]/.test(l)).length, 1, after.text);
-  assert.match(after.text, /^~ services of new_checkout in prod/m);
+  // what's there now: the new flag and description at once; production waits for its request, which the plan shows
+  const after = await run(['flags', 'plan', '--exit-code'], dir, env);
+  assert.equal(after.text.split('\n').filter((l) => /^[+~]/.test(l)).length, 0, after.text);
+  assert.match(after.text, /^… services of new_checkout in prod: web, ios, android → web, ios \(waiting in request #\d+\)$/m);
+  assert.match(after.text, /^nothing new: every change is waiting in its request$/m);
+  assert.equal(after.code, 0, 'nothing new is no change for --exit-code');
+  // a push again files no second request: it answers with the one that's open
+  const again = await run(['flags', 'push', '--as', 'ci@acme.test'], dir, env);
+  assert.equal(again.code, 0, again.text);
+  const request = /^→ request #(\d+)/m.exec(pushed.text)![1];
+  assert.match(again.text, new RegExp(`^→ request #${request} \\(already open\\): services of new_checkout in prod`, 'm'));
 
   // a file with problems changes nothing
   file.flags.broken = { kind: 'feature', type: 'bool', services: { dev: ['tv'], staging: [] } };
@@ -140,8 +161,21 @@ test('flags as code: pull writes the flags; plan and push make CompanyFlags matc
   assert.equal(bad.code, 1);
   for (const p of [/! broken: kind is one of/, /! broken: no service "tv"/, /! broken: no environment "staging"/, /! dark_mode: its type is bool here/]) assert.match(bad.text, p);
 
+  // flagd JSON for one service and entity, offline, from the database: the document a backend downloads
+  const exported = await run(['flags', 'export', '--flagd', '--env', 'prod', '--service', 'web', '--entity', 'acme', 'acme.flagd.json'], dir, env);
+  assert.equal(exported.code, 0, exported.text);
+  assert.match(exported.text, /^wrote \d+ flags of web in prod for acme to .*acme\.flagd\.json$/m);
+  for (const [args, said] of [
+    [['--env', 'prod', '--service', 'tv'], /--service: no service "tv"/],
+    [['--env', 'staging', '--service', 'web'], /--env: no environment "staging"/],
+    [['--env', 'prod', '--service', 'web', '--entity', 'brand/acme'], /--entity: no brand "acme"/],
+  ] as const) assert.match((await run(['flags', 'export', '--flagd', ...args], dir, env)).text, said);
+  assert.match((await run(['flags', 'export', '--env', 'prod', '--service', 'web'], dir, env)).text, /flags export: --flagd/);
+
   const store = await createApp({ databaseUrl: tdb.url, dataDir: tdb.url ? undefined : dataDir, signIn: { kind: 'test-header' } });
   try {
+    const snap = await buildSnapshot(store.db, 'prod');
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, 'acme.flagd.json'), 'utf8')), buildFlagdDoc(snap, 'web', snap.entities.acme));
     const flags = new Map((await readFlags(store.db)).map((f) => [f.key, f]));
     assert.equal(flags.get('new_checkout')!.description, 'The one-page checkout');
     assert.deepEqual(flags.get('dark_mode')!.services, { dev: ['web'], prod: ['web'] });

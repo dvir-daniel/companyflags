@@ -13,7 +13,8 @@ export default async function Page({ params }: Props) {
   // each page's Markdown is written beside it at build time (scripts/llms.ts): /guide/quickstart.md
   const markdownUrl = `${BASE}${page.url}.md`;
   return (
-    <DocsPage toc={page.data.toc} breadcrumb={{ enabled: false }}>
+    // "On this page" in Fumadocs' block style: the open section shaded, with no line beside the list
+    <DocsPage toc={page.data.toc} breadcrumb={{ enabled: false }} tableOfContent={{ style: 'block' }} tableOfContentPopover={{ style: 'block' }}>
       <div className="cf-title-row">
         <DocsTitle>{page.data.title}</DocsTitle>
         <div className="cf-page-actions">

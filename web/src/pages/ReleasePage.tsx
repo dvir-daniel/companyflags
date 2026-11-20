@@ -1,31 +1,25 @@
-// One release (docs/design/releases.md), in two tabs like a flag's page. Rollout: a card with where the release is in
-// the picked environment, who has it, the % stages and the next step (as Firebase's rollouts and LaunchDarkly's
-// progressive rollouts show it); cleaning up once everyone has it; then the flag's rules, edited right there with the
-// flag page's own editor (FlagPage.tsx FlagRules). History: the flag's history, as on its page.
+// A release (docs/design/releases.md) has one page: its flag's page (FlagPage.tsx), which opens on the Rollout tab
+// drawn here. #/release/<key>/<env> lands on that tab. Rollout: a card with where the release is in the picked
+// environment, who has it, the % stages and the next step (as Firebase's rollouts and LaunchDarkly's progressive
+// rollouts show it), then cleaning up once everyone has it. The rules themselves are on the flag's Rules tab.
 // Every step saves the flag's defaults (PUT /flags/:key/layers/:env/base), built by server/release.ts applyChange:
-// at once where the environment needs no review (with Undo), as a request where it does. The rules editor changes the
+// at once where the environment needs no review (with Undo), as a request where it does. The Rules tab changes the
 // same rules through a draft; the card reads whatever results (or says the rules are custom).
-// A version release (docs/design/release-versions.md) gets its own card (VersionCard): the version everyone is on, the one
-// moving to it, and rollback; its bar has + New version (NewVersion), and it's never cleaned up.
-import { lazy, Suspense, useEffect, useState } from 'react';
-import { ArrowLeftIcon, LockSimpleIcon } from '@phosphor-icons/react';
+// A version release (docs/design/release-versions.md) gets its own card (VersionCard): the version everyone is on, the
+// one moving to it, and rollback, with + New version (NewVersion); it's never cleaned up.
+import { useEffect, useState } from 'react';
+import { LockSimpleIcon } from '@phosphor-icons/react';
 import { StatusMark } from '@companyflags/ui/components/badge';
 import { Button } from '@companyflags/ui/components/button';
 import { Callout } from '@companyflags/ui/components/callout';
 import { Input } from '@companyflags/ui/components/input';
 import { SectionLabel } from '@companyflags/ui/components/page';
-import { FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
-import { Tabs } from '@companyflags/ui/components/tabs';
-import { Tooltip } from '@companyflags/ui/components/tooltip';
 import { cn } from '@companyflags/ui/lib/utils';
 import { api, entityLabel, peek, type FlagDetail, type Layer } from '../api.ts';
 import { go, useApp } from '../app.ts';
-import { flagPath, flagRequestsPath, pageEnv } from '../paths.ts';
-import { writePersistent } from '../persist.ts';
-import { Actions, Empty, ErrorList, Field, Modal, OnOff, Segmented } from '../ui.tsx';
+import { flagPath, flagRequestsPath } from '../paths.ts';
+import { Actions, ErrorList, Field, Modal, Segmented } from '../ui.tsx';
 import { fmtDate, useAsync } from '../uiKit.ts';
-import { DetailBarSkeleton, EnvChip, FlagHistorySkeleton, FlagRulesSkeleton, RolloutSkeleton, TabsSkeleton } from '../loading.tsx';
-import { RELEASE_TABS } from '../loadingKit.ts';
 import { useDraft } from '../useDraft.ts';
 import { canBreakGlassRollback, roleInfo } from '../../../server/policy.ts';
 import {
@@ -33,16 +27,11 @@ import {
 } from '../../../server/release.ts';
 import { bumpVersion, compareVersions, newVersionProblem } from '../../../server/semver.ts';
 import { FlagFacts } from './flagHeader.tsx';
-import { EntityPicker, PowerSwitch, type SaveResult } from './flagParts.tsx';
+import { EntityPicker, type SaveResult } from './flagParts.tsx';
 import { useEnvs } from './envs.ts';
-
-// the History tab loads its code (History, and through it Approvals) the first time it opens
-const FlagHistory = lazy(() => import('./History.tsx').then((m) => ({ default: m.FlagHistory })));
-// the rules under the rollout card are the flag page's own rules editor (FlagPage.tsx FlagRules), loaded with the page
-const FlagRules = lazy(() => import('./FlagPage.tsx').then((m) => ({ default: m.FlagRules })));
+import { FlagPage } from './FlagPage.tsx';
 
 type Request = { id: number; environment: string; status: string; author: string; reason: string | null; scheduledAt: string | null; createdAt: string };
-type Tab = 'rollout' | 'history';
 const OPEN = new Set(['in_review', 'approved', 'scheduled']);
 const STATUS: Record<string, string> = { in_review: 'waiting for review', approved: 'approved, not applied yet', scheduled: 'scheduled' };
 
@@ -59,76 +48,35 @@ function useGet<T>(path: string, refresh: unknown) {
   return { data: got.path === path ? got.data : peek<T>(path), error: got.path === path ? got.error : null, reload: () => setTries((t) => t + 1) };
 }
 
+/** #/release/<key>/<env>: the flag's own page, on its Rollout tab. */
 export function ReleasePage({ flagKey, envKey }: { flagKey: string; envKey?: string }) {
-  const { meta, revisionTick } = useApp();
-  const env = envKey && meta.environments.some((e) => e.key === envKey) ? envKey : pageEnv(meta);
-  useEffect(() => { if (env) writePersistent('env', env); }, [env]);
-  // the tab stays when you switch environment; another release opens on its rollout
-  const [tabOf, setTabOf] = useState<{ flag: string; tab: Tab }>({ flag: flagKey, tab: 'rollout' });
-  const tab = tabOf.flag === flagKey ? tabOf.tab : 'rollout';
-  const flag = useGet<FlagDetail>(flagPath(flagKey), revisionTick);
-  const requests = useGet<Request[]>(flagRequestsPath(flagKey), revisionTick);
-  if (!flag.data) {
-    return flag.error
-      ? <div className="px-6 py-10 max-sm:px-4"><Empty action={<Button variant="secondary" onClick={flag.reload}>Try again</Button>}>Couldn’t open {flagKey}: {flag.error}</Empty></div>
-      // the page's own shape while the flag loads (loading.tsx): its bar, its tabs and the rollout card, with bones
-      : <div aria-busy className="flex min-h-full flex-1 flex-col">
-        <DetailBarSkeleton back={`#/releases/${encodeURIComponent(env)}`} backLabel="Back to releases" env={<EnvChip meta={meta} env={env} to={(v) => `release/${flagKey}/${v}`} />} />
-        <TabsSkeleton widths={RELEASE_TABS} />
-        {tab === 'rollout' && <RolloutSkeleton />}
-      </div>;
-  }
-  const changed = () => { flag.reload(); requests.reload(); };
-  return (
-    <div className="flex min-h-full flex-1 flex-col">
-      <ReleaseView key={`${flagKey}:${env}`} flag={flag.data} env={env} requests={requests.data ?? []} onChanged={changed}
-        tab={tab} setTab={(t) => setTabOf({ flag: flagKey, tab: t })} />
-    </div>
-  );
+  return <FlagPage flagKey={flagKey} envKey={envKey} tabKey="rollout" />;
 }
 
-function ReleaseView({ flag, env, requests, onChanged, tab, setTab }: {
-  flag: FlagDetail; env: string; requests: Request[]; onChanged: () => void; tab: Tab; setTab: (t: Tab) => void;
-}) {
-  const { meta, toast, ask, reload } = useApp();
+/** The Rollout tab of a release's page. `flag`: the flag as it is now (not as a draft has it). */
+export function ReleaseRollout({ flag, env, onChanged, onEditRules }: { flag: FlagDetail; env: string; onChanged: () => void; onEditRules: () => void }) {
+  const { meta, toast, ask, reload, revisionTick } = useApp();
   const { envName, isProtected } = useEnvs();
   const { session: drafts, summary } = useDraft(env);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
+  const requests = useGet<Request[]>(flagRequestsPath(flag.key), revisionTick);
   const variants = flag.variations;
   const versioned = isVersionRelease(variants);
   const base = flag.layers[env]?.base;
   const stateOf = (e: string) => releaseState(variants, flag.layers[e].base);
   const where = envName(env).toLowerCase();
   const mayChange = roleInfo(meta.me.role).changes;
-  const open = requests.filter((r) => OPEN.has(r.status));
+  const open = (requests.data ?? []).filter((r) => OPEN.has(r.status));
   const waiting = open.find((r) => r.environment === env);
   const keyPath = encodeURIComponent(flag.key);
+  const changed = () => { onChanged(); requests.reload(); };
 
-  const bar = (
-    <PageBar
-      title={<span className="flex min-w-0 items-center gap-1.5">
-        <Tooltip content="Back to releases">
-          <a href={`#/releases/${encodeURIComponent(env)}`} aria-label="Back to releases" className="-ml-2 inline-grid size-8 shrink-0 place-items-center text-ink-2 no-underline transition-colors duration-150 hover:bg-wash hover:text-ink"><ArrowLeftIcon className="size-4" /></a>
-        </Tooltip>
-        <span className={cn('truncate', !flag.name && 'font-mono')}>{flag.name ?? flag.key}</span>
-      </span>}
-      actions={base ? <>
-        {versioned && !flag.archivedAt && <Button variant="secondary" disabled={!mayChange} onClick={() => setAdding(true)}>+ New version</Button>}
-        <OnOff on={!!base.enabled} />
-        <PowerSwitch flag={flag} env={env} onSaved={onChanged} />
-      </> : undefined}>
-      {flag.name && <span className="truncate font-mono text-13 text-ink-3">{flag.key}</span>}
-      {/* the environment, picked as on the list and the flag page; the menu shows where the release is in each */}
-      <FilterSelect label="Environment" value={env} display={envName(env)} onChange={(v) => go(`release/${flag.key}/${v}`)}
-        options={meta.environments.map((e) => [e.key, flag.layers[e.key]?.base ? `${envName(e.key)} · ${stepText(stateOf(e.key))}` : envName(e.key)] as [string, string])} />
-    </PageBar>
-  );
-  if (flag.archivedAt || flag.kind !== 'release' || !base) {
-    return <>{bar}<div className="px-6 py-6 max-sm:px-4"><Callout>
-      {flag.archivedAt ? 'This release is archived: it’s in no service any more.' : `${flag.key} isn’t a release (its purpose is ${flag.kind.replace('_', ' ')}).`}{' '}
-      <Button variant="link" onClick={() => go(flag.archivedAt ? `releases/${env}` : `flag/${flag.key}/${env}`)}>{flag.archivedAt ? 'Back to releases' : 'Open the flag'}</Button>
-    </Callout></div></>;
+  if (flag.archivedAt || !base) {
+    return <div className="py-6"><Callout>
+      {flag.archivedAt ? 'This release is archived: it’s in no service any more.' : `${flag.key} has no settings in ${where}.`}{' '}
+      <Button variant="link" onClick={() => go(`releases/${env}`)}>Back to releases</Button>
+    </Callout></div>;
   }
 
   const state = stateOf(env);
@@ -154,13 +102,15 @@ function ReleaseView({ flag, env, requests, onChanged, tab, setTab }: {
     let note = '';
     let bypass = '';
     if (rollsBackNow(change)) {
-      const target = change.kind === 'everyone' && change.version ? change.version : state.versions?.current ?? 'the built-in version';
+      // a version release rolls back to a version; an on/off release pauses, everyone back on the old value
+      const target = !versioned ? 'the old value' : change.kind === 'everyone' && change.version ? change.version : state.versions?.current ?? 'the built-in version';
+      const kept = change.kind === 'pause' ? ` The rollout keeps its ${state.step === 'percent' ? `${state.percent}%` : 'early access'}, so you can resume it.` : '';
       const r = await ask({
-        title: `Roll back ${where} to ${target}?`,
-        body: <><p>Every device in {where} gets {target} at its next fetch.{change.kind === 'pause' ? ` The rollout keeps its ${state.step === 'percent' ? `${state.percent}%` : 'early access'}, so you can resume it.` : ''}</p>
+        title: versioned ? `Roll back ${where} to ${target}?` : `Pause ${flag.key} in ${where}?`,
+        body: <><p>Every device in {where} gets {target} at its next fetch.{kept}</p>
           <p className="text-ink-3">You can use break-glass, so you can do this right away. It’s logged for review.</p></>,
-        reason: { label: 'Why? (required)', placeholder: `INC-123: ${state.versions?.target ?? state.versions?.current ?? 'this version'} crashes on start` },
-        actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'now', label: 'Roll back now', tone: 'danger', needsReason: true },
+        reason: { label: 'Why? (required)', placeholder: versioned ? `INC-123: ${state.versions?.target ?? state.versions?.current ?? 'this version'} crashes on start` : 'INC-123: errors went up at 10%' },
+        actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'now', label: versioned ? 'Roll back now' : 'Pause now', tone: 'danger', needsReason: true },
           { id: 'request', label: 'Request review', needsReason: true }],
       });
       if (r.action !== 'now' && r.action !== 'request') return;
@@ -192,7 +142,7 @@ function ReleaseView({ flag, env, requests, onChanged, tab, setTab }: {
         toast(`Sent for review: request #${res.changeSetId}`, 'ok', { label: 'View', onClick: () => go(`approvals/${res.changeSetId}`) });
       }
       reload().catch(() => {});
-      onChanged();
+      changed();
     } catch (e) { toast(e as Error); }
     finally { setBusy(false); }
   };
@@ -203,53 +153,36 @@ function ReleaseView({ flag, env, requests, onChanged, tab, setTab }: {
       void drafts.noteChanged([flag.key]);
       toast(`Undone in ${where}`);
       reload().catch(() => {});
-      onChanged();
+      changed();
     } catch (e) { toast(e as Error); }
   };
 
   const envStates = meta.environments.map((e) => ({ env: e.key, state: stateOf(e.key), sent: (flag.delivery[e.key] ?? []).length > 0 }));
-  // a version release stays: archiving it, when whatever it versions is retired, is on the flag page
+  // a version release stays: archiving it, when whatever it versions is retired, is on the Settings tab
   const cleaning = !versioned && (readyToCleanUp(envStates) || envStates.every((e) => !e.sent));
 
   return (
     <>
-      {bar}
-      {/* tabs right under the header, as on a flag's page */}
-      <div className="border-b border-rule px-6 max-sm:px-4">
-        <Tabs<Tab> label="Release sections" value={tab} onChange={setTab} className="border-b-0"
-          items={[{ value: 'rollout', label: 'Rollout' }, { value: 'history', label: 'History' }]} />
-      </div>
-      {tab === 'history' ? (
-        <div className="mt-2">
-          <Suspense fallback={<FlagHistorySkeleton />}><FlagHistory flagKey={flag.key} /></Suspense>
-        </div>
-      ) : <>
-        <div className="px-6 max-sm:px-4">
-          <FlagFacts flag={flag} className="mt-4" />
-          {state.versions ? (
-            <VersionCard flag={flag} env={env} state={state} waiting={waiting} disabled={!mayChange || busy} onChange={save} name={name}
-              onNewVersion={() => setAdding(true)} rollsBackNow={rollsBackNow}
-              elsewhere={meta.environments.filter((e) => e.key !== env && flag.layers[e.key]?.base).map((e) => `${envName(e.key)}: ${stepText(stateOf(e.key))}`)}
-              onEditRules={() => document.getElementById('release-rules')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-          ) : (
-            <RolloutCard flag={flag} env={env} state={state} waiting={waiting} disabled={!mayChange || busy} onChange={save} name={name}
-              onEditRules={() => document.getElementById('release-rules')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
-          )}
-          {cleaning && <CleanUp flag={flag} envStates={envStates} open={open} disabled={!mayChange} onChanged={onChanged} />}
-          <SectionLabel className="mb-0 scroll-mt-24" ><span id="release-rules">Rules in {where}</span></SectionLabel>
-          <p className="m-0 mt-2 max-w-[780px] text-13 text-ink-3">
-            Every rule on this flag, the rollout’s own included (its % and its early access). Edits go into your draft until you publish them, as on the flag page.
-          </p>
-        </div>
-        {/* the flag page's rules editor: overrides, own settings, rules for everyone and the default, with its draft bar */}
-        <Suspense fallback={<FlagRulesSkeleton />}>
-          <FlagRules flagKey={flag.key} env={env} />
-        </Suspense>
-      </>}
-      {adding && <NewVersion flag={flag} onClose={() => setAdding(false)} onAdded={onChanged} />}
+      <FlagFacts flag={flag} className="mt-4" />
+      {state.versions ? (
+        <VersionCard flag={flag} env={env} state={state} waiting={waiting} disabled={!mayChange || busy} onChange={save} name={name}
+          onNewVersion={() => setAdding(true)} rollsBackNow={rollsBackNow}
+          elsewhere={meta.environments.filter((e) => e.key !== env && flag.layers[e.key]?.base).map((e) => `${envName(e.key)}: ${stepText(stateOf(e.key))}`)}
+          onEditRules={onEditRules} />
+      ) : (
+        <RolloutCard flag={flag} env={env} state={state} waiting={waiting} disabled={!mayChange || busy} onChange={save} name={name}
+          onEditRules={onEditRules} />
+      )}
+      {cleaning && <CleanUp flag={flag} envStates={envStates} open={open} disabled={!mayChange} onChanged={changed} />}
+      <p className="m-0 mt-6 max-w-[780px] text-13 text-ink-3">
+        Every rule on this flag, the rollout’s own included (its % and its early access), is on the{' '}
+        <Button variant="link" onClick={onEditRules}>Rules tab</Button>. Edits there go into your draft until you publish them.
+      </p>
+      {adding && <NewVersion flag={flag} onClose={() => setAdding(false)} onAdded={changed} />}
     </>
   );
 }
+
 
 /** A version release's versions, lowest first (values typed in for one entity aren't among them). */
 const versionsIn = (flag: FlagDetail) => releaseState(flag.variations, Object.values(flag.layers).find((l) => l.base)!.base).versions?.all ?? [];
@@ -325,6 +258,7 @@ function RolloutCard({ flag, env, state, waiting, disabled, onChange, name, onEd
   flag: FlagDetail; env: string; state: ReleaseState; waiting: Request | undefined; disabled: boolean; onChange: (c: Change) => void; name: (k: string) => string;
   onEditRules: () => void;
 }) {
+  const { meta } = useApp();
   const { envName, isProtected } = useEnvs();
   const where = envName(env).toLowerCase();
   const prot = isProtected(env);
@@ -338,7 +272,7 @@ function RolloutCard({ flag, env, state, waiting, disabled, onChange, name, onEd
   const targeted = state.entities.length ? `${list(state.entities.map(name))} on every device` : '';
   const who = !apps.length ? 'It isn’t in any service here.'
     : off ? 'The flag is off here: nobody gets a value, and every app uses the default in its code. Turn it on (top right) to continue where it was.'
-    : state.step === 'custom' ? 'Its rules don’t follow the stages (for example two % rules, or a % that doesn’t start at 0), so they’re edited on the flag page.'
+    : state.step === 'custom' ? 'Its rules don’t follow the stages (for example two % rules, or a % that doesn’t start at 0), so they’re edited on the Rules tab.'
     : state.paused ? 'Nobody new gets it: everyone gets the old value until you resume.'
     : state.step === 'not_started' ? 'Everyone gets the old value.'
     : state.step === 'everyone' ? 'Every device has it, with a device ID or without.'
@@ -385,7 +319,7 @@ function RolloutCard({ flag, env, state, waiting, disabled, onChange, name, onEd
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-grid px-5 py-2.5 text-13 text-ink-3">
-          {prot && <span className="inline-flex items-center gap-1.5 text-flag"><LockSimpleIcon aria-hidden className="size-3.5" />{envName(env)} needs approval: each step is a request</span>}
+          {prot && <span className="inline-flex items-center gap-1.5 text-flag"><LockSimpleIcon aria-hidden className="size-3.5" />{envName(env)} needs approval: each step is a request{canBreakGlassRollback(flag.kind, meta.me.role) ? ', but you can pause it or turn it off at once (logged)' : ''}</span>}
           {apps.length > 0 && <span>Services: {apps.join(', ')}</span>}
           {state.step === 'percent' && <span>Devices without a device ID get it at everyone</span>}
         </div>
@@ -435,7 +369,7 @@ function VersionCard({ flag, env, state, waiting, disabled, onChange, name, onEd
   const targeted = state.entities.length ? `${list(state.entities.map(name))} on every device` : '';
   const who = !apps.length ? 'It isn’t in any service here.'
     : off ? 'The flag is off here: nobody gets a value, and every app uses the version built into it. Turn it on (top right) to continue where it was.'
-    : state.step === 'custom' ? 'Its rules don’t follow the steps (for example two versions moving at once), so they’re edited in the rules below.'
+    : state.step === 'custom' ? 'Its rules don’t follow the steps (for example two versions moving at once), so they’re edited on the Rules tab.'
     : state.paused ? `Everyone is on ${cur}. Resume puts the same ${share} back on ${v.target}.`
     : state.step === 'everyone' ? `${before?.since ? `Since ${fmtDate(before.since)}. ` : ''}${previous ? `Before: ${previous}. ` : ''}Add a new version to move everyone to the next one.`
     : state.step === 'not_started' && dark ? `The flag is off here, so every app uses the version built into it. Starting ${v.target} turns it on: everyone else gets ${cur}.`
@@ -566,7 +500,7 @@ function CleanUp({ flag, envStates, open, disabled, onChanged }: {
       const reason = `${flag.key} in ${envName(env)}: clean up (stop sending it and turn it off)`;
       const r = await api<{ id: number }>('POST', '/change-sets', { environment: env, reason, items: [
         { flag: flag.key, entity: null, expectedLayerVersion: base.version, proposed: { ...base, enabled: false } },
-        { kind: 'delivery', flag: flag.key, entity: null, expectedLayerVersion: null, proposed: null, delivery: { before: flag.delivery[env] ?? [], projects: [] } },
+        { kind: 'delivery', flag: flag.key, entity: null, expectedLayerVersion: null, proposed: null, delivery: { before: flag.delivery[env] ?? [], services: [] } },
       ] });
       toast(`Sent for review: request #${r.id}`, 'ok', { label: 'View', onClick: () => go(`approvals/${r.id}`) });
       onChanged();

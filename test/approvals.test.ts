@@ -251,14 +251,14 @@ test('an approved request whose variant’s value changed since is a conflict wh
 });
 
 test('which apps get a flag: at once in development; a request in production, checked against what it was', async () => {
-  const dev = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', projects: ['android', 'ios'] });
+  const dev = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', services: ['android', 'ios'] });
   assert.equal(dev.status, 200, JSON.stringify(dev.json));
   assert.equal(dev.json.applied, true);
   assert.ok(dev.json.revision > 0);
-  const stale = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', projects: ['android'], before: ['android'] });
+  const stale = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', services: ['android'], before: ['android'] });
   assert.equal(stale.status, 409, 'the console saw only android: someone added ios since');
 
-  const asked = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android', 'ios'] });
+  const asked = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', services: ['android', 'ios'] });
   assert.equal(asked.status, 202, JSON.stringify(asked.json));
   assert.equal(asked.json.applied, false);
   const id = asked.json.changeSetId;
@@ -266,11 +266,11 @@ test('which apps get a flag: at once in development; a request in production, ch
   assert.deepEqual(t.plane.get('prod').flags.android_quick_share.delivery, ['android'], 'nothing changed yet');
   const cs = (await t.as('alice').get(`/change-sets/${id}`)).json;
   assert.deepEqual(cs.items.map((i: any) => [i.kind, i.flag, i.entity, i.before, i.proposed]),
-    [['delivery', 'android_quick_share', null, { projects: ['android'] }, { projects: ['android', 'ios'] }]]);
+    [['delivery', 'android_quick_share', null, { services: ['android'] }, { services: ['android', 'ios'] }]]);
   assert.match(cs.reason, /android, ios/, 'a reason saying what changes, when none is given');
   assert.equal((await t.as('alice').get('/change-sets?status=in_review')).json.find((c: any) => c.id === id).items[0].kind, 'delivery');
-  assert.equal((await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android'] })).status, 422, 'no change');
-  assert.equal((await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: ['fridge'] })).status, 422);
+  assert.equal((await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', services: ['android'] })).status, 422, 'no change');
+  assert.equal((await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', services: ['fridge'] })).status, 422);
 
   await review('bob', id);
   assert.equal((await t.as('alice').post(`/change-sets/${id}/apply`)).status, 200);
@@ -280,8 +280,8 @@ test('which apps get a flag: at once in development; a request in production, ch
   assert.deepEqual([h.changeSetId, h.before, h.after], [id, ['android'], ['android', 'ios']]);
 
   // two requests made against the same apps: whichever is applied second finds them changed
-  const remove = (await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android'], reason: 'ios is not ready' })).json.changeSetId;
-  const add = (await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android', 'ios', 'web'] })).json.changeSetId;
+  const remove = (await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', services: ['android'], reason: 'ios is not ready' })).json.changeSetId;
+  const add = (await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', services: ['android', 'ios', 'web'] })).json.changeSetId;
   await review('bob', remove);
   await review('bob', add);
   assert.equal((await t.as('alice').post(`/change-sets/${add}/apply`)).status, 200);

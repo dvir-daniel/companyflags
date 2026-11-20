@@ -20,20 +20,20 @@ export function useRefresh() {
 }
 
 /** Settings' pages, in the order of its menu (#/settings/<key>; #/settings is the first). CDN shows when the server runs
- *  the Cloudflare plugin. */
+ *  the Cloudflare plugin. Services are drawn by Settings too, but they're in Connect (#/services), not in its menu. */
 export const SETTINGS = [
   { key: 'environments', label: 'Environments' },
   { key: 'dimensions', label: 'Dimensions' },
-  { key: 'services', label: 'Services' },
+  { key: 'services', label: 'Services', connect: true },
   { key: 'people', label: 'People' },
   { key: 'sso', label: 'Single sign-on' },
   { key: 'appearance', label: 'Appearance' },
   { key: 'cdn', label: 'CDN', plugin: 'cloudflare' },
 ] as const;
 export type SettingsKey = (typeof SETTINGS)[number]['key'];
-/** The pages this server has. */
+/** The pages in Settings' menu on this server. */
 export const settingsPages = (plugins: string[] | undefined) =>
-  SETTINGS.filter((s) => !('plugin' in s) || (plugins ?? []).includes(s.plugin));
+  SETTINGS.filter((s) => !('connect' in s) && (!('plugin' in s) || (plugins ?? []).includes(s.plugin)));
 /** The page an address opens: its key, or the first page for #/settings and anything unknown. */
 export const settingsKey = (sub: string | undefined): SettingsKey =>
   (SETTINGS.find((s) => s.key === sub)?.key ?? 'environments');

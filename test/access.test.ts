@@ -20,6 +20,7 @@ function memoryAccounts(): Accounts & { made: (email: string) => void } {
     hasPassword: async (_q, email) => emails.has(email),
     removeSignInsWith: async () => {},
     endSessionsAt: async () => {},
+    twoFactorOn: async () => false,
   };
 }
 
@@ -130,28 +131,96 @@ test('who may join an install in use: invites, signup domains, single sign-on, r
   assert.equal(await access.invitedBy(old), undefined, 'the sign-in page doesn’t greet an expired invite either');
 });
 
-test('a connection that requires single sign-on: no password or provider sign-ins or accounts at its domains, except admins', async () => {
+test('a connection that requires single sign-on: no password or provider sign-ins or accounts at its domains, except the break-glass admin', async () => {
   const { access, joins } = await install([{ id: 'okta', domains: ['corp.example'], requireSso: true }]);
   await joins('lee@corp.com');
   const lee = by('lee@corp.com');
   const ann = (await access.add({ email: 'ann@corp.example', role: 'admin' }, lee)).invite;
+  const bea = (await access.add({ email: 'bea@corp.example', role: 'admin' }, lee)).invite;
   const pat = (await access.add({ email: 'pat@corp.example', role: 'editor' }, lee)).invite;
+  await admits(access, [['no break-glass admin yet: an admin uses single sign-on too', passwordSignIn('ann@corp.example'), 'sso_required']]);
+  await access.setRules({ breakGlassAdmin: 'ann@corp.example' }, lee);
   await admits(access, [
-    ['a password sign-in, an admin', passwordSignIn('ann@corp.example'), null],
+    ['a password sign-in, the break-glass admin', passwordSignIn('ann@corp.example'), null],
+    ['a password sign-in, another admin', passwordSignIn('bea@corp.example'), 'sso_required'],
     ['a password sign-in, not an admin', passwordSignIn('pat@corp.example'), 'sso_required'],
-    ['an invite, for an admin', password('ann@corp.example', ann), null],
+    ['an invite, for the break-glass admin', password('ann@corp.example', ann), null],
+    ['an invite, for another admin', password('bea@corp.example', bea), 'sso_required'],
     ['an invite, not for an admin', password('pat@corp.example', pat), 'sso_required'],
-    ['a provider, an admin', provider('ann@corp.example'), null],
-    ['a provider, an admin signing in again', provider('ann@corp.example', true, 'existing'), null],
+    ['a provider, the break-glass admin', provider('ann@corp.example'), null],
+    ['a provider, the break-glass admin signing in again', provider('ann@corp.example', true, 'existing'), null],
     // a provider keeps confirming an email after its owner left: only the identity provider says who still works there
     ['a provider, not an admin', provider('pat@corp.example'), 'sso_required'],
     ['a provider, not an admin signing in again (GitHub, to the account they have)', provider('pat@corp.example', true, 'existing'), 'sso_required'],
     ['a provider at a subdomain, not an admin', provider('lou@eu.corp.example', true, 'existing'), 'sso_required'],
     ['a provider at another domain', provider('pal@partner.example', true, 'existing'), null],
-    ['single sign-on, an admin', sso('ann@corp.example'), null],
+    ['single sign-on, the break-glass admin', sso('ann@corp.example'), null],
     ['single sign-on, not an admin', sso('pat@corp.example'), null],
     ['a password sign-in at another domain', passwordSignIn('lee@corp.com'), null],
   ]);
+  await access.setRole('ann@corp.example', 'editor', lee);
+  await admits(access, [['the break-glass admin, no longer an admin', passwordSignIn('ann@corp.example'), 'sso_required']]);
+  await access.setRole('ann@corp.example', 'admin', lee);
   await access.remove('ann@corp.example', lee);
-  await admits(access, [['an admin whose access was removed', passwordSignIn('ann@corp.example'), 'sso_required']]);
+  await admits(access, [['the break-glass admin, whose access was removed', passwordSignIn('ann@corp.example'), 'sso_required']]);
+});
+
+test('the sign-in rules: the break-glass admin is an admin, the join role is never admin, two-factor needs the admin’s own first', async () => {
+  const { access, joins } = await install([{ id: 'okta', domains: ['corp.example'], requireSso: false }]);
+  await joins('lee@corp.com');
+  const lee = by('lee@corp.com');
+  await access.add({ email: 'pat@corp.example', role: 'editor' }, lee);
+  const refused = async (input: Record<string, unknown>, status: number) =>
+    assert.equal(await access.setRules(input, lee).then(() => 200, (e: { status?: number }) => e.status), status, JSON.stringify(input));
+  await refused({ breakGlassAdmin: 'pat@corp.example' }, 422);
+  await refused({ breakGlassAdmin: 'nobody@corp.example' }, 422);
+  await refused({ joinRole: 'admin' }, 422);
+  await refused({ joinRole: 'owner' }, 422);
+  // lee has a password (memoryAccounts) and no second factor yet
+  await refused({ adminsNeedTwoFactor: true }, 409);
+  assert.deepEqual((({ breakGlassAdmin, adminsNeedTwoFactor, joinRole }) => ({ breakGlassAdmin, adminsNeedTwoFactor, joinRole }))(await access.rules()),
+    { breakGlassAdmin: null, adminsNeedTwoFactor: false, joinRole: 'viewer' }, 'nothing changed: the least role by default');
+
+  await access.setRules({ joinRole: 'editor', breakGlassAdmin: 'lee@corp.com' }, lee);
+  assert.equal((await access.signedIn({ email: 'new@corp.example' })).role, 'editor', 'people who join without an invite get the join role');
+  assert.equal((await access.rules()).breakGlassAdmin, 'lee@corp.com');
+});
+
+test('where single sign-on is required, a session lasts ssoSessionHours: then it ends and they sign in again', async () => {
+  const { access, joins } = await install([{ id: 'okta', domains: ['corp.example'], requireSso: true }]);
+  await joins('lee@corp.example');
+  await access.setRules({ breakGlassAdmin: 'lee@corp.example' }, by('lee@corp.example'));
+  let ended = 0;
+  const session = (email: string, hoursAgo: number) => ({ email, since: new Date(clock.getTime() - hoursAgo * 3_600_000), end: async () => { ended++; } });
+  assert.equal((await access.signedIn(session('pat@corp.example', 11))).key, 'pat@corp.example', 'within 12 hours');
+  await assert.rejects(access.signedIn(session('pat@corp.example', 13)), { status: 401 });
+  assert.equal(ended, 1, 'the old session ends');
+  assert.equal((await access.signedIn(session('lee@corp.example', 100))).key, 'lee@corp.example', 'the break-glass admin’s password session goes on');
+  assert.equal((await access.signedIn(session('kim@other.example', 100))).key, 'kim@other.example', 'where single sign-on isn’t required, as before');
+});
+
+test('an admin with a password must set up two-factor first when the rules say so; sign-ins and group roles are told to History', async () => {
+  const { access, joins } = await install();
+  await joins('lee@corp.com');
+  const lee = by('lee@corp.com');
+  await access.add({ email: 'ann@corp.com', role: 'admin' }, lee);
+  await joins('ann@corp.com');
+  // lee has no second factor: the rules can't ask it of admins until she has one. Here two-factor is on for no one,
+  // so turn it on as someone with no password (SSO only): the memory accounts know only the ones that joined
+  await access.setRules({ adminsNeedTwoFactor: true }, by('sso-only@corp.com'));
+  assert.equal((await access.signedIn({ email: 'ann@corp.com' })).needsTwoFactor, true, 'an admin with a password and no second factor');
+  assert.equal((await access.signedIn({ email: 'ann@corp.com', twoFactor: true })).needsTwoFactor, undefined, 'with a second factor');
+  assert.equal((await access.signedIn({ email: 'viv@corp.com' })).needsTwoFactor, undefined, 'not an admin');
+
+  await access.signedInNow('ann@corp.com', { with: 'password' });
+  await access.signInFailed('ann@corp.com', { with: 'two-factor' }, 'INVALID_CODE');
+  const listed = (await access.people()).find((p) => p.key === 'ann@corp.com')!;
+  assert.ok(listed.lastSignedInAt, 'last signed in, for the People list');
+
+  // the identity provider's groups: never the last admin's role down, and the break-glass admin's left alone
+  await access.groupRole('viv@corp.com', 'approver', 'okta');
+  assert.equal((await access.signedIn({ email: 'viv@corp.com' })).role, 'approver');
+  await access.setRules({ breakGlassAdmin: 'ann@corp.com' }, lee);
+  await access.groupRole('ann@corp.com', 'viewer', 'okta');
+  assert.equal((await access.signedIn({ email: 'ann@corp.com', twoFactor: true })).role, 'admin', 'the break-glass admin keeps their role');
 });

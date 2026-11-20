@@ -9,8 +9,8 @@ before(async () => { t = await boot(); });
 after(async () => { await t.stop(); });
 
 test('a backend gets an entity’s app link and OpenFeature token with its API key, within the key’s scope, never cached', async () => {
-  const all = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
-  const own = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'acme' })).json.key;
+  const all = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
+  const own = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'entity', entity: 'acme' })).json.key;
   const ask = (key: string | null, path: string) => t.call('GET', path, undefined, key ? { authorization: `Bearer ${key}` } : {});
   const top = (await t.as('dana').get('/dimensions')).json.dimensions?.[0]?.key ?? 'company';
 
@@ -52,7 +52,7 @@ test('a web app on another origin may read its file (CORS), and sees the ETag; t
 });
 
 test('health and security headers', async () => {
-  assert.deepEqual(await (await t.app.request('/healthz')).json(), { ok: true });
+  assert.deepEqual(((await (await t.app.request('/healthz')).json()) as { ok: boolean }).ok, true);
   const ready = await t.app.request('/readyz');
   assert.equal(ready.status, 200);
   const res = await t.app.request('/api/meta');

@@ -47,6 +47,16 @@ pnpm test         # just the tests: about 20 seconds, on an in-memory database
 pnpm test:pg      # the same tests on a real Postgres server (each test file in its own new database)
 ```
 
+One file, one test by name, or on every save:
+
+```bash
+node --test test/plugins.test.ts
+node --test --test-name-pattern="prefixes" test/plugins.test.ts
+node --test --watch test/plugins.test.ts
+```
+
+The tests' people are in `test/fixtures.ts`: alice is an editor, bob an approver, carol on call and dana an admin.
+
 For `pnpm test:pg`, start a Postgres server first:
 
 ```bash
@@ -63,7 +73,12 @@ CI runs all of these on every pull request.
 - **No SDK of our own.** Apps and backends use OpenFeature's providers (OFREP, flagd). A new delivery feature fits one of
   those protocols, or it isn't built.
 - **The schema only moves forward.** A schema change is the next numbered file in `server/migrations/`. Never edit a
-  file a real database has applied: the server refuses to start if an applied file changed.
+  file a real database has applied: the server refuses to start if an applied file changed. See
+  [Adding a migration](#adding-a-migration).
+- **The HTTP API's errors** are `{ error, code }`: throw an `HttpError` with a code from `ERROR_CODES`
+  (`server/db.ts`) when the status's own isn't the one; never let the database's words through. `/api/v1`
+  (`server/apiV1.ts`) is the stable API: add to it, never rename or remove; `docs/reference/http-api.md` lists it,
+  and `test/http-api-docs.test.ts` checks the two agree.
 - **No fixed business words.** Each installation names its own dimensions (customer, company › brand, region ›
   store), so nothing a console user or rule author reads may say "customer", "company" or "brand" on its own.
   `test/no-domain-words.test.ts` checks those three; use the installation's words (`server/words.ts`,
@@ -74,6 +89,24 @@ CI runs all of these on every pull request.
   not "Approval workflow is enforced for protected environments". Words we use: [GLOSSARY.md](GLOSSARY.md).
 - **Tests come with the change.** Anything about who may do what (sign-in, roles, API keys, links) or about what a
   device gets needs a test that would fail without your change.
+
+## Adding a migration
+
+1. Add `server/migrations/00NN_what_it_does.sql`, the next number, starting with `-- Migration 00NN: …` and what it
+   does and why.
+2. Make it work with the version before it still running (a rolling upgrade,
+   [docs/self-hosting/upgrading.md](docs/content/docs/self-hosting/upgrading.md)): add before you remove, and split a
+   rename over two releases.
+3. Run `pnpm schema` and commit `server/schema.sql`: the schema as the migrations leave it, to read in one place.
+   `test/ops.test.ts` fails while it's out of date, and while two files share a number (someone else took yours:
+   take the next one, and run `pnpm schema` again).
+4. Run `pnpm test:pg` too: PGlite and Postgres differ in small ways.
+
+## Formatting
+
+`.oxfmtrc.json` holds the style (oxfmt, from the oxc tools that lint the code): run `pnpm format <files>` on the
+files you change. The repository isn't formatted as a whole yet, so don't run it on everything in a change of its own
+kind.
 
 ## Pull requests
 

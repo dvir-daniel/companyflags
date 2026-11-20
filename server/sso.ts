@@ -1,9 +1,17 @@
 // Single sign-on: people sign in with the company's identity provider (Okta, Entra ID, Google Workspace, JumpCloud…)
 // over OIDC or SAML, through Better Auth's SSO plugin (betterAuth.ts). An admin adds a connection in Settings for the
 // company's email domains, and can require single sign-on there. Who a connection lets in is the access module's
-// rule (access.ts): only people at its domains join, as viewers or with the role an admin gave them, and where single
-// sign-on is required nobody but an admin uses a password, so leaving the company (being removed from the identity
-// provider) ends access.
+// rule (access.ts): only people at its domains join, with the join role or the role an admin gave them, and where single
+// sign-on is required nobody but the break-glass admin uses a password. Leaving the company (being removed from the
+// identity provider) then ends access to the console within FF_SSO_SESSION_HOURS (12 by default): each session there
+// lasts that long at most, and the next sign-in asks the identity provider again. Access tokens aren't sessions: they
+// last until they expire or an admin removes the person (access.ts remove).
+//
+// A connection can be edited (its domains, its identity provider's details, its group roles). It can be required only
+// once someone has signed in with it (`lastSignInAt`: the console's Test sign-in), so a connection that doesn't work
+// can't lock people out. Group roles: an OIDC claim or a SAML attribute (e.g. "groups") lists the person's groups at
+// the identity provider, and each group named gives a role; they get the highest, each time they sign in with it, and
+// the join role when none of their groups is named (access.ts groupRole).
 //
 // Better Auth's own endpoints for managing connections are switched off (any signed-in person could use them);
 // `singleSignOn` is behind the console's admin check instead. What it needs from outside comes in when the app starts
@@ -17,6 +25,7 @@ import type { Access, Vouching } from './access.ts';
 import type { Actor } from './layers.ts';
 import * as journal from './journal.ts';
 import { NotPublicError, publicRead } from './publicFetch.ts';
+import { isRole, ROLES, type Role } from './policy.ts';
 
 /** Reads the JSON document at an address: an OIDC identity provider's discovery document. */
 export type Discover = (url: string) => Promise<unknown>;
@@ -69,11 +78,15 @@ export function singleSignOn(db: Db, o: SsoOptions) {
     list: () => listConnections(db),
     /** `headers` are the admin's own request's (the plugin records who added it); `base` is the console's address */
     add: (input: NewConnection, actor: Actor, request: { headers: Headers; base: string }) => addConnection(db, o, request, input, actor),
-    setRequireSso: (id: string, requireSso: boolean, actor: Actor) => setRequireSso(db, o.access, id, requireSso, actor),
+    /** its settings, or requiring single sign-on (the fields left out stay as they are) */
+    update: (id: string, input: NewConnection, actor: Actor) => updateConnection(db, o, id, input, actor),
     remove: (id: string, actor: Actor) => removeConnection(db, o.access, id, actor),
   };
 }
 export type SingleSignOn = ReturnType<typeof singleSignOn>;
+
+/** The roles a connection's groups give: the claim (OIDC) or attribute (SAML) that lists them, and each group's role. */
+export type GroupRoles = { claim: string; roles: Record<string, Role> };
 
 export type Connection = {
   id: string;
@@ -81,12 +94,16 @@ export type Connection = {
   issuer: string;
   domains: string[];
   requireSso: boolean;
+  /** when someone last signed in with it: null until it has worked once (then it can be required) */
+  lastSignInAt: string | null;
+  groupRoles: GroupRoles | null;
   clientId?: string;                 // OIDC
   entryPoint?: string;               // SAML: where people are sent to sign in
+  entityId?: string;                 // SAML: the identity provider's entity ID
 };
 
 export type NewConnection = {
-  id?: unknown; type?: unknown; domains?: unknown; requireSso?: unknown;
+  id?: unknown; type?: unknown; domains?: unknown; requireSso?: unknown; groupRoles?: unknown;
   // OIDC
   issuer?: unknown; clientId?: unknown; clientSecret?: unknown;
   // SAML: the identity provider's metadata XML, or its sign-in URL, entity ID and signing certificate
@@ -108,18 +125,122 @@ const ID = /^[a-z][a-z0-9-]{1,39}$/;
 const DOMAIN = /^(?=.{3,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
+type Row = {
+  provider_id: string; issuer: string; domain: string; require_sso: boolean; oidc_config: string | null; saml_config: string | null;
+  last_sign_in_at: string | null; group_roles: GroupRoles | string | null;
+};
+const ROW = `select provider_id, issuer, domain, require_sso, oidc_config, saml_config, last_sign_in_at, group_roles from sso_provider`;
+const json = <T,>(v: T | string | null): T | null => (typeof v === 'string' ? JSON.parse(v) : v);
+const domainsOf = (domain: string) => domain.split(',').map((d) => d.trim()).filter(Boolean);
+
+function connectionOf(r: Row): Connection {
+  const oidc = r.oidc_config ? JSON.parse(r.oidc_config) : null;
+  const saml = r.saml_config ? JSON.parse(r.saml_config) : null;
+  return {
+    id: r.provider_id, type: oidc ? 'oidc' : 'saml', issuer: r.issuer, domains: domainsOf(r.domain), requireSso: r.require_sso,
+    lastSignInAt: r.last_sign_in_at ? new Date(r.last_sign_in_at).toISOString() : null, groupRoles: json(r.group_roles),
+    ...(oidc ? { clientId: oidc.clientId } : { entryPoint: saml?.entryPoint, entityId: saml?.idpMetadata?.entityID }),
+  };
+}
+
 async function listConnections(db: Queryable): Promise<Connection[]> {
-  const rows = await db.query<{ provider_id: string; issuer: string; domain: string; require_sso: boolean; oidc_config: string | null; saml_config: string | null }>(
-    `select provider_id, issuer, domain, require_sso, oidc_config, saml_config from sso_provider order by provider_id`);
-  return rows.rows.map((r) => {
-    const oidc = r.oidc_config ? JSON.parse(r.oidc_config) : null;
-    const saml = r.saml_config ? JSON.parse(r.saml_config) : null;
-    return {
-      id: r.provider_id, type: oidc ? 'oidc' : 'saml', issuer: r.issuer,
-      domains: r.domain.split(',').map((d) => d.trim()).filter(Boolean), requireSso: r.require_sso,
-      ...(oidc ? { clientId: oidc.clientId } : { entryPoint: saml?.entryPoint }),
-    };
-  });
+  return (await db.query<Row>(`${ROW} order by provider_id`)).rows.map(connectionOf);
+}
+
+/** Someone signed in with this connection (betterAuth.ts): it works, so it can be required. */
+export async function connectionUsed(q: Queryable, id: string) {
+  await q.query(`update sso_provider set last_sign_in_at = now() where provider_id = $1`, [id]);
+}
+
+/** The role this person's groups give, with this connection's group roles (the highest of them), or null when the
+ *  connection has none. `groups`: what the claim or attribute said (one group, a list, or a comma-separated list). */
+export function roleFromGroups(g: GroupRoles | null, groups: unknown, fallback: Role): Role | null {
+  if (!g) return null;
+  const list = (Array.isArray(groups) ? groups : typeof groups === 'string' ? groups.split(',') : []).map((x) => String(x).trim()).filter(Boolean);
+  const given = list.map((x) => g.roles[x]).filter((r): r is Role => isRole(r));
+  return given.length ? given.reduce((a, b) => (ROLES.indexOf(b) > ROLES.indexOf(a) ? b : a)) : fallback;
+}
+
+/** A connection's group roles, for the sign-in (betterAuth.ts). */
+export async function groupRolesOf(q: Queryable, id: string): Promise<GroupRoles | null> {
+  return json((await one<{ g: GroupRoles | string | null }>(q, `select group_roles as g from sso_provider where provider_id = $1`, [id]))?.g ?? null);
+}
+
+/** Group roles as an admin gives them: the claim, and up to 100 groups each with a role. null: none. */
+function readGroupRoles(v: unknown): GroupRoles | null {
+  if (v === null) return null;
+  const g = v as { claim?: unknown; roles?: unknown };
+  const claim = str(g?.claim);
+  if (!claim || claim.length > 200) throw new HttpError(422, 'group roles: the claim or attribute that lists the groups, e.g. groups');
+  if (!g.roles || typeof g.roles !== 'object' || Array.isArray(g.roles)) throw new HttpError(422, 'group roles: each group with its role, e.g. { "flags-admins": "admin" }');
+  const entries = Object.entries(g.roles as Record<string, unknown>).map(([k, r]) => [k.trim(), r] as const).filter(([k]) => k);
+  if (!entries.length || entries.length > 100) throw new HttpError(422, 'group roles: from 1 to 100 groups');
+  const bad = entries.find(([k, r]) => k.length > 200 || !isRole(r));
+  if (bad) throw new HttpError(422, `group roles: "${bad[0]}" needs a role, one of ${ROLES.join(', ')}`);
+  return { claim, roles: Object.fromEntries(entries) as Record<string, Role> };
+}
+
+/** The mapping that has the SSO plugin read the groups claim or attribute (as `groups`), or none. */
+const mappingFor = (g: GroupRoles | null) => (g ? { extraFields: { groups: g.claim } } : undefined);
+
+function readDomains(input: unknown) {
+  const domains = (Array.isArray(input) ? input : str(input).split(','))
+    .map((d) => str(d).toLowerCase().replace(/^@/, '')).filter(Boolean);
+  if (!domains.length) throw new HttpError(422, 'domains: the email domains it signs in, e.g. example.com');
+  const bad = domains.find((d) => !DOMAIN.test(d));
+  if (bad) throw new HttpError(422, `domains: "${bad}" isn’t a domain`);
+  return [...new Set(domains)];
+}
+
+async function domainsFree(db: Queryable, domains: string[], except: string | null) {
+  for (const c of await listConnections(db)) {
+    if (c.id === except) continue;
+    const shared = domains.find((d) => c.domains.includes(d));
+    if (shared) throw new HttpError(409, `${shared} already signs in with the connection "${c.id}"`);
+  }
+}
+
+/** An OIDC connection's settings, read from its identity provider. */
+async function oidcConfigFor(o: SsoOptions, i: { issuer: string; clientId: string; clientSecret: string }, groups: GroupRoles | null) {
+  const issuer = i.issuer.replace(/\/+$/, '');
+  if (!/^https?:\/\//.test(issuer)) throw new HttpError(422, 'issuer: the identity provider’s address, e.g. https://example.okta.com');
+  if (o.production && !issuer.startsWith('https://')) throw new HttpError(422, 'issuer: must be an https address');
+  if (!i.clientId || !i.clientSecret) throw new HttpError(422, 'client ID and client secret: from the app you made for CompanyFlags in the identity provider');
+  const doc = await discover(o.discover, issuer);
+  return {
+    issuer: doc.issuer,
+    config: {
+      clientId: i.clientId, clientSecret: i.clientSecret, skipDiscovery: true, pkce: true, scopes: ['openid', 'email', 'profile'],
+      discoveryEndpoint: `${issuer}/.well-known/openid-configuration`,
+      authorizationEndpoint: doc.authorization_endpoint, tokenEndpoint: doc.token_endpoint, jwksEndpoint: doc.jwks_uri,
+      ...(doc.userinfo_endpoint ? { userInfoEndpoint: doc.userinfo_endpoint } : {}),
+      ...(doc.token_endpoint_auth_methods_supported?.includes('client_secret_basic') ? {} : { tokenEndpointAuthentication: 'client_secret_post' }),
+      ...(groups ? { mapping: mappingFor(groups) } : {}),
+    },
+  };
+}
+
+/** A SAML connection's settings, from the identity provider's metadata or its details. */
+function samlConfigFor(i: { metadata: string; entryPoint: string; entityId: string; certificate: string }, sp: ReturnType<typeof serviceProvider>, groups: GroupRoles | null) {
+  const fromXml = i.metadata ? readIdpMetadata(i.metadata) : null;
+  const entryPoint = i.entryPoint || fromXml?.entryPoint || '';
+  const entityId = i.entityId || fromXml?.entityId || '';
+  if (!/^https?:\/\//.test(entryPoint)) throw new HttpError(422, 'the identity provider’s metadata XML, or its sign-in (SSO) URL');
+  if (!entityId) throw new HttpError(422, 'the identity provider’s metadata XML, or its entity ID (issuer)');
+  if (!i.metadata && !i.certificate) throw new HttpError(422, 'the identity provider’s metadata XML, or its signing certificate');
+  return {
+    issuer: /^https?:\/\//.test(entityId) ? entityId : entryPoint,
+    config: {
+      entryPoint,
+      ...(i.certificate ? { cert: i.certificate } : {}),
+      audience: sp.samlEntityId,
+      wantAssertionsSigned: true,
+      idpMetadata: i.metadata ? { metadata: i.metadata, entityID: entityId } : { entityID: entityId },
+      spMetadata: { entityID: sp.samlEntityId },
+      identifierFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
+      ...(groups ? { mapping: mappingFor(groups) } : {}),
+    },
+  };
 }
 
 /** The connections that vouch for the people at their domains (an admin added them): for the access module's rules. */
@@ -134,78 +255,92 @@ async function addConnection(db: Db, o: SsoOptions, { headers, base }: { headers
   if (!o.plugin) throw new HttpError(409, 'single sign-on needs the Better Auth sign-in');
   const id = str(input.id).toLowerCase();
   if (!ID.test(id)) throw new HttpError(422, 'id: lowercase letters, digits and dashes, starting with a letter, e.g. okta');
-  const domains = (Array.isArray(input.domains) ? input.domains : str(input.domains).split(','))
-    .map((d) => str(d).toLowerCase().replace(/^@/, '')).filter(Boolean);
-  if (!domains.length) throw new HttpError(422, 'domains: the email domains it signs in, e.g. example.com');
-  const bad = domains.find((d) => !DOMAIN.test(d));
-  if (bad) throw new HttpError(422, `domains: "${bad}" isn’t a domain`);
-  if (await one(db, `select 1 from sso_provider where provider_id = $1`, [id])) throw new HttpError(409, `there is already a connection "${id}"`);
-  for (const c of await listConnections(db)) {
-    const shared = domains.find((d) => c.domains.includes(d));
-    if (shared) throw new HttpError(409, `${shared} already signs in with the connection "${c.id}"`);
-  }
+  const domains = readDomains(input.domains);
+  if (await one(db, `select 1 from sso_provider where provider_id = $1`, [id])) throw new HttpError(409, `there is already a connection "${id}"`, {}, 'already_exists');
+  await domainsFree(db, domains, null);
+  if (input.requireSso === true) throw new HttpError(409, 'add the connection first, and sign in with it once (Test sign-in): then require it');
+  const groups = input.groupRoles === undefined ? null : readGroupRoles(input.groupRoles);
   const sp = serviceProvider(base, id);
 
   let body: Record<string, unknown>;
   if (input.type === 'oidc') {
-    const issuer = str(input.issuer).replace(/\/+$/, '');
-    const clientId = str(input.clientId);
-    const clientSecret = str(input.clientSecret);
-    if (!/^https?:\/\//.test(issuer)) throw new HttpError(422, 'issuer: the identity provider’s address, e.g. https://example.okta.com');
-    if (o.production && !issuer.startsWith('https://')) throw new HttpError(422, 'issuer: must be an https address');
-    if (!clientId || !clientSecret) throw new HttpError(422, 'client ID and client secret: from the app you made for CompanyFlags in the identity provider');
-    const doc = await discover(o.discover, issuer);
-    body = {
-      providerId: id, issuer: doc.issuer, domain: domains.join(','),
-      oidcConfig: {
-        clientId, clientSecret, skipDiscovery: true, pkce: true, scopes: ['openid', 'email', 'profile'],
-        discoveryEndpoint: `${issuer}/.well-known/openid-configuration`,
-        authorizationEndpoint: doc.authorization_endpoint, tokenEndpoint: doc.token_endpoint, jwksEndpoint: doc.jwks_uri,
-        ...(doc.userinfo_endpoint ? { userInfoEndpoint: doc.userinfo_endpoint } : {}),
-        ...(doc.token_endpoint_auth_methods_supported?.includes('client_secret_basic') ? {} : { tokenEndpointAuthentication: 'client_secret_post' }),
-      },
-    };
+    const { issuer, config } = await oidcConfigFor(o, { issuer: str(input.issuer), clientId: str(input.clientId), clientSecret: str(input.clientSecret) }, groups);
+    body = { providerId: id, issuer, domain: domains.join(','), oidcConfig: config };
   } else if (input.type === 'saml') {
-    const metadata = str(input.metadata);
-    const fromXml = metadata ? readIdpMetadata(metadata) : null;
-    const entryPoint = str(input.entryPoint) || fromXml?.entryPoint || '';
-    const entityId = str(input.entityId) || fromXml?.entityId || '';
-    const certificate = str(input.certificate);
-    if (!/^https?:\/\//.test(entryPoint)) throw new HttpError(422, 'the identity provider’s metadata XML, or its sign-in (SSO) URL');
-    if (!entityId) throw new HttpError(422, 'the identity provider’s metadata XML, or its entity ID (issuer)');
-    if (!metadata && !certificate) throw new HttpError(422, 'the identity provider’s metadata XML, or its signing certificate');
-    body = {
-      providerId: id, issuer: /^https?:\/\//.test(entityId) ? entityId : entryPoint, domain: domains.join(','),
-      samlConfig: {
-        entryPoint,
-        ...(certificate ? { cert: certificate } : {}),
-        audience: sp.samlEntityId,
-        wantAssertionsSigned: true,
-        idpMetadata: metadata ? { metadata, entityID: entityId } : { entityID: entityId },
-        spMetadata: { entityID: sp.samlEntityId },
-        identifierFormat: 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
-      },
-    };
+    const { issuer, config } = samlConfigFor({ metadata: str(input.metadata), entryPoint: str(input.entryPoint), entityId: str(input.entityId), certificate: str(input.certificate) }, sp, groups);
+    body = { providerId: id, issuer, domain: domains.join(','), samlConfig: config };
   } else {
     throw new HttpError(422, 'type: "oidc" or "saml"');
   }
 
   await o.plugin.registerConnection(body, headers);
-  await db.query(`update sso_provider set domain_verified = true, require_sso = $2 where provider_id = $1`, [id, input.requireSso === true]);
-  if (input.requireSso === true) await o.access.ssoNowRequired(db, domains);
-  await audit(db, actor, 'sso.add', { after: { id, type: input.type, domains, requireSso: input.requireSso === true } });
+  await db.query(`update sso_provider set domain_verified = true, require_sso = false, group_roles = $2::jsonb where provider_id = $1`,
+    [id, groups ? JSON.stringify(groups) : null]);
+  await audit(db, actor, 'sso.add', { after: { id, type: input.type, domains, requireSso: false, groupRoles: groups } });
   return (await listConnections(db)).find((c) => c.id === id)!;
 }
 
-/** Requiring single sign-on, or not, for a connection's domains. Required from now: everyone at its domains but the
- *  admins is signed out, and signs in again with single sign-on (access.ts ssoNowRequired). */
-async function setRequireSso(db: Db, access: SsoOptions['access'], id: string, requireSso: boolean, actor: Actor) {
-  const r = await db.query(`update sso_provider set require_sso = $2 where provider_id = $1`, [id, requireSso]);
-  if (!r.affected) throw new HttpError(404, `no connection "${id}"`);
-  const conn = (await listConnections(db)).find((c) => c.id === id)!;
-  if (requireSso) await access.ssoNowRequired(db, conn.domains);
-  await audit(db, actor, 'sso.update', { after: { id, requireSso } });
-  return conn;
+/** Changes a connection: what the request names, the rest as it is. A new client secret, certificate or metadata
+ *  replaces the old one; left out (or empty), the old one stays. Its protocol and id stay: for another, add a new
+ *  connection. Requiring single sign-on needs a sign-in with it first (`lastSignInAt`); required from now, everyone at
+ *  its domains but the break-glass admin is signed out, and signs in again with single sign-on (access.ts
+ *  ssoNowRequired). */
+async function updateConnection(db: Db, o: SsoOptions, id: string, input: NewConnection, actor: Actor) {
+  const cur = await one<Row>(db, `${ROW} where provider_id = $1`, [id]);
+  if (!cur) throw new HttpError(404, `no connection "${id}"`);
+  const before = connectionOf(cur);
+  if (input.type !== undefined && input.type !== before.type) throw new HttpError(422, `type: this connection is ${before.type.toUpperCase()}: add a new connection for another protocol`);
+  const domains = input.domains === undefined ? before.domains : readDomains(input.domains);
+  if (input.domains !== undefined) await domainsFree(db, domains, id);
+  const groups = input.groupRoles === undefined ? before.groupRoles : readGroupRoles(input.groupRoles);
+  if (input.requireSso !== undefined && typeof input.requireSso !== 'boolean') throw new HttpError(422, 'requireSso: true or false');
+  const requireSso = input.requireSso === undefined ? before.requireSso : input.requireSso;
+  if (requireSso && !before.requireSso && !before.lastSignInAt) {
+    throw new HttpError(409, `nobody has signed in with ${id} yet: use Test sign-in first, so you know it works before passwords stop`);
+  }
+
+  let issuer = cur.issuer;
+  let oidc = cur.oidc_config;
+  let saml = cur.saml_config;
+  const touches = (keys: (keyof NewConnection)[]) => keys.some((k) => input[k] !== undefined && str(input[k]) !== '');
+  if (before.type === 'oidc') {
+    const was = JSON.parse(cur.oidc_config!);
+    if (touches(['issuer', 'clientId', 'clientSecret'])) {
+      const next = await oidcConfigFor(o, {
+        issuer: str(input.issuer) || was.issuer || cur.issuer, clientId: str(input.clientId) || was.clientId, clientSecret: str(input.clientSecret) || was.clientSecret,
+      }, groups);
+      issuer = next.issuer;
+      const { skipDiscovery: _, ...config } = next.config;
+      oidc = JSON.stringify({ ...config, issuer, tokenEndpointAuthentication: config.tokenEndpointAuthentication ?? 'client_secret_basic', overrideUserInfo: false });
+    } else {
+      const { mapping: _, ...rest } = was;
+      oidc = JSON.stringify({ ...rest, ...(groups ? { mapping: mappingFor(groups) } : {}) });
+    }
+  } else {
+    const was = JSON.parse(cur.saml_config!);
+    if (touches(['metadata', 'entryPoint', 'entityId', 'certificate'])) {
+      const metadata = str(input.metadata) || (str(input.entryPoint) || str(input.entityId) ? '' : was.idpMetadata?.metadata ?? '');
+      const next = samlConfigFor({
+        metadata, entryPoint: str(input.entryPoint) || (metadata ? '' : was.entryPoint), entityId: str(input.entityId) || (metadata ? '' : was.idpMetadata?.entityID ?? ''),
+        certificate: str(input.certificate) || was.cert || '',
+      }, { samlEntityId: was.audience } as ReturnType<typeof serviceProvider>, groups);
+      issuer = next.issuer;
+      saml = JSON.stringify({ ...next.config, issuer, spMetadata: was.spMetadata, audience: was.audience });
+    } else {
+      const { mapping: _, ...rest } = was;
+      saml = JSON.stringify({ ...rest, ...(groups ? { mapping: mappingFor(groups) } : {}) });
+    }
+  }
+
+  await db.query(`update sso_provider set issuer = $2, domain = $3, oidc_config = $4, saml_config = $5, require_sso = $6, group_roles = $7::jsonb
+    where provider_id = $1`, [id, issuer, domains.join(','), oidc, saml, requireSso, groups ? JSON.stringify(groups) : null]);
+  const after = connectionOf((await one<Row>(db, `${ROW} where provider_id = $1`, [id]))!);
+  if (requireSso && (!before.requireSso || domains.some((d) => !before.domains.includes(d)))) await o.access.ssoNowRequired(db, domains);
+  const said = (c: Connection) => ({ id: c.id, issuer: c.issuer, domains: c.domains, requireSso: c.requireSso, groupRoles: c.groupRoles,
+    ...(c.clientId ? { clientId: c.clientId } : {}), ...(c.entryPoint ? { entryPoint: c.entryPoint } : {}) });
+  const secret = input.clientSecret !== undefined && str(input.clientSecret) !== '' ? { secretReplaced: true } : {};
+  await audit(db, actor, 'sso.update', { before: said(before), after: { ...said(after), ...secret } });
+  return after;
 }
 
 /** Removes a connection: nobody signs in with it any more, and everyone who signed in with it is signed out

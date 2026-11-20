@@ -68,3 +68,19 @@ test('refused: an editor’s or agent’s token, a flag that isn’t a kill swit
   assert.equal((await kill(oncall, { flag: 'payments_enabled', environment: 'prod' }, { headers: { origin: 'https://grafana.example.com' } })).status, 403, 'not from a browser');
   assert.equal((await t.as('carol').post('/alerts/kill', { flag: 'payments_enabled', environment: 'prod' })).status, 403, 'only with a token');
 });
+
+test('an alerts token turns kill switches off and does nothing else; only On call and Admin people make one', async () => {
+  const alerts = await token('dana', { alertsOnly: true });
+  const made = (await t.as('dana').get('/tokens')).json.find((x: { alertsOnly: boolean }) => x.alertsOnly);
+  assert.deepEqual([made.role, made.agent], ['oncall', false], 'On call, as break-glass needs');
+  const r = await kill(alerts, { flag: 'payments_enabled', environment: 'dev', alert: 'Payments error rate' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  const call = async (method: string, path: string, body?: unknown) => (await t.app.request(path, { method,
+    headers: { authorization: `Bearer ${alerts}`, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined })).status;
+  assert.equal(await call('GET', '/api/flags'), 403, 'it reads nothing');
+  assert.equal(await call('PUT', '/api/flags/max_upload_mb/meta', { description: 'no' }), 403, 'it changes nothing');
+  assert.equal(await call('POST', '/api/change-sets/1/review', { decision: 'approve' }), 403, 'it approves nothing');
+  assert.equal((await t.as('alice').post('/tokens', { name: 'alerts', alertsOnly: true })).status, 422, 'an editor can’t make one');
+  assert.equal((await t.as('carol').post('/tokens', { name: 'alerts', alertsOnly: true, agent: true })).status, 422, 'not for an agent');
+  assert.equal((await t.as('carol').post('/tokens', { name: 'alerts', alertsOnly: true })).status, 201, 'an On call person can');
+});

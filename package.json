@@ -1,6 +1,6 @@
 {
   "name": "companyflags",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A self-hosted feature flag and remote config server, read with OpenFeature.",
   "private": true,
   "license": "MIT",
@@ -41,12 +41,14 @@
     "docs:dev": "pnpm --filter docs dev",
     "docs:build": "pnpm --filter docs build",
     "cli": "node server/cli.ts",
+    "schema": "node server/schemaFile.ts",
+    "format": "oxfmt",
     "pack:npm": "vite build && node packages/companyflags/build.ts",
     "test:npm": "pnpm pack:npm && bash packages/companyflags/smoke.sh"
   },
   "dependencies": {
     "@better-auth/sso": "^1.7.25",
-    "@electric-sql/pglite": "^0.5.16",
+    "@electric-sql/pglite": "0.5.16",
     "@hono/node-server": "^2.1.8",
     "better-auth": "^1.7.25",
     "hono": "^4.13.19",
@@ -76,6 +78,7 @@
     "concurrently": "^10.0.7",
     "esbuild": "^0.28.2",
     "jose": "^6.2.17",
+    "oxfmt": "^0.79.0",
     "oxlint": "1.94.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

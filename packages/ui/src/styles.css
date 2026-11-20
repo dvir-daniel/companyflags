@@ -1,6 +1,7 @@
 /* @companyflags/ui: the look of the CompanyFlags console.
-   Visual language follows better-auth.com: pure black, Geist + Geist Mono, square corners,
-   1px lines, color only for meaning. The rules behind these values are in ../DESIGN.md.
+   It shares better-auth.com's tokens and grid: pure black, Geist + Geist Mono, square corners,
+   1px lines, color only for meaning. The console itself is a dense tool: a page bar over a full-width table.
+   The rules behind these values are in ../DESIGN.md.
    Light and dark themes, both measured from better-auth.com (see "Two themes" below).
 
    Use it from an app's entry stylesheet, after Tailwind:
@@ -16,7 +17,7 @@
 @source "./components";
 
 /* Two themes, light and dark, measured from better-auth.com. <html data-theme="light|dark"> picks one;
-   src/lib/theme.ts sets it from the person's choice (Light or Dark) before the first paint. */
+   src/lib/theme.ts sets it from the person's choice (light, dark, or as the device is set) before the first paint. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ---- light (the default until the theme script runs) */
@@ -37,6 +38,7 @@
   --subtitle: #666666;
   --rule: #e5e5e5;
   --rule-2: #d4d4d4;
+  --control-edge: #888888; /* the edge of an input, a checkbox, a switch: 3.5:1 on the page, 3.2:1 on a panel (WCAG 1.4.11) */
   --grid: rgba(10, 10, 10, 0.08);
   --sep: rgba(10, 10, 10, 0.06);
   --underline: rgba(10, 10, 10, 0.6);
@@ -80,6 +82,7 @@
   --subtitle: #999999;
   --rule: #262626;
   --rule-2: #363636;
+  --control-edge: #6b6b6b; /* 3.9:1 on the page, 3.5:1 on a panel */
   --grid: rgba(255, 255, 255, 0.08);
   --sep: rgba(255, 255, 255, 0.06);
   --underline: rgba(250, 250, 250, 0.6);
@@ -107,8 +110,8 @@
 
 /* ---- shadcn/ui semantic tokens, the same in both themes */
 :root {
-  /* The accent: what buttons, switches, focus rings and the selected item are drawn in. Ink unless an installation
-     picks a color (Settings → Appearance, server/appearance.ts accentCss sets these per theme). */
+  /* The accent: what primary buttons and the selected item are drawn in (never switches or focus rings). Ink unless
+     an installation picks a color (Settings → Appearance, server/appearance.ts accentCss sets these per theme). */
   --tint: var(--ink);
   --tint-ink: var(--page); /* text on the accent */
   --tint-mark: transparent; /* the selected sidebar item's edge: only with an accent */
@@ -130,8 +133,8 @@
   --accent-foreground: var(--ink);
   --destructive: var(--live);
   --border: var(--rule);
-  --input: var(--rule-2);
-  --ring: var(--tint);
+  --input: var(--control-edge);
+  --ring: var(--ink); /* focus rings are ink, never the accent: they must read whatever color an installation picks */
   --chart-1: var(--ink);
   --chart-2: var(--ink-2);
   --chart-3: var(--ink-3);
@@ -153,7 +156,8 @@
   --font-mono: "Geist Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
   --font-heading: var(--font-sans);
 
-  /* Type scale: 11 / 12 / 13 / 14 / 15 / 16 / 18 / 28, line height 1.5.
+  /* Type scale: 11 / 12 / 13 / 14 / 15 / 16 / 18 / 22 / 28, line height 1.5. Page titles take three of them: 15 (the
+     page bar), 22 (one record's headline: an entity, a release) and 28 (a page on its own: sign-in aside, setup, 404).
      text-xs (12), text-sm (14), text-base (16) and text-lg (18) keep Tailwind's names. */
   --text-11: 11px;
   --text-11--line-height: 1.5;
@@ -169,6 +173,8 @@
   --text-base--line-height: 1.5;
   --text-lg: 18px;
   --text-lg--line-height: 1.5;
+  --text-22: 22px;
+  --text-22--line-height: 1.35;
   --text-28: 28px;
   --text-28--line-height: 1.2;
 
@@ -190,6 +196,7 @@
   --color-ink-4: var(--ink-4);
   --color-rule: var(--rule);
   --color-rule-2: var(--rule-2);
+  --color-control-edge: var(--control-edge);
   --color-grid: var(--grid);
   --color-sep: var(--sep);
   --color-person-ana: var(--person-ana);
@@ -294,23 +301,6 @@
     -webkit-user-select: text;
     cursor: text;
   }
-  /* Dithered pixel texture, as decoration on the right of a panel. */
-  .dither {
-    position: relative;
-    overflow: hidden;
-  }
-  .dither::after {
-    content: "";
-    position: absolute;
-    inset: 0 0 0 auto;
-    width: 45%;
-    pointer-events: none;
-    background: repeating-conic-gradient(color-mix(in srgb, var(--ink) 7%, transparent) 0 25%, transparent 0 50%) 0 0 / 4px 4px;
-    mask-image: linear-gradient(90deg, transparent, #000 85%);
-  }
-  .dither-fill {
-    background: repeating-conic-gradient(color-mix(in srgb, var(--ink) 3.5%, transparent) 0 25%, transparent 0 50%) 0 0 / 4px 4px;
-  }
   /* "+" marks where grid lines meet, at the bottom corners of a cell stack. Drawn as two 1px lines
      rather than a "+" glyph: a glyph's ink sits wherever the font's metrics put it, so it never lands
      exactly on the corner. A 9px square with its middle row and column filled, offset by 4px, puts
@@ -342,8 +332,28 @@
 /* Narrow windows (a phone, under 768px): an app hides its sidebar and footer and shows its own bottom tab bar
    (the console's MobileNav, web/src/shell.tsx; DESIGN.md "Patterns"). Nothing here changes the sidebar itself. */
 
+/* Reduced motion: nothing slides, zooms or pulses. The drawer, the toasts, dialogs and menus fade in place
+   (their own motion-reduce: classes); this catches the rest. */
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse-live {
     animation: none;
+  }
+  *,
+  ::before,
+  ::after {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Forced colors (Windows high contrast) drop shadows and background washes: the active row, the selected rows and
+   the selected sidebar item get an outline the system draws instead. */
+@media (forced-colors: active) {
+  [data-active="true"],
+  [aria-selected="true"],
+  [data-selected="true"],
+  [aria-current="page"],
+  [aria-checked="true"][role="radio"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
   }
 }

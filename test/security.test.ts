@@ -17,7 +17,7 @@ after(async () => { await t.stop(); });
 
 const OTHERS = ['vandelay', 'wonka', 'soylent', 'cyberdyne', 'oscorp', 'globex', 'initech', 'newco'];
 const keyFor = async (body: Record<string, string>) => {
-  const r = await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-wupserver', ...body });
+  const r = await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-wupserver', ...body });
   assert.equal(r.status, 201, JSON.stringify(r.json));
   return r.json.key as string;
 };
@@ -99,18 +99,18 @@ test('key scopes: one entity, an entity and those under it, or any; the key is t
   await t.settle();
   assert.equal(await id(below, '/brand/sl-kids'), 'dev/server-wupserver/sl-kids', 'and back in at once');
   // what's refused when a key is made
-  const bad = async (body: Record<string, string>) => (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', ...body })).status;
+  const bad = async (body: Record<string, string>) => (await dana.post('/api-keys', { environment: 'dev', service: 'server-ds', ...body })).status;
   assert.deepEqual([await bad({ scope: 'below' }), await bad({ scope: 'entity', entity: 'nobody' }), await bad({ scope: 'customer', entity: 'acme' }),
     await bad({ scope: 'all_customers' })], [422, 422, 422, 422]);
   const listed = (await t.as('alice').get('/api-keys')).json.find((k: any) => k.scope === 'below' && k.entity === 'soylent');
-  assert.deepEqual([listed.dimension, listed.projectKind], ['company', 'server']);
+  assert.deepEqual([listed.dimension, listed.serviceKind], ['company', 'server']);
 });
 
 test('viewers run the evaluator and nothing else: only POST /api/trace and POST /api/compare', async () => {
   const vic = t.as('vic@example.com');                     // someone new: a viewer
   assert.equal((await vic.get('/meta')).json.me.role, 'viewer');
-  assert.equal((await vic.post('/trace', { environment: 'dev', project: 'web', entity: 'acme', attrs: {} })).status, 200);
-  const side = { environment: 'dev', project: 'web', entity: 'acme' };
+  assert.equal((await vic.post('/trace', { environment: 'dev', service: 'web', entity: 'acme', attrs: {} })).status, 200);
+  const side = { environment: 'dev', service: 'web', entity: 'acme' };
   assert.equal((await vic.post('/compare', { a: side, b: { ...side, entity: null } })).status, 200);
   for (const [method, path] of [['PUT', '/dimensions/company/trace'], ['PUT', '/dimensions'], ['PUT', '/flags/new_checkout/layers/prod/compare'], ['DELETE', '/flags/new_checkout/layers/dev/trace'],
     ['POST', '/flags/new_checkout/publish/trace'], ['POST', '/dimensions/company/acme/link/rotate?x=/trace'], ['PUT', '/flags/new_checkout/delivery']] as const) {
@@ -137,12 +137,12 @@ test('prototype names are unknown keys like any other', async () => {
     assert.equal((await t.as('alice').get(`/dimensions/company/${key}/flags?environment=dev`)).status, 404, `entity ${key}`);
     assert.equal((await t.as('alice').get(`/dimensions/company/${key}/children?environment=dev`)).status, 404, `children of ${key}`);
     assert.equal((await t.as('alice').get(`/dimensions/${key}`)).status, 404, `dimension ${key}`);
-    assert.equal((await t.as('alice').post('/trace', { environment: 'dev', project: 'web', entity: key, attrs: {} })).status, 404, `trace as ${key}`);
-    const flag = await t.as('alice').post('/trace', { environment: 'dev', project: 'web', entity: null, attrs: { [key]: 'x' }, flag: key });
+    assert.equal((await t.as('alice').post('/trace', { environment: 'dev', service: 'web', entity: key, attrs: {} })).status, 404, `trace as ${key}`);
+    const flag = await t.as('alice').post('/trace', { environment: 'dev', service: 'web', entity: null, attrs: { [key]: 'x' }, flag: key });
     assert.equal(flag.json.result.errorCode, 'FLAG_NOT_FOUND', `flag ${key}`);
     assert.equal((await t.call('GET', `/cdn/v1/flags/dev/web/${key}/secret`)).status, 404, `file of ${key}`);
   }
-  assert.equal((await t.as('alice').get('/dimensions/company/constructor/flags')).status, 404);
+  assert.equal((await t.as('alice').get('/dimensions/company/constructor/flags?environment=dev')).status, 404);
   assert.equal((await t.as('alice').get('/dimensions/company/acme/flags?environment=constructor')).status, 404, 'an environment too');
 });
 
@@ -179,7 +179,7 @@ test('every wrong app link gets the same answer, so links can’t be used to fin
   const fake = 'AAAAAAAAAAAAAAAAAAAAAA';
   const answer = async (path: string) => { const r = await t.call('GET', path); return JSON.stringify([r.status, r.json]); };
   const wrong = await answer(`/cdn/v1/flags/dev/web/no-such-entity/${fake}`);
-  assert.equal(wrong, JSON.stringify([404, { error: 'no file at this link' }]));
+  assert.equal(wrong, JSON.stringify([404, { error: 'no file at this link', code: 'not_found' }]));
   for (const path of [
     `/cdn/v1/flags/dev/web/vandelay/${fake}`,                          // an entity that exists, a wrong secret
     `/cdn/v1/flags/dev/zz-not-a-flag-set/vandelay/${fake}`,            // and a service that doesn't
@@ -238,12 +238,12 @@ test('a body larger than its address allows is refused as it comes, even sent in
 });
 
 test('API keys: listed without their secret; revoked ones say so', async () => {
-  const made = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'acme', label: 'acme backend' })).json;
+  const made = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'entity', entity: 'acme', label: 'acme backend' })).json;
   await t.as('dana').post(`/api-keys/${made.id}/revoke`);
   const list = await t.as('alice').get('/api-keys');
   assert.equal(list.status, 200);
   const row = list.json.find((k: any) => k.id === made.id);
-  assert.deepEqual([row.prefix, row.label, row.environment, row.project, row.projectKind, row.scope, row.entity, row.dimension, !!row.revokedAt],
+  assert.deepEqual([row.prefix, row.label, row.environment, row.service, row.serviceKind, row.scope, row.entity, row.dimension, !!row.revokedAt],
     [made.prefix, 'acme backend', 'dev', 'server-ds', 'server', 'entity', 'acme', 'company', true]);
   assert.ok(!JSON.stringify(list.json).includes(made.key), 'never the key itself');
   assert.ok(list.json.findIndex((k: any) => k.id === made.id) > list.json.findIndex((k: any) => !k.revokedAt), 'revoked keys come last');
@@ -292,7 +292,7 @@ test('a % of devices is saved with hash version 2; a file that failed to build i
   rule.split!.hashVersion = 3;
   logs.length = 0;
   const failed = await t.call('GET', link);
-  assert.deepEqual([failed.status, failed.json], [500, { error: 'internal error' }], 'nothing about the server’s insides');
+  assert.deepEqual([failed.status, failed.json], [500, { error: 'internal error', code: 'internal' }], 'nothing about the server’s insides');
   assert.ok(logs.some((l) => /unsupported hash_version 3/.test(l) && /at /.test(l)), 'logged, with its stack');
   const secret = link.split('/').pop()!;
   assert.ok(logs.every((l) => !l.includes(secret)), 'never the link’s secret: the log names the route');
@@ -302,18 +302,18 @@ test('a % of devices is saved with hash version 2; a file that failed to build i
   assert.equal((await t.call('GET', link)).status, 200);
 });
 
-test('errors: bad JSON is a 400, the schema’s rules a 422 with their words, and anything else a logged 500 that says nothing', async () => {
+test('errors: bad JSON is a 400, the schema’s rules a 409 or 422 in plain words, and anything else a logged 500 that says nothing', async () => {
   const raw = await t.app.request('/api/dimensions/company', { method: 'POST', headers: { 'content-type': 'application/json', 'x-user': 'alice', 'x-requested-with': 'companyflags' }, body: '{"key": "acme",' });
   assert.equal(raw.status, 400);
-  assert.deepEqual(await raw.json(), { error: 'the request body isn’t valid JSON' });
+  assert.deepEqual(await raw.json(), { error: 'the request body isn’t valid JSON', code: 'bad_json' });
 
   const flag = (key: string) => ({ key, valueType: 'bool', kind: 'ops', delivery: {}, variations: [{ key: 'on', value: true }], base: { enabled: false, defaultVariation: 'on', rules: [] } });
-  const badKey = await t.as('alice').post('/flags', flag('Not A Key'));                       // a check constraint (23514)
-  assert.equal(badKey.status, 422);
-  assert.match(badKey.json.error, /violates check constraint/);
-  const twice = await t.as('alice').post('/flags', flag('new_checkout'));                     // a unique key (23505)
-  assert.equal(twice.status, 422);
-  assert.match(twice.json.error, /duplicate key/);
+  const badKey = await t.as('alice').post('/flags', flag('Not A Key'));
+  assert.deepEqual([badKey.status, badKey.json.code], [422, 'invalid']);
+  assert.doesNotMatch(badKey.json.error, /constraint/);
+  const twice = await t.as('alice').post('/flags', flag('new_checkout'));
+  assert.deepEqual([twice.status, twice.json.code], [409, 'already_exists']);
+  assert.doesNotMatch(twice.json.error, /duplicate key/);
   const wrongType = await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'words', value: 'lots' }] });   // a trigger (P0001)
   assert.equal(wrongType.status, 422);
   assert.match(wrongType.json.error, /must be of type number/);
@@ -327,10 +327,11 @@ test('errors: bad JSON is a 400, the schema’s rules a 422 with their words, an
   app.get('/pg', () => { throw Object.assign(new Error('null value in column "name" violates not-null constraint'), { code: '23502' }); });
   for (const path of ['/type-error', '/sounds-like-a-rule']) {
     const r = await app.request(path);
-    assert.deepEqual([r.status, await r.json()], [500, { error: 'internal error' }], path);
+    assert.deepEqual([r.status, await r.json()], [500, { error: 'internal error', code: 'internal' }], path);
   }
   assert.equal(seen.length, 2);
   assert.ok(seen.every((l) => /at /.test(l)), 'with the stack');
   const pg = await app.request('/pg');
-  assert.deepEqual([pg.status, await pg.json()], [422, { error: 'null value in column "name" violates not-null constraint' }]);
+  assert.deepEqual([pg.status, await pg.json()], [422, { error: 'a value the request needs is missing', code: 'invalid' }]);
+  assert.ok(seen.some((l) => /violates not-null constraint/.test(l)), 'the database’s words go to the log');
 });

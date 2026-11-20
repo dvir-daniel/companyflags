@@ -1,5 +1,6 @@
 ---
 title: "CDN (Cloudflare)"
+description: "Put Cloudflare in front of the CDN files so it answers almost every app request, and purge it on publish."
 ---
 
 Apps read one file per environment, service and entity. Every device of an entity reads the same file, so a CDN in

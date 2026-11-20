@@ -7,6 +7,7 @@ import { authClient } from './authClient.ts';
 import { Frame, JoinSkeleton, Labeled, PasswordInput, SignInFooter, SignInSkeleton, WayButton, type Tab } from './signinFrame.tsx';
 import { lookName } from './appearanceKit.ts';
 import { field, inviteLookup, lastSignInInfo, rememberSignedIn, SETUP_HINT, signInInfo, type Provider, type SignInInfo } from './signinKit.ts';
+import { codeOf, isAppCode, twoFactorCall } from './pages/twoFactorKit.ts';
 
 /*
  * Signing in, with Better Auth (server/betterAuth.ts): an email and password, single sign-on with the organization's
@@ -109,7 +110,9 @@ export function SignInPage() {
   const [forgot, setForgot] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(takeReturnedError);
+  const [second, setSecond] = useState(false);
 
+  if (second) return <SecondStep email={email.trim()} onBack={() => { setSecond(false); setPassword(''); }} />;
   if (unreachable) return <Frame tab="signin" title="Can’t sign in right now"><Callout tone="error">{unreachable}</Callout></Frame>;
   if (!info) return <SignInSkeleton />;
   if (info.kind !== 'better-auth') {
@@ -124,10 +127,12 @@ export function SignInPage() {
     setBusy(true); setError(null);
     let done = false;   // signed in: the page reloads, so the button stays busy
     try {
-      const { error: err } = shown === 'signup'
+      const { data, error: err } = shown === 'signup'
         ? await authClient.signUp.email({ email: email.trim(), name: name.trim() || email.trim(), password })
         : await authClient.signIn.email({ email: email.trim(), password, rememberMe: remember });
       if (err) { setError(explain(err)); return; }
+      // two-factor sign-in is on: the code from their app comes next (SecondStep)
+      if ((data as { twoFactorRedirect?: boolean } | null)?.twoFactorRedirect) { setSecond(true); return; }
       done = true;
       signedIn();
     } catch {
@@ -152,7 +157,7 @@ export function SignInPage() {
         </p>
         {(info.providers.length > 0 || info.sso) && <>
           <p className="m-0 text-sm text-ink-2">
-            {info.sso ? 'If your organization uses single sign-on, sign in with it and you join as a viewer. ' : ''}
+            {info.sso ? 'If your organization uses single sign-on, sign in with it to join. ' : ''}
             {info.providers.length > 0 ? 'People at your organization’s domains can also join with:' : ''}
           </p>
           <Providers providers={info.providers} label="Sign up with" onError={setError} />
@@ -178,6 +183,7 @@ export function SignInPage() {
           </Labeled>
         )}
         <Labeled id="si-email" label="Email">
+          {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the page's one job: the cursor starts in its first field */}
           <Input id="si-email" className={field} type="email" value={email} autoComplete="email" autoFocus required
             onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
         </Labeled>
@@ -210,6 +216,46 @@ export function SignInPage() {
             <Providers providers={info.providers} label="Sign in with" onError={setError} />
           </div>
         )}
+      </form>
+    </Frame>
+  );
+}
+
+/** After the password, when two-factor sign-in is on: the code from their authenticator app, or a recovery code. */
+function SecondStep({ email, onBack }: { email: string; onBack: () => void }) {
+  const [code, setCode] = useState('');
+  const [recovery, setRecovery] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = recovery ? codeOf(code).length >= 8 : isAppCode(code);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setError(null);
+    try {
+      await twoFactorCall(recovery ? 'verify-backup-code' : 'verify-totp', { code: codeOf(code) });
+      signedIn();
+    } catch (err) {
+      setError((err as Error).message || UNREACHABLE);
+      setBusy(false);
+    }
+  };
+  return (
+    <Frame tab="signin" title="Two-factor sign-in"
+      intro={recovery ? <>Type one of your recovery codes for <strong className="font-medium text-ink">{email}</strong>. Each one works once.</>
+        : <>Type the code your authenticator app shows for <strong className="font-medium text-ink">{email}</strong>.</>}
+      footer={<button type="button" onClick={onBack} className="cursor-pointer border-0 bg-transparent p-0 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Back to sign in</button>}>
+      <form className="grid gap-4" onSubmit={submit}>
+        <Labeled id="tf-code" label={recovery ? 'Recovery code' : 'Code'}>
+          {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the second step asks for one thing, the code: the cursor starts there */}
+          <Input id="tf-code" className={field} value={code} autoFocus autoComplete="one-time-code" inputMode={recovery ? 'text' : 'numeric'}
+            onChange={(e) => setCode(e.target.value)} placeholder={recovery ? 'abcde-12345' : '123456'} />
+        </Labeled>
+        {error && <Callout tone="error" role="alert">{error}</Callout>}
+        <Button type="submit" className="mt-1 h-10 w-full" disabled={busy || !ready}>{busy ? 'Checking…' : 'Sign in'}</Button>
+        <button type="button" onClick={() => { setRecovery(!recovery); setCode(''); setError(null); }}
+          className="cursor-pointer justify-self-start border-0 bg-transparent p-0 text-13 text-ink underline-offset-2 hover:underline">
+          {recovery ? 'Use a code from your app' : 'Lost your phone? Use a recovery code'}
+        </button>
       </form>
     </Frame>
   );
@@ -263,6 +309,7 @@ export function JoinPage({ token }: { token: string }) {
     <Frame tab="signup" onTab={toSignIn} title={`Join ${lookName()}`} intro={<>You’re invited as <strong className="font-medium text-ink">{invite.email}</strong>.</>}>
       <form className="grid gap-4" onSubmit={submit}>
         <Labeled id="jn-name" label="Your name">
+          {/* oxlint-disable-next-line jsx-a11y/no-autofocus -- the page's one job: the cursor starts in its first field */}
           <Input id="jn-name" className={field} value={name} autoComplete="name" autoFocus onChange={(e) => setName(e.target.value)} placeholder="Sam Lee" />
         </Labeled>
         <Labeled id="jn-password" label="Choose a password" hint="At least 10 characters.">

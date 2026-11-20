@@ -5,7 +5,7 @@ import { useApp } from '../app.ts';
 import { settingsKey, settingsPages } from './settingsKit.ts';
 
 /*
- * Settings' frame: its own menu on the left (Environments, Dimensions, Services, People, Single sign-on, Appearance,
+ * Settings' frame: its own menu on the left (Environments, Dimensions, People, Single sign-on, Appearance,
  * CDN), and the chosen page beside it. On a phone the menu is a row of tabs above the page, scrolled sideways.
  */
 export function SettingsFrame({ sub, children }: { sub: string | undefined; children: ReactNode }) {

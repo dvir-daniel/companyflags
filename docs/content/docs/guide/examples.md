@@ -1,5 +1,6 @@
 ---
 title: "Examples"
+description: "Small apps that read CompanyFlags with OpenFeature: a React page, a Node server and flagd, with a script that sets up a server for them."
 ---
 
 Small, working apps in the repo's [`examples/`](https://github.com/dvir-daniel/companyflags/tree/main/examples)

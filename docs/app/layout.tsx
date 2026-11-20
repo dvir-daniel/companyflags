@@ -8,7 +8,7 @@ import { RootProvider } from 'fumadocs-ui/provider/next';
 import { BASE } from '@/lib/source';
 
 export const metadata: Metadata = {
-  title: { template: '%s | CompanyFlags', default: 'CompanyFlags | The most comprehensive feature flag framework' },
+  title: { template: '%s | CompanyFlags', default: 'CompanyFlags | Feature flags you run yourself, read with OpenFeature' },
   description: 'Feature flags and remote config you run yourself, read with OpenFeature.',
   icons: { icon: `${BASE}/logo.svg` },
 };

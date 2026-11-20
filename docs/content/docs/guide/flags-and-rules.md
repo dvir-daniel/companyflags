@@ -1,5 +1,6 @@
 ---
 title: "Flags and rules"
+description: "What a flag is made of, every operator a rule can use, a % of devices, and how to see why a device got its value."
 ---
 
 A flag is a key your code reads, with values and the rules that pick one. This page covers what a flag is made of,
@@ -24,8 +25,8 @@ The purpose says what the flag is for, and sets a few limits:
 |---|---|---|
 | Release | Turning a new feature on step by step, then removing the flag. It has its own page in **Releases**. | Needs a remove-by date, unless it is a [version release](/guide/releases#version-releases). |
 | Experiment | Comparing variants. | Needs a remove-by date. |
-| Kill switch | Turning something off fast. | On call and admins can turn it off in a protected environment without a review ([break-glass](/guide/approvals#break-glass)). |
-| Ops | A long-lived operational toggle. | Same break-glass as a kill switch. |
+| Kill switch | Turning something off fast. | Can name a [safe value](/guide/approvals#the-safe-value) that on call serves to everyone in an emergency. |
+| Ops | A long-lived operational toggle. | Can name a safe value too. |
 | Config | Remote settings, like an API address or a limit. | None. |
 | Permission | Who may use a feature. | No % of devices: device IDs come from the app and can be faked. |
 
@@ -45,8 +46,13 @@ Each flag has a **Variants** setting, in its Settings tab. It is on by default.
 
 On/off flags always have `true` and `false`. Version releases always use free values.
 
-In a protected environment, a value that environment serves can't be changed in place. Add a new value and point the
-rules at it: that change is reviewed.
+A new value for a named variant goes into your draft, like any other change, and the review says
+"Change the value of enterprise: 1000, now 2000 (in every environment)". A variant's value is the same in every
+environment, so publishing saves it for all of them. The Variants tab says how often each variant is served in the
+environment you're in. Adding a new variant takes effect at once: nobody gets it until a rule serves it.
+
+A value that an environment needing approval serves can't be changed in place, and neither can one that a request
+waiting there uses. Add a new value and point the rules at it: that change is reviewed.
 
 ## A JSON Schema
 
@@ -84,7 +90,9 @@ In [flags as code](/guide/flags-as-code) it is the flag's `jsonSchema`.
 ## Rules
 
 A rule has a list of checks and what to serve when they **all** pass: one value, or a % of devices. A rule with no
-checks applies to every request. Rules are tried in order, and the first one that matches decides. Where rules sit in
+checks applies to every request. A new rule starts with one empty check: choose its attribute (or remove the check to
+match every request) before you publish. A rule can have a name, shown above its checks, in the review and in
+History. Rules are tried in order, and the first one that matches decides. Where rules sit in
 the chain (overrides, each entity's own rules, the rules for everyone) is in
 [Dimensions → Evaluation order](/guide/dimensions#evaluation-order).
 
@@ -135,9 +143,13 @@ Instead of one value, a rule can serve values to a % of the devices it matches:
 - **Buckets.** Each device lands in one of 10,000 buckets. A part of the % is a range of buckets, `[from, to)`, so
   1000–2500 is 15%. One rule can have several parts, each serving its own value. Buckets in no part don't match, and the
   next rule decides.
-- **By device ID.** The bucket is worked out from `device.id`. A device that sends none never matches the %. The API also
-  accepts `session.id` (not sticky across sessions), a dimension or `entity` (all devices of an entity together); the
-  console's rule editor splits by device ID only.
+- **Several values.** In the rule editor, **+ Split across several values** turns a % into parts laid end to end, each
+  with its variant and its share: 50% `a`, 25% `b`, 25% `c` is an A/B/C test in one rule. What's left over (under 100%)
+  goes on to the next row. A split made through the API may have gaps between its parts; the editor shows it as it is
+  until you lay its parts end to end, which moves devices between parts.
+- **By device ID.** The bucket is worked out from `device.id`. A device that sends none never matches the %. The editor
+  also splits by `session.id` (not sticky across sessions), and the rule then reads "20% of sessions". The API also
+  accepts a dimension or `entity` (all devices of an entity together); the console's rule editor doesn't offer those.
 - **Backup ID.** Release and experiment flags may name a second ID to use when the first is missing. It changes who is
   inside, so other purposes can't use one. The console doesn't offer it.
 - **Sticky.** The hash takes the rule's salt (the flag key, unless set) and the ID, so a device stays in its group on
@@ -176,8 +188,9 @@ An override on a dimension attribute matches every request that names no entity,
 
 ## Paused rules
 
-A rule can be paused: it stays in place, with its % and its devices, and is passed over until you resume it. The trace
-shows it as "rule is paused". Releases use this for **Pause** and for rolling a version back.
+A rule can be paused: it stays in place, with its % and its devices, and is passed over until you resume it. Open the
+rule and choose **Pause rule** (or **Resume rule**); like any edit, it goes out when you publish. The trace shows it as
+"rule is paused". Releases use this for **Pause** and for rolling a version back.
 
 ## The code default
 
@@ -195,6 +208,11 @@ Each flag has an On/Off switch per environment, on its defaults. Entities' own s
 in flagd JSON the flag's state is `DISABLED`. Write your code defaults so that "off" is the safe value. A flag that
 isn't in a service at all is `FLAG_NOT_FOUND` for whoever reads that service.
 
+The console can't see your code defaults. For a kill switch or ops flag, name a
+[safe value](/guide/approvals#the-safe-value) as well: in an emergency, on call can serve it to every device instead of
+sending nothing. On call can turn any flag off in a protected environment without a review
+([break-glass](/guide/approvals#break-glass)).
+
 ## Why a device gets its value
 
 Each answer has a reason:
@@ -207,6 +225,13 @@ Each answer has a reason:
 | `STATIC` | Everyone's default, with no rules in play |
 | `DISABLED` | The flag is off |
 | `ERROR` | `FLAG_NOT_FOUND` (not in this service) or `TYPE_MISMATCH` |
+
+### Check who gets what
+
+At the top of a flag's **Rules** tab, pick an entity (and a service) to see what it gets and which row decides it.
+Add **Device details** (an app version, a device ID, a platform…) to check a real device. A row that reads a detail
+the check doesn't have can't be sure: an ordinary rule on it doesn't match, and an override does, since it fails
+closed. The check then says **Depends on the device** instead of **decides**, and names the details it would need.
 
 ### The Debug tab
 
@@ -222,7 +247,7 @@ app, and **How it was decided**, step by step:
   the default;
 - each check with the value it read and whether it passed, with a note when a missing value counted as a match;
 - for a %, the ID used, the salt, the bucket and the part it fell in;
-- rules skipped because an entity uses "Own settings only", and whose choice it was.
+- rules skipped because an entity uses "Skip what's above", and whose choice it was.
 
 `POST /api/trace` gives the same answer from the API. To see two sides at once (two entities, environments or
 services, flag by flag), use **Compare** in the sidebar.

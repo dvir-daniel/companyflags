@@ -1,15 +1,17 @@
 // One flag on its own page, in the order it's checked: Overrides, then each entity's own settings, then the rules for everyone
 // and the default. Each layer is a list of "condition → value" rows; the first row that matches wins.
+// The tab is in the address: #/flag/<key>/<env>/<tab> (rollout, rules, variants, history, settings, debug). A release
+// has this one page too: it opens on its Rollout tab (ReleasePage.tsx), and #/release/<key>/<env> lands there.
 import {
   createContext, lazy, memo, Suspense, use, useCallback, useDeferredValue, useEffect, useId, useImperativeHandle, useMemo, useRef, useState,
   type ReactNode, type Ref,
 } from 'react';
-import { ArrowLeftIcon, ArrowsClockwiseIcon, CaretDownIcon, CaretRightIcon, CaretUpIcon, CopyIcon, XIcon } from '@phosphor-icons/react';
+import { ArrowsClockwiseIcon, CaretDownIcon, CaretRightIcon, CaretUpIcon, CopyIcon, XIcon } from '@phosphor-icons/react';
 import { Badge as UIBadge, StatusMark } from '@companyflags/ui/components/badge';
 import { Button } from '@companyflags/ui/components/button';
 import { NativeSelect } from '@companyflags/ui/components/native-select';
 import { SectionLabel } from '@companyflags/ui/components/page';
-import { BAR_CONTROLS, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { BAR_CONTROLS, crumbLink, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
 import { useBottomReserve } from '@companyflags/ui/components/toast';
 import { Tooltip } from '@companyflags/ui/components/tooltip';
 import { Panel } from '@companyflags/ui/components/panel';
@@ -17,18 +19,22 @@ import { SearchField } from '@companyflags/ui/components/search-field';
 import { Tabs } from '@companyflags/ui/components/tabs';
 import { cn } from '@companyflags/ui/lib/utils';
 import {
-  api, capital, CODE_DEFAULT, dimensionOf, entityIndex, entityLabel, entityWordsOf, KIND_INFO, fieldLabel, fmtValue, getsWithoutOwn, groupLabel, levelOf,
-  noValueOp, OPS_BY_TYPE, sameAs, sourceText, title as titleOf, uuid, vocabOf, whenText, withoutOwn, type Condition, type FlagDetail, type Meta, type Split,
+  api, capital, CHOICE_NAME, choiceText, CODE_DEFAULT, dimensionOf, entityIndex, entityLabel, entityWordsOf, KIND_INFO, fieldLabel, fmtValue, getsWithoutOwn,
+  groupLabel, levelOf, noValueOp, OPS_BY_TYPE, sameAs, sourceText, splitUnit, title as titleOf, vocabOf, whenText, withoutOwn,
+  type Condition, type FlagDetail, type Meta, type Split,
 } from '../api.ts';
 import { followingText, listWords, perWho, settledAt } from '../dimWords.ts';
 import { HowItWorks } from '../howItWorks.tsx';
-import { DetailBarSkeleton, EnvChip, FlagHistorySkeleton, FlagRulesSkeleton, LinesSkeleton, TabsSkeleton } from '../loading.tsx';
+import { DetailBarSkeleton, EnvChip, FlagHistorySkeleton, FlagRulesSkeleton, LinesSkeleton, RolloutSkeleton, TabsSkeleton } from '../loading.tsx';
 import { FLAG_TABS } from '../loadingKit.ts';
 import { go, useApp } from '../app.ts';
-import { plural } from '../text.ts';
-import { Actions, Badge, ChipInput, Empty, ErrorList, Field, InAppDefault, Modal, OnOff, Pager, ReasonBadge, Switch, Val } from '../ui.tsx';
+import { orList, plural } from '../text.ts';
+import { Actions, Badge, ChipInput, Empty, ErrorList, Field, InAppDefault, Modal, OnOff, Pager, ReasonBadge, SplitBar, Switch, Val } from '../ui.tsx';
 import { copyText, denseField, fmtDate, monoLabel, textareaField, useAsync, usePersistentState } from '../uiKit.ts';
-import { draftEntities, entityCount, entityInfos, isCatchAll, isHidden, lineProblem, preview, removeEntity, setOwnValues, type Draft, type Line } from '../lines.ts';
+import {
+  blankCheck, deviceDependence, draftEntities, entityCount, entityInfos, isBlankCheck, isCatchAll, isHidden, lineProblem, newLine, ownDefault, preview, removeEntity,
+  setOwnDefault, valueOf, type DefaultPlace, type Draft, type Line,
+} from '../lines.ts';
 import { canUsePercent, cleanTags, conditionProblem, flagNameProblem, isVersionFlag, needsRemoveBy, normalizeTag, type FieldFacts } from '../../../server/checks.ts';
 import { groupFields, reportedByApp, suggestedValues } from '../../../server/fields.ts';
 import { searchHit } from '../../../server/listing.ts';
@@ -36,17 +42,20 @@ import type { Section } from '../../../server/evaluator.ts';
 import { EntityPicker, DeliveryPanel, GetsText, PowerSwitch, ValueChip, ValueSelect, ValuesPanel } from './flagParts.tsx';
 import { useEnvs } from './envs.ts';
 import { readSchemaText, schemaText } from './flagTemplates.ts';
-import { percentText, readPercent } from './rolloutKit.ts';
+import { ALL, endToEnd, isContiguous, leftOver, percentText, readPercent, withoutPart, withPart, withShare } from './rolloutKit.ts';
 import { searchable, searchEntities } from './entityPickerKit.ts';
 import { firstMismatch } from '../../../server/jsonSchema.ts';
 import { ReviewDraft } from './draftReview.tsx';
-import { releaseState, stepText } from '../../../server/release.ts';
+import { FlagNotices, SafeValueRow } from './flagNotices.tsx';
+import { ManagedInRepo } from './managedInRepo.tsx';
 import { useDraft, useDraftFlag } from '../useDraft.ts';
 
 // the History and Debug tabs load their code (History, and through it Approvals; Playground) the first time they open,
 // or when the tabs are pointed at
 const FlagHistory = lazy(() => import('./History.tsx').then((m) => ({ default: m.FlagHistory })));
 const TraceView = lazy(() => import('./Playground.tsx').then((m) => ({ default: m.TraceView })));
+// a release's Rollout tab (ReleasePage.tsx), loaded when a release opens
+const ReleaseRollout = lazy(() => import('./ReleasePage.tsx').then((m) => ({ default: m.ReleaseRollout })));
 const warmTabs = () => { import('./History.tsx').catch(() => {}); import('./Playground.tsx').catch(() => {}); };
 
 const PAGE = 50;
@@ -66,38 +75,34 @@ const rowButton = 'cursor-default rounded-none border-0 bg-transparent p-0 text-
 const TYPE_NAME: Record<string, string> = { bool: 'Boolean', string: 'String', number: 'Number', json: 'JSON' };
 const typeName = (t: string) => TYPE_NAME[t] ?? t;
 
-export function FlagPage({ flagKey, envKey }: { flagKey: string; envKey?: string }) {
+export function FlagPage({ flagKey, envKey, tabKey }: { flagKey: string; envKey?: string; tabKey?: string }) {
   const { meta } = useApp();
   // memory: the environment you last worked in, shared with the flag list and the entity pages
   const [lastEnv, setLastEnv] = usePersistentState('env', '');
   const known = (k?: string) => !!k && meta.environments.some((e) => e.key === k);
   const env = known(envKey) ? envKey! : known(lastEnv) ? lastEnv : meta.environments[0]?.key ?? '';
   useEffect(() => { if (known(envKey) && envKey !== lastEnv) setLastEnv(envKey!); }, [envKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // the tab and the checked entity stay when you switch environment; a flag opens straight on its rules (Google
-  // opens the editor, no overview). "Check who gets what" is kept across tabs, so Debug opens on the same entity.
-  const [tabOf, setTabOf] = useState<{ flag: string; tab: FlagTab }>({ flag: flagKey, tab: 'targeting' });
-  const tab = tabOf.flag === flagKey ? tabOf.tab : 'targeting';
-  const [check, setCheck] = useState<Check>({ entity: '', project: '' });
+  // the tab is in the address and stays when you switch environment. "Check who gets what" is kept across tabs, so
+  // Debug opens on the same entity and device.
+  const [check, setCheck] = useState<Check>(NO_CHECK);
   // one flag, full width (Google's detail pages): the back arrow returns to the list as you left it. The editor is
   // keyed by flag and environment, so another one opens fresh (useDraft.ts useDraftFlag).
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <FlagEditor key={`${flagKey}:${env}`} flagKey={flagKey} env={env} tab={tab} setTab={(t) => setTabOf({ flag: flagKey, tab: t })} check={check} setCheck={setCheck} />
+      <FlagEditor key={`${flagKey}:${env}`} flagKey={flagKey} env={env} tabKey={tabKey} check={check} setCheck={setCheck} />
     </div>
   );
 }
 
-/** The flag's rules on their own, for a page with its own header and tabs (a release's Rules tab, ReleasePage.tsx):
- *  the same editor, draft, review and publish as on the flag's page. Its other tabs are on the flag's page. */
-export function FlagRules({ flagKey, env }: { flagKey: string; env: string }) {
-  const [check, setCheck] = useState<Check>({ entity: '', project: '' });
-  return <FlagEditor key={`${flagKey}:${env}`} flagKey={flagKey} env={env} tab="targeting" setTab={() => go(`flag/${flagKey}/${env}`)}
-    check={check} setCheck={setCheck} embedded />;
-}
+type FlagTab = 'rollout' | 'rules' | 'variants' | 'history' | 'settings' | 'debug';
+/** The flag's tabs, in order: a release opens on its rollout, any other flag on its rules. */
+const tabsOf = (flag: Pick<FlagDetail, 'kind' | 'valueType' | 'archivedAt'>): FlagTab[] => [
+  ...(flag.kind === 'release' && !flag.archivedAt ? ['rollout' as const] : []), 'rules',
+  ...(flag.valueType === 'bool' ? [] : ['variants' as const]), 'history', 'settings', 'debug',
+];
 
-// `embedded`: only the rules and the draft bar, without the flag's header and tabs (FlagRules)
-function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = false }: {
-  flagKey: string; env: string; tab: FlagTab; setTab: (t: FlagTab) => void; check: Check; setCheck: (c: Check) => void; embedded?: boolean;
+function FlagEditor({ flagKey, env, tabKey, check, setCheck }: {
+  flagKey: string; env: string; tabKey?: string; check: Check; setCheck: (c: Check) => void;
 }) {
   const { meta, toast } = useApp();
   const { envName } = useEnvs();
@@ -116,6 +121,7 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
     remove: (id) => edit((d) => ({ ...d, lines: d.lines.filter((x) => x.id !== id) })),
     move: (l, dir) => edit((d) => moveLine(d, l, dir)),
   }), [edit]);
+  const setTab = (t: FlagTab) => go(`flag/${flagKey}/${env}/${t}`);
 
   if (view.status === 'error') {
     return (
@@ -126,14 +132,15 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
   }
   // the page's own shape while the flag loads (loading.tsx): its bar, its tabs and the rules' layers, with bones
   if (!view.flag || !view.draft) {
-    const rules = tab === 'targeting' || tab === 'values' ? <FlagRulesSkeleton /> : null;
-    return embedded ? rules : <>
-      <DetailBarSkeleton back={`#/flags/${env}`} backLabel="Back to flags" copy env={<EnvChip meta={meta} env={env} to={(v) => `flag/${flagKey}/${v}`} />} />
+    return <>
+      <DetailBarSkeleton back={`#/flags/${env}`} backLabel="Back to flags" crumb="Flags" copy env={<EnvChip meta={meta} env={env} to={(v) => `flag/${flagKey}/${v}${tabKey ? `/${tabKey}` : ''}`} />} />
       <TabsSkeleton widths={FLAG_TABS} />
-      {rules}
+      {tabKey === 'rollout' ? <RolloutSkeleton /> : !tabKey || tabKey === 'rules' || tabKey === 'variants' ? <FlagRulesSkeleton /> : null}
     </>;
   }
   const { flag, draft, stale } = view;
+  const tabs = tabsOf(flag);
+  const tab: FlagTab = tabs.includes(tabKey as FlagTab) ? tabKey as FlagTab : tabs[0];
   const dirty = view.changed;
   const needsApproval = drafts.needsReview;
   const setDraft = (d: Draft) => edit(() => d);
@@ -152,19 +159,16 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
   };
   const keepMine = async () => {
     setRebasing(true);
-    try { await session.rebase([flagKey]); toast(`Your changes to ${flag.key} are now on the newest version`); }
+    try { await session.rebase([flagKey]); toast(`Your changes to ${flag.key} now build on the newest settings`); }
     catch (e) { toast(e as Error, 'err'); }
     finally { setRebasing(false); }
   };
   return (
     <>
-      {!embedded && <>
       {/* the one bar: which flag, which environment, whether it's on, and the switch */}
       <PageBar
+        crumbs={<a href={`#/flags/${encodeURIComponent(env)}`} className={crumbLink}>Flags</a>}
         title={<span className="flex min-w-0 items-center gap-1.5">
-          <Tooltip content="Back to flags">
-            <a href={`#/flags/${env}`} aria-label="Back to flags" className="-ml-2 inline-grid size-8 shrink-0 place-items-center text-ink-2 no-underline transition-colors duration-150 hover:bg-wash hover:text-ink"><ArrowLeftIcon className="size-4" /></a>
-          </Tooltip>
           {flag.name ? <span className="truncate">{flag.name}</span> : <span className="truncate font-mono">{flag.key}</span>}
         </span>}
         actions={<>
@@ -179,38 +183,35 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
           </button>
         </Tooltip>
         {/* the menu shows every environment's state; the chip names the open one */}
-        <FilterSelect label="Environment" value={env} display={envName(env)} onChange={(v) => go(`flag/${flag.key}/${v}`)}
+        <FilterSelect label="Environment" value={env} display={envName(env)} onChange={(v) => go(`flag/${flag.key}/${v}${tabKey ? `/${tab}` : ''}`)}
           options={meta.environments.map((e) => [e.key, `${envName(e.key)} · ${now.layers[e.key]?.base.enabled ? 'On' : 'Off'}`] as [string, string])} />
       </PageBar>
 
-      {/* a release has its own page, built around its steps (ReleasePage.tsx); its rules are edited here too */}
-      {flag.kind === 'release' && (
-        <div className="flex flex-wrap items-center gap-x-2 border-b border-grid px-6 py-2 text-13 text-ink-2 max-sm:px-4">
-          <span>This flag is a release: {stepText(releaseState(flag.variations, now.layers[env].base)).toLowerCase()} in {where}.</span>
-          <a href={`#/release/${encodeURIComponent(flag.key)}/${encodeURIComponent(env)}`}>Open release →</a>
-        </div>
-      )}
-
-      {/* tabs right under the header; the page opens on the rules. Pointing at them starts loading the History and
-          Debug tabs' code, so they open without a placeholder */}
+      <ManagedInRepo flag={flag.key} />
+      <FlagNotices flag={now} env={env} onChanged={reloadFlag} />
+      {/* tabs right under the header; a release opens on its rollout, any other flag on its rules. Pointing at them
+          starts loading the History and Debug tabs' code, so they open without a placeholder */}
       <div className="border-b border-rule px-6 max-sm:px-4" onPointerEnter={warmTabs} onFocus={warmTabs}>
-        <Tabs<FlagTab> label="Flag sections" value={tab === 'values' && flag.valueType === 'bool' ? 'targeting' : tab} onChange={setTab}
+        <Tabs<FlagTab> label="Flag sections" value={tab} onChange={setTab}
           className="overflow-x-auto border-b-0 [scrollbar-width:none] [&>button]:shrink-0 [&>button]:whitespace-nowrap"
-          items={([['targeting', 'Rules'], ['values', flag.freeValues ? 'Variants · off' : `Variants · ${flag.variations.filter((v) => !isHidden(v.key)).length}`], ['history', 'History'], ['settings', 'Settings'], ['debug', 'Debug']] as const)
-            .filter(([k]) => !(k === 'values' && flag.valueType === 'bool')).map(([k, label]) => ({ value: k, label }))} />
+          items={tabs.map((k) => ({ value: k, label: k === 'variants' ? (flag.freeValues ? 'Variants · off' : `Variants · ${flag.variations.filter((v) => !isHidden(v.key)).length}`) : TAB_NAME[k] }))} />
       </div>
-      </>}
 
       <div className="px-6 pb-10 max-sm:px-4">
-        {(tab === 'targeting' || (tab === 'values' && flag.valueType === 'bool')) && (
+        {tab === 'rollout' && (
+          <Suspense fallback={<RolloutSkeleton />}>
+            <ReleaseRollout flag={now} env={env} onChanged={reloadFlag} onEditRules={() => setTab('rules')} />
+          </Suspense>
+        )}
+        {tab === 'rules' && (
           <RulesTab flag={flag} env={env} draft={draft} dirty={dirty} setDraft={setDraft} setLines={setLines} actions={lineActions} onFlagChanged={reloadFlag}
             check={check} setCheck={setCheck} onDebug={() => setTab('debug')} />
         )}
         {/* Variants and Settings stay mounted, so switching tabs never drops what you typed there; the editor is keyed by
             flag and environment (FlagPage), so nothing typed carries over into another flag */}
-        {flag.valueType !== 'bool' && <div hidden={tab !== 'values'} className="mt-6"><ValuesPanel flag={flag} onSaved={reloadFlag} /></div>}
+        {flag.valueType !== 'bool' && <div hidden={tab !== 'variants'} className="mt-6"><ValuesPanel flag={flag} env={env} draft={draft} setDraft={setDraft} onSaved={reloadFlag} /></div>}
         <div hidden={tab !== 'settings'}><SettingsTab flag={flag} onSaved={reload} /></div>
-        {tab === 'debug' && <DebugTab flag={flag} env={env} draft={draft} dirty={dirty} initialEntity={check.entity || undefined} initialProject={check.project || undefined} />}
+        {tab === 'debug' && <DebugTab flag={flag} env={env} draft={draft} dirty={dirty} initial={check} />}
         {/* the history table runs edge to edge like every other list (cancels this column's gutter) */}
         {tab === 'history' && (
           <div className="-mx-6 mt-2 max-sm:-mx-4">
@@ -231,7 +232,7 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
             </span>
             {stale && <span role="status" className="flex flex-wrap items-center gap-x-2 text-13 text-live">
               Someone changed {flag.key} in {where} since you started this draft, so publishing it would be refused.
-              <Button variant="link" disabled={rebasing} onClick={() => void keepMine()}>{rebasing ? 'Moving your edits…' : 'Keep my edits on the new version'}</Button>
+              <Button variant="link" disabled={rebasing} onClick={() => void keepMine()}>{rebasing ? 'Moving your edits…' : 'Keep my edits on the newest settings'}</Button>
             </span>}
             {publishTried && incomplete > 0 && <span role="status" className="text-13 text-live">Finish {plural(incomplete, 'incomplete rule')} to publish</span>}
           </span>
@@ -247,15 +248,20 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
   );
 }
 
-type FlagTab = 'targeting' | 'values' | 'history' | 'settings' | 'debug';
+const TAB_NAME: Record<FlagTab, string> = { rollout: 'Rollout', rules: 'Rules', variants: 'Variants', history: 'History', settings: 'Settings', debug: 'Debug' };
 
 // ---------------------------------------------------------------- the Rules tab: check who gets what, then the cascade
-// Pick an entity and an app to see what they get and which row decides it (Stripe-style "test it").
-// It runs the real evaluator on this page's rules, unpublished edits included, with no version or device:
-// the Debug tab tests those.
+// Pick an entity and an app to see what they get and which row decides it (Stripe-style "test it"). It runs the real
+// evaluator on this page's rules, unpublished edits included, with the device details typed in (none at first). When
+// a row on the way reads a detail that wasn't sent, the answer depends on the device, and the check says so instead
+// of naming a row that "decides" (an override even matches on a missing value: it fails closed).
 
-type Check = { entity: string; project: string };
-type Win = { ruleKey: string | null; section: Section; owner: string | null };
+/** `attrs`: device details typed into the check (an empty one is not sent). */
+type Check = { entity: string; project: string; attrs: Record<string, string> };
+const NO_CHECK: Check = { entity: '', project: '', attrs: {} };
+const sentOf = (attrs: Record<string, string>) => Object.fromEntries(Object.entries(attrs).filter(([, v]) => v.trim()).map(([k, v]) => [k, v.trim()]));
+/** `depends`: the answer holds only for a device that sends nothing more (deviceDependence). */
+type Win = { ruleKey: string | null; section: Section; owner: string | null; depends: boolean };
 /** The row that decides for the checked entity, if one is checked. `owner`: the entity whose settings decided (it, or
  *  one above it). */
 const WinContext = createContext<Win | null>(null);
@@ -263,7 +269,9 @@ const WinContext = createContext<Win | null>(null);
 const byEntity = (s: Section) => levelOf(s) === 'entity';
 /** The deciding row: tinted, with a mark at its left edge. */
 const winRow = '-mx-2 bg-ok/[0.06] px-2 shadow-[inset_2px_0_0_var(--ok)]';
-const WinsBadge = () => <UIBadge variant="ok" title="This decides what the one checked gets">decides</UIBadge>;
+const WinsBadge = ({ depends }: { depends?: boolean }) => (depends
+  ? <UIBadge variant="warn" title="This row gives the answer only for a device that sends no more details than the check has">depends on the device</UIBadge>
+  : <UIBadge variant="ok" title="This decides what the one checked gets">decides</UIBadge>);
 
 /** The rules as one snapshot (flag, environment, draft), so a deferred copy never mixes two flags. */
 type Rules = { flag: FlagDetail; env: string; draft: Draft };
@@ -278,38 +286,42 @@ function RulesTab({ flag, env, draft, dirty, setDraft, setLines, actions, onFlag
   onFlagChanged: () => void; check: Check; setCheck: (c: Check) => void; onDebug: () => void;
 }) {
   const { meta } = useApp();
-  const projectOf = (p: string) => (meta.projects.some((x) => x.key === p) ? p : (flag.delivery[env] ?? [])[0] ?? meta.projects[0]?.key ?? '');
+  const projectOf = (p: string) => (meta.services.some((x) => x.key === p) ? p : (flag.delivery[env] ?? [])[0] ?? meta.services[0]?.key ?? '');
   const project = projectOf(check.project);
   // the check runs on a deferred copy of the rules, so typing in a row never waits for it
   const rules = useMemo<Rules>(() => ({ flag, env, draft }), [flag, env, draft]);
   const checked = useDeferredValue(rules);
-  const result = useMemo(() => (check.entity ? previewOf(checked, meta, { project, entity: check.entity, attrs: {} }) : null),
-    [checked, meta, project, check.entity]);
+  const sent = useMemo(() => sentOf(check.attrs), [check.attrs]);
+  const result = useMemo(() => (check.entity ? previewOf(checked, meta, { project, entity: check.entity, attrs: sent }) : null),
+    [checked, meta, project, check.entity, sent]);
+  const dependence = useMemo(() => (result ? deviceDependence(result) : null), [result]);
+  const depends = !!dependence?.depends;
   // the same object while the same row decides, so the memoized rows don't all re-render on every edit
   const ruleKey = result?.decidedBy.ruleKey ?? null;
   const section = result?.decidedBy.section ?? null;
   const owner = result?.decidedBy.owner ?? null;
-  const win = useMemo<Win | null>(() => (section ? { ruleKey, section, owner } : null), [ruleKey, section, owner]);
+  const win = useMemo<Win | null>(() => (section ? { ruleKey, section, owner, depends } : null), [ruleKey, section, owner, depends]);
   const name = (k: string) => entityLabel(meta.entities, k);
-  // an entity's own value is stored as a rule with no conditions, or under "Own settings only" as its own default;
+  // an entity's own value is stored as a rule with no conditions, or under "Skip what's above" as its own default;
   // on this page it's that entity's default either way
   const wonLine = result?.decidedBy.ruleKey ? checked.draft.lines.find((l) => l.id === result.decidedBy.ruleKey) : undefined;
   const from = result && (wonLine && isCatchAll(wonLine) ? `${name(wonLine.entity!)}’s default`
     : sourceText(result.decidedBy, { entity: entityWordsOf(meta.entities, check.entity), nameOf: (k) => entityIndex(meta.entities).get(k)?.name, project, byDevice: result.reason === 'SPLIT' }));
-  // rules on a version, a device or a % can't match without those details: the check knows only what the server
-  // works out itself (the app, the environment, the entity and those above it, server/fields.ts)
-  const known = new Set(meta.fields.filter((f) => !reportedByApp(f.name, f)).map((f) => f.name));
-  const needsDevice = draft.lines.some((l) => !l.paused && (!!l.split || l.conditions.some((c) => !known.has(c.field))));
+  // what an app reports about itself (server/fields.ts), in the rule editor's order: the check's device details
+  const reported = useMemo(() => groupFields(meta.fields, meta.dimensions).flatMap(([, fs]) => fs).filter((f) => reportedByApp(f.name, f)), [meta.fields, meta.dimensions]);
+  const [details, setDetails] = useState(() => Object.keys(sentOf(check.attrs)).length > 0);
+  const missingWords = (dependence?.fields ?? []).map((f) => fieldLabel(f, meta.dimensions));
   // what a rule row reads from the draft (the values typed for entities): the same object until those change
-  const values = useMemo(() => valuesOnly(draft.newValues), [draft.newValues]);
+  const values = useMemo(() => valuesOnly(draft), [draft]);
   // checking an entity whose own settings (or those of one above it) decide opens whose they are, so the deciding row shows
   const layers = useRef<EntityLayersHandle>(null);
   const checkEntity = (next: Check) => {
     setCheck(next);
     if (!next.entity) return;
-    const d = previewOf(rules, meta, { project: projectOf(next.project), entity: next.entity, attrs: {} }).decidedBy;
+    const d = previewOf(rules, meta, { project: projectOf(next.project), entity: next.entity, attrs: sentOf(next.attrs) }).decidedBy;
     if (byEntity(d.section) && d.owner) layers.current?.show(d.owner);
   };
+  const sentCount = Object.keys(sent).length;
   return (
     <WinContext value={win}>
       <section aria-label="Check who gets what" className="mt-6 border border-grid bg-panel px-5 py-3 max-sm:px-4">
@@ -319,22 +331,45 @@ function RulesTab({ flag, env, draft, dirty, setDraft, setLines, actions, onFlag
             <span className="w-[240px] max-sm:min-w-0 max-sm:flex-1">
               <EntityPicker value={check.entity} onChange={(c) => checkEntity({ ...check, entity: c })} allowNone placeholder="Check who gets what…" />
             </span>
-            {meta.projects.length > 1 && (
+            {meta.services.length > 1 && (
               <NativeSelect size="sm" aria-label="Service" value={project} onChange={(e) => checkEntity({ ...check, project: e.target.value })}>
-                {meta.projects.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
+                {meta.services.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
               </NativeSelect>
             )}
+            <Button variant="secondary" aria-expanded={details} onClick={() => setDetails(!details)}>
+              {sentCount ? `Device details · ${sentCount}` : 'Device details'}
+            </Button>
             {check.entity && <Button variant="ghost" size="icon" className="text-ink-3" title="Stop checking" aria-label="Stop checking" onClick={() => setCheck({ ...check, entity: '' })}><XIcon /></Button>}
           </span>
         </div>
+        {details && (
+          <div role="group" aria-label="Device details" className="mt-3 grid grid-cols-4 gap-x-3 gap-y-2 border-t border-grid pt-3 max-lg:grid-cols-3 max-sm:grid-cols-2">
+            {reported.map(({ name: a, label }) => (
+              <label key={a} className="grid min-w-0 gap-1 text-xs text-ink-3">
+                <span className="truncate">{label}</span>
+                <input value={check.attrs[a] ?? ''} placeholder={a === 'device.platform' ? project : 'not sent'} spellCheck={false}
+                  onChange={(e) => setCheck({ ...check, attrs: { ...check.attrs, [a]: e.target.value } })} className={cn(dense, 'h-8 font-mono')} />
+              </label>
+            ))}
+          </div>
+        )}
         {result && (
-          <div role="status" className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5 border-t border-grid pt-3 text-13 text-ink-2">
-            <span><b className="font-semibold text-ink">{name(check.entity)}</b> on <span className="font-mono text-ink">{project}</span> gets</span>
-            {result.errorCode || result.codeDefault ? <InAppDefault /> : <Val>{fmtValue(result.value)}</Val>}
-            <span className="text-ink-3">· {from}{dirty ? ' · includes your unpublished changes' : ''}</span>
-            <span className="flex-1" />
-            {needsDevice && <span className="text-ink-3">Rules on a version, device or % need those details.</span>}
-            <Button variant="link" onClick={onDebug}>Test a device</Button>
+          <div role="status" className="mt-3 grid gap-1.5 border-t border-grid pt-3 text-13 text-ink-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span><b className="font-semibold text-ink">{name(check.entity)}</b> on <span className="font-mono text-ink">{project}</span> gets</span>
+              {result.errorCode || result.codeDefault ? <InAppDefault /> : <Val>{fmtValue(result.value)}</Val>}
+              <span className="text-ink-3">· {from}{dirty ? ' · includes your unpublished changes' : ''}</span>
+              {depends && <WinsBadge depends />}
+              <span className="flex-1" />
+              <Button variant="link" onClick={onDebug}>Test a device</Button>
+            </div>
+            {depends && (
+              <p className="m-0 text-13 text-ink-2">
+                Depends on the device: that’s the answer only when it sends no {orList(missingWords)}
+                {dependence?.matchedOnMissing ? ' (an override still matches when a detail it checks isn’t sent)' : ''}.
+                {' '}{!details && <Button variant="link" onClick={() => setDetails(true)}>Add device details</Button>}
+              </p>
+            )}
           </div>
         )}
       </section>
@@ -367,20 +402,36 @@ function moveLine(d: Draft, l: Line, dir: -1 | 1): Draft {
   if (!self || !other) return d;
   return { ...d, lines: d.lines.map((x) => (x === self ? other : x === other ? self : x)) };
 }
-/** The draft as a rule row reads it: only the values typed for entities (the value pickers and checks use them). */
-const valuesOnly = (newValues: Draft['newValues']): Draft => ({ fallback: CODE_DEFAULT, lines: [], afterEveryone: {}, newValues });
+/** The draft as a rule row reads it: only the values typed for entities and the variants' new values (the value pickers
+ *  and checks use them). The same object until those two change, so the memoized rows don't re-render on every edit. */
+const valueCache = new WeakMap<object, Map<unknown, Draft>>();
+const valuesOnly = (draft: Draft): Draft => {
+  let byValues = valueCache.get(draft.newValues);
+  if (!byValues) valueCache.set(draft.newValues, (byValues = new Map()));
+  const key = draft.variantValues ?? null;
+  let d = byValues.get(key);
+  if (!d) {
+    d = { fallback: CODE_DEFAULT, lines: [], afterEveryone: {}, newValues: draft.newValues, ...(draft.variantValues ? { variantValues: draft.variantValues } : {}) };
+    byValues.clear();
+    byValues.set(key, d);
+  }
+  return d;
+};
+/** The variant a new rule or default starts with: the flag's first named one, else the in-app default. */
+const firstVariant = (flag: FlagDetail) => flag.variations.find((v) => !isHidden(v.key))?.key ?? CODE_DEFAULT;
 
 // A layer is a framed panel (shared Panel): its number, name and one sentence, its rows, and a footer for adding.
 // An empty layer is just its header: one sentence and the add button, no body.
 
 /** A default ("Default", "Everyone else") with what it applies to, and its value picker, in the row's cells. */
 function DefaultRow({ title = 'Default', label, wins, children }: { title?: ReactNode; label: ReactNode; wins?: boolean; children: ReactNode }) {
+  const win = use(WinContext);
   return (
     <div className={cn(ROW, wins && winRow)}>
       <span />
       <div className={CELLS}>
         <div className="flex min-h-[34px] flex-wrap items-center gap-x-1.5 text-13"><b className="font-semibold text-ink">{title}</b><span className="text-ink-3">{label}</span></div>
-        <div className="flex min-w-0 items-start gap-2"><div className="min-w-0 flex-1">{children}</div>{wins && <span className="flex min-h-[34px] items-center"><WinsBadge /></span>}</div>
+        <div className="flex min-w-0 items-start gap-2"><div className="min-w-0 flex-1">{children}</div>{wins && <span className="flex min-h-[34px] items-center"><WinsBadge depends={win?.depends} /></span>}</div>
       </div>
       <span />
     </div>
@@ -404,7 +455,7 @@ function AlwaysLayer({ flag, draft, values, setLines, actions, onFlagChanged }: 
   const { always, everyone, entities } = groups(draft);
   const [fresh, setFresh] = useState<string | null>(null);
   // a new override goes last, so it never quietly beats the ones already there
-  const add = () => { const l = { ...newLine(flag, null), locked: true }; setLines([...always, l, ...everyone, ...entities]); setFresh(l.id); };
+  const add = () => { const l = { ...newLine(firstVariant(flag), null), locked: true }; setLines([...always, l, ...everyone, ...entities]); setFresh(l.id); };
   const addButton = <Button variant="outline" onClick={add}>+ Add override</Button>;
   if (always.length === 0) {
     return <Panel n={1} title="Overrides" aria-label="Overrides" desc="None. Add one to force a value for everyone, even those with their own settings." actions={addButton} />;
@@ -423,15 +474,19 @@ function AlwaysLayer({ flag, draft, values, setLines, actions, onFlagChanged }: 
 function EveryoneLayer({ flag, draft, values, setDraft, setLines, actions, onFlagChanged }: {
   flag: FlagDetail; draft: Draft; values: Draft; setDraft: (d: Draft) => void; setLines: (l: Line[]) => void; actions: LineActions; onFlagChanged: () => void;
 }) {
+  const { meta } = useApp();
   const win = use(WinContext);
   const { always, everyone, entities } = groups(draft);
   const [fresh, setFresh] = useState<string | null>(null);
   // a new rule goes last, right above the default and next to the button
-  const add = () => { const l = newLine(flag, null); setLines([...always, ...everyone, l, ...entities]); setFresh(l.id); };
+  const add = () => { const l = newLine(firstVariant(flag), null); setLines([...always, ...everyone, l, ...entities]); setFresh(l.id); };
   const anything = draft.lines.length > 0 || Object.keys(draft.afterEveryone).length > 0;
+  // entities whose own default comes first never reach these rules (nor do those under them that follow them)
+  const skipping = draftEntities(draft).filter((c) => ownDefault(draft, c)?.place === 'first');
+  const skipped = skipping.length ? ` ${capital(entityCount(skipping, meta))} ${skipping.length === 1 ? 'skips' : 'skip'} them: ${skipping.length === 1 ? 'its' : 'their'} own default comes first.` : '';
   return (
     <Panel n={3} title="Rules for everyone" aria-label="Rules for everyone" count={everyone.length || undefined}
-      desc={everyone.length ? 'Checked last, then the default.' : 'No rules, so the default below applies.'}
+      desc={(everyone.length ? 'Checked last, then the default.' : 'No rules, so the default below applies.') + (everyone.length ? skipped : '')}
       footer={<Button variant="outline" onClick={add}>+ Add rule</Button>}>
       <div>
         {everyone.length > 0 && <RuleHead />}
@@ -444,11 +499,6 @@ function EveryoneLayer({ flag, draft, values, setDraft, setLines, actions, onFla
     </Panel>
   );
 }
-
-const newLine = (flag: FlagDetail, entity: string | null): Line => ({
-  id: uuid(), entity, locked: false, paused: false, name: null, conditions: [{ field: 'project', op: 'in', values: [] }],
-  serveVariation: flag.variations.find((v) => !isHidden(v.key))?.key ?? CODE_DEFAULT, split: null,
-});
 
 // ---------------------------------------------------------------- entities' own settings
 
@@ -541,8 +591,8 @@ function EntityLayers({ flag, env, draft, values, setDraft, setLines, actions, o
       {adding && <AddOwnDialog flag={flag} draft={draft} existing={new Set(keys)} onClose={() => setAdding(false)} onNewValue={onFlagChanged}
         onExisting={(c) => { setAdding(false); reveal(c); }}
         onAdd={(c, choice) => {
-          if (choice.kind === 'value') setDraft(setOwnValues(draft, [c], choice.value));
-          else { const l = newLine(flag, c); setLines([...draft.lines.filter((x) => x.entity !== c), l, ...draft.lines.filter((x) => x.entity === c)]); setFocusLine(l.id); }
+          if (choice.kind === 'value') setDraft(setOwnDefault(draft, c, choice.value, choice.place));
+          else { const l = newLine(firstVariant(flag), c); setLines([...draft.lines.filter((x) => x.entity !== c), l, ...draft.lines.filter((x) => x.entity === c)]); setFocusLine(l.id); }
           setAdding(false); reveal(c);
         }} />}
       {!empty && <div>
@@ -570,15 +620,12 @@ function EntityLayer({ entity, env, name, lines, flag, draft, values, setDraft, 
   // with nothing of its own here, it gets what its parent gets, or at the top the same as everyone
   const who = entityWordsOf(meta.entities, entity);
   const dimension = entityIndex(meta.entities).get(entity)?.dimension ?? '';
-  // the entity's own value is its group's last line when that line has no conditions (as in toLayers);
-  // every other line of the group, condition-free or not, is a rule
-  const group = lines;
-  const last = group[group.length - 1];
-  const own = last && isCatchAll(last) ? last : undefined;
-  const rules = own ? group.slice(0, -1) : group;
-  // a default that comes after the rules for everyone (they win over it)
-  const later = draft.afterEveryone[entity] as string | undefined;
-  const setLater = (v: string | null) => setDraft({ ...draft, afterEveryone: Object.fromEntries([...Object.entries(draft.afterEveryone).filter(([c]) => c !== entity), ...(v ? [[entity, v]] : [])]) });
+  // its own default, and where it comes (lines.ts ownDefault): its group's last condition-free line comes before the
+  // rules for everyone; a default after them is kept beside the lines. Every other line of the group is a rule.
+  const od = ownDefault(draft, entity);
+  const own = od?.line ?? undefined;
+  const rules = own ? lines.slice(0, -1) : lines;
+  const setDefault = (v: string | null, place: DefaultPlace = od?.place ?? 'last') => setDraft(setOwnDefault(draft, entity, v, place));
   const [fresh, setFresh] = useState<string | null>(null);
   // how many entities under it follow its settings on this flag: saving them changes what those get too
   const [following, setFollowing] = useState<number | null>(null);
@@ -593,7 +640,7 @@ function EntityLayer({ entity, env, name, lines, flag, draft, values, setDraft, 
   const alsoChanges = following ? followingText(meta.dimensions, dimension, following, name) : null;
   // a new rule goes last among the entity's rules, right above its default and next to the button
   const add = () => {
-    const l = newLine(flag, entity);
+    const l = newLine(firstVariant(flag), entity);
     setLines([...draft.lines.filter((x) => x.entity !== entity), ...rules, l, ...(own ? [own] : [])]);
     setFresh(l.id);
   };
@@ -605,12 +652,13 @@ function EntityLayer({ entity, env, name, lines, flag, draft, values, setDraft, 
   // "Check who gets what": this entity's settings decide (its header is marked, its deciding row tinted)
   const win = use(WinContext);
   const decides = !!win && win.owner === entity && byEntity(win.section);
-  // under "Own settings only" the own value is saved as its own default, so it decides as `entity_default`
-  const defaultWins = decides && (own ? win!.ruleKey === own.id || win!.section === 'entity_default' : !!later && win!.section === 'entity_default');
-  const ownText = own?.serveVariation ? <GetsText line={own} flag={flag} draft={draft} />
-    : later ? <span className="inline-flex flex-wrap items-center gap-x-1.5"><ValueChip v={later} flag={flag} draft={draft} /><span className="text-13 text-ink-3">after the rules for everyone</span></span>
+  // a default that comes first decides as a rule (stored as one with no checks) or as `entity_default` (under "Skip
+  // what's above"); one that comes last as `entity_default`
+  const defaultWins = decides && !!od && (od.place === 'first' ? win!.ruleKey === own?.id || win!.section === 'entity_default' : win!.section === 'entity_default');
+  const placeText = (p: DefaultPlace) => (p === 'first' ? 'instead of the rules for everyone' : 'after the rules for everyone');
+  const ownText = od ? <span className="inline-flex flex-wrap items-center gap-x-1.5"><ValueChip v={od.variant} flag={flag} draft={draft} /><span className="text-13 text-ink-3">{placeText(od.place)}</span></span>
     : <span className="text-13 text-ink-3">{sameAs(who)}</span>;
-  const sameAsDefaults = <Button variant="ghost" size="icon" className="text-ink-3" title={sameAs(who)} aria-label={`Use ${withoutOwn(who)}`} onClick={() => (own ? actions.remove(own.id) : setLater(null))}><XIcon /></Button>;
+  const clear = <Button variant="ghost" size="icon" className="text-ink-3" title={sameAs(who)} aria-label={`Use ${withoutOwn(who)}`} onClick={() => setDefault(null)}><XIcon /></Button>;
   const d = dimensionOf(meta.dimensions, dimension);
   return (
     <div id={`own-${entity}`} className="border-b border-grid last:border-b-0">
@@ -620,7 +668,9 @@ function EntityLayer({ entity, env, name, lines, flag, draft, values, setDraft, 
         <b className="min-w-0 truncate text-sm font-semibold">{name}</b>
         {d && meta.dimensions.length > 1 && <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">{capital(d.singular)}</span>}
         {rules.length > 0 && <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">{plural(rules.length, 'rule')}</span>}
-        {decides && <WinsBadge />}
+        {od && <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase" title={choiceText(od.place === 'first' ? 'customer_only' : 'base_rules_then_customer_default', who)}>
+          {CHOICE_NAME[od.place === 'first' ? 'customer_only' : 'base_rules_then_customer_default']}</span>}
+        {decides && <WinsBadge depends={win?.depends} />}
         <span className="ml-auto flex min-w-0 items-center max-sm:ml-[26px] max-sm:basis-full">{ownText}</span>
       </button>
       {open && (
@@ -628,13 +678,23 @@ function EntityLayer({ entity, env, name, lines, flag, draft, values, setDraft, 
           {alsoChanges && <p role="note" className="m-0 border-b border-grid py-2 text-13 text-ink-2">{alsoChanges}</p>}
           {rules.map((l, i) => <RowEdit key={l.id} line={l} flag={flag} values={values} canUp={i > 0} canDown={i < rules.length - 1} onChange={actions.update}
             onRemove={actions.remove} onMove={actions.move} onFlagChanged={onFlagChanged} autoOpen={fresh === l.id || focusLine === l.id} />)}
-          <DefaultRow wins={defaultWins} label={<>for {name}{!own && later ? ', when no rule above or for everyone matches' : rules.length ? ', when no rule above matches' : ''}</>}>
-            {own
-              ? <div className="flex min-w-0 items-start gap-1"><div className="min-w-0 flex-1"><ValueSelect flag={flag} draft={draft} value={own.serveVariation} onChange={(v) => actions.update({ ...own, serveVariation: v })} onNewValue={onFlagChanged} withDefaultSwitch /></div>{sameAsDefaults}</div>
-              : later
-                ? <div className="flex min-w-0 items-start gap-1"><div className="min-w-0 flex-1"><ValueSelect flag={flag} draft={draft} value={later} onChange={setLater} onNewValue={onFlagChanged} withDefaultSwitch /></div>{sameAsDefaults}</div>
-                : <div className="flex min-h-8 flex-wrap items-center gap-x-2 text-13 text-ink-3">{sameAs(who)}
-                    <Button variant="link" onClick={() => setDraft(setOwnValues(draft, [entity], flag.variations.find((v) => !isHidden(v.key))?.key ?? CODE_DEFAULT))}>Set a default</Button></div>}
+          <DefaultRow wins={defaultWins} label={<>for {name}{od?.place === 'last' ? ', when no rule above or for everyone matches' : rules.length ? ', when no rule above matches' : ''}</>}>
+            {od ? (
+              <div className="grid min-w-0 gap-2">
+                <div className="flex min-w-0 items-start gap-1">
+                  <div className="min-w-0 flex-1"><ValueSelect flag={flag} draft={draft} value={od.variant} onChange={(v) => setDefault(v)} onNewValue={onFlagChanged} withDefaultSwitch /></div>{clear}
+                </div>
+                {/* where it comes is a choice of its own, never set without saying so */}
+                <NativeSelect size="sm" className="w-full" aria-label={`When ${name}’s default applies`} value={od.place} onChange={(e) => setDefault(od.variant, e.target.value as DefaultPlace)}>
+                  <option value="last">After the rules for everyone ({CHOICE_NAME.base_rules_then_customer_default})</option>
+                  <option value="first">Instead of the rules for everyone ({CHOICE_NAME.customer_only})</option>
+                </NativeSelect>
+                <p className="m-0 text-13 text-ink-3">{choiceText(od.place === 'first' ? 'customer_only' : 'base_rules_then_customer_default', who)}</p>
+              </div>
+            ) : (
+              <div className="flex min-h-8 flex-wrap items-center gap-x-2 text-13 text-ink-3">{sameAs(who)}
+                <Button variant="link" onClick={() => setDefault(firstVariant(flag), 'last')}>Set a default</Button></div>
+            )}
           </DefaultRow>
           <div className="flex flex-wrap items-center gap-2 pt-3">
             <Button variant="secondary" onClick={add}>+ Add rule</Button>
@@ -746,6 +806,7 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
           {Object.keys(KIND_INFO).map((k) => <option key={k} value={k}>{(KIND_INFO[k] ?? k).split(' — ')[0]}</option>)}
         </NativeSelect>
       </SettingRow>
+      <SafeValueRow flag={flag} onSaved={onSaved} />
       <SettingRow name={<>Remove by{removeByRequired && <span className="font-normal text-ink-3"> (required)</span>}</>} >
         <input type="date" aria-label="Remove by" value={f.removeBy} onChange={(e) => setF({ removeBy: e.target.value })} aria-invalid={removeByRequired && !f.removeBy}
           className={cn(dense, 'font-mono', settingField)} />
@@ -779,11 +840,11 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
 
 // ---------------------------------------------------------------- add own settings (find → decide → add)
 
-type Choice = { kind: 'value'; value: string } | { kind: 'conditions' };
+type Choice = { kind: 'value'; value: string; place: DefaultPlace } | { kind: 'conditions' };
 
 function Step({ n, title, disabled, children }: { n: number; title: ReactNode; disabled?: boolean; children: ReactNode }) {
   return (
-    <section aria-disabled={disabled || undefined} className={cn('grid gap-2.5', disabled && 'opacity-50')}>
+    <section data-disabled={disabled || undefined} inert={disabled || undefined} className={cn('grid gap-2.5', disabled && 'opacity-50')}>
       <h3 className="m-0 flex items-center gap-2.5 text-sm font-medium tracking-normal text-ink"><span className={stepNum}>{n}</span>{title}</h3>
       {children}
     </section>
@@ -813,7 +874,8 @@ function AddOwnDialog({ flag, draft, existing, onClose, onExisting, onAdd, onNew
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
   const [kind, setKind] = useState<'value' | 'conditions'>('value');
-  const [value, setValue] = useState(flag.variations.find((v) => !isHidden(v.key))?.key ?? CODE_DEFAULT);
+  const [value, setValue] = useState(firstVariant(flag));
+  const [place, setPlace] = useState<DefaultPlace>('last');
   const found = useMemo(() => searchable(meta.entities, (e) => entityLabel(meta.entities, e.key)), [meta.entities]);
   const matches = useMemo(() => searchEntities(found, q, 8).items, [found, q]);
   const ent = picked ? entityIndex(meta.entities).get(picked) : null;
@@ -830,7 +892,7 @@ function AddOwnDialog({ flag, draft, existing, onClose, onExisting, onAdd, onNew
     <Modal title={`Add ${listWords(meta.dimensions)}`} wide onClose={onClose} footer={
       <Actions>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button disabled={!picked} onClick={() => picked && onAdd(picked, kind === 'value' ? { kind, value } : { kind })}>Add</Button>
+        <Button disabled={!picked} onClick={() => picked && onAdd(picked, kind === 'value' ? { kind, value, place } : { kind })}>Add</Button>
       </Actions>
     }>
       <Step n={1} title="Who">
@@ -864,8 +926,17 @@ function AddOwnDialog({ flag, draft, existing, onClose, onExisting, onAdd, onNew
       <Step n={2} title={`What should ${ent?.name ?? 'it'} get?`} disabled={!ent}>
         <p className="m-0 text-13 text-ink-2">Right now it gets {withoutOwn(who)}{!who?.above.length && draft.fallback ? `: ${baseGets}${draft.lines.some((l) => !l.entity) ? ' when no rule matches' : ''}` : ''}.</p>
         <div role="radiogroup" aria-label="What it gets" className="grid pt-px">
-          <Option checked={kind === 'value'} disabled={!ent} onSelect={() => setKind('value')} title="One variant" desc="The same variant on every app and version.">
-            {kind === 'value' && ent && <ValueSelect flag={flag} draft={draft} value={value} onChange={setValue} onNewValue={onNewValue} withDefaultSwitch />}
+          <Option checked={kind === 'value'} disabled={!ent} onSelect={() => setKind('value')} title="Its own default" desc="One variant, and whether the rules for everyone still come first.">
+            {kind === 'value' && ent && (
+              <div className="grid gap-2">
+                <ValueSelect flag={flag} draft={draft} value={value} onChange={setValue} onNewValue={onNewValue} withDefaultSwitch />
+                <NativeSelect size="sm" className="w-full" aria-label="When its default applies" value={place} onChange={(e) => setPlace(e.target.value as DefaultPlace)}>
+                  <option value="last">After the rules for everyone ({CHOICE_NAME.base_rules_then_customer_default})</option>
+                  <option value="first">Instead of the rules for everyone ({CHOICE_NAME.customer_only})</option>
+                </NativeSelect>
+                <span className="text-13 text-ink-3">{choiceText(place === 'first' ? 'customer_only' : 'base_rules_then_customer_default', who)}</span>
+              </div>
+            )}
           </Option>
           <Option checked={kind === 'conditions'} disabled={!ent} onSelect={() => setKind('conditions')} title="Rules" desc="For example a different variant on Android. You’ll set up the rule next." />
         </div>
@@ -890,18 +961,23 @@ const RowEdit = memo(function RowEdit({ line, flag, values, canUp, canDown, onCh
   const pct = line.split && simple ? +((line.split.ranges[0].to - line.split.ranges[0].from) / 100).toFixed(2) : null;
   const setValue = (v: string) => onChange(line.split ? { ...line, split: { ...line.split, ranges: line.split.ranges.map((r, i) => (i === 0 ? { ...r, variation: v } : r)) } } : { ...line, serveVariation: v });
   const vocab = vocabOf(meta);
-  const text = line.split && pct === null
-    ? [whenText(line.conditions, { vocab, empty: '' }), 'split by device'].filter(Boolean).join(' and ')
-    : whenText(line.conditions, { percent: pct, vocab, empty: 'All requests' });
+  // a check whose attribute isn't chosen yet says nothing about who matches
+  const checks = line.conditions.filter((c) => !isBlankCheck(c));
+  const text = checks.length < line.conditions.length && !checks.length && !line.split ? 'Choose a check…'
+    : line.split && pct === null
+      ? [whenText(checks, { vocab, empty: '' }), `split across ${splitUnit(line.split.by, meta.dimensions)}`].filter(Boolean).join(' and ')
+      : whenText(checks, { percent: pct, by: line.split?.by, vocab, empty: 'All requests' });
   const groupNames = line.split ? [...line.split.ranges.map((r) => r.group), line.split.outsideGroup].filter((g): g is string => !!g) : [];
   // the server's own checks: null when it can be saved (lines.ts keeps each line's answer until the line changes)
   const problem = lineProblem(line, flag, values, meta.fields);
-  const wins = use(WinContext)?.ruleKey === line.id;
+  const win = use(WinContext);
+  const wins = win?.ruleKey === line.id;
   // errors stay quiet until someone tries to finish the rule (Done, or folding it away); a fixed rule is quiet again
   const [tried, setTried] = useState(false);
   if (tried && !problem) setTried(false);
   const finish = () => { if (problem) setTried(true); else setEditCond(false); };
   const mover = 'size-6 min-h-0 p-0 text-ink-3 hover:text-ink [&_svg]:size-3';
+  const name = line.name?.trim();
   return (
     <div className={cn(ROW, wins && winRow)}>
       <span className="flex flex-col">
@@ -909,26 +985,27 @@ const RowEdit = memo(function RowEdit({ line, flag, values, canUp, canDown, onCh
         <Button variant="ghost" className={mover} aria-label="Move down" title="Move down: checked later" disabled={!canDown} onClick={() => onMove(line, 1)}><CaretDownIcon weight="bold" /></Button>
       </span>
       <div className={CELLS}>
-        <button type="button" onClick={() => (editCond ? finish() : setEditCond(true))} aria-expanded={editCond} title={`Edit condition: ${text}`}
+        <button type="button" onClick={() => (editCond ? finish() : setEditCond(true))} aria-expanded={editCond} title={`Edit rule: ${name ? `${name}: ` : ''}${text}`}
           className={cn(rowButton, 'flex min-h-[34px] w-full min-w-0 items-center gap-2 border px-2.5 py-1 text-13 hover:border-ink-3 hover:bg-wash aria-expanded:border-ink focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ink',
             problem && tried ? 'border-live' : 'border-rule-2')}>
           {line.locked && !line.entity && <Badge title="Override: no one’s own settings can change it">override</Badge>}
           {/* long lists of entities or versions: two lines, the rest in the tooltip and the editor */}
-          <span className={cn('line-clamp-2 min-w-0 flex-1 break-words', line.paused && 'text-ink-3 line-through')}>
+          <span className={cn('line-clamp-2 min-w-0 flex-1 break-words', line.paused && 'text-ink-3 line-through', !checks.length && !line.split && checks.length < line.conditions.length && 'text-ink-3')}>
+            {name && <b className="font-semibold text-ink">{name}: </b>}
             {text}{groupNames.length > 0 && <span className="text-ink-3"> · groups {groupNames.join(' / ')}</span>}
           </span>
-          {line.paused && <Badge>paused</Badge>}
+          {line.paused && <Badge title="Paused: skipped, with its checks and its % kept">paused</Badge>}
           {problem && !editCond && <Badge kind="warn">incomplete</Badge>}
         </button>
         <div className={cn('flex min-h-[34px] min-w-0 items-center gap-2', line.paused && 'opacity-50')}>
           {simple ? <ValueSelect flag={flag} draft={values} value={served} onChange={setValue} onNewValue={onFlagChanged} /> : <GetsText line={line} flag={flag} draft={values} />}
-          {wins && <WinsBadge />}
+          {wins && <WinsBadge depends={win?.depends} />}
         </div>
       </div>
       <Button variant="ghost" size="icon" className="text-ink-3" aria-label="Remove" title="Remove rule" onClick={() => onRemove(line.id)}><XIcon /></Button>
       {editCond && (
         <div className="col-[2/-1] max-sm:col-[1/-1]">
-          <CondEditor line={line} onChange={onChange} allowRollout={canUsePercent(flag.kind)} served={served}
+          <CondEditor line={line} flag={flag} values={values} onChange={onChange} onNewValue={onFlagChanged} allowRollout={canUsePercent(flag.kind)} served={served}
             topSwitch={!line.entity && line.locked} problem={problem} showErrors={tried} onDone={finish} />
         </div>
       )}
@@ -951,28 +1028,49 @@ const condKey = (c: Condition) => {
 const sameRow = (from: Condition, to: Condition) => { condKeys.set(to, condKey(from)); return to; };
 /** One condition: attribute, comparison, values, remove. In a narrow window the values go on their own line. */
 const COND = 'grid grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1.6fr)_32px] items-start gap-2 max-sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_32px]';
+/** One part of a split: its variant, its share, remove. */
+const PART = 'grid grid-cols-[minmax(0,1fr)_auto_32px] items-center gap-2';
+const pctOf = (n: number) => `${+(n / 100).toFixed(2)}%`;
+/** What a split's ID means for who keeps their answer. */
+const SPLIT_BY_TEXT: Record<string, string> = {
+  'device.id': 'Random, and each device keeps its answer.',
+  'session.id': 'Random per session: a device may get another answer in its next session.',
+};
 
-function CondEditor({ line, onChange, allowRollout, served, topSwitch, problem, showErrors, onDone }: {
-  line: Line; onChange: (l: Line) => void; allowRollout: boolean; served: string | null; topSwitch: boolean; problem: string | null; showErrors: boolean; onDone: () => void;
+function CondEditor({ line, flag, values, onChange, onNewValue, allowRollout, served, topSwitch, problem, showErrors, onDone }: {
+  line: Line; flag: FlagDetail; values: Draft; onChange: (l: Line) => void; onNewValue: () => void; allowRollout: boolean; served: string | null;
+  topSwitch: boolean; problem: string | null; showErrors: boolean; onDone: () => void;
 }) {
-  const { meta } = useApp();
+  const { meta, ask } = useApp();
   const fields = useMemo(() => fieldFacts(meta.fields), [meta.fields]);
-  const checkProblem = (c: Condition) => conditionProblem(c, fields);
+  const checkProblem = (c: Condition) => (isBlankCheck(c) ? 'Choose what this check is about' : conditionProblem(c, fields));
   const conditions = line.conditions;
   // at an entity's own level, what's always the same there (its dimension and those above it) isn't offered
   const settled = useMemo(() => (line.entity ? settledAt(meta.dimensions, meta.entities, line.entity) : null), [line.entity, meta.dimensions, meta.entities]);
   const set = (i: number, c: Condition) => onChange({ ...line, conditions: conditions.map((x, j) => (j === i ? sameRow(x, c) : x)) });
-  const simpleSplit = line.split && line.split.ranges.length === 1 && line.split.ranges[0].from === 0;
+  const split = line.split;
+  const simpleSplit = !!split && split.ranges.length === 1 && split.ranges[0].from === 0;
+  // what a % can be split by: the attributes that can (server/fields.ts canSplitBy), with the one it has
+  const splitFields = meta.fields.filter((f) => f.canSplitBy || f.name === split?.by);
   const startRollout = (without: Condition[]) => onChange({ ...line, conditions: without, serveVariation: null,
     split: { by: 'device.id', fallbackBy: null, ranges: [{ variation: served ?? CODE_DEFAULT, from: 0, to: 1000 }] } });
-  const stopRollout = (extra: Condition[] = []) => onChange({ ...line, split: null, serveVariation: served, conditions: [...conditions, ...extra] });
-  const setShare = (to: number) => {
-    if (!line.split) return;
-    onChange({ ...line, split: { ...line.split, ranges: [{ ...line.split.ranges[0], from: 0, to }] } });
+  const stopRollout = async (extra: Condition[] = []) => {
+    // a split across several values keeps only its first part's value: said first
+    if (split && split.ranges.length > 1) {
+      const r = await ask({
+        title: 'Remove the split?', body: <p>The rule then serves {valueWords(flag, values, served)} to every request it matches. The other {plural(split.ranges.length - 1, 'part')} and {plural(split.ranges.length - 1, 'value', 'values')} of the split are dropped.</p>,
+        actions: [{ id: 'keep', label: 'Keep the split' }, { id: 'go', label: 'Remove the split', tone: 'danger' }],
+      });
+      if (r.action !== 'go') return;
+    }
+    onChange({ ...line, split: null, serveVariation: served, conditions: [...conditions, ...extra] });
   };
+  const setRanges = (ranges: Split['ranges']) => { if (split) onChange({ ...line, split: { ...split, ranges } }); };
+  // another variant than those in the split already, for a new part
+  const nextVariant = () => flag.variations.map((v) => v.key).filter((k) => !isHidden(k)).find((k) => !split?.ranges.some((r) => r.variation === k)) ?? CODE_DEFAULT;
   // the attributes' groups, labels and known values come from server/fields.ts, through /meta
   const suggestions = (field: string) => suggestedValues(meta.fields.find((f) => f.name === field), {
-    apps: meta.projects.map((p) => p.key), environments: meta.environments.map((e) => e.key), entities: meta.entities });
+    apps: meta.services.map((p) => p.key), environments: meta.environments.map((e) => e.key), entities: meta.entities });
   // at an entity's own level its own dimension and those above are decided, so checks on them aren't offered there
   // (unless one is set already)
   const attrOptions = (current: string | null, withRollout: boolean) => {
@@ -981,67 +1079,113 @@ function CondEditor({ line, onChange, allowRollout, served, topSwitch, problem, 
     // a check on an attribute taken off server/fields.ts still shows it
     const other = current && !groups.some(([, fs]) => fs.some((f) => f.name === current)) ? current : null;
     return <>
+      {current === BLANK && <option value={BLANK} disabled>Choose…</option>}
       {groups.map(([g, fs]) => <optgroup key={g} label={groupLabel(g, meta.dimensions)}>{fs.map((f) => <option key={f.name} value={f.name}>{f.label}</option>)}</optgroup>)}
       {other && <option value={other}>{fieldLabel(other, meta.dimensions)}</option>}
       {withRollout && <optgroup label="Rollout"><option value={ROLLOUT}>% of devices</option></optgroup>}
     </>;
   };
   const remove = (label: string, onClick: () => void) => <Button variant="ghost" size="icon" className="text-ink-3" aria-label={label} title={label} onClick={onClick}><XIcon /></Button>;
+  const rest = split ? leftOver(split.ranges) : 0;
+  const unit = splitUnit(split?.by, meta.dimensions);
   return (
     <div className="mt-2 grid gap-2.5 border border-rule bg-panel p-3">
+      {/* its name (shown above its checks, in the review and in History) and whether it's paused */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-grid pb-2.5">
+        <input aria-label="Rule name" value={line.name ?? ''} placeholder="Name (optional), like Beta testers" spellCheck={false}
+          onChange={(e) => onChange({ ...line, name: e.target.value || null })} className={cn(dense, 'h-8 max-w-[280px] min-w-0 flex-1')} />
+        <Button variant="secondary" aria-pressed={line.paused} onClick={() => onChange({ ...line, paused: !line.paused })}>{line.paused ? 'Resume rule' : 'Pause rule'}</Button>
+        <span className="min-w-0 flex-1 basis-[200px] text-13 text-ink-3">{line.paused ? 'Paused: it’s skipped, and keeps its checks and its %.' : 'Pausing skips it, and keeps its checks and its %.'}</span>
+      </div>
       {topSwitch && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-grid pb-2.5">
           <NativeSelect size="sm" aria-label="Rule type" value="override" onChange={(e) => onChange({ ...line, locked: e.target.value === 'override' })}>
             <option value="everyone">Rule for everyone</option>
             <option value="override">Override</option>
           </NativeSelect>
-          <span className="text-13 text-ink-3">Wins over everyone’s own settings.</span>
+          <span className="text-13 text-ink-3">Wins over everyone’s own settings. If a detail it checks isn’t sent, it still applies.</span>
         </div>
       )}
-      {conditions.length === 0 && !line.split && <p className="m-0 text-13 text-ink-3">Matches {line.entity ? 'every request these settings apply to' : 'every request'}.</p>}
+      {conditions.length === 0 && !split && <p className="m-0 text-13 text-ink-3">Matches {line.entity ? 'every request these settings apply to' : 'every request'}.</p>}
       {conditions.map((c, i) => {
+        const blank = isBlankCheck(c);
         const type = meta.fields.find((f) => f.name === c.field)?.valueType ?? 'string';
         const single = type === 'semver' || (type === 'int' && !['in', 'not_in'].includes(c.op));
         const bad = showErrors && !!checkProblem(c);
         return (
           <div key={condKey(c)} className={COND}>
-            <NativeSelect size="sm" className="w-full" aria-label="Attribute" value={c.field} onChange={(e) => {
+            <NativeSelect size="sm" className="w-full" aria-label="Attribute" aria-invalid={blank && bad} value={c.field} onChange={(e) => {
               if (e.target.value === ROLLOUT) return startRollout(conditions.filter((_, j) => j !== i));
               const t = meta.fields.find((f) => f.name === e.target.value)!.valueType;
               set(i, { field: e.target.value, op: OPS_BY_TYPE[t][0].op, values: [] });
-            }}>{attrOptions(c.field, allowRollout && !line.split)}</NativeSelect>
-            <NativeSelect size="sm" className="w-full" aria-label="Comparison" value={c.op} onChange={(e) => set(i, { ...c, op: e.target.value, values: noValueOp(e.target.value) ? [] : c.values })}>
+            }}>{attrOptions(c.field, allowRollout && !split)}</NativeSelect>
+            <NativeSelect size="sm" className="w-full" aria-label="Comparison" disabled={blank} value={c.op} onChange={(e) => set(i, { ...c, op: e.target.value, values: noValueOp(e.target.value) ? [] : c.values })}>
               {OPS_BY_TYPE[type].map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
             </NativeSelect>
             <div className="min-w-0 max-sm:col-span-2">
-              {!noValueOp(c.op) && (single
-                ? <input aria-label="Value" aria-invalid={bad} placeholder={type === 'semver' ? '5.0.0' : '100'} value={String(c.values?.[0] ?? '')} spellCheck={false}
-                    onChange={(e) => set(i, { ...c, values: e.target.value ? [e.target.value] : [] })} className={cn(dense, 'font-mono')} />
-                : <ChipInput label="Values" invalid={bad} values={(c.values ?? []).map(String)} suggestions={suggestions(c.field)} placeholder="Type and press Enter" onChange={(v) => set(i, { ...c, values: v })} />)}
+              {blank ? <span className="flex min-h-8 items-center text-13 text-ink-3">Choose an attribute first</span>
+                : !noValueOp(c.op) && (single
+                  ? <input aria-label="Value" aria-invalid={bad} placeholder={type === 'semver' ? '5.0.0' : '100'} value={String(c.values?.[0] ?? '')} spellCheck={false}
+                      onChange={(e) => set(i, { ...c, values: e.target.value ? [e.target.value] : [] })} className={cn(dense, 'font-mono')} />
+                  : <ChipInput label="Values" invalid={bad} values={(c.values ?? []).map(String)} suggestions={suggestions(c.field)} placeholder="Type and press Enter" onChange={(v) => set(i, { ...c, values: v })} />)}
             </div>
             {remove('Remove condition', () => onChange({ ...line, conditions: conditions.filter((_, j) => j !== i) }))}
           </div>
         );
       })}
-      {line.split && (
-        <div className={COND}>
-          <NativeSelect size="sm" className="w-full" aria-label="Attribute" value={ROLLOUT} onChange={(e) => {
-            if (e.target.value === ROLLOUT) return;
-            const t = meta.fields.find((f) => f.name === e.target.value)!.valueType;
-            stopRollout([{ field: e.target.value, op: OPS_BY_TYPE[t][0].op, values: [] }]);
-          }}>{attrOptions(null, true)}</NativeSelect>
-          <span className="flex min-h-8 items-center text-13 text-ink-3">Random, and each device keeps its answer</span>
-          <div className="min-w-0 max-sm:col-span-2">
-            {simpleSplit
-              ? <PercentBox to={line.split.ranges[0].to} onChange={setShare} className={dense} />
-              : <span className="flex min-h-8 items-center text-13 text-ink-3">Split across several values</span>}
+      {split && (
+        <div className="grid gap-2.5">
+          <div className={COND}>
+            <NativeSelect size="sm" className="w-full" aria-label="Attribute" value={ROLLOUT} onChange={(e) => {
+              if (e.target.value === ROLLOUT) return;
+              const t = meta.fields.find((f) => f.name === e.target.value)!.valueType;
+              void stopRollout([{ field: e.target.value, op: OPS_BY_TYPE[t][0].op, values: [] }]);
+            }}>{attrOptions(null, true)}</NativeSelect>
+            {/* what the % is a share of: devices, or sessions (changing it moves devices) */}
+            <NativeSelect size="sm" className="w-full" aria-label="Split by" value={split.by} onChange={(e) => onChange({ ...line, split: { ...split, by: e.target.value } })}>
+              {splitFields.map((f) => <option key={f.name} value={f.name}>by {fieldLabel(f.name, meta.dimensions)}</option>)}
+            </NativeSelect>
+            <div className="min-w-0 max-sm:col-span-2">
+              {simpleSplit
+                ? <PercentBox to={split.ranges[0].to} onChange={(to) => setRanges([{ ...split.ranges[0], from: 0, to }])} className={dense} label={`Percent of ${unit}`} />
+                : <span className="flex min-h-8 items-center text-13 text-ink-3">{plural(split.ranges.length, 'part')}, {pctOf(ALL - rest)} of {unit}</span>}
+            </div>
+            {remove('Remove rollout', () => void stopRollout())}
           </div>
-          {remove('Remove rollout', () => stopRollout())}
+          <p className="m-0 text-13 text-ink-3">{SPLIT_BY_TEXT[split.by] ?? `Split by ${fieldLabel(split.by, meta.dimensions)}.`}</p>
+          {!simpleSplit && isContiguous(split.ranges) && (
+            <div role="group" aria-label="Parts of the split" className="grid gap-2">
+              {split.ranges.map((r, i) => (
+                <div key={i} className={PART}>
+                  <ValueSelect flag={flag} draft={values} value={r.variation} onNewValue={onNewValue}
+                    onChange={(v) => setRanges(split.ranges.map((x, j) => (j === i ? { ...x, variation: v } : x)))} />
+                  <PercentBox to={r.to - r.from} onChange={(share) => setRanges(withShare(split.ranges, i, share))} className={dense} label={`Share of part ${i + 1}`} />
+                  {remove(`Remove part ${i + 1}`, () => setRanges(withoutPart(split.ranges, i)))}
+                </div>
+              ))}
+            </div>
+          )}
+          {!simpleSplit && !isContiguous(split.ranges) && (
+            <p className="m-0 text-13 text-ink-2">
+              Its parts have gaps between them ({split.ranges.map((r) => `${pctOf(r.from)}–${pctOf(r.to)}: ${valueWords(flag, values, r.variation)}`).join(', ')}).{' '}
+              <Button variant="link" onClick={() => setRanges(endToEnd(split.ranges))}>Lay them end to end to edit them</Button> (that moves devices between parts).
+            </p>
+          )}
+          <SplitBar ranges={split.ranges} variations={flag.variations.map((v) => v.key)} />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-13 text-ink-3">
+            {rest > 0 && <span>Other {pctOf(rest)}: not in the %, so the next row decides for them.</span>}
+            <span className="flex-1" />
+            {isContiguous(split.ranges) && rest > 0 && (
+              <Button variant="link" onClick={() => setRanges(withPart(split.ranges, nextVariant(), Math.min(rest, simpleSplit ? split.ranges[0].to : rest)))}>
+                {simpleSplit ? '+ Split across several values' : '+ Add a part'}
+              </Button>
+            )}
+          </div>
         </div>
       )}
-      {line.split && <GroupNames split={line.split} onChange={(split) => onChange({ ...line, split })} />}
+      {split && <GroupNames split={split} onChange={(next) => onChange({ ...line, split: next })} />}
       <div className="flex flex-wrap items-center gap-3 border-t border-grid pt-2.5">
-        <Button variant="link" onClick={() => onChange({ ...line, conditions: [...conditions, { field: 'project', op: 'in', values: [] }] })}>+ And</Button>
+        <Button variant="link" onClick={() => onChange({ ...line, conditions: [...conditions, blankCheck()] })}>+ And</Button>
         <span className="flex-1" />
         {showErrors && problem && <span role="status" className="text-13 text-live">{problem}</span>}
         {/* clicking first blurs the value box, which adds a typed-but-not-entered value, so Done then just works */}
@@ -1050,12 +1194,15 @@ function CondEditor({ line, onChange, allowRollout, served, topSwitch, problem, 
     </div>
   );
 }
+const BLANK = '';
+/** A variant's value as the draft has it, in words: "the in-app default", "true", "eu-host". */
+const valueWords = (flag: FlagDetail, draft: Draft, k: string | null) => (!k || k === CODE_DEFAULT ? 'the in-app default' : fmtValue(valueOf(flag, draft, k) ?? k));
 
 /**
  * The % box of a rollout. What's typed stays as typed; a valid share (0 to 100, at most two decimals) is saved as it's
  * typed. Leaving the box puts back the last share when it's empty, and marks anything else that isn't one.
  */
-function PercentBox({ to, onChange, className }: { to: number; onChange: (to: number) => void; className: string }) {
+function PercentBox({ to, onChange, className, label = 'Percent of devices' }: { to: number; onChange: (to: number) => void; className: string; label?: string }) {
   // what's typed, for the share it shows (another share, saved or swapped in, shows itself); `error`: left as it is
   const [typed, setTyped] = useState<{ text: string; for: number; error?: string } | null>(null);
   const mine = typed && typed.for === to ? typed : null;
@@ -1064,7 +1211,7 @@ function PercentBox({ to, onChange, className }: { to: number; onChange: (to: nu
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span className="flex items-center gap-2 text-13 text-ink-2">
-        <input type="text" inputMode="decimal" aria-label="Percent of devices" value={text} className={cn(className, 'w-24 font-mono')}
+        <input type="text" inputMode="decimal" aria-label={label} value={text} className={cn(className, 'w-24 font-mono')}
           aria-invalid={!!mine?.error || undefined} aria-describedby={mine?.error ? errorId : undefined}
           onChange={(e) => {
             const t = e.target.value;
@@ -1123,16 +1270,17 @@ function GroupNames({ split, onChange }: { split: Split; onChange: (s: Split) =>
 const OWN_BOX = new Set(['app.version', 'device.id']);
 
 // "Why does this device get this value?" — runs the real evaluator on this page's rules, unpublished edits included.
-function DebugTab({ flag, env, draft, dirty, initialEntity, initialProject }: {
-  flag: FlagDetail; env: string; draft: Draft; dirty: boolean; initialEntity?: string; initialProject?: string;
+function DebugTab({ flag, env, draft, dirty, initial }: {
+  flag: FlagDetail; env: string; draft: Draft; dirty: boolean; initial: Check;
 }) {
   const { meta } = useApp();
-  // opens on the entity and app checked on the Rules tab, if any; otherwise the first of each, and no version or device
-  const [entity, setEntity] = useState(initialEntity ?? meta.entities[0]?.key ?? '');
-  const [project, setProject] = useState(initialProject ?? (flag.delivery[env] ?? [])[0] ?? meta.projects[0]?.key ?? '');
-  const [version, setVersion] = useState('');
-  const [device, setDevice] = useState('');
-  const [extra, setExtra] = useState<Record<string, string>>({});
+  // opens on the entity, app and device details checked on the Rules tab, if any; otherwise the first entity and app,
+  // and no version or device
+  const [entity, setEntity] = useState(initial.entity || meta.entities[0]?.key || '');
+  const [project, setProject] = useState(initial.project || (flag.delivery[env] ?? [])[0] || meta.services[0]?.key || '');
+  const [version, setVersion] = useState(initial.attrs['app.version'] ?? '');
+  const [device, setDevice] = useState(initial.attrs['device.id'] ?? '');
+  const [extra, setExtra] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(initial.attrs).filter(([k]) => !OWN_BOX.has(k))));
   // only what's filled in is sent, as an app leaves out what it doesn't know (an empty version or device is "not sent");
   // the app's platform is filled in the way the real app sends it (server/evaluator.ts contextFor)
   const attrs = useMemo(() => Object.fromEntries(Object.entries({ 'app.version': version, 'device.id': device, ...extra }).filter(([, v]) => v)),
@@ -1157,7 +1305,7 @@ function DebugTab({ flag, env, draft, dirty, initialEntity, initialProject }: {
         {meta.dimensions.length > 0 && <Field label={listWords(meta.dimensions) ? capital(listWords(meta.dimensions)) : 'Who'}><EntityPicker value={entity} onChange={setEntity} allowNone /></Field>}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Service">
-            <NativeSelect size="sm" className="w-full" value={project} onChange={(e) => setProject(e.target.value)}>{meta.projects.map((p) => <option key={p.key}>{p.key}</option>)}</NativeSelect>
+            <NativeSelect size="sm" className="w-full" value={project} onChange={(e) => setProject(e.target.value)}>{meta.services.map((p) => <option key={p.key}>{p.key}</option>)}</NativeSelect>
           </Field>
           <Field label="App version"><input value={version} placeholder="not sent" onChange={(e) => setVersion(e.target.value)} spellCheck={false} className={cn(dense, 'font-mono')} /></Field>
         </div>

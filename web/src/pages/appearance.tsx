@@ -14,7 +14,7 @@ import { textareaField, useAsync } from '../uiKit.ts';
 import { applyLook, currentLook, fileAsDataUrl, loadLook } from '../appearanceKit.ts';
 import { roleInfo } from '../../../server/policy.ts';
 import {
-  ACCENTS, accentColors, DEFAULT_NAME, EMPTY, imageOf, LIMITS, linkProblem, lowContrast, MODES, TONES,
+  ACCENTS, accentColors, DEFAULT_NAME, EMPTY, imageOf, knownAccent, LIMITS, linkProblem, lowContrast, MODES, nearMeaning, TONES,
   type Accent, type Appearance, type Mode, type Source, type Tone,
 } from '../../../server/appearance.ts';
 
@@ -54,7 +54,7 @@ export function AppearanceSection() {
               {saved.logo ? <Preview src={saved.logo} label="Logo" /> : <span className="flex items-center gap-2 text-ink-3"><BrandMark /> Ours</span>}
               {saved.logoDark && <Preview src={saved.logoDark} label="Logo on dark" dark />}
             </dd>
-            <dt className="text-ink-3">Accent</dt><dd className="m-0 flex items-center gap-2"><Swatch a={saved} />{ACCENTS[saved.accent].label}{saved.accent === 'custom' && <span className="font-mono text-ink-2">{saved.accentColor}</span>}</dd>
+            <dt className="text-ink-3">Accent</dt><dd className="m-0 flex items-center gap-2"><Swatch a={saved} />{ACCENTS[knownAccent(saved.accent)].label}{saved.accent === 'custom' && <span className="font-mono text-ink-2">{saved.accentColor}</span>}</dd>
             <dt className="text-ink-3">Light or dark</dt><dd className="m-0">{MODES[saved.mode]}<span className="text-ink-3">, until a person chooses</span></dd>
             <dt className="text-ink-3">Notice</dt><dd className="m-0 min-w-0 truncate">{saved.banner ? <>{TONES[saved.banner.tone]}: {saved.banner.text}</> : <span className="text-ink-3">None</span>}</dd>
             <dt className="text-ink-3">Sign-in note</dt><dd className="m-0 min-w-0 truncate">{saved.signInNote ?? <span className="text-ink-3">None</span>}</dd>
@@ -115,7 +115,7 @@ function AppearanceDrawer({ saved, onClose, onSaved }: { saved: Saved; onClose: 
   const first = useRef<HTMLInputElement>(null);
   const [a, setA] = useState<Appearance>(() => {
     const { source: _, updatedAt: __, updatedBy: ___, ...rest } = saved;
-    return { ...EMPTY, ...rest };
+    return { ...EMPTY, ...rest, accent: knownAccent(rest.accent) };
   });
   const set = <K extends keyof Appearance>(k: K, v: Appearance[K]) => setA((x) => ({ ...x, [k]: v }));
   const { busy, error, run } = useAsync();
@@ -128,6 +128,8 @@ function AppearanceDrawer({ saved, onClose, onSaved }: { saved: Saved; onClose: 
   const helpError = a.helpUrl && linkProblem(a.helpUrl);
   const ready = !linkErrors.some(Boolean) && !helpError && !(a.accent === 'custom' && !a.accentColor);
   const hard = lowContrast(a);
+  const shades = accentColors(a);
+  const meaning = a.accent === 'custom' && a.accentColor ? nearMeaning(a.accentColor) : null;
 
   const save = async () => {
     const body = { ...a, links: a.links.filter((l) => l.label.trim() || l.url.trim()), banner: a.banner?.text.trim() ? a.banner : null };
@@ -162,10 +164,11 @@ function AppearanceDrawer({ saved, onClose, onSaved }: { saved: Saved; onClose: 
 
         <DrawerSection title="Colors">
           <div className="grid gap-4">
-            <Field label="Accent" htmlFor="appearance-accent" hint="Buttons, switches, the selected page and focus rings take this color.">
-              <div id="appearance-accent" role="radiogroup" aria-label="Accent" className="flex flex-wrap gap-2">
+            <Field label="Accent" htmlFor="appearance-accent" hint="Primary buttons and the selected page take this color. Switches and focus rings stay black and white, and red, green, amber and purple are kept for what they mean.">
+              {/* buttons that stay pressed: each is its own Tab stop, so they're not a radio group (that needs arrow keys) */}
+              <div id="appearance-accent" role="group" aria-label="Accent" className="flex flex-wrap gap-2">
                 {(Object.keys(ACCENTS) as Accent[]).map((k) => (
-                  <button key={k} type="button" role="radio" aria-checked={a.accent === k}
+                  <button key={k} type="button" aria-pressed={a.accent === k}
                     onClick={() => setA((x) => ({ ...x, accent: k, accentColor: k === 'custom' ? x.accentColor ?? '#2563eb' : null }))}
                     className={cn('flex h-8 cursor-default items-center gap-2 border px-2.5 text-13',
                       a.accent === k ? 'border-tint text-ink' : 'border-rule-2 text-ink-2 hover:border-ink-3 hover:text-ink')}>
@@ -176,7 +179,7 @@ function AppearanceDrawer({ saved, onClose, onSaved }: { saved: Saved; onClose: 
               </div>
             </Field>
             {a.accent === 'custom' && (
-              <Field label="Your color" hint="Used in light and in dark. Text on it is black or white, whichever reads better.">
+              <Field label="Your color" hint="Used as it is where it reads at 4.5:1, and made darker on the light page or lighter on the dark page where it doesn’t. Text on it is black or white, whichever reads better.">
                 <div className="flex items-center gap-2">
                   <input type="color" aria-label="Pick a color" value={a.accentColor ?? '#2563eb'} onChange={(e) => set('accentColor', e.target.value)}
                     className="h-[34px] w-12 cursor-default border border-rule-2 bg-background p-0.5" />
@@ -185,7 +188,13 @@ function AppearanceDrawer({ saved, onClose, onSaved }: { saved: Saved; onClose: 
                 </div>
               </Field>
             )}
-            {hard.length > 0 && <Callout tone="warn">This color is hard to see on the {hard.join(' and ')} page. Pick a {hard.includes('dark') ? 'lighter' : 'darker'} one, or choose light or dark below.</Callout>}
+            {hard.length > 0 && shades && (
+              <Callout tone="warn">
+                This color is hard to read on the {hard.join(' and ')} page, so the console uses <span className="font-mono">{hard.map((m) => shades[m]).join(' and ')}</span> there.
+                Pick a {hard.includes('dark') ? 'lighter' : 'darker'} one to keep it as it is.
+              </Callout>
+            )}
+            {meaning && <Callout tone="warn">This color looks like {meaning}, which the console keeps for what it means (production and danger, on, waiting, agents). People may misread buttons in it.</Callout>}
             <Field label="Light or dark" hint="For people who haven’t chosen themselves. Anyone can still switch in the title bar.">
               <Segmented label="Light or dark" value={a.mode} onChange={(v: Mode) => set('mode', v)}
                 options={(Object.keys(MODES) as Mode[]).map((m) => ({ value: m, label: m === 'device' ? 'Device' : MODES[m] }))} />

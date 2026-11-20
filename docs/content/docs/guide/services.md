@@ -1,5 +1,6 @@
 ---
 title: "Services"
+description: "Each app and backend that reads your flags is a service, with its own key in each environment."
 ---
 
 A **service** is what reads your flags: each of your apps, and each backend. The web app reads `web`, the iOS app

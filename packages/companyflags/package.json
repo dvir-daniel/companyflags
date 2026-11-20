@@ -1,6 +1,6 @@
 {
   "name": "companyflags",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "A self-hosted feature flag and remote config server, read with OpenFeature.",
   "license": "MIT",
   "type": "module",
@@ -42,12 +42,14 @@
   ],
   "dependencies": {
     "@better-auth/sso": "^1.7.25",
-    "@electric-sql/pglite": "^0.5.16",
+    "@electric-sql/pglite": "0.5.16",
     "@hono/node-server": "^2.1.8",
     "better-auth": "^1.7.25",
-    "hono": "^4.13.19",
     "jsonata": "2.2.2",
     "kysely": "^0.29.9",
     "pg": "^8.23.1"
+  },
+  "peerDependencies": {
+    "hono": "^4.13.19"
   }
 }

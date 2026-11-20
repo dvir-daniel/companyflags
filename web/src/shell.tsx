@@ -1,37 +1,41 @@
 import { useEffect, useState } from 'react';
 import { title, type Meta, type User } from './api.ts';
 import { Bone } from './loading.tsx';
-import { dimensionHref, preload } from './paths.ts';
+import { dimensionHref, historyHref, preload } from './paths.ts';
 import { readPersistent } from './persist.ts';
 import { signOut } from './session.ts';
 import {
   Avatar, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, SidebarLabel, SidebarSearch,
-  TitleBar as Top, TitleBarBrand, TitleBarStatus, WindowLights,
+  TitleBar as Top, TitleBarBrand, TitleBarStatus,
 } from '@companyflags/ui/components/app-frame';
 import { ThemeToggle } from '@companyflags/ui/components/theme-toggle';
 import { Button } from '@companyflags/ui/components/button';
+import { Checkbox } from '@companyflags/ui/components/checkbox';
 import { Drawer } from '@companyflags/ui/components/drawer';
 import { Popover, PopoverContent, PopoverTrigger } from '@companyflags/ui/components/popover';
 import { useBottomReserve } from '@companyflags/ui/components/toast';
+import { setShortcutsOn, useShortcutsOn } from '@companyflags/ui/lib/shortcuts';
 import { cn } from '@companyflags/ui/lib/utils';
 import { roleInfo } from '../../server/policy.ts';
 import { Brand, LookLinks } from './look.tsx';
 import { lookName, useLook } from './appearanceKit.ts';
 
-/* This console's window, built from the shared Company OS frame (@companyflags/ui, app-frame.tsx):
-   the title bar, the sidebar and the mono footer with who is signed in. On a phone the sidebar and the footer
-   give way to a tab bar at the bottom (MobileNav), whose More opens the whole sidebar as a panel.
+/* This console's window, built from @companyflags/ui's frame (app-frame.tsx): the title bar, the sidebar and the
+   mono footer with who is signed in. On a phone the sidebar and the footer give way to a tab bar at the bottom
+   (MobileNav), whose More opens the whole sidebar as a panel.
    Before the console knows who is signed in (`meta` null, the first load), they draw in the same shape with
    placeholders, so the window is there at once and nothing in it moves when /meta answers. */
 
-/** Sidebar icons, drawn on an 18px grid with a 1.25 stroke, as in CompanyMemory. */
+/** Sidebar icons, drawn on an 18px grid with a 1.25 stroke. */
 const PATHS = {
   flags: <><path d="M4 16V2.5" /><path d="M4 3h9.5l-2 3.5 2 3.5H4" /></>,
   releases: <><path d="M2.5 15.5h4v-4h4v-4h4v-4h1" /><path d="M2.5 15.5h13" /></>,
   entities: <><rect x="3" y="5" width="7" height="10.5" /><path d="M10 8.5h5v7h-5M5.5 8h2M5.5 11h2" /></>,
   compare: <><rect x="2.5" y="3.5" width="5.5" height="11" /><rect x="10" y="3.5" width="5.5" height="11" /></>,
   approvals: <><rect x="3" y="3" width="12" height="12" /><path d="m6 9.2 2.1 2.1L12.2 7" /></>,
+  services: <><rect x="2.5" y="3" width="13" height="4.5" /><rect x="2.5" y="10.5" width="13" height="4.5" /><path d="M5 5.25h1.5M5 12.75h1.5" /></>,
   keys: <><circle cx="6" cy="9" r="3.2" /><path d="M9.2 9H16M13.5 9v2.6M15.6 9v2" /></>,
+  tokens: <><rect x="2.5" y="4.5" width="13" height="9" /><path d="M5.5 9h7M5.5 11.5h4" /></>,
   history: <><circle cx="9" cy="9" r="6.3" /><path d="M9 5.4V9l2.6 1.6" /></>,
   migration: <><path d="M2.5 6h11M10.5 3l3 3-3 3" /><path d="M15.5 12h-11M7.5 9l-3 3 3 3" /></>,
   webhooks: <><circle cx="5" cy="13" r="2.2" /><circle cx="13" cy="13" r="2.2" /><circle cx="9" cy="5" r="2.2" /><path d="M8 7l-2.2 4M10 7l2.2 4M7.2 13h3.6" /></>,
@@ -53,13 +57,14 @@ export function Icon({ name, size = 15 }: { name: IconName; size?: number }) {
 type NavItem = { key: string; label: string; icon: IconName; href?: string; current: (page: string, sub?: string) => boolean };
 const plainPage = (key: string, also?: string): Pick<NavItem, 'key' | 'current'> => ({ key, current: (p) => p === key || p === also });
 
-// Grouped by what people come for: the flags and what happened to them (daily), who gets what (the dimensions' pages,
-// top to bottom: "Regions", "Stores"; with none yet, the way to set them up), how other systems connect, and Settings.
-function navOf(meta: Meta | null): { group: string; items: NavItem[] }[] {
+// Grouped by what people come for: the flags and what happened to them (daily, with no title: they're what the
+// console is), who gets what (the dimensions' pages, top to bottom: "Regions", "Stores"; with none yet, the way to set
+// them up), what talks to the server (Connect: services, keys, tokens, webhooks), and Settings on its own at the end.
+function navOf(meta: Meta | null): { group?: string; items: NavItem[] }[] {
   const dims = meta?.dimensions ?? [];
   const noDims = !!meta && dims.length === 0;
   return [
-    { group: 'Flags', items: [
+    { items: [
       { ...plainPage('flags', 'flag'), label: 'Flags', icon: 'flags' },
       { ...plainPage('releases', 'release'), label: 'Releases', icon: 'releases' },
       { ...plainPage('approvals'), label: 'Approvals', icon: 'approvals' },
@@ -73,11 +78,13 @@ function navOf(meta: Meta | null): { group: string; items: NavItem[] }[] {
       { ...plainPage('compare'), label: 'Compare', icon: 'compare' },
     ] },
     { group: 'Connect', items: [
+      { ...plainPage('services'), label: 'Services', icon: 'services' },
       { ...plainPage('keys'), label: 'API keys', icon: 'keys' },
+      { ...plainPage('tokens'), label: 'Access tokens', icon: 'tokens' },
       ...(!meta || meta.plugins.includes('webhooks') ? [{ ...plainPage('webhooks'), label: 'Webhooks', icon: 'webhooks' as const }] : []),
       { ...plainPage('migration'), label: 'Migration', icon: 'migration' },
     ] },
-    { group: 'Admin', items: [
+    { items: [
       { key: 'settings', label: 'Settings', icon: 'settings', current: (p, sub) => p === 'settings' && !(noDims && sub === 'dimensions') },
     ] },
   ];
@@ -100,7 +107,6 @@ export function TitleBar({ synced }: { synced: boolean }) {
         Skip to content
       </a>
       <TitleBarBrand>
-        <WindowLights className="max-sm:hidden" />
         <a href="#/flags" className="flex min-w-0 items-center text-ink hover:no-underline" aria-label={`${lookName(look)}, go to flags`}>
           <Brand />
         </a>
@@ -120,9 +126,9 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
   const ahead = (href: string) => { if (meta) void preload(href, meta); };
   return (
     <Nav aria-label="Console" className={className}>
-      <SidebarSearch onClick={onSearch} icon={<Icon name="search" />} shortcut={isMac ? '⌘K' : 'Ctrl K'}>Search flags</SidebarSearch>
-      {navOf(meta).map((g) => (
-        <SidebarGroup key={g.group} label={g.group}>
+      <SidebarSearch onClick={onSearch} icon={<Icon name="search" />} shortcut={isMac ? '⌘K' : 'Ctrl K'} aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}>Search</SidebarSearch>
+      {navOf(meta).map((g, i) => (
+        <SidebarGroup key={g.group ?? i} label={g.group}>
           {g.items.map((n) => (
             <SidebarItem key={n.key} href={n.href ?? `#/${n.key}`} aria-current={n.current(page, sub) ? 'page' : undefined}
               onPointerEnter={() => ahead(n.href ?? `#/${n.key}`)} onFocus={() => ahead(n.href ?? `#/${n.key}`)}>
@@ -136,13 +142,13 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
       <SidebarFoot>
         <SidebarLabel className="px-0">Published</SidebarLabel>
         {meta ? meta.environments.map((e) => {
-          // the version each environment is on, leading to the list it counts (Flags → Versions)
+          // the revision each environment is on, leading to its revisions (History → Revisions)
           const v = meta.dataPlane[e.key]?.revision;
           return (
-            <a key={e.key} href={`#/flags/${encodeURIComponent(e.key)}/versions`} title={`${e.name}’s versions`}
+            <a key={e.key} href={historyHref('revisions', { env: e.key })} aria-label={`${e.name}: ${v == null ? 'nothing published yet' : `revision ${v}`}. Open its revisions`}
               className="flex justify-between py-px text-13 text-ink-2 no-underline hover:text-ink hover:no-underline">
               <span>{e.name}</span>
-              <span className="font-mono text-xs text-ink-3">{v == null ? '—' : `v${v}`}</span>
+              <span className="font-mono text-xs text-ink-3">{v == null ? '—' : `#${v}`}</span>
             </a>
           );
         }) : Array.from({ length: readPersistent('shell.envs', 2) }, (_, i) => (
@@ -170,7 +176,22 @@ function HelpLink() {
   return <a href={helpUrl} target="_blank" rel="noopener noreferrer" className="-mt-1 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Get help</a>;
 }
 
-/** Who is signed in, at the foot of the sidebar: a button that opens their account menu, with their access tokens and Sign out. */
+/** Single-key shortcuts (j, k, x and / in lists), on or off in this browser (WCAG 2.1.4). */
+function ShortcutsChoice() {
+  const on = useShortcutsOn();
+  return (
+    <label className="flex cursor-default items-start gap-2.5 border-t border-rule pt-3 text-13 text-ink">
+      <Checkbox checked={on} onCheckedChange={(v) => setShortcutsOn(v === true)} className="mt-0.5" />
+      <span className="grid gap-0.5">
+        Single-key shortcuts
+        <span className="text-ink-3">J, K and X in lists, / to search. The arrow keys always work in a list.</span>
+      </span>
+    </label>
+  );
+}
+
+/** Who is signed in, at the foot of the sidebar: a button that opens their account menu, with their access tokens,
+ *  the keyboard shortcuts and Sign out. */
 function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -191,8 +212,9 @@ function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
           <span className="truncate text-ink-2">{me.key}</span>
           <span className="text-ink-3">{roleInfo(me.role).label}</span>
         </div>
-        <a href="#/tokens" onClick={() => setOpen(false)} className="border-t border-rule pt-3 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Access tokens</a>
+        <a href="#/tokens" onClick={() => setOpen(false)} className="border-t border-rule pt-3 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Access tokens and two-factor sign-in</a>
         <HelpLink />
+        <ShortcutsChoice />
         {meta.signIn === 'better-auth' ? (
           <Button variant="secondary" className="w-full" disabled={busy} onClick={() => { setBusy(true); void signOut(); }}>{busy ? 'Signing out…' : 'Sign out'}</Button>
         ) : (
@@ -262,7 +284,7 @@ export function MobileNav({ meta, page, sub, pending, onSearch }: { meta: Meta |
                 <Icon name={t.icon} size={20} />
                 {t.key === 'approvals' && pending > 0 && (
                   <span aria-label={`${pending} waiting for your review`}
-                    className="absolute -top-1.5 left-3.5 grid h-4 min-w-4 place-items-center bg-tint px-1 font-mono text-[10px] leading-none text-tint-ink">{pending}</span>
+                    className="absolute -top-1.5 left-3.5 grid h-4 min-w-4 place-items-center bg-flag px-1 font-mono text-[10px] leading-none text-background">{pending}</span>
                 )}
               </span>
               <span className="max-w-full truncate">{t.label}</span>

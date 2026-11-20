@@ -1,7 +1,10 @@
 // Better Auth (better-auth.com) is the sign-in behind the access module (access.ts): it keeps people's accounts —
 // passwords, sign-ins with Google, GitHub or Microsoft, single sign-on with the company's identity provider (SAML or
 // OIDC, through its SSO plugin; sso.ts manages the connections) — and their sessions (a cookie).
-// Its tables are the auth_* ones and sso_provider (migrations 0004, 0005); it reaches them through the same
+// Password accounts can add two-factor sign-in (its twoFactor plugin: an authenticator app, and recovery codes).
+// Each sign-in, and each one that doesn't go through, is told to the access module for History (`signedInNow`,
+// `signInFailed`); so are the roles a connection's groups give (sso.ts group roles).
+// Its tables are the auth_* ones and sso_provider (migrations 0004, 0005, 0020); it reaches them through the same
 // database as everything else (db.ts), Postgres or embedded PGlite, by way of a small Kysely dialect below.
 // It is an adapter (docs/design/adr/0002-better-auth-is-an-adapter-behind-people-and-access.md): who may have an account,
 // and what they may do, is decided by the access module. Its hooks ask `access.admit` before a password sign-in and
@@ -11,11 +14,13 @@
 import { sso } from '@better-auth/sso';
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
+import { twoFactor } from 'better-auth/plugins/two-factor';
 import { PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, type CompiledQuery, type DatabaseConnection, type Dialect, type Driver, type Kysely, type QueryResult } from 'kysely';
 import { createHmac, randomBytes } from 'node:crypto';
 import { BlockList, isIP } from 'node:net';
-import type { Access, Accounts, Attempt, Who } from './access.ts';
+import type { Access, Accounts, Attempt, SignInWay, Who } from './access.ts';
 import { all, HttpError, one, type Db, type Queryable } from './db.ts';
+import { connectionUsed, groupRolesOf, roleFromGroups } from './sso.ts';
 
 export type Provider = { clientId: string; clientSecret: string };
 export type AuthSettings = {
@@ -23,7 +28,7 @@ export type AuthSettings = {
   secret?: string;
   /** Where the console is, e.g. https://flags.example.com (BETTER_AUTH_URL). Required in production. */
   baseURL?: string;
-  /** Sign-ins through a provider, with a verified email at one of these domains, may join without an invite (as viewers):
+  /** Sign-ins through a provider, with a verified email at one of these domains, may join without an invite (with the join role, access.ts):
    *  one of the access module's admission rules (access.ts), set here with the providers. */
   signupDomains?: string[];
   google?: Provider;
@@ -40,6 +45,8 @@ export type AuthSettings = {
    *  10.0.0.0/8): the header the proxy sets (FF_CLIENT_IP_HEADER, e.g. cf-connecting-ip), or X-Forwarded-For past the
    *  proxies. A connection from anywhere else is its own address, whatever its headers say. */
   clientIp?: { header?: string; trustedProxies?: string[] };
+  /** Where single sign-on is required, the most hours a session lasts (FF_SSO_SESSION_HOURS; access.ts). */
+  ssoSessionHours?: number;
 };
 
 /** The header this server sets to the client's address for Better Auth's rate limits, replacing any value a client
@@ -142,7 +149,16 @@ export function authSettingsFromEnv(env: NodeJS.ProcessEnv = process.env): AuthS
     production: env.NODE_ENV === 'production',
     rateLimit: env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test',
     clientIp: { header: env.FF_CLIENT_IP_HEADER?.trim() || undefined, trustedProxies: origins(env.FF_TRUSTED_PROXIES) },
+    ssoSessionHours: hours(env.FF_SSO_SESSION_HOURS),
   };
+}
+
+/** FF_SSO_SESSION_HOURS: a number of hours from 1 to 720, or unset. */
+function hours(v?: string): number | undefined {
+  if (!v?.trim()) return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 1 || n > 720) throw new SetupError(`FF_SSO_SESSION_HOURS: hours from 1 to 720, e.g. 12 (it is "${v}")`);
+  return n;
 }
 
 /** Whether sign-in has rate limits: as set, or in production. */
@@ -205,6 +221,12 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
       sendResetPassword: async ({ user, token }) => { resetTokens.set(user.email.toLowerCase(), token); },
       resetPasswordTokenExpiresIn: RESET_LINK_HOURS * 3600,
       revokeSessionsOnPasswordReset: true,
+      // a reset link also turns two-factor sign-in off, for someone who lost their authenticator and their recovery
+      // codes: they set it up again (an admin made the link, as they could invite them again)
+      onPasswordReset: async ({ user }) => {
+        await db.query(`delete from auth_two_factor where user_id = $1`, [user.id]);
+        await db.query(`update auth_user set two_factor_enabled = false where id = $1`, [user.id]);
+      },
     },
     socialProviders: {
       ...(s.google && { google: { ...s.google, prompt: 'select_account' as const } }),
@@ -218,12 +240,32 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
     advanced: { disableOriginCheck: false, ipAddress: ipAddressFor() },
     // nobody changes or deletes their own account here: an admin removes access (access.ts).
     // Single sign-on connections are managed by admins through the console's API (sso.ts), never these endpoints.
-    disabledPaths: ['/delete-user', '/change-email', '/update-user', '/request-password-reset', '/forget-password', ...SSO_ADMIN_PATHS],
-    plugins: [sso({
+    disabledPaths: ['/delete-user', '/change-email', '/update-user', '/request-password-reset', '/forget-password', ...SSO_ADMIN_PATHS, ...NO_EMAIL_CODES],
+    plugins: [twoFactor({
+      issuer: 'CompanyFlags',
+      // the twoFactor plugin's tables, in this schema's names (migration 0020)
+      schema: {
+        user: { fields: { twoFactorEnabled: 'two_factor_enabled' } },
+        twoFactor: {
+          modelName: 'auth_two_factor',
+          fields: { userId: 'user_id', backupCodes: 'backup_codes', failedVerificationCount: 'failed_verification_count', lockedUntil: 'locked_until' },
+        },
+      },
+    }), sso({
       // a connection is trusted for its email domains (it vouches for those emails and can sign in to their
       // existing accounts) once marked verified: admins add connections, and adding marks them (sso.ts)
       domainVerification: { enabled: true },
       providersLimit: 1000,
+      // each sign-in with a connection that has group roles: the role its groups give (sso.ts, access.ts groupRole)
+      provisionUserOnEveryLogin: true,
+      provisionUser: async ({ user, userInfo, provider }) => {
+        try {
+          const role = roleFromGroups(await groupRolesOf(db, provider.providerId), userInfo.groups, (await access.rules()).joinRole);
+          if (role) await access.groupRole(user.email, role, provider.providerId);
+        } catch (e) {
+          console.error(`single sign-on ${provider.providerId}: the role from groups wasn’t set: ${(e as Error).message}`);
+        }
+      },
       schema: {
         ssoProvider: {
           modelName: 'sso_provider',
@@ -240,7 +282,38 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
         if (ctx.path !== '/sign-in/email') return;
         const email = String((ctx.body as { email?: unknown } | undefined)?.email ?? '');
         const refusal = await access.admit({ email, with: 'password', account: 'existing' });
-        if (refusal) throw new APIError('FORBIDDEN', { code: refusal.code, message: refusal.message });
+        if (refusal) {
+          await access.signInFailed(email, { with: 'password' }, refusal.code);
+          throw new APIError('FORBIDDEN', { code: refusal.code, message: refusal.message });
+        }
+      }),
+      // each sign-in, for History: the session it made (a password sign-in that asks for a second factor isn't one
+      // yet: its code is), or why it didn't go through
+      after: createAuthMiddleware(async (ctx) => {
+        const way = signInWay(ctx.path, ctx.params as Record<string, string> | undefined);
+        if (!way) return;
+        const made = ctx.context.newSession;
+        const twoFactorStep = way.with === 'two-factor' || way.with === 'recovery code';
+        // a code checked while signed in is setting two-factor up, not signing in
+        const signingIn = !twoFactorStep || !!(await ctx.getSignedCookie(ctx.context.createAuthCookie('two_factor').name, ctx.context.secret));
+        if (!signingIn) return;
+        if (made?.user) {
+          if (way.with === 'password' && (made.user as { twoFactorEnabled?: boolean }).twoFactorEnabled) return;
+          await access.signedInNow(made.user.email, way);
+          if (way.with === 'sso' && way.connection) await connectionUsed(db, way.connection);
+          return;
+        }
+        const failed = ctx.context.returned;
+        // a refused sign-up, or a refused provider or single sign-on, is told by validateUserInfo
+        if (!(failed instanceof APIError) || ctx.path === '/sign-up/email' || (way.with !== 'password' && !twoFactorStep)) return;
+        const code = (failed.body as { code?: string } | undefined)?.code ?? String(failed.status);
+        let email = String((ctx.body as { email?: unknown } | undefined)?.email ?? '');
+        if (twoFactorStep) {
+          const pending = await ctx.getSignedCookie(ctx.context.createAuthCookie('two_factor').name, ctx.context.secret);
+          const v = pending ? await ctx.context.internalAdapter.findVerificationValue(pending) : null;
+          email = v ? (await ctx.context.internalAdapter.findUserById(v.value))?.email ?? '' : '';
+        }
+        await access.signInFailed(email, way, code);
       }),
     },
     user: {
@@ -248,8 +321,13 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
       fields: { emailVerified: 'email_verified', ...TIMES },
       // before an account is made, and whenever a provider or single sign-on signs someone in: the access module decides
       validateUserInfo: async ({ user, source }, ctx) => {
-        const refusal = await access.admit(attemptOf(user, source, ctx));
-        return refusal ? { error: refusal.code, errorDescription: refusal.message } : undefined;
+        const attempt = attemptOf(user, source, ctx);
+        const refusal = await access.admit(attempt);
+        if (!refusal) return undefined;
+        const way: SignInWay = attempt.with === 'sso' ? { with: 'sso', connection: attempt.connection }
+          : attempt.with === 'provider' ? { with: 'provider' } : { with: 'password' };
+        await access.signInFailed(attempt.email, way, refusal.code);
+        return { error: refusal.code, errorDescription: refusal.message };
       },
     },
     session: {
@@ -294,7 +372,14 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
     },
     who: async (headers) => {
       const session = await auth.api.getSession({ headers });
-      return session ? { email: session.user.email.toLowerCase(), name: session.user.name } : null;
+      if (!session) return null;
+      const { token, createdAt } = session.session;
+      return {
+        email: session.user.email.toLowerCase(), name: session.user.name,
+        twoFactor: (session.user as { twoFactorEnabled?: boolean | null }).twoFactorEnabled === true,
+        since: new Date(createdAt),
+        end: async () => { await db.query(`delete from auth_session where token = $1`, [token]); },
+      };
     },
     registerConnection: async (body, headers) => {
       try {
@@ -319,6 +404,18 @@ function attemptOf(user: UserInfo, source: Source, ctx?: { headers?: Headers; re
   return { email, with: 'provider', account, emailVerified: user.emailVerified === true, setup };
 }
 
+/** How a request to one of Better Auth's endpoints signs someone in, or null when it doesn't: a password (a new account,
+ *  too), its second step (an authenticator code or a recovery code), single sign-on's callbacks, a provider's. */
+export function signInWay(path: string, params?: Record<string, string>): SignInWay | null {
+  if (path === '/sign-in/email' || path === '/sign-up/email') return { with: 'password' };
+  if (path === '/two-factor/verify-totp') return { with: 'two-factor' };
+  if (path === '/two-factor/verify-backup-code') return { with: 'recovery code' };
+  const last = (key: string) => params?.[key] ?? path.split('/').pop() ?? '';
+  if (/^\/sso\/(callback|saml2\/callback|saml2\/sp\/acs)\//.test(path)) return { with: 'sso', connection: last('providerId') };
+  if (/^\/callback\//.test(path)) return { with: 'provider', provider: last('id') };
+  return null;
+}
+
 /** Better Auth's accounts, for the access module (access.ts `Accounts`): auth_user, one per email; its sessions and
  *  ways in (auth_session, auth_account) are deleted with it. */
 export const betterAuthAccounts: Accounts = {
@@ -339,11 +436,14 @@ export const betterAuthAccounts: Accounts = {
       where exists (select 1 from unnest($1::text[]) d where split_part(lower(email), '@', 2) = d or split_part(lower(email), '@', 2) like '%.' || d)
         and not (lower(email) = any($2::text[])))`, [domains, except]);
   },
+  twoFactorOn: async (q, email) => !!(await one(q, `select 1 from auth_user where lower(email) = $1 and two_factor_enabled`, [email])),
 };
 
 /** Better Auth's endpoints for managing SSO connections: open to any signed-in person, so they're switched off. */
 const SSO_ADMIN_PATHS = ['/sso/register', '/sso/update-provider', '/sso/delete-provider', '/sso/providers', '/sso/get-provider',
   '/sso/request-domain-verification', '/sso/verify-domain'];
+/** Two-factor codes by email or text message: this server sends neither, so they're off (an authenticator app it is). */
+const NO_EMAIL_CODES = ['/two-factor/send-otp', '/two-factor/verify-otp'];
 
 function asHttpError(e: unknown): Error {
   if (e instanceof APIError) {
@@ -355,7 +455,7 @@ function asHttpError(e: unknown): Error {
 }
 
 /** Away from production, a secret made on the first start and kept in the database, so sessions outlive restarts. */
-async function localSecret(db: Db): Promise<string> {
+export async function localSecret(db: Db): Promise<string> {
   await db.query(`insert into server_secret (name, value) values ('auth', $1) on conflict (name) do nothing`, [randomBytes(32).toString('base64url')]);
   return (await one<{ value: string }>(db, `select value from server_secret where name = 'auth'`))!.value;
 }

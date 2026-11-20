@@ -18,22 +18,25 @@ export function Brand({ className }: { className?: string }) {
   return (
     <span className={cn('flex min-w-0 items-center gap-2.5', className)}>
       {logo ? <img src={logo} alt={look.name ? '' : lookName(look)} className="h-5 max-w-40 shrink-0 object-contain object-left" /> : <BrandMark />}
-      {(!logo || look.name) && <Wordmark className="truncate">{lookName(look).toUpperCase()}.</Wordmark>}
+      {/* the installation's name as it was typed ("Globex flags" stays "Globex flags") */}
+      {(!logo || look.name) && <Wordmark className="truncate">{lookName(look)}</Wordmark>}
     </span>
   );
 }
 
+// The text is ink on every tone (a red or amber wash under red or amber text doesn't read): the tone is the left edge.
 const TONE: Record<Tone, string> = {
-  info: 'border-rule bg-panel text-ink-1',
-  warn: 'border-flag-rule bg-flag-bg text-flag',
-  danger: 'border-live/40 bg-live/10 text-live',
+  info: 'border-l-ink-4 bg-panel',
+  warn: 'border-l-flag bg-flag-bg',
+  danger: 'border-l-live bg-live/10',
 };
 
-/** The notice an admin set, across the top of every page. */
+/** The notice an admin set, across the top of every page: left-aligned on the page's gutter, like everything else. */
 export function Banner({ banner }: { banner: { text: string; tone: Tone } | null | undefined }) {
   if (!banner) return null;
   return (
-    <div role={banner.tone === 'info' ? 'note' : 'alert'} className={cn('shrink-0 border-b px-4 py-1.5 text-center text-13', TONE[banner.tone])}>
+    <div role={banner.tone === 'info' ? 'note' : 'alert'}
+      className={cn('shrink-0 border-b border-l-2 border-b-rule px-4 py-1.5 text-13 text-ink', TONE[banner.tone])}>
       {banner.text}
     </div>
   );

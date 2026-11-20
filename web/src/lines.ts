@@ -3,8 +3,9 @@
 // preview snapshot so "Try it" runs the real evaluator on unsaved changes.
 import { contextFor, entitiesFrom, evaluate, HIDDEN_PREFIX, hiddenKey, type EntityInfo, type EvalResult, type FlagDef, type Layer as EvalLayer, type Snapshot } from '../../server/evaluator.ts';
 import { checkRule, type FieldFacts } from '../../server/checks.ts';
+import { HASH_VERSION } from '../../server/hash.ts';
 import {
-  CODE_DEFAULT, conditionText, count, entityIndex, entityLabel, entityWordsOf, fmtValue, uuid, vocabOf, withoutOwn,
+  CODE_DEFAULT, conditionText, count, entityIndex, entityLabel, entityWordsOf, fmtValue, splitUnit, uuid, vocabOf, withoutOwn,
   type Condition, type Entity, type FlagDetail, type Layer, type Meta, type Split,
 } from './api.ts';
 
@@ -26,7 +27,20 @@ export type Line = {
 // newValues: values typed straight into the entity table, saved as hidden variations on publish.
 // afterEveryone: entities whose own default comes after the rules for everyone (entity → variant).
 // Their default can't be a line: lines for an entity always run before the rules for everyone.
-export type Draft = { fallback: string; lines: Line[]; newValues: Record<string, unknown>; afterEveryone: Record<string, string> };
+// variantValues: new values for named variants (variant → value), saved when the draft is published. A variant's value
+// is the same in every environment, so the review says where it's served.
+export type Draft = { fallback: string; lines: Line[]; newValues: Record<string, unknown>; afterEveryone: Record<string, string>; variantValues?: Record<string, unknown> };
+
+// ---- a new rule ------------------------------------------------------------------------------
+// A new rule starts with one empty check, its attribute not chosen yet: the editor asks which. (A rule with no checks
+// at all matches every request; on an entity's own settings that's its default, not a rule.)
+export const BLANK_FIELD = '';
+export const blankCheck = (): Condition => ({ field: BLANK_FIELD, op: 'in', values: [] });
+export const isBlankCheck = (c: { field: string }) => c.field === BLANK_FIELD;
+/** A new rule for `entity` (null: everyone), serving `serve`, with one empty check. */
+export const newLine = (serve: string, entity: string | null): Line => ({
+  id: uuid(), entity, locked: false, paused: false, name: null, conditions: [blankCheck()], serveVariation: serve, split: null,
+});
 
 // ---- per-entity values ---------------------------------------------------------------
 // A value typed for one entity is stored as a hidden, content-addressed variation ("val-<hash>"):
@@ -58,6 +72,34 @@ export function setOwnValues(draft: Draft, entities: string[], variation: string
   }
   const newValues = newValue ? { ...draft.newValues, [newValue.key]: newValue.value } : draft.newValues;
   return { ...draft, lines: sortLines(lines), newValues, afterEveryone };
+}
+
+// ---- an entity's own default, and where it comes -----------------------------------------------
+// An entity's default comes either before the rules for everyone (they and the settings of those above it are skipped:
+// "Skip what’s above", customer_only) or after them (they still decide first: "Own default last"). The editor shows
+// which, and setting a default never picks one without saying so.
+export type DefaultPlace = 'first' | 'last';
+export type OwnDefault = { variant: string; place: DefaultPlace; line: Line | null };
+/** The entity's own default in the draft, and where it comes; null when it has none (it follows what's above). */
+export function ownDefault(draft: Draft, entity: string): OwnDefault | null {
+  const group = draft.lines.filter((l) => l.entity === entity);
+  const last = group[group.length - 1];
+  if (last && isCatchAll(last) && last.serveVariation) return { variant: last.serveVariation, place: 'first', line: last };
+  const later = Object.hasOwn(draft.afterEveryone, entity) ? draft.afterEveryone[entity] : undefined;
+  return later ? { variant: later, place: 'last', line: null } : null;
+}
+/** Sets (or with null clears) an entity's own default, and where it comes. Its rules stay as they are. */
+export function setOwnDefault(draft: Draft, entity: string, variant: string | null, place: DefaultPlace): Draft {
+  const had = ownDefault(draft, entity);
+  const afterEveryone = Object.fromEntries(Object.entries(draft.afterEveryone).filter(([c]) => c !== entity));
+  const lines = draft.lines.filter((l) => l !== had?.line);
+  if (variant && place === 'last') afterEveryone[entity] = variant;
+  if (variant && place === 'first') {
+    // a new one is saved as "Skip what's above"; one stored as a rule with no checks (the same answers) stays one
+    const asRule = had?.place === 'first' && !!had.line && !had.line.ownOnly;
+    lines.push({ id: had?.line?.id ?? uuid(), entity, locked: false, paused: false, name: null, conditions: [], serveVariation: variant, split: null, ...(asRule ? {} : { ownOnly: true }) });
+  }
+  return { ...draft, lines: sortLines(lines), afterEveryone };
 }
 
 // Every entity with its own settings in the draft, rules or a default.
@@ -118,10 +160,11 @@ export function sortLines(lines: Line[]): Line[] {
   return [...locked, ...[...byEntity.values()].flat(), ...everyone];
 }
 
-// One draft line as the rule the server stores.
+// One draft line as the rule the server stores. An empty check (no attribute chosen yet) isn't sent: such a line is
+// incomplete (lineProblem), so it's never published, and the preview reads it as the rule without that check.
 export const lineToRule = (l: Line) => ({
-  ruleKey: l.id, name: l.name || null, locked: !l.entity && l.locked, disabled: l.paused,
-  conditions: l.conditions.map((c) => ({ ...c, values: (c.values ?? []).filter((v) => v !== '') })),
+  ruleKey: l.id, name: l.name?.trim() || null, locked: !l.entity && l.locked, disabled: l.paused,
+  conditions: l.conditions.filter((c) => !isBlankCheck(c)).map((c) => ({ ...c, values: (c.values ?? []).filter((v) => v !== '') })),
   serveVariation: l.split ? null : l.serveVariation, split: l.split,
 });
 
@@ -207,15 +250,47 @@ export function lineProblem(line: Line, flag: Pick<FlagDetail, 'key' | 'kind' | 
   const check = ruleCheckFor(flag, draft.newValues, fields);
   let p = check.answers.get(line);
   if (p === undefined) {
-    p = checkRule(lineToRule(line), check.flag, check.facts, { isBase: !line.entity }).problems[0] ?? null;
+    p = line.conditions.some(isBlankCheck) ? 'Choose what this check is about, or remove it'
+      : checkRule(lineToRule(line), check.flag, check.facts, { isBase: !line.entity }).problems[0] ?? null;
     check.answers.set(line, p);
   }
   return p;
 }
 
-/** A variant's value: one typed into this draft, or the flag's. */
+/** A variant's value: one typed into this draft (or changed in it), or the flag's. */
 export const valueOf = (flag: Pick<FlagDetail, 'variations'>, draft: Draft, k: string) =>
-  (k in draft.newValues ? draft.newValues[k] : flag.variations.find((x) => x.key === k)?.value);
+  (draft.variantValues && Object.hasOwn(draft.variantValues, k) ? draft.variantValues[k]
+    : k in draft.newValues ? draft.newValues[k] : flag.variations.find((x) => x.key === k)?.value);
+
+// ---- new values for named variants ---------------------------------------------------------------
+
+/** The named variants whose value the draft changes (and to what), against the flag's values now. */
+export function valueEdits(flag: Pick<FlagDetail, 'variations'>, draft: Draft): { key: string; value: unknown; was: unknown }[] {
+  const now = new Map(flag.variations.map((v) => [v.key, v.value]));
+  return Object.entries(draft.variantValues ?? {})
+    .filter(([k, v]) => now.has(k) && canon(now.get(k)) !== canon(v))
+    .map(([key, value]) => ({ key, value, was: now.get(key) }));
+}
+/** The draft with these named variants' values (a value back to the flag's own leaves the draft). */
+export function setVariantValues(flag: Pick<FlagDetail, 'variations'>, draft: Draft, values: Record<string, unknown>): Draft {
+  const now = new Map(flag.variations.map((v) => [v.key, v.value]));
+  const next = Object.fromEntries(Object.entries({ ...draft.variantValues, ...values })
+    .filter(([k, v]) => now.has(k) && canon(now.get(k)) !== canon(v)));
+  const { variantValues: _drop, ...rest } = draft;
+  return Object.keys(next).length ? { ...rest, variantValues: next } : rest;
+}
+/** How often a variant is served in one environment's draft: by rules, and as a default. */
+export function servedBy(draft: Draft, key: string): { rules: number; defaults: number } {
+  let rules = 0;
+  let defaults = draft.fallback === key ? 1 : 0;
+  for (const l of draft.lines) {
+    if (l.paused) continue;
+    if (isCatchAll(l) && l.serveVariation === key) defaults++;
+    else if (l.serveVariation === key || l.split?.ranges.some((r) => r.variation === key)) rules++;
+  }
+  defaults += Object.values(draft.afterEveryone).filter((v) => v === key).length;
+  return { rules, defaults };
+}
 
 /** "3 stores", or by dimension when they're in several: "2 stores, 1 chain". */
 export function entityCount(keys: readonly string[], meta: Pick<Meta, 'entities' | 'dimensions'>): string {
@@ -226,21 +301,57 @@ export function entityCount(keys: readonly string[], meta: Pick<Meta, 'entities'
     .concat(per.has('') ? [`${per.get('')!.toLocaleString()} more`] : []).join(', ');
 }
 
-/** What going from `orig` to `draft` changes, one sentence each ("Add rule: Acme 12 · web → on"). */
+/** What going from `orig` to `draft` changes, one sentence each ("Add rule: Acme 12 · web → on"). Each changed
+ *  rule says what it was and what it is now, and moves are said too. The review also shows each layer before and after. */
 export function summarize(flag: Pick<FlagDetail, 'valueType' | 'variations'>, orig: Draft, draft: Draft, meta: Pick<Meta, 'entities' | 'dimensions'>): string[] {
   const out: string[] = [];
-  const val = (k: string | null) => (!k || k === CODE_DEFAULT ? 'the in-app default' : isHidden(k) || flag.valueType !== 'string' ? fmtValue(valueOf(flag, draft, k) ?? valueOf(flag, orig, k)) : k);
+  const val = (k: string | null, d: Draft = draft) => (!k || k === CODE_DEFAULT ? 'the in-app default' : isHidden(k) || flag.valueType !== 'string' ? fmtValue(valueOf(flag, d, k) ?? valueOf(flag, orig, k)) : k);
   const nameOf = (c: string) => entityLabel(meta.entities, c);
   const vocab = vocabOf(meta);
-  const who = (l: Line) => [l.entity ? nameOf(l.entity) : null, ...l.conditions.map((c) => conditionText(c, vocab))].filter(Boolean).join(' · ') || 'all requests';
+  const who = (l: Line) => [l.entity ? nameOf(l.entity) : null, ...l.conditions.filter((c) => !isBlankCheck(c)).map((c) => conditionText(c, vocab))].filter(Boolean).join(' · ') || 'all requests';
+  const pctOf = (n: number) => `${+(n / 100).toFixed(2)}%`;
+  const serves = (l: Line, d: Draft) => (!l.split ? val(l.serveVariation, d)
+    : `${l.split.ranges.map((r) => `${pctOf(r.to - r.from)} ${val(r.variation, d)}`).join(', ')} of ${splitUnit(l.split.by, meta.dimensions)}`);
+  const kind = (l: Line) => (!l.entity && l.locked ? 'override' : 'rule');
+  const label = (l: Line) => (l.name?.trim() ? `“${l.name.trim()}” (${who(l)})` : who(l));
+  const said = (l: Line, d: Draft) => `${label(l)} → ${serves(l, d)}`;
   const rulesA = new Map(orig.lines.filter((l) => !isCatchAll(l)).map((l) => [l.id, l]));
   const rulesB = new Map(draft.lines.filter((l) => !isCatchAll(l)).map((l) => [l.id, l]));
   for (const [id, l] of rulesB) {
     const a = rulesA.get(id);
-    if (!a) out.push(`Add rule: ${who(l)} → ${l.split ? 'a percentage' : val(l.serveVariation)}`);
-    else if (JSON.stringify(a) !== JSON.stringify(l)) out.push(`Change rule: ${who(l)}`);
+    if (!a) { out.push(`Add ${kind(l)}${l.paused ? ' (paused)' : ''}: ${said(l, draft)}`); continue; }
+    if (JSON.stringify(a) === JSON.stringify(l)) continue;
+    const said_: string[] = [];
+    if (a.paused !== l.paused) said_.push(`${l.paused ? 'Pause' : 'Resume'} ${kind(l)}: ${said(l, draft)}`);
+    if ((a.name ?? '').trim() !== (l.name ?? '').trim()) {
+      said_.push(l.name?.trim() ? `Name ${kind(l)} “${l.name.trim()}”: ${who(l)}` : `Remove the name “${a.name?.trim()}” from ${kind(l)}: ${who(l)}`);
+    }
+    if (a.locked !== l.locked && !l.entity) said_.push(l.locked ? `Make it an override: ${said(l, draft)}` : `Make it a rule for everyone: ${said(l, draft)}`);
+    const was = `${who(a)} → ${serves(a, orig)}`;
+    const now = `${who(l)} → ${serves(l, draft)}`;
+    if (was !== now) said_.push(`Change ${kind(l)}: ${was}, now ${now}`);
+    out.push(...(said_.length ? said_ : [`Change ${kind(l)}: ${said(l, draft)} (its group names)`]));
   }
-  for (const [id, l] of rulesA) if (!rulesB.has(id)) out.push(`Remove rule: ${who(l)}`);
+  for (const [id, l] of rulesA) if (!rulesB.has(id)) out.push(`Remove ${kind(l)}: ${said(l, orig)}`);
+  // a move changes who gets what as much as an edit does: said for each list whose order changed
+  const lists = (d: Draft) => {
+    const m = new Map<string, string[]>();
+    for (const l of d.lines) {
+      if (isCatchAll(l)) continue;
+      const k = l.entity ? `e:${l.entity}` : l.locked ? 'override' : 'everyone';
+      m.set(k, [...(m.get(k) ?? []), l.id]);
+    }
+    return m;
+  };
+  const listsA = lists(orig);
+  for (const [k, ids] of lists(draft)) {
+    const before = listsA.get(k) ?? [];
+    const both = new Set(ids.filter((id) => before.includes(id)));
+    const now = ids.filter((id) => both.has(id));
+    if (before.filter((id) => both.has(id)).join() === now.join()) continue;
+    const where = k === 'override' ? 'the overrides' : k === 'everyone' ? 'the rules for everyone' : `${nameOf(k.slice(2))}’s rules`;
+    out.push(`Reorder ${where}: ${now.map((id, i) => `${i + 1}. ${label(rulesB.get(id)!)}`).join(', ')}`);
+  }
   const ownA = new Map(orig.lines.filter(isCatchAll).map((l) => [l.entity!, l.serveVariation]));
   const ownB = new Map(draft.lines.filter(isCatchAll).map((l) => [l.entity!, l.serveVariation]));
   const setTo = new Map<string, string[]>();
@@ -251,8 +362,8 @@ export function summarize(flag: Pick<FlagDetail, 'valueType' | 'variations'>, or
     if (!b) { if (!(c in draft.afterEveryone)) cleared.push(c); } else setTo.set(b, [...(setTo.get(b) ?? []), c]);
   }
   const names = (cs: string[]) => (cs.length <= 3 ? cs.map(nameOf).join(', ') : entityCount(cs, meta));
-  if (setTo.size > 5) out.push(`Set own defaults for ${entityCount([...setTo.values()].flat(), meta)} (${setTo.size.toLocaleString()} different values)`);
-  else for (const [k, cs] of setTo) out.push(`Set ${val(k)} for ${names(cs)}`);
+  if (setTo.size > 5) out.push(`Set own defaults for ${entityCount([...setTo.values()].flat(), meta)} (${setTo.size.toLocaleString()} different values), before the rules for everyone`);
+  else for (const [k, cs] of setTo) out.push(`Set ${val(k)} for ${names(cs)}, before the rules for everyone (they’re skipped)`);
   // defaults that come after the rules for everyone
   for (const c of new Set([...Object.keys(orig.afterEveryone), ...Object.keys(draft.afterEveryone)])) {
     const a = orig.afterEveryone[c]; const b = draft.afterEveryone[c];
@@ -264,8 +375,39 @@ export function summarize(flag: Pick<FlagDetail, 'valueType' | 'variations'>, or
   const back = new Map<string, string[]>();
   for (const c of cleared) { const to = withoutOwn(entityWordsOf(meta.entities, c)); back.set(to, [...(back.get(to) ?? []), c]); }
   for (const [to, cs] of back) out.push(`${names(cs)} back to ${to}`);
-  if (orig.fallback !== draft.fallback) out.push(`Default: ${val(draft.fallback)}`);
+  if (orig.fallback !== draft.fallback) out.push(`Default: ${val(orig.fallback, orig)}, now ${val(draft.fallback)}`);
+  // a named variant's new value: the same in every environment
+  for (const e of valueEdits(flag, draft)) out.push(`Change the value of ${e.key}: ${fmtValue(e.was)}, now ${fmtValue(e.value)} (in every environment)`);
   return out.length ? out : ['Reorder rules'];
+}
+
+// ---- how sure "Check who gets what" can be --------------------------------------------------------
+// A check that runs without some of what a device sends (its app version, its device ID) can't know every row's
+// answer: a rule on a value that wasn't sent doesn't match, and an override does (it fails closed). Read from the trace.
+
+export type DeviceDependence = {
+  /** some row on the way, the one that decided or one above it, read a value that wasn't sent */
+  depends: boolean;
+  /** the attributes it would need (a % needs the ID it splits by) */
+  fields: string[];
+  /** the row that decided matched only because a value wasn't sent (an override) */
+  matchedOnMissing: string | null;
+};
+export function deviceDependence(r: Pick<EvalResult, 'trace'>): DeviceDependence {
+  const fields = new Set<string>();
+  let matchedOnMissing: string | null = null;
+  for (const step of r.trace) {
+    if (step.outcome === 'skipped' || step.outcome === 'disabled') continue;
+    for (const c of step.conditions ?? []) if (c.missing) fields.add(c.field);
+    // a % whose checks passed but whose ID wasn't sent
+    if (step.split && !step.split.unit && (step.conditions ?? []).every((c) => c.result)) fields.add('device.id');
+    if (step.outcome === 'match') {
+      if (step.conditions?.some((c) => c.missing && c.result)) matchedOnMissing = step.ruleKey ?? null;
+      break;
+    }
+    if (step.outcome === 'served') break;
+  }
+  return { depends: fields.size > 0, fields: [...fields], matchedOnMissing };
 }
 
 /** Each entity with its path up the chain and its entity per dimension, built as the server's snapshot builds them
@@ -280,11 +422,14 @@ export function entityInfos(entities: Entity[]): Record<string, EntityInfo> {
 export function preview(flag: FlagDetail, env: string, draft: Draft, enabled: boolean, meta: Meta,
   ctx: { project: string; entity: string | null; attrs: Record<string, unknown> }): EvalResult {
   const { base, entities } = toLayers(draft, enabled);
+  // a % made in the editor has no salt or hash version yet: the server gives it the flag's key and today's (checks.ts)
+  const asRule = (r: EvalLayer['rules'][number]): EvalLayer['rules'][number] => (r.split
+    ? { ...r, split: { ...r.split, salt: r.split.salt || flag.key, hashVersion: r.split.hashVersion ?? HASH_VERSION } } : r);
   const asLayer = (d: LayerDoc): EvalLayer => ({ version: 0, enabled: d.enabled ?? null, variationWhenOff: d.enabled === undefined ? null : CODE_DEFAULT,
-    defaultVariation: d.defaultVariation, inherit: d.inherit ?? null, rules: d.rules as EvalLayer['rules'] });
+    defaultVariation: d.defaultVariation, inherit: d.inherit ?? null, rules: (d.rules as EvalLayer['rules']).map(asRule) });
   const def: FlagDef = {
     key: flag.key, valueType: flag.valueType as FlagDef['valueType'], kind: flag.kind,
-    variations: Object.fromEntries([...flag.variations.map((v) => [v.key, v.value]), ...Object.entries(draft.newValues), [CODE_DEFAULT, null]]),
+    variations: Object.fromEntries([...flag.variations.map((v) => [v.key, v.value]), ...Object.entries(draft.newValues), ...Object.entries(draft.variantValues ?? {}), [CODE_DEFAULT, null]]),
     delivery: flag.delivery[env] ?? [],
     base: asLayer(base),
     entities: Object.fromEntries([...entities].map(([k, d]) => [k, asLayer(d)])),

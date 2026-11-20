@@ -10,8 +10,10 @@ const read = (f: string) => JSON.parse(readFileSync(join(root, f), 'utf8'));
 const rootPkg = read('package.json');
 const pkg = read('packages/companyflags/package.json');
 
-test('the npm package has the root’s name, version, dependencies, engines and license', () => {
-  for (const key of ['name', 'version', 'dependencies', 'engines', 'license', 'description']) assert.deepEqual(pkg[key], rootPkg[key], key);
+test('the npm package has the root’s name, version, dependencies, engines and license; hono is a peer, for plugins', () => {
+  for (const key of ['name', 'version', 'engines', 'license', 'description']) assert.deepEqual(pkg[key], rootPkg[key], key);
+  assert.deepEqual({ ...pkg.dependencies, ...pkg.peerDependencies }, rootPkg.dependencies, 'dependencies and peers together are the root’s');
+  assert.deepEqual(pkg.peerDependencies, { hono: rootPkg.dependencies.hono }, 'a plugin’s own hono is the server’s');
   assert.equal(pkg.private, undefined);
   assert.equal(pkg.bin.companyflags, 'dist/cli.js');
   assert.deepEqual(Object.keys(pkg.exports), Object.keys(rootPkg.exports));
@@ -28,5 +30,5 @@ test('every package the server imports is a dependency', () => {
       imported.add(spec.startsWith('@') ? spec.split('/').slice(0, 2).join('/') : spec.split('/')[0]);
     }
   }
-  assert.deepEqual([...imported].filter((d) => !(d in pkg.dependencies)), []);
+  assert.deepEqual([...imported].filter((d) => !(d in pkg.dependencies) && !(d in pkg.peerDependencies)), []);
 });

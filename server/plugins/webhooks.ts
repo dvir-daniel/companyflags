@@ -23,10 +23,10 @@ export type WebhooksOptions = {
 
 export const webhooks = (o: WebhooksOptions = {}) => definePlugin({
   id: 'webhooks',
-  setup: ({ db, plane, baseURL, log }) => {
+  setup: ({ db, plane, baseURL, log, secrets }) => {
     const allowedOrigins = o.allowedOrigins ?? allowedOriginsFrom(process.env.FF_WEBHOOK_ALLOWED_ORIGINS);
     const hooks = createWebhooks(db, plane, {
-      fetch: 'fetch' in o ? o.fetch : publicFetch({ allowedOrigins }), gapWaitMs: o.gapWaitMs, everyMs: o.everyMs, baseURL, log,
+      fetch: 'fetch' in o ? o.fetch : publicFetch({ allowedOrigins }), gapWaitMs: o.gapWaitMs, everyMs: o.everyMs, baseURL, log, secrets,
     });
 
     // webhooks in: another system posts its values here. The size is checked as the body arrives (a body sent in chunks
@@ -43,16 +43,16 @@ export const webhooks = (o: WebhooksOptions = {}) => definePlugin({
       prefixes: ['/hooks'],
       worker: hooks.start(),
       // everyone can see them (never an address, a header or a secret); only admins change them
-      console: ({ actor, adminOnly }) => {
+      console: ({ actor, adminOnly, body }) => {
         const app = consoleRoutes();
         app.get('/webhooks', async (c) => c.json(await hooks.list()));
         app.post('/webhooks', async (c) => {
           adminOnly(c.get('user'));
-          return c.json(await hooks.add(await c.req.json(), actor(c.get('user'))), 201);
+          return c.json(await hooks.add(await body(c), actor(c.get('user'))), 201);
         });
         app.put('/webhooks/:id{[0-9]+}', async (c) => {
           adminOnly(c.get('user'));
-          return c.json(await hooks.update(c.req.param('id'), await c.req.json(), actor(c.get('user'))));
+          return c.json(await hooks.update(c.req.param('id'), await body(c), actor(c.get('user'))));
         });
         app.delete('/webhooks/:id{[0-9]+}', async (c) => {
           adminOnly(c.get('user'));
@@ -69,11 +69,11 @@ export const webhooks = (o: WebhooksOptions = {}) => definePlugin({
         });
         app.post('/webhooks/in', async (c) => {
           adminOnly(c.get('user'));
-          return c.json(await hooks.addIn(await c.req.json(), actor(c.get('user'))), 201);
+          return c.json(await hooks.addIn(await body(c), actor(c.get('user'))), 201);
         });
         app.put('/webhooks/in/:id{[0-9]+}', async (c) => {
           adminOnly(c.get('user'));
-          return c.json(await hooks.updateIn(c.req.param('id'), await c.req.json(), actor(c.get('user'))));
+          return c.json(await hooks.updateIn(c.req.param('id'), await body(c), actor(c.get('user'))));
         });
         app.delete('/webhooks/in/:id{[0-9]+}', async (c) => {
           adminOnly(c.get('user'));

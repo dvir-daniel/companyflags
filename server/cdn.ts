@@ -14,6 +14,7 @@ import * as journal from './journal.ts';
 import type { Actor } from './layers.ts';
 import type { OnPublish } from './plugin.ts';
 import { CloudflareError, envTag, purgeTags, type CloudflareZone } from './purge.ts';
+import { SealError, type Sealer } from './sealed.ts';
 
 export type CdnSource = 'server' | 'console';
 export type CdnState = {
@@ -26,7 +27,9 @@ export type CdnState = {
   publishes: { environment: string; revision: number; publishedAt: string | null; purgedAt: string | null; error: string | null }[];
 };
 
-export type CdnOptions = { fetch?: typeof fetch; server?: Partial<CloudflareZone>; log?: (m: string) => void };
+/** `secrets`: seals the token saved in the console (sealed.ts); without it (a test) it is kept as it is. */
+export type CdnOptions = { fetch?: typeof fetch; server?: Partial<CloudflareZone>; log?: (m: string) => void; secrets?: Sealer };
+const asIs: Sealer = { seal: (v) => v, open: (v) => v };
 
 const ZONE_ID = /^[0-9a-f]{32}$/;
 /** A tag no CDN file carries: purging it checks the zone and the token's permission without dropping anything. */
@@ -35,11 +38,21 @@ const CHECK_TAG = 'companyflags-check';
 export function createCdn(db: Db, o: CdnOptions = {}) {
   const log = o.log ?? (() => {});
   const fromServer = o.server?.zoneId && o.server.token ? { zoneId: o.server.zoneId, token: o.server.token } : null;
+  const box = o.secrets ?? asIs;
+  /** The saved token, unsealed; null when it was sealed with another BETTER_AUTH_SECRET (it has to be saved again). */
+  const tokenOf = (stored: string): string | null => {
+    try { return box.open(stored); } catch (e) {
+      if (e instanceof SealError) return null;
+      throw e;
+    }
+  };
 
   async function zone(): Promise<(CloudflareZone & { source: CdnSource }) | null> {
     if (fromServer) return { ...fromServer, source: 'server' };
     const row = await one<{ zone_id: string; api_token: string }>(db, `select zone_id, api_token from cdn_setting`);
-    return row ? { zoneId: row.zone_id, token: row.api_token, source: 'console' } : null;
+    const token = row ? tokenOf(row.api_token) : null;
+    if (row && token === null) log('the CDN’s API token can’t be read (BETTER_AUTH_SECRET changed): save it again in Settings → CDN');
+    return row && token !== null ? { zoneId: row.zone_id, token, source: 'console' } : null;
   }
 
   /** The worker's purger: one environment's files, after its publish. 'off' when no CDN is set up. */
@@ -74,14 +87,14 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
     async state(): Promise<CdnState> {
       const row = fromServer ? undefined : await one<{ zone_id: string; api_token: string; updated_at: string; updated_by: string }>(db,
         `select zone_id, api_token, updated_at, updated_by from cdn_setting`);
-      const z = fromServer ?? (row ? { zoneId: row.zone_id, token: row.api_token } : null);
+      const z = fromServer ?? (row ? { zoneId: row.zone_id, token: tokenOf(row.api_token) ?? '' } : null);
       const publishes = await all<CdnState['publishes'][number]>(db, `select e.key as environment, q.revision::int as revision,
           q.published_at as "publishedAt", q.purged_at as "purgedAt", q.last_error as error
         from publish_queue q join environment e on e.id = q.environment_id order by q.id desc limit 10`);
       return {
         source: fromServer ? 'server' : row ? 'console' : null,
         zoneId: z?.zoneId ?? null,
-        tokenEnd: z ? z.token.slice(-4) : null,
+        tokenEnd: z?.token ? z.token.slice(-4) : null,
         updatedAt: row?.updated_at ?? null,
         updatedBy: row?.updated_by ?? null,
         reachable: !!o.fetch,
@@ -95,9 +108,10 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
       const zoneId = typeof input.zoneId === 'string' ? input.zoneId.trim().toLowerCase() : '';
       if (!ZONE_ID.test(zoneId)) throw new HttpError(422, 'The zone ID is 32 letters and digits (0–9, a–f): copy it from the domain’s Overview page in Cloudflare, under API.');
       let token = typeof input.token === 'string' ? input.token.trim() : '';
-      const saved = await one<{ zone_id: string; api_token: string }>(db, `select zone_id, api_token from cdn_setting`);
+      const row = await one<{ zone_id: string; api_token: string }>(db, `select zone_id, api_token from cdn_setting`);
+      const saved = row ? { zone_id: row.zone_id, api_token: tokenOf(row.api_token) ?? '' } : undefined;
       if (!token) {
-        if (!saved) throw new HttpError(422, 'Add the API token: Cloudflare → My Profile → API Tokens → Create Token, with “Zone → Cache Purge → Purge” on this zone.');
+        if (!saved?.api_token) throw new HttpError(422, 'Add the API token: Cloudflare → My Profile → API Tokens → Create Token, with “Zone → Cache Purge → Purge” on this zone.');
         token = saved.api_token;
       }
       if (token.length < 20 || token.length > 200 || /\s/.test(token)) throw new HttpError(422, 'That doesn’t look like a Cloudflare API token: copy it again from Cloudflare.');
@@ -105,7 +119,7 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
       await db.transaction(async (tx) => {
         await tx.query(`insert into cdn_setting (id, zone_id, api_token, updated_at, updated_by) values (true, $1, $2, now(), $3)
           on conflict (id) do update set zone_id = excluded.zone_id, api_token = excluded.api_token, updated_at = now(), updated_by = excluded.updated_by`,
-          [zoneId, token, actor.name]);
+          [zoneId, box.seal(token), actor.name]);
         // History names the zone and the token's last 4 characters, never the token
         await journal.audit(tx, actor, { kind: 'cdn.update', before: saved ? { zoneId: saved.zone_id, tokenEnd: saved.api_token.slice(-4) } : null,
           after: { zoneId, tokenEnd: token.slice(-4) } });

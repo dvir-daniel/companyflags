@@ -1,5 +1,6 @@
 ---
 title: "Compared with others"
+description: "Where CompanyFlags sits among feature-flag tools: who decides the answer, and what it knows about how your product is organized."
 ---
 
 Feature-flag tools mostly differ in two things: **who decides the answer** (a server per request, the SDK with the

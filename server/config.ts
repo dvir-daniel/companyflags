@@ -24,6 +24,18 @@ export type Config = {
     url?: string;
     /** Where embedded Postgres keeps its files (FF_DATA_DIR; default ./data). */
     dataDir?: string;
+    /** Whether the server applies the migrations when it starts (default true). false (FF_MIGRATE=off, or
+     *  `companyflags start --no-migrate`): it only checks that the schema has them, and `companyflags migrate` applies
+     *  them, e.g. with a database role that may change the schema, before a rolling upgrade. */
+    migrate?: boolean;
+    /** At most this many connections to the Postgres server (FF_DB_POOL; default 10). */
+    pool?: number;
+  };
+  /** How long the server keeps what it no longer needs. History is kept forever: it's the record of every change. */
+  retention?: {
+    /** Days the publish log is kept: each publish and its CDN purge (Settings → CDN shows the newest). Default 30
+     *  (FF_PUBLISH_LOG_DAYS); each environment's newest publish is always kept. */
+    publishLogDays?: number;
   };
   server?: {
     /** PORT (default 8787) and HOST (default 0.0.0.0). */

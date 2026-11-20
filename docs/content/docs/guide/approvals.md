@@ -1,5 +1,6 @@
 ---
 title: "Approvals and history"
+description: "Roles, reviewed changes in protected environments, the emergency path for on call, and the history that undoes them."
 ---
 
 Every change in CompanyFlags is recorded, and in a protected environment it is reviewed before it applies. This page
@@ -28,6 +29,11 @@ In **Settings → Environments**, **Approvals needed** is a number from 0 to 5. 
 protected: a change there becomes a **request** (a change set) and applies only after that many approvals, none of them
 by its author. With 0, changes apply at once.
 
+Nobody approves their own request, so a request needs that many reviewers besides its author. The drawer warns when the
+people there are can't meet the number: with one admin and 1 approval, the admin's own requests could never go out.
+Give a second person a role that reviews first. Lowering an environment's approvals asks you to confirm, and History
+records it.
+
 In a protected environment, also:
 
 - putting a flag in a service, or taking it out, is a request too;
@@ -53,6 +59,7 @@ approve.
 
 - You can't approve or reject your own request.
 - One rejection ends a request. Its author sends a new one.
+- A reviewer can still reject a request once it is approved or scheduled, until it applies. That needs a reason.
 - An approval is recorded against the request's exact content (a hash of its items, with the value of every variant
   they use). A request's content can't be edited: to change it, the author withdraws it and sends a new one.
 
@@ -77,54 +84,96 @@ Once a request has its approvals:
 
 - anyone who can change flags may **Apply now**;
 - its author or a reviewer may **schedule** it for a time. It applies on its own then, with every check run again, so a
-  change made in between ends it as a conflict instead of overwriting;
+  change made in between ends it as a conflict instead of overwriting. The field shows your time zone, and a time that
+  has passed is refused. Scheduling asks you to confirm, like **Apply now**;
+- its author or any reviewer may **unschedule** it, with a reason. It goes back to approved;
 - its author may **withdraw** it while it is in review, approved or scheduled.
+
+While a request waits to change a flag, the flag's page says so: saving a change to the flag first makes the request
+end as a conflict.
+
+If a scheduled request can't apply when its time comes, it ends as a conflict (or a failure), and History records why.
+So do a withdrawal and an unschedule. All three go out on the **reviews** webhook too.
+
+When a change moves a % rule, the review says how many % points of devices get another value. A change whose author
+confirmed that it reassigns which devices are inside the % says so in red.
 
 ## Break-glass
 
 Some changes can't wait for a review. In a protected environment, **on call and admins** may apply one change at once,
-with a stated reason, in two cases only:
+with a stated reason, in these cases only:
 
-1. **Turning a kill switch or ops flag off.** The flag's defaults switch off and nothing else changes. Turning a flag on,
-   or any other edit, is a request. A release turned off is a request too.
-2. **Rolling a version release back**, either every device back on the version everyone else is on (the % kept for
-   resume), or everyone on an older version this environment served while the flag was on. See
+1. **Turning any flag off** (stop sending). The flag's defaults switch off and nothing else changes. That includes a
+   release mid-rollout, the most common thing to go wrong. Off sends no value: each app uses the default in its own
+   code, which CompanyFlags can't see.
+2. **Serving a kill switch's or ops flag's safe value.** Every device gets that value: the rules for everyone are
+   switched off and kept, and the default becomes the safe value. Entities' own settings on the flag get the same, so
+   nobody is left out. The answer is an ordinary value (`DEFAULT` or `STATIC`), not `DISABLED`.
+3. **Pausing a release**: its own rules are switched off, so everyone is back on the old value, and the % is kept for
+   **Resume** (a request).
+4. **Rolling a version release back** to an older version this environment served while the flag was on. See
    [Releases → Rollbacks](/guide/releases#rollbacks).
 
-Break-glass works on the flag's defaults only, never on an entity's own settings. The reason is required and is saved
-with the change. History and the Versions list mark it as an **emergency**. Sending a request for review instead is
-always possible.
+Turning a flag on, widening a %, or any other edit is a request. Break-glass changes the defaults only (the safe value
+aside), never one entity's own settings. The reason is required and is saved with the change. History and the Versions
+list mark it as an **emergency**. Sending a request for review instead is always possible.
 
-A kill switch such as `payments_enabled`: on call can turn payments off in Production without waiting.
+### The safe value
+
+A kill switch or ops flag can name a **safe value** in its **Settings**: one of its variants. The emergency dialog then
+offers both ways off, and says what each does:
+
+- **Serve the safe value**: every device gets it. Use this when you know which value is safe.
+- **Stop sending**: no value is sent, and each app falls back to the default in its own code. Use this when each app's
+  code default is the safe one.
+
+Without a safe value, only **Stop sending** is offered. Break-glass serves the safe value without a review, so while
+any environment is protected, only admins name or change it. Changing a flag's purpose to one without a safe value
+drops it.
+
+A kill switch such as `payments_enabled` with the safe value `off`: on call serves `false` to every app in Production
+without waiting, even an app whose code default is `true`.
 
 ## History
 
 **History** lists every change, newest first: who made it, when, what kind it was, the flag and entity, the values before
 and after, the comment, and the request it came from. It covers flags, entities, services, environments, dimensions,
-API keys, people, single sign-on and the CDN, and requests made, reviewed and scheduled.
+API keys, people, single sign-on and the CDN, and requests made, reviewed, scheduled, unscheduled, withdrawn, and
+refused when they were applied.
 
 - **Append-only.** The database refuses to update, delete or truncate history entries.
 - **Filters**: flag, entity, environment, version, person, kind of change and time. **Export CSV** and **Export JSON**
   give every entry the filters match.
 - People whose access was removed stay named in it.
 
-## Versions and restore
+## Revisions and restore
 
-Every change that alters what an environment serves makes a new numbered **version** of it. A change that serves
+Every change that alters what an environment serves makes a new numbered **revision** of it (the `revision` in every
+answer's metadata). "Version" is kept for the versions of apps and of version releases. A change that serves
 nothing (a request made, a review, a new API key) is history only.
 
-The Flags page's **Versions** tab lists an environment's versions: when, by whom, the note, the request, and every
-change in each. **Roll back to this version** puts every flag setting changed since then back to how it was.
+The Flags page's **Revisions** tab lists an environment's revisions: when, by whom, the note, the request, and every
+change in each. **Roll back to this revision** puts every flag setting changed since then back to how it was.
 
 - **Restore undoes flag settings only**: rules, defaults, the On/Off switch and each entity's own settings. Later
   changes of other kinds stay as they are and are marked "not rolled back by restore": an entity moved or renamed, a
   replaced app link, which services a flag is in, variants, a flag's details. Entity changes apply to every environment
   at once, so restoring one environment can't undo them cleanly. Before you confirm, the dialog lists what it leaves
   alone.
-- Archived flags and entities are left alone, and so are the defaults of flags created after that version.
-- The restore is itself a change: it applies as a new version where no review is needed, or becomes a request with the
-  reason "Roll back to version N". So rolling back can be undone too.
+- Archived flags and entities are left alone, and so are the defaults of flags created after that revision.
+- The restore is itself a change: it applies as a new revision where no review is needed, or becomes a request with the
+  reason "Roll back to revision N". So rolling back can be undone too.
 - If every flag setting is already as it was, there is nothing to roll back, and it says so.
+
+## Archive and restore
+
+**Archive** takes a flag out of every service in every environment: apps fall back to the default in their code. In a
+protected environment, the flag must be off and in no service there first.
+
+An archived flag's page says it is archived and offers **Restore flag**. The same flag comes back, with its key, its
+settings, variants and services in every environment as they were. Nothing else can take its key meanwhile. One
+exception: in an environment that needs approval now, it comes back off and in no service. Turning it on there is a
+request. History records the restore in every environment.
 
 ## Compare
 

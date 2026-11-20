@@ -41,7 +41,7 @@ test('fast path gives the same answer as the explained path for every flag, app,
 });
 
 test('backend download (flagd JSON): gzipped, 304 when its flags are unchanged, rebuilt when they change', async () => {
-  const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+  const key = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
   const get = (extra: Record<string, string> = {}) => t.app.request('/sdk/v1/flagd/company/acme', { headers: { authorization: `Bearer ${key}`, 'accept-encoding': 'gzip', ...extra } });
   const r = await get();
   assert.equal(r.status, 200);
@@ -58,7 +58,7 @@ test('backend download (flagd JSON): gzipped, 304 when its flags are unchanged, 
 
   // sending one more flag to this backend changes them
   const projects = [...t.plane.get('dev').flags.new_checkout.delivery, 'server-ds'];
-  assert.equal((await t.as('dana').put('/flags/new_checkout/delivery', { environment: 'dev', projects })).status, 200);
+  assert.equal((await t.as('dana').put('/flags/new_checkout/delivery', { environment: 'dev', services: projects })).status, 200);
   await t.settle();
   const changed = await get({ 'if-none-match': etag });
   assert.equal(changed.status, 200);

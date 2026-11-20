@@ -5,7 +5,7 @@
 services:
   companyflags:
     # the release to run: COMPANYFLAGS_VERSION in .env, or the latest at the time of writing
-    image: ghcr.io/dvir-daniel/companyflags:${COMPANYFLAGS_VERSION:-0.8}
+    image: ghcr.io/dvir-daniel/companyflags:${COMPANYFLAGS_VERSION:-0.9}
     ports:
       - "127.0.0.1:8787:8787"
     environment:

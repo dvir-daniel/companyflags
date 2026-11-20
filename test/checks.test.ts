@@ -63,7 +63,8 @@ test('a flag’s kind decides whether it needs a remove-by date and whether on-c
   assert.equal(needsRemoveBy('release', { valueType: 'string', variants: [{ key: 'a', value: '1.0' }] }), true);
   assert.equal(needsRemoveBy('release', { ...versions, valueType: 'json' }), true);
   assert.equal(needsRemoveBy('experiment', versions), true);
-  assert.deepEqual([canBreakGlass('kill_switch', 'oncall'), canBreakGlass('kill_switch', 'editor'), canBreakGlass('config', 'admin')], [true, false, false]);
+  // break-glass turns any kind of flag off: who may is the role alone
+  assert.deepEqual([canBreakGlass('oncall'), canBreakGlass('editor'), canBreakGlass('admin')], [true, false, true]);
 });
 
 test('% of devices: every rule is saved with hash version 2 (flagd’s); no other is taken', () => {

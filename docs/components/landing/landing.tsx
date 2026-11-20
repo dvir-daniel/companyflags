@@ -11,18 +11,17 @@ const repo = 'https://github.com/dvir-daniel/companyflags';
 
 const install = {
   Docker: [
-    'docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \\',
-    '  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \\',
-    '  -e BETTER_AUTH_URL=http://localhost:8787 \\',
-    '  ghcr.io/dvir-daniel/companyflags',
+    'echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env',
+    'docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \\',
+    '  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags',
   ],
-  Compose: [
+  'Docker Compose': [
     'curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml',
     'echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env',
     'echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env',
     'docker compose up -d',
   ],
-  Source: [
+  'From source': [
     'git clone https://github.com/dvir-daniel/companyflags.git',
     'cd companyflags && corepack enable && pnpm install',
     'pnpm serve',
@@ -31,8 +30,11 @@ const install = {
 type InstallTab = keyof typeof install;
 const installTabs = Object.keys(install) as InstallTab[];
 
+// one tab per way of reading, named as the docs' pages are ("Remote evaluation in apps": "Remote · apps")
 const usage = {
-  'App · remote': {
+  'Remote · apps': {
+    page: '/reading/remote-apps',
+    title: 'Remote evaluation in apps',
     file: 'flags.ts',
     lines: [
       "import { OpenFeature } from '@openfeature/web-sdk'",
@@ -50,7 +52,9 @@ const usage = {
       "OpenFeature.getClient().getBooleanValue('new_checkout', false)",
     ],
   },
-  'Backend · remote': {
+  'Remote · backends': {
+    page: '/reading/remote-backends',
+    title: 'Remote evaluation in backends',
     file: 'server.ts',
     lines: [
       "import { OpenFeature } from '@openfeature/server-sdk'",
@@ -67,7 +71,9 @@ const usage = {
       ')',
     ],
   },
-  'App · local': {
+  'Local · apps': {
+    page: '/reading/local-apps',
+    title: 'Local evaluation in apps',
     file: 'flags.ts',
     lines: [
       "import { FlagdCore } from '@openfeature/flagd-core'",
@@ -83,7 +89,9 @@ const usage = {
       '}).value',
     ],
   },
-  'Backend · local': {
+  'Local · backends': {
+    page: '/reading/local-backends',
+    title: 'Local evaluation in backends',
     file: 'terminal',
     lines: [
       '# flagd downloads one entity’s rules and answers in memory',
@@ -95,22 +103,24 @@ const usage = {
       '}]\'',
     ],
   },
-} satisfies Record<string, { file: string; lines: string[] }>;
+} satisfies Record<string, { page: string; title: string; file: string; lines: string[] }>;
 type UsageTab = keyof typeof usage;
 const usageTabs = Object.keys(usage) as UsageTab[];
 
-// The live answer under the mark: what the server answers for one flag and one context, one after another
+// The live answer under the mark: what the server answers for one flag and one context, one after another, with
+// OFREP's own reason words (the server's own explanation goes in the answer's metadata)
 const answers: { flag: string; ctx: string; value: string; why: string }[] = [
-  { flag: 'new_checkout', ctx: 'acme · ios 6.2', value: 'true', why: 'RULE · 25%' },
-  { flag: 'max_upload_mb', ctx: 'globex', value: '500', why: 'OWN SETTING' },
-  { flag: 'ai_model', ctx: 'lumen · web', value: '"fast-v2"', why: 'SPLIT · B' },
-  { flag: 'dark_mode', ctx: 'bolt · android', value: 'false', why: 'OVERRIDE' },
+  { flag: 'new_checkout', ctx: 'acme · ios 6.2', value: 'true', why: 'SPLIT' },
+  { flag: 'max_upload_mb', ctx: 'globex', value: '500', why: 'TARGETING_MATCH' },
+  { flag: 'ai_model', ctx: 'lumen · web', value: '"fast-v2"', why: 'SPLIT' },
+  { flag: 'dark_mode', ctx: 'bolt · android', value: 'false', why: 'STATIC' },
 ];
 
-// the flags that run through the mark's bars, and the languages OpenFeature reads them in
+// the flags that run through the mark's bars, and the platforms the docs give a way to read them in: OpenFeature's
+// OFREP providers (web, React, Node.js, Go, Java, Python, .NET, Kotlin, Swift) and its flagd providers (Rust too)
 const keys = ['new_checkout', 'max_upload_mb', 'ai_model', 'dark_mode', 'search_v2', 'kill_payments', 'onboarding_steps', 'prompt_config', 'rate_limit', 'beta_banner'];
 const rows = [keys, [...keys].reverse(), keys.slice(3).concat(keys.slice(0, 3))];
-const languages = ['Web', 'React', 'Angular', 'Node.js', 'Go', 'Java', 'Python', '.NET', 'PHP', 'Ruby', 'Rust', 'Kotlin', 'Swift', 'Android', 'iOS', 'flagd'];
+const languages = ['Web', 'React', 'Node.js', 'Go', 'Java', 'Python', '.NET', 'Rust', 'Kotlin', 'Swift', 'flagd'];
 
 const features: { title: string; text: string; chips: string[] }[] = [
   { title: 'Your own dimensions.', text: 'Serve config per region › store, per team, per customer, or whatever your product is made of. Up to four levels, in your words.', chips: ['region › store', 'team', 'customer'] },
@@ -146,7 +156,7 @@ function measure(row: HTMLElement | null): Bar | undefined {
 
 export function Landing() {
   const [installTab, setInstallTab] = useState<InstallTab>('Docker');
-  const [usageTab, setUsageTab] = useState<UsageTab>('App · remote');
+  const [usageTab, setUsageTab] = useState<UsageTab>('Remote · apps');
   const usageNow = usage[usageTab];
   const installLines: string[] = install[installTab];
 
@@ -215,14 +225,14 @@ export function Landing() {
               </div>
             ))}
             <div className="answer">
-              <p className="ask"><span className="p">GET</span> /ofrep/v1/evaluate/flags/<b>{answer.flag.slice(0, typed)}</b><i className="caret" /></p>
+              <p className="ask"><span className="p">POST</span> /ofrep/v1/evaluate/flags/<b>{answer.flag.slice(0, typed)}</b><i className="caret" /></p>
               <p key={at} className={swapped.answer ? 'got swap' : 'got'}><span className="ctx">{answer.ctx}</span><span className="val">{answer.value}</span><span className="why">{answer.why}</span></p>
             </div>
           </div>
         </div>
         <div className="hero-body">
           <Link className="pill in-1" href="/guide/introduction"><span className="tri">▲</span> Open source <b>| MIT licensed, self-hosted</b> <span>→</span></Link>
-          <h1 className="in-2">The most comprehensive feature flag framework</h1>
+          <h1 className="in-2">Feature flags you run yourself, read with OpenFeature</h1>
           <div className="actions in-3">
             <Link className="btn primary" href="/guide/quickstart"><span>Get Started</span></Link>
             <a className="btn ghost" href={repo}>GitHub<i className="corner tl" /><i className="corner br" /></a>
@@ -231,19 +241,19 @@ export function Landing() {
         <footer className="hero-foot">
           <Link href="/guide/introduction">Docs</Link><span>/</span>
           <a href={`${repo}/blob/main/CHANGELOG.md`}>Changelog</a><span>/</span>
-          <a href={`${repo}/blob/main/SECURITY.md`}>Security</a>
+          <Link href="/guide/security">Security</Link>
           <HeroIcons repo={repo} />
         </footer>
       </aside>
 
       <main className="body">
         <section>
-          <h2 className="label"><span>README</span></h2>
+          <h2 className="label"><span>Overview</span></h2>
           <p className="lead">
-            Everything feature flags need in <b>one server</b>: rules and releases, reviewed changes and history, settings
-            per any dimension you define, read with <b>OpenFeature</b>, and run on <b>your own servers</b>. Move over from the
-            system you have now <b>one flag at a time</b>. Made for code written with AI: ship it <b>behind a flag</b>, to a
-            few first, and change models and prompts without a deploy.
+            CompanyFlags is <b>one server</b> for feature flags and remote config, on <b>your own servers</b>. It has rules,
+            releases, reviewed changes and history, with settings per any dimension you define. Apps and backends read it
+            with <b>OpenFeature</b>. Move over from the system you have now <b>one flag at a time</b>. Ship code written with
+            AI <b>behind a flag</b>, to a few people first.
           </p>
           <div className="code">
             <div ref={installRow} className="tabs" role="tablist">
@@ -262,7 +272,7 @@ export function Landing() {
               </button>
             </div>
           </div>
-          <div className="marquee" aria-label="OpenFeature reads the flags in">
+          <div className="marquee" aria-label="Read with OpenFeature in">
             <span className="mq-label">Works with OpenFeature</span>
             <div className="mq-window"><div className="mq-track">{[...languages, ...languages].map((l, i) => <span key={i} aria-hidden={i >= languages.length || undefined}>{l}</span>)}</div></div>
           </div>
@@ -300,10 +310,7 @@ export function Landing() {
               ))}</code></pre>
             </div>
             <div className="side">
-              <Link href="/reading/remote-apps" className={usageTab === 'App · remote' ? 'on' : undefined}>Apps: OFREP</Link>
-              <Link href="/reading/local-apps" className={usageTab === 'App · local' ? 'on' : undefined}>Apps: CDN file</Link>
-              <Link href="/reading/remote-backends" className={usageTab === 'Backend · remote' ? 'on' : undefined}>Backends: OFREP</Link>
-              <Link href="/reading/local-backends" className={usageTab === 'Backend · local' ? 'on' : undefined}>Backends: flagd</Link>
+              {usageTabs.map((t) => <Link key={t} href={usage[t].page} className={usageTab === t ? 'on' : undefined}>{usage[t].title}</Link>)}
               <p>Two OpenFeature standards, no SDK of ours: OFREP when the server decides, flagd JSON when your code does. An app reads values with a public key or link; a backend keeps its key secret.</p>
             </div>
           </div>

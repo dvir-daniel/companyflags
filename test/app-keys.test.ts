@@ -11,7 +11,7 @@ before(async () => { t = await boot(); });
 after(async () => { await t.stop(); });
 
 const keyFor = async (service: string) => {
-  const r = await t.as('dana').post('/api-keys', { environment: 'dev', project: service, scope: 'all' });
+  const r = await t.as('dana').post('/api-keys', { environment: 'dev', service, scope: 'all' });
   assert.equal(r.status, 201, JSON.stringify(r.json));
   return r.json.key as string;
 };

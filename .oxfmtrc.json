@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 160,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": true,
+  "jsxSingleQuote": true,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "ignorePatterns": [
+    "web/dist/**",
+    "packages/*/dist/**",
+    "docs/.next/**",
+    "docs/.source/**",
+    "docs/out/**",
+    "pnpm-lock.yaml",
+    "server/schema.sql",
+    "server/migrations/**"
+  ]
+}

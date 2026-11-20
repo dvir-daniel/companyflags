@@ -1,5 +1,6 @@
 ---
 title: "Webhooks"
+description: "Post each change to Slack, CI or another system, and import another system's values as they change."
 ---
 
 Webhooks go both ways. **Out**: after each change, CompanyFlags posts what changed to an address: Slack, CI, or the
@@ -15,9 +16,10 @@ History, which names only an address's host.
 
 **+ Add webhook out** opens **New webhook out**: a name, the address, and:
 
-- **Sends**: *changes* (what an environment serves: rules, defaults, entities' settings, which services a flag is in) and/or
-  *reviews* (a request made, approved, rejected or scheduled).
-- **Environments**: every one, or some.
+- **Sends**: *changes* (what an environment serves: rules, defaults, entities' settings, which services a flag is in),
+  *reviews* (a request made, approved, rejected or scheduled), and/or *security events* (see
+  [Security events](#security-events)).
+- **Environments**: every one, or some. Security events are sent whatever the environments.
 - **Format**: signed JSON, a Slack message, or your own JSON made with JSONata.
 - **Method** (POST, PUT or PATCH) and one **header**, such as the other system's `Authorization`.
 
@@ -67,7 +69,7 @@ For a system on your own network, allow its origin: `FF_WEBHOOK_ALLOWED_ORIGINS=
 }
 ```
 
-- `type`: `changes`, `reviews`, or `ping` (the test).
+- `type`: `changes`, `reviews`, `security`, or `ping` (the test).
 - `changes[]`: each history entry of the save, with its `kind` (as in History's export), in words (`text`), and its
   `before` and `after`.
 - `values`: for `changes`, what the flags it changed are set to **now**, per environment, as
@@ -79,9 +81,39 @@ fixed values whatever your dimensions are called (the names are older than dimen
 
 | `inherit` | The console says |
 |---|---|
-| `base_rules_then_base_default` | Rules only |
-| `base_rules_then_customer_default` | Rules + own default |
-| `customer_only` | Own settings only |
+| `base_rules_then_base_default` | Follow what's above |
+| `base_rules_then_customer_default` | Own default last |
+| `customer_only` | Skip what's above |
+
+### Security events
+
+For a SIEM (Splunk, Datadog, Elastic, Sentinel…): tick **Security events**, and the webhook gets one message of type
+`security` for each of these, as History has it:
+
+| `kind` | What happened |
+|---|---|
+| `sign_in` | Someone signed in. `after.with`: `password`, `two-factor`, `recovery code`, `sso` (with `connection`) or `provider` |
+| `sign_in.failed` | A sign-in didn't go through. `after.why`: the reason, e.g. `INVALID_EMAIL_OR_PASSWORD`, `INVALID_CODE`, `sso_required`, `invite_required` |
+| `sign_in.rules` | An admin changed the sign-in rules (break-glass admin, two-factor for admins, join role) |
+| `person.add`, `person.role`, `person.invite`, `person.password_reset`, `person.remove` | People and their roles. A role from the identity provider's groups is `by.key` `sso:<connection id>` |
+| `token.create`, `token.revoke` | Access tokens |
+| `api_key.create`, `api_key.revoke` | API keys |
+| `sso.add`, `sso.update`, `sso.remove` | Single sign-on connections (never their secrets) |
+
+```json
+{
+  "type": "security",
+  "timestamp": "2026-11-19T08:14:02.000Z",
+  "data": {
+    "by": { "key": "ada@acme.com", "name": "Ada", "type": "user" },
+    "changes": [{ "id": 5120, "kind": "sign_in", "text": "ada@acme.com signed in with single sign-on (okta)",
+      "environment": null, "after": { "person": "ada@acme.com", "with": "sso", "connection": "okta" }, … }]
+  }
+}
+```
+
+A failed sign-in's `by.type` is `system`, and `by.key` is the email that was typed. Most SIEMs take signed JSON at an
+HTTP collector; use the header for its token, or JSONata to reshape the message.
 
 ### Signatures
 

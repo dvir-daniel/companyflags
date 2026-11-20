@@ -41,7 +41,7 @@ test('only the listed plugins run: the others’ addresses are a JSON 404, and l
     assert.equal(hook.status, 404, 'a webhook in’s address is a JSON 404 too');
     assert.match(hook.json.error, /^no such endpoint/);
     // OFREP still answers: an app token from the link endpoint, which has no file path now
-    const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+    const key = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
     const link = await t.call('GET', '/sdk/v1/links/company/acme?service=web', undefined, { authorization: `Bearer ${key}` });
     assert.equal(link.status, 200, JSON.stringify(link.json));
     assert.equal(link.json.path, undefined, 'no CDN files: no path');
@@ -77,12 +77,12 @@ test('a plugin of one’s own: its routes, its console routes behind the sign-in
     assert.equal(typeof (await t.call('GET', '/audit-feed/v1/revisions')).json.dev, 'number');
     assert.match((await t.call('GET', '/audit-feed/nothing')).json.error, /^no such endpoint/, 'its prefix is JSON, not the console page');
     const refused = await t.call('POST', '/audit-feed/v1/check', {});
-    assert.deepEqual([refused.status, refused.json], [422, { error: 'That isn’t a revision.' }], 'an HttpError, not a 500');
+    assert.deepEqual([refused.status, refused.json], [422, { error: 'That isn’t a revision.', code: 'invalid' }], 'an HttpError, not a 500');
     assert.equal((await t.as('dana').get('/audit-feed')).json.for, 'dana');
     assert.equal((await t.as('alice').get('/audit-feed')).status, 403, 'adminOnly: alice is an editor');
     assert.equal((await t.call('GET', '/api/audit-feed')).status, 401, 'signed in, as the console’s routes');
     // a change publishes dev, and the plugin hears of it
-    assert.equal((await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', projects: ['android', 'ios'] })).status, 200);
+    assert.equal((await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', services: ['android', 'ios'] })).status, 200);
     await t.settle();
     assert.ok(published.includes('dev'), JSON.stringify(published));
     await new Promise((r) => setTimeout(r, 30));
@@ -118,7 +118,7 @@ test('a plugin that reads flags asks the one evaluator, and gets what OFREP give
   const reader = definePlugin({ id: 'reader', setup: (ctx) => { ask = ctx.evaluate; return {}; } });
   const t = await boot({ plugins: [ofrep(), reader] });
   try {
-    const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+    const key = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
     const { token } = (await t.call('GET', '/sdk/v1/links/company/acme?service=web', undefined, { authorization: `Bearer ${key}` })).json;
     const app = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { targetingKey: 'd-1', device: { platform: 'web' } } }, { authorization: `Bearer ${token}` });
     assert.equal(app.status, 200, JSON.stringify(app.json));
@@ -137,7 +137,7 @@ test('a plugin that reads flags asks the one evaluator, and gets what OFREP give
 test('a plugin never takes the core’s addresses: its prefixes are checked at the start, and the core’s console routes answer first', async () => {
   const claiming = (prefix: string) => definePlugin({ id: 'claiming', setup: () => ({ prefixes: [prefix] }) });
   const refused: [string, RegExp][] = [
-    ['audit', /starts with \//], ['/api', /taken by the core \(\/api\)/], ['/sdk/v2', /taken by the core \(\/sdk\)/], ['/ofrep/v2', /taken by the plugin "ofrep"/],
+    ['audit', /starts with \//], ['/api', /taken by the core \(\/api\)/], ['/sdk/v1/links', /taken by the core \(\/sdk\/v1\/links\)/], ['/oauth', /taken by the core \(\/oauth\)/], ['/ofrep/v2', /taken by the plugin "ofrep"/],
   ];
   for (const [prefix, why] of refused) {
     await assert.rejects(boot({ plugins: [ofrep(), claiming(prefix)] }), (e: Error) => e instanceof PluginError && why.test(e.message), prefix);
@@ -148,7 +148,7 @@ test('a plugin never takes the core’s addresses: its prefixes are checked at t
   });
   const t = await boot({ plugins: [shadow] });
   try {
-    const r = await t.as('alice').post('/trace', { environment: 'dev', project: 'android', entity: null, attrs: {}, flag: 'android_quick_share' });
+    const r = await t.as('alice').post('/trace', { environment: 'dev', service: 'android', entity: null, attrs: {}, flag: 'android_quick_share' });
     assert.equal(r.status, 200, JSON.stringify(r.json));
     assert.deepEqual([r.json.shadow, r.json.result?.key], [undefined, 'android_quick_share'], 'the core’s trace answered');
   } finally { await t.stop(); }

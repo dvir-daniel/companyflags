@@ -5,9 +5,9 @@
 //                                        holding every entry, and one publish in the outbox
 //   changeEverywhere(tx, actor, entry)   changes what every environment serves (an entity, a flag's details or
 //                                        variants): the same, once per environment
-//   audit(q, actor, entry)               changes nothing that is served (a change set made, reviewed or scheduled,
-//                                        people, single sign-on, API keys, an unused app, an environment's name): history
-//                                        only, no version
+//   audit(q, actor, entry)               changes nothing that is served (a change set made, reviewed, scheduled,
+//                                        withdrawn or refused when applied; people, single sign-on, API keys, an
+//                                        unused app, an environment's name): history only, no version
 //
 // What a committed change asks of the app's memory (wake the publisher, forget cached app links or API keys, build a
 // new environment's snapshot) is the journal's too. journaled(db, effects) is the app's database: a transaction on it
@@ -65,6 +65,13 @@ const entityChanged = (e: Said, n: (k: string) => string) => {
   return `Changed ${who}`;
 };
 const linkReplaced = (e: Said, n: (k: string) => string) => `Replaced the app link of ${n(e.entity ?? '')}`;
+// how someone signed in (access.ts SignInWay): "a password", "single sign-on (okta)"
+const wayOf = (after: unknown) => {
+  const w = (after ?? {}) as { with?: string; connection?: string; provider?: string };
+  return w.with === 'sso' ? `single sign-on${w.connection ? ` (${w.connection})` : ''}`
+    : w.with === 'provider' ? (w.provider ?? 'a provider') : w.with === 'two-factor' ? 'a password and an authenticator code'
+    : w.with === 'recovery code' ? 'a password and a recovery code' : 'a password';
+};
 
 export const KINDS = {
   // flag settings (layers.ts applyItems): the only kinds a restore undoes
@@ -83,6 +90,8 @@ export const KINDS = {
   // in every environment: a restore of one environment can't undo these cleanly
   'flag.update': { serves: 'everywhere', restore: false, says: (e) => `Changed the details of ${e.flag}` },
   'flag.archive': { serves: 'everywhere', restore: false, says: (e) => `Archived ${e.flag}` },
+  // the same flag back from the archive, as it was (control.ts unarchiveFlag)
+  'flag.unarchive': { serves: 'everywhere', restore: false, says: (e) => `Restored ${e.flag} from the archive` },
   'variations.update': { serves: 'everywhere', restore: false, says: (e) => {
     // a version release's new version (control.ts addVersion): "Added version 1.0.1 to web_bundle"
     const added = (e.after as { key: string; value: unknown }[] | null ?? []).filter((v) => !(e.before as { key: string }[] | null ?? []).some((b) => b.key === v.key));
@@ -105,10 +114,17 @@ export const KINDS = {
   'app.update': { serves: null, restore: false, then: ['forgetClientApps'] },
   'app.delete': { serves: null, restore: false, then: ['forgetClientApps'] },
   'change_set.create': { serves: null, restore: false },
+  // a flags push (flagsAsCode.ts): its reason and link, and its steps (each is a change or a request of its own)
+  'flags.push': { serves: null, restore: false },
   // set to go live later: nothing is served until it applies (a version of its own then)
   'change_set.schedule': { serves: null, restore: false },
   'change_set.approve': { serves: null, restore: false },
   'change_set.reject': { serves: null, restore: false },
+  // the end of a request that never applied: withdrawn by its author, stopped before its time (back to approved), or
+  // refused when it was applied (a conflict or a failure; `comment` says why)
+  'change_set.withdraw': { serves: null, restore: false },
+  'change_set.unschedule': { serves: null, restore: false },
+  'change_set.apply_failed': { serves: null, restore: false },
   'person.add': { serves: null, restore: false },
   'person.role': { serves: null, restore: false },
   'person.invite': { serves: null, restore: false },
@@ -117,6 +133,10 @@ export const KINDS = {
   'sso.add': { serves: null, restore: false },
   'sso.update': { serves: null, restore: false },
   'sso.remove': { serves: null, restore: false },
+  // signing in (access.ts): each sign-in, each one that didn't go through, and the organization's sign-in rules
+  'sign_in': { serves: null, restore: false, says: (e) => `${(e.after as { person?: string } | null)?.person ?? 'Someone'} signed in with ${wayOf(e.after)}` },
+  'sign_in.failed': { serves: null, restore: false, says: (e) => `A sign-in as ${(e.after as { person?: string } | null)?.person ?? 'someone'} with ${wayOf(e.after)} didn’t go through` },
+  'sign_in.rules': { serves: null, restore: false, says: () => 'Changed the sign-in rules' },
   // the CDN purge (cdn.ts): set up, removed, or run by hand
   'cdn.update': { serves: null, restore: false },
   'cdn.remove': { serves: null, restore: false },

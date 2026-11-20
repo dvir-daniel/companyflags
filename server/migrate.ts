@@ -59,6 +59,26 @@ export async function migrate(db: Db, migrations = readMigrations()): Promise<{ 
   }
 }
 
+/** For a server that doesn't migrate (--no-migrate, FF_MIGRATE=off): the schema must already have every migration
+ *  this version has, unchanged. Migrations from a newer version are allowed, so an instance of the version before keeps
+ *  running (and restarting) during a rolling upgrade: each release's migrations work with the version before it
+ *  (docs/self-hosting/upgrading.md). They come back in `newer`, for a warning. */
+export async function checkSchema(db: Db, migrations = readMigrations()): Promise<{ newer: string[] }> {
+  const table = await db.query<{ t: string | null }>(`select to_regclass('schema_migration')::text as t`);
+  if (!table.rows[0]?.t) throw new MigrationError('the database has no schema yet: run companyflags migrate first (or start without --no-migrate)');
+  const done = new Map((await db.query<{ name: string; checksum: string }>(`select name, checksum from schema_migration`)).rows.map((r) => [r.name, r.checksum]));
+  const pending = migrations.filter((m) => !done.has(m.name)).map((m) => m.name);
+  if (pending.length) throw new MigrationError(`the database is missing migrations (${pending.join(', ')}): run companyflags migrate first`);
+  for (const m of migrations) {
+    if (done.get(m.name) !== m.checksum) throw new MigrationError(`migration ${m.name} was changed after it was applied: put the change in a new migration file instead`);
+  }
+  const last = migrations.at(-1)?.name ?? '';
+  const unknown = [...done.keys()].filter((n) => !migrations.some((m) => m.name === n)).sort();
+  const older = unknown.filter((n) => n <= last);
+  if (older.length) throw new MigrationError(`the database has migration ${older[0]}, which this version of the server doesn't have: run the version that applied it`);
+  return { newer: unknown };
+}
+
 /** The migrations the database doesn't have yet, without applying any (the CLI's migrate --check). */
 export async function pendingMigrations(db: Db, migrations = readMigrations()): Promise<string[]> {
   const table = await db.query<{ t: string | null }>(`select to_regclass('schema_migration')::text as t`);

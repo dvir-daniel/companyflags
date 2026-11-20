@@ -135,7 +135,7 @@ function ImportSection() {
             <div className="grid gap-1.5 pl-6">
               <span className="text-13 text-ink-3">New flags go in these services in {envName}. Leave them all off to move each flag later.</span>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-                {meta.projects.map((p) => (
+                {meta.services.map((p) => (
                   <label key={p.key} className="inline-flex items-center gap-2 font-mono text-xs">
                     <Checkbox checked={sets.includes(p.key)} onCheckedChange={(v) => edit(setSets)(v === true ? [...sets, p.key] : sets.filter((a) => a !== p.key))} /> {p.key}
                   </label>
@@ -190,7 +190,7 @@ function ExportSection({ admin }: { admin: boolean }) {
   const formats = FORMATS_IN.filter(([k]) => admin || k !== 'jsonata');
   const [env, setEnv] = useState(meta.environments[0]?.key ?? '');
   const [format, setFormat] = useState('values');
-  const [service, setService] = useState(meta.projects.find((p) => p.kind === 'server')?.key ?? meta.projects[0]?.key ?? '');
+  const [service, setService] = useState(meta.services.find((p) => p.kind === 'server')?.key ?? meta.services[0]?.key ?? '');
   const [expression, setExpression] = useState('flags.$each(function($v, $k) { { "name": $k, "value": $v.value } })');
   const [shown, setShown] = useState<string | null>(null);
   const { busy, error, run } = useAsync();
@@ -218,7 +218,7 @@ function ExportSection({ admin }: { admin: boolean }) {
           {format === 'flagd' && (
             <Field label="Service">
               <NativeSelect className={selectField} value={service} onChange={(e) => { setService(e.target.value); setShown(null); }}>
-                {meta.projects.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
+                {meta.services.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
               </NativeSelect>
             </Field>
           )}

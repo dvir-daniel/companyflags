@@ -27,6 +27,14 @@ test('rows it doesn’t want move the cursor without a message; other environmen
   assert.deepEqual([n.message.length, n.cursor], [0, 12]);
 });
 
+test('security events: sign-ins, people, tokens, keys and single sign-on, in every environment', () => {
+  const security = { events: ['security'], environments: ['prod'], cursor: 10 };
+  const rows = [row(11, { kind: 'sign_in', revision: null, environment: null, at: 'a' }), row(12, { kind: 'api_key.create', revision: null, environment: 'dev', at: 'b' })];
+  assert.deepEqual(nextMessage(rows, security, null, 0).message.map((r) => r.id), [11], 'one save at a time');
+  assert.deepEqual(nextMessage(rows.slice(1), { ...security, cursor: 11 }, null, 0).message.map((r) => r.id), [12], 'a key in dev, though the webhook names prod');
+  assert.equal(nextMessage(rows, { ...security, events: ['changes', 'reviews'] }, null, 0).message.length, 0, 'only when asked for');
+});
+
 test('a hole at the cursor is waited for, then passed over; a later hole stops the message before it', () => {
   const rows = [row(12, { at: 'a' })];
   const first = nextMessage(rows, hook, null, 1000, 50);
@@ -110,6 +118,21 @@ test('a webhook gets only its environments and events', async () => {
   const m = JSON.parse(calls[0].body);
   assert.equal(m.type, 'reviews');
   assert.match(m.data.changes[0].text, /^Asked for a review of request #\d+$/);
+  await removeAll();
+});
+
+test('a SIEM gets security events: a role changed and a token made, as type "security"', async () => {
+  const siem = await t.as('dana').post('/webhooks', { name: 'SIEM', url: 'https://siem.example.com/in', events: ['security'] });
+  assert.equal(siem.status, 201, JSON.stringify(siem.json));
+  calls.length = 0;
+  await bump(3);
+  assert.equal((await t.as('dana').put('/people/bob', { role: 'oncall' })).status, 200);
+  assert.equal((await t.as('alice').post('/tokens', { name: 'CI' })).status, 201);
+  await flush();
+  const sent = calls.map((c) => JSON.parse(c.body));
+  assert.deepEqual(sent.map((m) => [m.type, m.data.changes[0].kind]), [['security', 'person.role'], ['security', 'token.create']], 'not the flag change');
+  assert.equal(sent[1].data.by.key, 'alice');
+  await t.as('dana').put('/people/bob', { role: 'approver' });
   await removeAll();
 });
 
@@ -241,7 +264,7 @@ test('incoming: a body over 1 MB is refused as it arrives, even sent in chunks (
     method: 'POST', headers: { 'content-type': 'application/json' }, body, duplex: 'half',
   } as RequestInit);
   assert.equal(res.status, 413, 'not 401: the size comes first, so a body with no address is never read whole');
-  assert.deepEqual(await res.json(), { error: 'the request body is larger than 1 MB' });
+  assert.deepEqual(await res.json(), { error: 'the request body is larger than 1 MB', code: 'too_large' });
   assert.ok(sent < 2_000_000, `stopped reading at ${sent} bytes`);
 });
 

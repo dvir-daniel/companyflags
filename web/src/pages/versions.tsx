@@ -1,4 +1,4 @@
-// The Flags page's Versions and Conditions tabs (Google style). Every publish is a numbered version of an
+// History's Versions view and the Flags page's Conditions tab (Google style). Every publish is a numbered version of an
 // environment; any earlier one can be restored, as a new version, so rolling back is itself reversible.
 // Restore undoes flag settings only: changes of other kinds (an entity moved, delivery, variants) are marked
 // "not rolled back by restore", and a restore lists the ones it left as they are.
@@ -11,10 +11,11 @@ import { cn } from '@companyflags/ui/lib/utils';
 import { api, conditionText, entityIndex, vocabOf } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { plural } from '../text.ts';
-import { Badge, Empty, PAGE_SIZE, Pager, When } from '../ui.tsx';
+import { Badge, Empty, Pager, When } from '../ui.tsx';
 import { type Paged, useServerPage } from '../uiKit.ts';
 import { Bone, SkeletonRows } from '../loading.tsx';
 import { pagerRow } from '../loadingKit.ts';
+import { versionsPath } from '../paths.ts';
 import { LayerDiff } from './Approvals.tsx';
 import { type SaveResult } from './flagParts.tsx';
 import { useEnvs } from './envs.ts';
@@ -55,7 +56,7 @@ export function VersionsTab({ env }: { env: string }) {
   const { revisionTick, toast, ask, reload } = useApp();
   const { envName, isProtected } = useEnvs();
   const [tries, setTries] = useState(0);
-  const paging = useServerPage<Paged & { rows: VersionRow[]; current: number; restorable: string[] }>((page) => `/environments/${env}/versions?page=${page}&size=${PAGE_SIZE}`,
+  const paging = useServerPage<Paged & { rows: VersionRow[]; current: number; restorable: string[] }>((page) => versionsPath(env, page),
     env, `${revisionTick}:${tries}`);
   const [open, setOpen] = useState<VersionRow | null>(null);
   const rows = paging.data?.rows ?? [];
@@ -69,21 +70,21 @@ export function VersionsTab({ env }: { env: string }) {
   // forgiveness: rolling back is saved as a new version, so it can be undone the same way
   const rollBack = async (v: VersionRow) => {
     const r = await ask({
-      title: `Roll ${where} back to version ${v.revision}?`,
+      title: `Roll ${where} back to revision ${v.revision}?`,
       body: <>
         <RollbackPreview env={env} revision={v.revision} />
-        <p className="text-ink-3">It’s saved as a new version, so you can roll forward again the same way.{reviewed && ' An approver reviews it first.'}</p>
+        <p className="text-ink-3">It’s saved as a new revision, so you can roll forward again the same way.{reviewed && ' An approver reviews it first.'}</p>
       </>,
-      reason: { label: reviewed ? 'Why? (required)' : 'Why? (optional)', placeholder: `INC-123: errors after version ${current}` },
-      actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'go', label: reviewed ? 'Request review' : `Roll back to version ${v.revision}`, tone: 'danger', needsReason: reviewed }],
+      reason: { label: reviewed ? 'Why? (required)' : 'Why? (optional)', placeholder: `INC-123: errors after revision ${current}` },
+      actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'go', label: reviewed ? 'Request review' : `Roll back to revision ${v.revision}`, tone: 'danger', needsReason: reviewed }],
     });
     if (r.action !== 'go') return;
     try {
       const res = await api<SaveResult & { restored: number; notRolledBack?: NotRolledBack[] }>('POST', `/environments/${env}/versions/${v.revision}/restore`, { reason: r.reason || undefined });
       // the later changes it left as they are, e.g. "Lumen moved out of Globex — not rolled back"
       const left = res.notRolledBack?.length ? `. ${some(res.notRolledBack.map((n) => n.text))} — not rolled back` : '';
-      if (res.applied) toast(`Rolled ${where} back to version ${v.revision} (${plural(res.restored, 'setting')}) as version ${res.revision}${left}`);
-      else toast(`Sent rolling ${where} back to version ${v.revision} for review (request #${res.changeSetId})${left}`, 'ok', { label: 'View', onClick: () => go(`approvals/${res.changeSetId}`) });
+      if (res.applied) toast(`Rolled ${where} back to revision ${v.revision} (${plural(res.restored, 'setting')}) as revision ${res.revision}${left}`);
+      else toast(`Sent rolling ${where} back to revision ${v.revision} for review (request #${res.changeSetId})${left}`, 'ok', { label: 'View', onClick: () => go(`approvals/${res.changeSetId}`) });
       setOpen(null);
       reload().catch(() => {});
     } catch (e) { toast(`Couldn’t roll back: ${(e as Error).message}`, 'err'); }
@@ -91,20 +92,20 @@ export function VersionsTab({ env }: { env: string }) {
 
   return (
     <>
-      <div role="table" aria-label={`Versions of ${where}`} aria-busy={paging.loading} className={cn('flex-1 transition-opacity duration-150', paging.loading && paging.data && 'opacity-70')}>
+      <div role="table" aria-label={`Revisions of ${where}`} aria-busy={paging.loading} className={cn('flex-1 transition-opacity duration-150', paging.loading && paging.data && 'opacity-70')}>
         <div role="row" className={cn(VCOLS, tableHeadClass)}>
-          <span>Version</span><span className="max-md:hidden">Published</span><span className="max-md:hidden">By</span>
+          <span>Revision</span><span className="max-md:hidden">Published</span><span className="max-md:hidden">By</span>
           <span>What changed</span><ColumnHead className="max-xl:hidden" label="Note" help="The note or reason given when it was published." /><span />
         </div>
-        {paging.error ? <Callout tone="error" role="alert" className="m-6 max-sm:m-4">Couldn’t load the versions: {paging.error} <Button variant="secondary" className="ml-2" onClick={() => setTries((t) => t + 1)}>Try again</Button></Callout>
+        {paging.error ? <Callout tone="error" role="alert" className="m-6 max-sm:m-4">Couldn’t load the revisions: {paging.error} <Button variant="secondary" className="ml-2" onClick={() => setTries((t) => t + 1)}>Try again</Button></Callout>
           : !paging.data ? <SkeletonRows cols={VCOLS} cells={['', 'max-md:hidden', 'max-md:hidden', '', 'max-xl:hidden', '']} rowClass={VROW} />
-          : rows.length === 0 ? <div className="px-6 py-10 max-sm:px-4"><Empty>No versions yet. Publishing your first change in {where} creates version 1.</Empty></div>
+          : rows.length === 0 ? <div className="px-6 py-10 max-sm:px-4"><Empty>No revisions yet. Publishing your first change in {where} creates revision 1.</Empty></div>
           : rows.map((v, i) => (
             <div key={v.revision} role="row" data-row-index={i} data-active={keys.active === i} onClick={() => { keys.setActive(i); setOpen(v); }}
               className={cn(VCOLS, tableRowClass, VROW, 'cursor-default')}>
               <span role="cell" className="flex items-center gap-2">
-                <button type="button" className={cn(openButton, 'font-mono text-13 font-medium')} aria-haspopup="dialog" aria-label={`Version ${v.revision}`}
-                  onClick={(e) => { e.stopPropagation(); keys.setActive(i); setOpen(v); }}>v{v.revision}</button>
+                <button type="button" className={cn(openButton, 'font-mono text-13 font-medium')} aria-haspopup="dialog" aria-label={`Revision ${v.revision}`}
+                  onClick={(e) => { e.stopPropagation(); keys.setActive(i); setOpen(v); }}>#{v.revision}</button>
                 {v.revision === current && <span className="inline-flex items-center gap-1.5 text-xs text-ink-2"><span aria-hidden className="size-[7px] bg-ok" />Live</span>}
               </span>
               <span role="cell" className="max-md:hidden"><When iso={v.at} /></span>
@@ -125,7 +126,7 @@ export function VersionsTab({ env }: { env: string }) {
         <div className={cn('flex flex-wrap items-center gap-4 border-t border-rule px-6 max-sm:px-4', pagerRow)}>
           <KeyHints hide={['select', 'search']} className="max-md:hidden" />
           <span className="flex-1" />
-          {paging.data && <Pager page={paging.page} size={paging.size} matched={paging.data.matched} noun="versions" onPage={(p) => { paging.go(p); keys.setActive(-1); }} />}
+          {paging.data && <Pager page={paging.page} size={paging.size} matched={paging.data.matched} noun="revisions" onPage={(p) => { paging.go(p); keys.setActive(-1); }} />}
         </div>
       )}
       <VersionDrawer env={env} v={open} current={current} restorable={restorable} onClose={() => setOpen(null)} onRollBack={rollBack} />
@@ -147,10 +148,10 @@ function RollbackPreview({ env, revision }: { env: string; revision: number }) {
   }, [env, revision]);
   const scope = preview === null ? <span aria-busy="true"> (…)</span>
     : preview === 'failed' || !preview.versions ? null
-    : <> ({plural(preview.versions, 'version')}{preview.flags.length ? <>, touching {some(preview.flags)}</> : null})</>;
+    : <> ({plural(preview.versions, 'revision')}{preview.flags.length ? <>, touching {some(preview.flags)}</> : null})</>;
   const kept = preview && preview !== 'failed' ? preview.notRolledBack ?? [] : [];
   return <>
-    <p>Every flag setting changed after version {revision} goes back to how it was then{scope}.</p>
+    <p>Every flag setting changed after revision {revision} goes back to how it was then{scope}.</p>
     {kept.length > 0 && <p>{plural(kept.length, 'later change')} of other kinds ({some(kept.map((n) => n.text))}) {kept.length === 1 ? 'stays' : 'stay'} as {kept.length === 1 ? 'it is' : 'they are'}: restore undoes flag settings only.</p>}
   </>;
 }
@@ -179,15 +180,15 @@ function VersionDrawer({ env, v, current, restorable, onClose, onRollBack }: {
   const nameOf = (k: string) => entityIndex(meta.entities).get(k)?.name ?? k;
   return (
     <Drawer open={!!v} onClose={onClose} width={680}
-      title={v ? `Version ${v.revision} of ${envName(env).toLowerCase()}` : ''}
+      title={v ? `Revision ${v.revision} of ${envName(env).toLowerCase()}` : ''}
       subtitle={v ? <>Published <When iso={v.at} className="text-13 text-ink-2" /> by {v.by.join(', ')}{v.revision === current ? ' · live now' : ''}</> : undefined}
       footer={v && (v.revision < current || v.changeSetId) ? <>
-        {v.revision < current && <Button variant="stop" onClick={() => onRollBack(v)}>Roll back to this version</Button>}
+        {v.revision < current && <Button variant="stop" onClick={() => onRollBack(v)}>Roll back to this revision</Button>}
         {v.changeSetId && <Button variant="secondary" onClick={() => { onClose(); go(`approvals/${v.changeSetId}`); }}>Open request #{v.changeSetId}</Button>}
       </> : undefined}>
       {v?.comment && <DrawerSection title="Note"><p className="m-0 text-13 whitespace-pre-line text-ink-1 [overflow-wrap:anywhere]">{v.comment}</p></DrawerSection>}
       <DrawerSection title={rows ? plural(rows.length, 'change') : 'Changes'}>
-        {err ? <Callout tone="error">Couldn’t load this version: {err}</Callout>
+        {err ? <Callout tone="error">Couldn’t load this revision: {err}</Callout>
           : !rows ? <div aria-hidden className="grid gap-3 py-3"><Bone className="w-2/3" /><Bone className="w-1/2" /><Bone className="w-3/5" /></div>
           : rows.map((h) => (
             <div key={h.id} className="border-b border-grid py-3 last:border-b-0">

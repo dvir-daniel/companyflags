@@ -60,13 +60,13 @@ test('a missing flag is created when asked: a config flag in no service, so apps
   assert.equal(flag.kind ?? flag.flag?.kind, 'config');
   assert.deepEqual(flag.delivery ?? flag.flag?.delivery, { dev: [], prod: [] });
   // not in the web service: OFREP says it isn't there, so OpenFeature's Multi-Provider asks the old system
-  const before = await t.trace({ project: 'web', entity: 'acme', flag: 'banner_text' });
+  const before = await t.trace({ service: 'web', entity: 'acme', flag: 'banner_text' });
   assert.equal(before.errorCode, 'FLAG_NOT_FOUND');
   // in the web service: acme gets its own value, everyone else the default
-  assert.equal((await t.as('alice').put('/flags/banner_text/delivery', { environment: 'dev', projects: ['web'], before: [] })).status, 200);
+  assert.equal((await t.as('alice').put('/flags/banner_text/delivery', { environment: 'dev', services: ['web'], before: [] })).status, 200);
   await t.settle();
-  assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'banner_text' })).value, 'Hello, Acme');
-  assert.equal((await t.trace({ project: 'web', entity: 'globex', flag: 'banner_text' })).value, 'Hello');
+  assert.equal((await t.trace({ service: 'web', entity: 'acme', flag: 'banner_text' })).value, 'Hello, Acme');
+  assert.equal((await t.trace({ service: 'web', entity: 'globex', flag: 'banner_text' })).value, 'Hello');
   // and the export says the same
   assert.deepEqual((await exportOf('values')).flags.banner_text, { value: 'Hello', on: true, entities: { acme: 'Hello, Acme' } });
 });
@@ -74,11 +74,11 @@ test('a missing flag is created when asked: a config flag in no service, so apps
 test('entities: a value sets its own default, null removes its own settings', async () => {
   let r = await doImport({ format: 'values', input: { flags: { max_upload_mb: { entities: { globex: 1000 } } } } });
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.equal((await t.trace({ project: 'web', entity: 'globex', flag: 'max_upload_mb' })).value, 1000);
+  assert.equal((await t.trace({ service: 'web', entity: 'globex', flag: 'max_upload_mb' })).value, 1000);
   assert.equal((await exportOf('values')).flags.max_upload_mb.entities.globex, 1000);
   r = await doImport({ format: 'values', input: { flags: { max_upload_mb: { entities: { globex: null } } } } });
   assert.equal(r.json.changed, 1);
-  assert.equal((await t.trace({ project: 'web', entity: 'globex', flag: 'max_upload_mb' })).value, 100);
+  assert.equal((await t.trace({ service: 'web', entity: 'globex', flag: 'max_upload_mb' })).value, 100);
   const plan = (await preview({ format: 'values', input: { flags: { max_upload_mb: { entities: { nobody: 1 } } } } })).json.plan;
   assert.deepEqual(plan.problems, ['max_upload_mb: there’s no entity “nobody”.']);
 });

@@ -25,7 +25,7 @@ import { useEnvs } from './envs.ts';
  */
 
 type Mode = 'entities' | 'environments' | 'apps';
-type Side = { environment: string; project: string; entity: string | null };
+type Side = { environment: string; service: string; entity: string | null };
 type Outcome = { sent: boolean; value: unknown; codeDefault: boolean; variant: string | null; source: string; rule: string | null; byDevice: boolean };
 type Row = { key: string; description: string | null; a: Outcome; b: Outcome; same: boolean };
 // the list contract (matched = rows after "only differences" and search, all = every flag) plus how many differ
@@ -88,12 +88,12 @@ export function Compare() {
   const onlyDiff = show !== 'all';
   const [saved, setSaved] = usePersistentState<Partial<Picked>>('compare.sides', {});
   // a remembered side that no longer exists (a removed entity, say) falls back to the default
-  const known: Record<Mode, string[]> = { entities: firstEntities, environments: meta.environments.map((e) => e.key), apps: meta.projects.map((p) => p.key) };
+  const known: Record<Mode, string[]> = { entities: firstEntities, environments: meta.environments.map((e) => e.key), apps: meta.services.map((p) => p.key) };
   // until something is picked: the first two of each (the first entities in the list, not made-up ones)
   const defaults: Picked = {
     entities: [firstEntities[0] ?? '', firstEntities[1] ?? firstEntities[0] ?? ''],
     environments: [meta.environments[0]?.key ?? '', meta.environments[1]?.key ?? meta.environments[0]?.key ?? ''],
-    apps: [meta.projects[0]?.key ?? '', meta.projects[1]?.key ?? meta.projects[0]?.key ?? ''],
+    apps: [meta.services[0]?.key ?? '', meta.services[1]?.key ?? meta.services[0]?.key ?? ''],
   };
   const sideOf = (m: Mode): [string, string] => {
     const v = saved[m];
@@ -109,7 +109,7 @@ export function Compare() {
   const setApps = pick('apps');
   // what stays the same for both sides
   const [env, setEnv] = useState(meta.environments[0]?.key ?? '');
-  const [app, setApp] = useState(meta.projects[0]?.key ?? '');
+  const [app, setApp] = useState(meta.services[0]?.key ?? '');
   const [entity, setEntity] = useState(firstEntities[0] ?? '');
   // not sent until typed in
   const [version, setVersion] = useState('');
@@ -121,10 +121,10 @@ export function Compare() {
   const search = useRef<HTMLInputElement>(null);
 
   const sides: [Side, Side] = mode === 'entities'
-    ? [{ environment: env, project: app, entity: ents[0] || null }, { environment: env, project: app, entity: ents[1] || null }]
+    ? [{ environment: env, service: app, entity: ents[0] || null }, { environment: env, service: app, entity: ents[1] || null }]
     : mode === 'environments'
-      ? [{ environment: envs[0], project: app, entity: entity || null }, { environment: envs[1], project: app, entity: entity || null }]
-      : [{ environment: env, project: apps[0], entity: entity || null }, { environment: env, project: apps[1], entity: entity || null }];
+      ? [{ environment: envs[0], service: app, entity: entity || null }, { environment: envs[1], service: app, entity: entity || null }]
+      : [{ environment: env, service: apps[0], entity: entity || null }, { environment: env, service: apps[1], entity: entity || null }];
   const sameSides = JSON.stringify(sides[0]) === JSON.stringify(sides[1]);
   const request = JSON.stringify({ sides, version, device });
 
@@ -162,7 +162,7 @@ export function Compare() {
   );
   const appSelect = (value: string, onChange: (v: string) => void, label: string, className: string) => (
     <NativeSelect size="sm" className={cn(stripSelect, 'font-mono', className)} value={value} onChange={(e) => onChange(e.target.value)} aria-label={label}>
-      {meta.projects.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
+      {meta.services.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
     </NativeSelect>
   );
   // A and B: as wide as what they hold (an entity's name, an environment, an app); on a phone they share the row
@@ -344,7 +344,7 @@ function AnswerDrawer({ row, open, labels, sides, version, device, onClose, onOp
         </DrawerSection>
         <DrawerSection title="Asked with">
           <Pair label="Environment" a={envName(sides[0].environment)} b={envName(sides[1].environment)} />
-          <Pair label="Service" a={<span className="font-mono">{sides[0].project}</span>} b={<span className="font-mono">{sides[1].project}</span>} />
+          <Pair label="Service" a={<span className="font-mono">{sides[0].service}</span>} b={<span className="font-mono">{sides[1].service}</span>} />
           {meta.dimensions.length > 0 && <Pair label={capital(listWords(meta.dimensions)) || 'Who'} a={entName(sides[0].entity) ?? none} b={entName(sides[1].entity) ?? none} />}
           <Pair label="App version" a={version ? <span className="font-mono">{version}</span> : none} b={version ? <span className="font-mono">{version}</span> : none} />
           <Pair label="Device ID" a={device ? <span className="font-mono">{device}</span> : none} b={device ? <span className="font-mono">{device}</span> : none} />

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { api, errorCode, peek, type ErrorCode } from './api.ts';
 import { PAGE_SIZE, readPersistent, writePersistent } from './persist.ts';
+import { shortcutsOn } from '@companyflags/ui/lib/shortcuts';
 
 /* ---------------------------------------------------------------- class recipes for native controls */
 
@@ -56,13 +57,13 @@ export const fmtDate = (iso: string) => {
 
 /* ---------------------------------------------------------------- keys */
 
-/** "/" puts the cursor in this search box, unless you're typing somewhere or a dialog is open. */
+/** "/" puts the cursor in this search box, unless you're typing somewhere, a dialog is open, or shortcuts are off. */
 export function useSlashFocus(ref: RefObject<HTMLInputElement | null>, enabled = true) {
   useEffect(() => {
     if (!enabled) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       const t = e.target instanceof Element ? e.target : null;
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !(t && t.closest('input, textarea, select, [contenteditable], [role="dialog"]'))) {
+      if (e.key === '/' && shortcutsOn() && !e.metaKey && !e.ctrlKey && !e.altKey && !(t && t.closest('input, textarea, select, [contenteditable], [role="dialog"]'))) {
         e.preventDefault();
         ref.current?.focus();
       }

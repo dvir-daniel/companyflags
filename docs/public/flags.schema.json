@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dvir-daniel.github.io/companyflags/flags.schema.json",
+  "title": "CompanyFlags flags file",
+  "description": "The flags a codebase uses, kept in step with CompanyFlags by companyflags flags plan and push.",
+  "type": "object",
+  "required": [
+    "flags"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "A name for this file, e.g. \"acme/web\". The console shows it on the flags it manages."
+    },
+    "owns": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "name",
+          "description",
+          "owner",
+          "tags",
+          "removeBy",
+          "variants",
+          "freeValues",
+          "jsonSchema",
+          "default",
+          "services"
+        ]
+      },
+      "description": "The fields this file decides, for every flag in it. Without it: name, description, owner, tags, removeBy, variants, freeValues, jsonSchema, default. Rules stay in the console."
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "The flags this file may touch.",
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Flag keys that start with it."
+        },
+        "services": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          },
+          "description": "Flags in these services only."
+        }
+      }
+    },
+    "flags": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/flag"
+      }
+    }
+  },
+  "$defs": {
+    "flag": {
+      "type": "object",
+      "required": [
+        "kind",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "release",
+            "kill_switch",
+            "ops",
+            "experiment",
+            "config",
+            "permission"
+          ],
+          "description": "Releases and experiments need removeBy."
+        },
+        "type": {
+          "enum": [
+            "bool",
+            "string",
+            "number",
+            "json"
+          ],
+          "description": "It can’t change once the flag exists."
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Its name in the console."
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "What it is for."
+        },
+        "owner": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Who looks after it."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "removeBy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "YYYY-MM-DD."
+        },
+        "variants": {
+          "type": "object",
+          "description": "Variant → value. An on/off flag has on: true and off: false when left out."
+        },
+        "freeValues": {
+          "type": "boolean",
+          "description": "Values typed into the rules instead of named variants. Such a flag is made in the console."
+        },
+        "jsonSchema": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "A JSON flag’s JSON Schema: every variant must match it. null removes it."
+        },
+        "default": {
+          "type": "string",
+          "description": "The variant everyone gets when no rule decides, in every environment."
+        },
+        "services": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "Environment → the services it is in."
+        }
+      }
+    }
+  }
+}

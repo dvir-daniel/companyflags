@@ -14,7 +14,7 @@ const compare = async (a: object, b: object, attrs: object = { 'app.version': '6
 };
 
 test('two entities: their own settings show up as differences, with the reason named after the entity', async () => {
-  const r = await compare({ environment: 'dev', project: 'android', entity: 'vandelay' }, { environment: 'dev', project: 'android', entity: 'wonka' });
+  const r = await compare({ environment: 'dev', service: 'android', entity: 'vandelay' }, { environment: 'dev', service: 'android', entity: 'wonka' });
   const api = r.rows.find((x) => x.key === 'api_base_url');
   assert.equal(api.same, false);
   assert.equal(api.a.value, 'https://android.vandelay.api.example.com');
@@ -26,7 +26,7 @@ test('two entities: their own settings show up as differences, with the reason n
 });
 
 test('two apps: a flag sent to only one app is a difference', async () => {
-  const r = await compare({ environment: 'dev', project: 'android', entity: 'vandelay' }, { environment: 'dev', project: 'ios', entity: 'vandelay' });
+  const r = await compare({ environment: 'dev', service: 'android', entity: 'vandelay' }, { environment: 'dev', service: 'ios', entity: 'vandelay' });
   const quick = r.rows.find((x) => x.key === 'android_quick_share');
   assert.equal(quick.same, false);
   assert.equal(quick.a.sent, true);
@@ -35,11 +35,11 @@ test('two apps: a flag sent to only one app is a difference', async () => {
 });
 
 test('two environments: a change in one environment only is the difference', async () => {
-  const same = await compare({ environment: 'dev', project: 'web', entity: 'acme' }, { environment: 'prod', project: 'web', entity: 'acme' });
+  const same = await compare({ environment: 'dev', service: 'web', entity: 'acme' }, { environment: 'prod', service: 'web', entity: 'acme' });
   assert.equal(same.different, 0);                         // seeded the same in both
   const s = await t.editBase('max_upload_mb', 'dev', (layer) => ({ ...layer, defaultVariation: 'huge' }));
   assert.equal(s.status, 200, JSON.stringify(s.json));
-  const r = await compare({ environment: 'dev', project: 'web', entity: 'acme' }, { environment: 'prod', project: 'web', entity: 'acme' });
+  const r = await compare({ environment: 'dev', service: 'web', entity: 'acme' }, { environment: 'prod', service: 'web', entity: 'acme' });
   assert.deepEqual(r.rows.filter((x) => !x.same).map((x) => x.key), ['max_upload_mb']);
   const row = r.rows.find((x) => x.key === 'max_upload_mb');
   assert.deepEqual([row.a.value, row.b.value], [5000, 100]);
@@ -48,6 +48,6 @@ test('two environments: a change in one environment only is the difference', asy
 });
 
 test('an unknown entity is a clear error', async () => {
-  const r = await t.as('alice').post('/compare', { a: { environment: 'dev', project: 'web', entity: 'nope' }, b: { environment: 'dev', project: 'web', entity: null } });
+  const r = await t.as('alice').post('/compare', { a: { environment: 'dev', service: 'web', entity: 'nope' }, b: { environment: 'dev', service: 'web', entity: null } });
   assert.equal(r.status, 404);
 });

@@ -43,7 +43,7 @@ export function EntityTree({ top, env }: { top: Dimension; env: string }) {
   // lower dimensions with entities that have no parent: listed after the top's, each under its own heading
   const orphans = meta.dimensions.slice(1).filter((d) => d.entities > d.withParent);
   return (
-    <div role="treegrid" aria-label={`${capital(top.plural)} and everything under them`} className="flex-1">
+    <div role="table" aria-label={`${capital(top.plural)} and everything under them`} className="flex-1">
       <div role="row" className={cn(COLS, tableHeadClass)}>
         <span role="columnheader">Name</span>
         <span role="columnheader" className={MD}>Dimension</span>
@@ -97,10 +97,10 @@ function Node({ row, dimension, depth, env }: { row: EntityRow; dimension: Dimen
   const canOpen = !!next && row.children > 0;
   return (
     <>
-      <div role="row" aria-level={depth + 1} aria-expanded={canOpen ? open : undefined} className={cn(COLS, tableRowClass, 'min-h-11 cursor-default items-center')}>
-        <span role="gridcell" className="flex min-w-0 items-center gap-1.5" style={{ paddingLeft: depth * 20 }}>
+      <div role="row" className={cn(COLS, tableRowClass, 'min-h-11 cursor-default items-center')}>
+        <span role="cell" className="flex min-w-0 items-center gap-1.5" style={{ paddingLeft: depth * 20 }}>
           {canOpen ? (
-            <button type="button" onClick={() => setOpen(!open)} aria-label={`${open ? 'Close' : 'Open'} ${row.name}`}
+            <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-label={`What's under ${row.name}`}
               className="inline-grid size-6 shrink-0 cursor-default place-items-center border-0 bg-transparent text-ink-3 hover:bg-wash hover:text-ink">
               {open ? <CaretDownIcon aria-hidden className="size-3.5" /> : <CaretRightIcon aria-hidden className="size-3.5" />}
             </button>
@@ -108,9 +108,9 @@ function Node({ row, dimension, depth, env }: { row: EntityRow; dimension: Dimen
           <a href={entityHref(dimension.key, row.key, env)} className="min-w-0 truncate text-13 font-medium text-ink">{row.name}</a>
           <span className="truncate font-mono text-11 text-ink-3 max-sm:hidden">{row.key}</span>
         </span>
-        <span role="gridcell" className={cn(MD, 'truncate text-13 text-ink-3')}>{capital(dimension.singular)}</span>
-        <span role="gridcell" className="truncate text-13 text-ink-2">{next ? (row.children ? count(next, row.children) : <span className="text-ink-3">None</span>) : <span className="text-ink-3">—</span>}</span>
-        <span role="gridcell" className={cn(MD, 'truncate text-13', own ? 'text-ink-2' : 'text-ink-3')}>{own || 'None'}</span>
+        <span role="cell" className={cn(MD, 'truncate text-13 text-ink-3')}>{capital(dimension.singular)}</span>
+        <span role="cell" className="truncate text-13 text-ink-2">{next ? (row.children ? count(next, row.children) : <span className="text-ink-3">None</span>) : <span className="text-ink-3">—</span>}</span>
+        <span role="cell" className={cn(MD, 'truncate text-13', own ? 'text-ink-2' : 'text-ink-3')}>{own || 'None'}</span>
       </div>
       {open && next && <Level dimension={next} loaded={kids} depth={depth + 1} env={env} empty="" />}
     </>

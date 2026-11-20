@@ -46,7 +46,9 @@ function Drawer({
           style={{ width: `min(${width}px, 100vw)` }}
           className={cn(
             "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-rule-2 bg-background text-ink shadow-[0_0_80px_var(--shadow-strong)] outline-none",
-            "transition-transform duration-200 ease-out data-ending-style:translate-x-full data-starting-style:translate-x-full"
+            "transition-transform duration-200 ease-out data-ending-style:translate-x-full data-starting-style:translate-x-full",
+            // reduced motion: it fades in place instead of sliding
+            "motion-reduce:transition-opacity motion-reduce:data-ending-style:translate-x-0 motion-reduce:data-starting-style:translate-x-0 motion-reduce:data-ending-style:opacity-0 motion-reduce:data-starting-style:opacity-0"
           )}
         >
           <header className="flex min-h-14 shrink-0 items-start gap-3 border-b border-rule px-6 py-3.5 max-sm:px-4">

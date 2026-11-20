@@ -2,12 +2,13 @@
 // (flagdReference.ts), and by OpenFeature's own flagd-core, it gives every request the same answer as our evaluator.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFlagdDoc, FLAGD_SCHEMA, type FlagdDoc } from '../server/flagd.ts';
+import { buildFlagdDoc, buildServiceDoc, FLAGD_SCHEMA, type FlagdDoc } from '../server/flagd.ts';
 import { bucketFor } from '../server/hash.ts';
 import {
   CODE_DEFAULT, type Condition, type FlagDef, type Inherit, type Layer, type Op, type Rule, type Snapshot,
 } from '../server/evaluator.ts';
 import { flagdCore, flagdEvaluate, nest, ours, same } from './flagdReference.ts';
+import { withPart } from '../web/src/pages/rolloutKit.ts';
 import { boot } from './helpers.ts';
 import { entities, fieldsFor } from './kit.ts';
 
@@ -123,6 +124,95 @@ test('every random flag, entity and request: flagd’s answer from the JSON is o
   }
   assert.ok(compared > 50_000);
   assert.deepEqual([...reasons].sort(), ['DEFAULT', 'DISABLED', 'STATIC', 'TARGETING_MATCH'], 'every kind of flagd answer came up');
+});
+
+/** flagd's context for a request from `entity`: its attributes nested, and the entity by its dimension key, alone or
+ *  with the entities above it (`chain`), as a backend names it. */
+function namedContext(entity: string | null, attrs: Record<string, unknown>, chain: boolean): Record<string, unknown> {
+  const ctx = nest(attrs);
+  if (!entity) return ctx;
+  const info = ENTITIES[entity];
+  return { ...ctx, ...(chain ? info.at : { [info.dimension]: entity }) };
+}
+
+test('one document for every entity of a service (an `all` key’s): flagd’s answer for each entity it names is ours', () => {
+  const r = random(20261120);
+  let compared = 0;
+  let smaller = 0;
+  for (let n = 0; n < 300; n++) {
+    const f = randomFlag(r, n);
+    const snap = snapOf({ f }, { revision: n });
+    const doc = buildServiceDoc(snap, 'server-ds', Object.values(ENTITIES), null);
+    assert.equal(doc.metadata.flagSetId, 'dev/server-ds');
+    for (const fl of Object.values(doc.flags)) {
+      assert.ok(Object.keys(fl.variants).length > 0, 'flagd needs a variant');
+      for (const total of fractionalWeights(fl.targeting)) assert.equal(total, 10000);
+    }
+    const branches = JSON.stringify(doc.flags.f?.targeting ?? null).match(/\{"in":\[\{"var":"(company|brand)"\}/g)?.length ?? 0;
+    if (branches < Object.keys(ENTITIES).length) smaller++;
+    for (const entity of [null, ...Object.keys(ENTITIES)]) {
+      for (let i = 0; i < 12; i++) {
+        const attrs = randomAttrs(r);
+        const want = ours(snap, 'f', 'server-ds', entity, attrs);
+        for (const chain of entity && ENTITIES[entity].parent ? [false, true] : [false]) {
+          const context = namedContext(entity, attrs, chain);
+          const where = `flag ${n}, entity ${entity}${chain ? ' (with its chain)' : ''}, ${JSON.stringify(context)}\n${JSON.stringify(f)}\n${JSON.stringify(doc.flags.f)}`;
+          const core = flagdCore(doc, 'f', context);
+          assert.equal(same(core), same(want), `flagd-core: ${where}`);
+          assert.equal(same(flagdEvaluate(doc, 'f', context)), same(want), where);
+          compared++;
+        }
+      }
+    }
+  }
+  assert.ok(compared > 20_000, `${compared}`);
+  assert.ok(smaller > 100, 'entities with the same logic share a branch, or need none');
+});
+
+test('one document for an entity and those under it (a `below` key’s): naming none asks as the key’s entity', () => {
+  const r = random(42);
+  const below = Object.values(ENTITIES).filter((e) => e.path.includes('tyrell'));
+  assert.deepEqual(below.map((e) => e.key).sort(), ['onyx', 'tyrell', 'velvet']);
+  for (let n = 0; n < 200; n++) {
+    const f = randomFlag(r, n);
+    const snap = snapOf({ f });
+    const doc = buildServiceDoc(snap, 'server-ds', below, ENTITIES.tyrell);
+    assert.ok(!/"(vandelay|wonka)"/.test(JSON.stringify(doc)), 'no entity outside the key’s reach is named');
+    for (let i = 0; i < 15; i++) {
+      const attrs = randomAttrs(r);
+      for (const [entity, context] of [['tyrell', nest(attrs)], ['tyrell', namedContext('tyrell', attrs, false)],
+        ['velvet', namedContext('velvet', attrs, false)], ['onyx', namedContext('onyx', attrs, true)]] as const) {
+        const want = ours(snap, 'f', 'server-ds', entity, attrs);
+        assert.equal(same(flagdCore(doc, 'f', context)), same(want), `${entity}: ${JSON.stringify(context)} ${JSON.stringify(doc.flags.f)}`);
+      }
+    }
+  }
+});
+
+test('in one document, an entity it doesn’t hold gets what the next one up the request names gets', () => {
+  const f: FlagDef = {
+    key: 'f', valueType: 'string', kind: 'release', delivery: ['server-ds'], variations: { a: 'A', b: 'B', c: 'C' },
+    base: { version: 1, enabled: true, variationWhenOff: CODE_DEFAULT, defaultVariation: 'a', inherit: null, rules: [] },
+    entities: {
+      tyrell: { version: 1, enabled: null, variationWhenOff: null, defaultVariation: 'b', inherit: 'base_rules_then_customer_default', rules: [] },
+      velvet: { version: 1, enabled: null, variationWhenOff: null, defaultVariation: 'c', inherit: 'base_rules_then_customer_default', rules: [] },
+    },
+  };
+  const doc = buildServiceDoc(snapOf({ f }), 'server-ds', Object.values(ENTITIES), null);
+  const value = (context: Record<string, unknown>) => flagdCore(doc, 'f', context).value;
+  assert.equal(value({ brand: 'velvet' }), 'C');
+  assert.equal(value({ company: 'tyrell', brand: 'velvet' }), 'C', 'the lowest dimension named decides');
+  assert.equal(value({ brand: 'onyx' }), 'B', 'onyx follows tyrell');
+  assert.equal(value({ company: 'tyrell', brand: 'signed-up-a-minute-ago' }), 'B', 'a brand it doesn’t hold: its company’s');
+  assert.equal(value({ company: 'wonka' }), 'A');
+  assert.equal(value({ company: 'nobody' }), 'A', 'nothing it holds: what a request naming no entity gets');
+  assert.equal(value({}), 'A');
+  // wonka and vandelay get what everyone gets, with no branch of their own
+  assert.deepEqual(doc.flags.f.targeting, { if: [
+    { in: [{ var: 'brand' }, ['onyx']] }, 'b', { in: [{ var: 'brand' }, ['velvet']] }, 'c',
+    { in: [{ var: 'company' }, ['tyrell']] }, 'b',
+    'a',
+  ] });
 });
 
 // missing is absent, null or "" in every JsonLogic (flagd.ts)
@@ -295,8 +385,8 @@ const flagdFor = (key: string, path = '', headers: Record<string, string> = {}) 
 
 test('GET /sdk/v1/flagd: an entity’s key gets its service; a shared key names the entity in the path, by its dimension', async () => {
   const dana = t.as('dana');
-  const own = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'soylent' })).json.key;
-  const shared = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+  const own = (await dana.post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'entity', entity: 'soylent' })).json.key;
+  const shared = (await dana.post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
 
   const res = await flagdFor(own);
   assert.equal(res.status, 200, JSON.stringify(res.json));
@@ -321,7 +411,7 @@ test('GET /sdk/v1/flagd: an entity’s key gets its service; a shared key names 
 });
 
 test('the test data: for every entity and many requests, flagd’s answer from the endpoint is ours', async () => {
-  const shared = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+  const shared = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
   const snap = t.plane.get('dev');
   const r = random(7);
   let compared = 0;
@@ -336,4 +426,70 @@ test('the test data: for every entity and many requests, flagd’s answer from t
     }
   }
   assert.ok(compared > 1000, `${compared}`);
+});
+
+test('GET /sdk/v1/flagd/service: one document for every entity the key may ask about, for one flagd', async () => {
+  const dana = t.as('dana');
+  const shared = (await dana.post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
+  const own = (await dana.post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'entity', entity: 'soylent' })).json.key;
+  const app = (await dana.post('/api-keys', { environment: 'dev', service: 'web', scope: 'all' })).json.key;
+  const snap = t.plane.get('dev');
+  const res = await flagdFor(shared, '/service');
+  assert.equal(res.status, 200, JSON.stringify(res.json));
+  const doc = res.json as FlagdDoc;
+  assert.deepEqual(doc.metadata, { flagSetId: 'dev/server-ds', environment: 'dev', revision: snap.revision });
+  assert.deepEqual(Object.keys(doc.flags), Object.keys(snap.flags).filter((k) => snap.flags[k].delivery.includes('server-ds')).sort());
+  assert.equal(res.headers.get('cache-control'), 'private, no-cache');
+  assert.equal((await flagdFor(shared, '/service', { 'if-none-match': res.headers.get('etag')! })).status, 304);
+  assert.equal((await flagdFor(own, '/service')).status, 400, 'a key for one entity reads its own document');
+  assert.equal((await flagdFor(app, '/service')).status, 403, 'an app’s key reads values only');
+
+  const r = random(11);
+  let compared = 0;
+  for (const entity of [null, ...Object.values(snap.entities)]) {
+    for (const key of Object.keys(doc.flags)) {
+      for (let i = 0; i < 10; i++) {
+        const attrs = randomAttrs(r);
+        const context = { ...nest(attrs), ...(entity ? { [entity.dimension]: entity.key } : {}) };
+        assert.equal(same(flagdCore(doc, key, context)), same(ours(snap, key, 'server-ds', entity?.key ?? null, attrs)), `${key} for ${entity?.key}`);
+        compared++;
+      }
+    }
+  }
+  assert.ok(compared > 300, `${compared}`);
+});
+
+// The console's split editor (web/src/pages/rolloutKit.ts) lays a split's parts end to end: one rule serving several
+// variants. flagd's fractional has one weight per part, and every device lands in the same part as on our server.
+test('a split across three variants, as the editor makes it (50/25/25 by device, or by session): flagd’s answer is ours', () => {
+  const ranges = withPart(withPart([{ variation: 'a', from: 0, to: 5000 }], 'b', 2500), 'c', 2500);
+  assert.deepEqual(ranges.map((x) => [x.from, x.to]), [[0, 5000], [5000, 7500], [7500, 10000]]);
+  for (const by of ['device.id', 'session.id']) {
+    const f: FlagDef = {
+      key: 'checkout_test', valueType: 'string', kind: 'experiment', delivery: ['server-ds'], variations: { a: 'A', b: 'B', c: 'C', [CODE_DEFAULT]: null },
+      base: { version: 1, enabled: true, variationWhenOff: CODE_DEFAULT, defaultVariation: 'a', inherit: null, rules: [
+        { ruleKey: 'split', name: 'Checkout test', locked: false, disabled: false, conditions: [{ field: 'device.platform', op: 'in', values: ['web'] }], serveVariation: null,
+          split: { by, fallbackBy: null, salt: 'checkout_test', hashVersion: 2, ranges } },
+      ] },
+      entities: { vandelay: { version: 1, enabled: null, variationWhenOff: null, defaultVariation: 'c', inherit: 'base_rules_then_customer_default', rules: [] } },
+    };
+    const snap = snapOf({ checkout_test: f });
+    for (const entity of [null, 'vandelay', 'wonka']) {
+      const doc = buildFlagdDoc(snap, 'server-ds', entity ? ENTITIES[entity] : null);
+      assert.deepEqual(fractionalWeights(doc.flags.checkout_test.targeting), [10000, 10000, 10000], 'one fractional per part, out of 10000');
+      const got: Record<string, number> = {};
+      for (let i = 0; i < 3000; i++) {
+        const attrs = { 'device.platform': i % 10 === 0 ? 'android' : 'web', [by]: `${by}-${i}` };
+        const want = ours(snap, 'checkout_test', 'server-ds', entity, attrs);
+        assert.equal(same(flagdCore(doc, 'checkout_test', nest(attrs))), same(want), `flagd-core, ${by}, ${entity}, ${i}`);
+        assert.equal(same(flagdEvaluate(doc, 'checkout_test', nest(attrs))), same(want), `${by}, ${entity}, ${i}`);
+        if (attrs['device.platform'] === 'web') got[String(want.value)] = (got[String(want.value)] ?? 0) + 1;
+      }
+      // the shares come out as set: 50%, 25%, 25% of the 2,700 web devices
+      for (const [v, share] of [['A', 0.5], ['B', 0.25], ['C', 0.25]] as const) assert.ok(Math.abs((got[v] ?? 0) / 2700 - share) < 0.04, `${v}: ${got[v]} of 2700`);
+      // with no ID to split by, the rule doesn't match: the default decides
+      const none = { 'device.platform': 'web' };
+      assert.equal(same(flagdCore(doc, 'checkout_test', nest(none))), same(ours(snap, 'checkout_test', 'server-ds', entity, none)));
+    }
+  }
 });

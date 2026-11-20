@@ -1,14 +1,35 @@
 // Code references (the CLI's `flags unused`): which flags no code mentions, and which keys the code reads with
 // OpenFeature that aren't flags. A plain search, with no parser: a flag is mentioned when its key is a whole word in
-// a text file; a key is read when it is the first argument of an OpenFeature get…Value call.
+// a text file; a key is read when it is the flag key of an OpenFeature call (READS), in each SDK's spelling.
 
 import { closeSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const SKIPPED = new Set(['node_modules', '.git', 'dist', 'build']);
+/** Folders of installed packages, builds and caches: what's in them isn't the code's own. */
+const SKIPPED = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', '.turbo', 'coverage', 'vendor', 'target', '.venv', 'venv', '__pycache__']);
 const MAX_BYTES = 1024 * 1024;
-/** OpenFeature's client calls with a key typed in: getBooleanValue("new_checkout", …), getStringValueDetails(…) */
-const READS = /get(?:Boolean|String|Number|Object)Value(?:Details)?\(\s*['"]([a-z][a-z0-9_]*)['"]/g;
+const KEY = String.raw`['"\x60]([a-z][a-z0-9_]*)['"\x60]`;
+const read = (pattern: string) => new RegExp(`${pattern}${KEY}`, 'g');
+/** OpenFeature's calls with a key typed in, in each SDK's spelling. The key is the first argument, except in Go
+ *  (after the context) and where it is named (Python's flag_key=, Ruby's flag_key:, Swift's key:). */
+export const READS: { languages: string; pattern: RegExp }[] = [
+  // getBooleanValue('new_checkout', …), getNumberDetails(…), getIntegerValue (Java), getObjectValueDetails
+  { languages: 'JavaScript, TypeScript, Java, Kotlin, PHP, Swift',
+    pattern: read(String.raw`\bget(?:Boolean|String|Number|Integer|Double|Object)(?:Value|Details|ValueDetails)\(\s*(?:key:\s*)?`) },
+  // useBooleanFlagValue('new_checkout', false), useStringFlagDetails(…), useFlag(…), useSuspenseFlag(…)
+  { languages: 'React', pattern: read(String.raw`\buse(?:(?:Boolean|String|Number|Object)Flag(?:Value|Details)|Flag|SuspenseFlag)\(\s*`) },
+  // client.BooleanValue(ctx, "new_checkout", false, evalCtx), StringValueDetails(context.Background(), …)
+  { languages: 'Go', pattern: read(String.raw`\b(?:Boolean|String|Int|Float|Object)(?:Value|ValueDetails)\(\s*[\w.]+(?:\(\))?\s*,\s*`) },
+  // get_boolean_value("new_checkout", False), get_integer_details(flag_key="…") (Python); get_bool_value("…") (Rust)
+  { languages: 'Python, Rust',
+    pattern: read(String.raw`\bget_(?:bool|boolean|string|int|integer|float|object|struct)_(?:value|details)\(\s*(?:flag_key\s*=\s*)?`) },
+  // fetch_boolean_value(flag_key: "new_checkout", default_value: false)
+  { languages: 'Ruby', pattern: read(String.raw`\bfetch_(?:boolean|string|number|integer|float|object)_(?:value|details)\(\s*(?:flag_key:\s*)?`) },
+  // GetBooleanValueAsync("new_checkout", false), GetStringDetailsAsync(…)
+  { languages: '.NET', pattern: read(String.raw`\bGet(?:Boolean|String|Integer|Double|Object)(?:Value|Details)Async\(\s*`) },
+];
+/** flagd JSON (an export, a CDN file) names every flag it has: that isn't the code reading them. */
+const FLAGD_FILE = /"\$schema"\s*:\s*"https:\/\/flagd\.dev\/schema\//;
 const WORDS = /[A-Za-z0-9_]+/g;
 
 export type CodeReferences = {
@@ -26,11 +47,11 @@ export function codeReferences(keys: string[], src: string, o: { skip?: string[]
   const skip = new Set((o.skip ?? []).map((f) => resolve(f)));
   for (const file of textFiles(resolve(src), skip)) {
     const text = readFileSync(file, 'utf8');
+    if (file.endsWith('.json') && FLAGD_FILE.test(text.slice(0, 4096))) continue;
     if (seen.size < flags.size) for (const [w] of text.matchAll(WORDS)) if (flags.has(w)) seen.add(w);
-    for (const m of text.matchAll(READS)) {
-      if (flags.has(m[1])) continue;
-      unknown.push({ key: m[1], file, line: lineAt(text, m.index) });
-    }
+    const found: { key: string; at: number }[] = [];
+    for (const { pattern } of READS) for (const m of text.matchAll(pattern)) if (!flags.has(m[1])) found.push({ key: m[1], at: m.index });
+    for (const f of found.sort((a, b) => a.at - b.at)) unknown.push({ key: f.key, file, line: lineAt(text, f.at) });
   }
   return { unused: keys.filter((k) => !seen.has(k)).sort(), unknown };
 }

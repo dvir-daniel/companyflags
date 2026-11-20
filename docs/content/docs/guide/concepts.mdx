@@ -1,5 +1,6 @@
 ---
 title: "How it fits together"
+description: "Environments, services, dimensions, flags, values and rules, and the order one answer is decided in."
 ---
 
 CompanyFlags has a few parts that build on each other. You set up **environments** and **services** once, and
@@ -92,11 +93,11 @@ of three ways:
 
 | Choice | What the entity gets |
 |---|---|
-| **Rules only** | Its rules first. If none match, whatever its parent gets (at the top: what everyone gets). |
-| **Rules + own default** | Its rules, then the rules of each level above it and everyone's, then its own default. |
-| **Own settings only** | Only its rules and its default. Every level above it and the rules for everyone are skipped. |
+| **Follow what's above** | Its rules first. If none match, whatever its parent gets (at the top: what everyone gets). It has no default of its own. |
+| **Own default last** | Its rules, then the rules of each level above it and everyone's, then its own default. |
+| **Skip what's above** | Only its rules and its default. Every level above it and the rules for everyone are skipped. Overrides still apply. |
 
-For example, Globex has its own `api_base_url` (Rules + own default, serving `https://globex.api.example.com`),
+For example, Globex has its own `api_base_url` (Own default last, serving `https://globex.api.example.com`),
 so Lumen and Bolt get that address too, with no settings of their own.
 
 ## Overrides: locked rules that fail closed
@@ -112,7 +113,9 @@ doesn't report its version, the override still keeps the new checkout off.
 
 Anywhere a value is served (a rule, a part of a %, a default, an entity's own default) you can choose **Use code
 default (in-app)**. The flag then sends no value, and the app keeps the default written in its own code. When a flag is
-switched off, it sends nothing at all, so every app uses its code default. Make that the safe value.
+switched off, it sends nothing at all, so every app uses its code default. Make that the safe value. A kill switch can
+also name a [safe value](/guide/approvals#the-safe-value) that on call serves to everyone, so the emergency button
+doesn't depend on each app's code.
 
 ## A % of devices, and group names
 

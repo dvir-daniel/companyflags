@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { createApp, type AppOptions } from '../server/index.ts';
+import { embeddedTemplate } from '../server/db.ts';
 import { defaultPlugins, type CloudflareOptions, type WebhooksOptions } from '../server/plugins/index.ts';
 import { bucketFor, HASH_VERSION } from '../server/hash.ts';
 import { fixtures } from './fixtures.ts';
@@ -29,6 +30,10 @@ export async function testDatabase(): Promise<{ url?: string; drop: () => Promis
 
 type App = Awaited<ReturnType<typeof createApp>>;
 
+// In memory, every app of a test file starts from one database migrated once (db.ts embeddedTemplate): loading it is
+// cheaper than replaying every migration for each. On a Postgres server (FF_TEST_PG) each still migrates its own.
+let template: Promise<Blob> | undefined;
+
 /** Every built-in plugin, as a server without a list gets them, with these options: no `fetch` for Cloudflare or
  *  webhooks unless a test gives a fake, so a test never reaches them. */
 export const builtIns = (o: { cloudflare?: CloudflareOptions; webhooks?: WebhooksOptions } = {}) =>
@@ -41,7 +46,8 @@ export async function startApp(opts: AppOptions = {}): Promise<App & { stop: () 
   const tdb = opts.databaseUrl || opts.dataDir ? { url: opts.databaseUrl, drop: async () => {} } : await testDatabase();
   let ctx: App;
   try {
-    ctx = await createApp({ env: {}, ...opts, databaseUrl: tdb.url });
+    const fromTemplate = !tdb.url && !opts.dataDir && !process.env.FF_TEST_NO_TEMPLATE;
+    ctx = await createApp({ env: {}, ...opts, databaseUrl: tdb.url, ...(fromTemplate ? { template: await (template ??= embeddedTemplate()) } : {}) });
   } catch (e) {
     await tdb.drop().catch(() => {});
     throw e;
@@ -88,7 +94,7 @@ export async function boot(opts: AppOptions = {}) {
     put: (p: string, b: unknown, h: Record<string, string> = {}) => call('PUT', `/api${p}`, b, { 'x-user': user, ...h }),
     del: (p: string, b?: unknown) => call('DELETE', `/api${p}`, b ?? {}, { 'x-user': user }),
   });
-  const trace = async (body: { environment?: string; project: string; entity: string | null; attrs?: Record<string, unknown>; flag: string }) => {
+  const trace = async (body: { environment?: string; service: string; entity: string | null; attrs?: Record<string, unknown>; flag: string }) => {
     const r = await as('alice').post('/trace', { environment: 'dev', attrs: {}, ...body });
     if (r.status !== 200) throw new Error(JSON.stringify(r.json));
     return r.json.result;

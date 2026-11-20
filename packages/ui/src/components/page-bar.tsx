@@ -1,7 +1,7 @@
 import * as React from "react"
 import { CaretDownIcon, CheckIcon, XIcon } from "@phosphor-icons/react"
 import { cn } from "../lib/utils.ts"
-import { BAR_CONTROLS, barTextButton } from "./page-bar-classes.ts"
+import { BAR_CONTROLS, barTextButton, crumbLink } from "./page-bar-classes.ts"
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx"
 
 /*
@@ -57,7 +57,7 @@ function PageBar({
       {title !== undefined || crumbs ? (
         <div className="flex min-w-0 items-baseline gap-2.5">
           {crumbs ? <span className="flex items-baseline gap-2 text-15 text-ink-3">{crumbs}<span aria-hidden>/</span></span> : null}
-          {title !== undefined ? <h1 className="m-0 truncate text-15 leading-tight font-semibold tracking-normal text-ink">{title}</h1> : null}
+          {title !== undefined ? <h1 tabIndex={-1} data-page-title className="m-0 truncate text-15 leading-tight font-semibold tracking-normal text-ink outline-none">{title}</h1> : null}
           {count !== undefined ? <span className="font-mono text-13 text-ink-3">{count}</span> : null}
         </div>
       ) : null}
@@ -234,5 +234,5 @@ function ViewMenu<V>({
   )
 }
 
-export { BAR_CONTROLS, barTextButton, FilterSelect, PageBar, ViewMenu }
+export { BAR_CONTROLS, barTextButton, crumbLink, FilterSelect, PageBar, ViewMenu }
 export type { SavedView }

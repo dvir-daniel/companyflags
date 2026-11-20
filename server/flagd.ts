@@ -2,7 +2,8 @@
 // flagd itself or an OpenFeature flagd provider evaluating in-process. Backends get it with an API key
 // (GET /sdk/v1/flagd/<dimension>/<entity>); apps get the same document as their CDN file, at their app link
 // (GET /cdn/v1/flags/<env>/<service>/<entity>/<secret>, or /cdn/v1/flags/<env>/<service> before sign-in: no entity).
-// Both are served by delivery.ts.
+// A backend shared by many entities can read one document for all of them instead (buildServiceDoc, below:
+// GET /sdk/v1/flagd/service). All are served by delivery.ts.
 //
 // forEntity settles everything the server knows for every request of this service (the environment, the service, the
 // entity and those above it), so no other entity is named and none of their values is in it; what's left depends on the
@@ -63,21 +64,30 @@ export function buildFlagdDoc(snap: Snapshot, project: string, entity: EntityInf
   return { $schema: FLAGD_SCHEMA, metadata: { flagSetId: flagSetId(snap.environment, project, entity?.key ?? null), environment: snap.environment, revision: snap.revision }, flags };
 }
 
-function compileFlag(flag: FlagDef, where: Where, project: string, entity: EntityInfo | null): FlagdFlag | null {
-  if (!flag.delivery.includes(project)) return null;                 // not sent to this backend: FLAG_NOT_FOUND
+/** One entity's answer for a flag: the lines that depend on the request, each with its variant, then the entity's
+ *  answer (a variant's name; null: the app's default). The variants it names are added to `variants`. */
+type EntityLogic = { lines: (readonly [Logic, string | null])[]; fallback: string | null };
+function entityLogic(flag: FlagDef, where: Where, project: string, entity: EntityInfo | null, variants: Record<string, unknown>): EntityLogic | 'not_sent' | 'off' {
   const a = forEntity(flag, where, entity, { project });
-  if (a.gets.section === 'not_sent') return null;
-  const variants: Record<string, unknown> = {};
+  if (a.gets.section === 'not_sent') return 'not_sent';
+  if (a.gets.section === 'off') return 'off';
   // a variant's name in the JSON (and its value in `variants`); null: the app's own default
   const name = (v: string): string | null => {
     if (v === CODE_DEFAULT) return null;
     variants[v] = flag.variations[v];
     return v;
   };
-  if (a.gets.section === 'off') return { state: 'DISABLED', variants: anyVariant(flag), defaultVariant: null };
+  return { lines: a.exceptions.map((e) => [lineCheck(e), name(e.variant)] as const), fallback: name(a.gets.variant) };
+}
+const servesCodeDefault = (l: EntityLogic) => l.fallback === null || l.lines.some(([, v]) => v === null);
 
-  const lines = a.exceptions.map((e) => [lineCheck(e), name(e.variant)] as const);
-  const fallback = name(a.gets.variant);
+function compileFlag(flag: FlagDef, where: Where, project: string, entity: EntityInfo | null): FlagdFlag | null {
+  if (!flag.delivery.includes(project)) return null;                 // not sent to this backend: FLAG_NOT_FOUND
+  const variants: Record<string, unknown> = {};
+  const l = entityLogic(flag, where, project, entity, variants);
+  if (l === 'not_sent') return null;
+  if (l === 'off') return { state: 'DISABLED', variants: anyVariant(flag), defaultVariant: null };
+  const { lines, fallback } = l;
   // targeting null means "use defaultVariant": with a branch that serves the app's default, that has to be null,
   // so the entity's answer becomes the last branch instead
   const codeDefaultBranch = lines.some(([, v]) => v === null);
@@ -89,6 +99,85 @@ function compileFlag(flag: FlagDef, where: Where, project: string, entity: Entit
   };
   if (!Object.keys(variants).length) flagd.variants = anyVariant(flag);   // flagd needs one: every answer is the app's default
   return flagd;
+}
+
+// ---------------------------------------------------------------- one document for many entities
+// A backend shared by many entities reads one document for its service (GET /sdk/v1/flagd/service, with a secret key
+// for `all` entities or `below` one) instead of one per entity, so one flagd serves it. Each flag's targeting first
+// picks the entity, by the dimension keys the request names, as rules name them ({"brand": "lumen"}), then runs that
+// entity's own logic, the same as in its own document:
+//
+//   { "if": [ {"in": [{"var": "brand"}, ["bolt", "lumen"]]}, <their logic>,        the lowest dimension first
+//             {"in": [{"var": "company"}, ["globex"]]}, <its logic>, …,
+//             <the logic when the request names none of them> ] }
+//
+// The last branch is what a request naming no entity gets: no entity for an `all` key, the key's own entity for a
+// `below` key, as over OFREP. Entities with the same logic share a branch. One whose logic is the last branch's, as
+// is that of every entity above it in the document, has none: a request naming any of them gets the same.
+// The lowest dimension the request names decides, as over OFREP. Where OFREP refuses a request (an entity it doesn't
+// know, a chain that doesn't match), flagd can't: an entity the document doesn't hold gets what the next one up that
+// the request names gets, and with none, the last branch.
+
+/** The flagSetId of a service's one document for many entities: `<environment>/<service>`. */
+export const serviceFlagSetId = (environment: string, service: string) => `${environment}/${service}`;
+
+/** One service's flags for many entities as one flagd document. `entities`: those it holds (the ones the key may
+ *  ask about); `fallback`: who a request that names none of them asks as (null: no entity, for an `all` key). */
+export function buildServiceDoc(snap: Snapshot, project: string, entities: readonly EntityInfo[], fallback: EntityInfo | null): FlagdDoc {
+  const flags: Record<string, FlagdFlag> = {};
+  const held = new Set(entities.map((e) => e.key));
+  // the lowest dimension first, each one's entities by key
+  const byDimension = [...snap.dimensions].reverse().map((d) => entities.filter((e) => e.dimension === d).sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0)));
+  const asLogic = (l: EntityLogic): Logic => (l.lines.length ? { if: [...l.lines.flat(), l.fallback] } : l.fallback);
+  for (const key of sortedFlagKeys(snap)) {
+    const flag = snap.flags[key];
+    if (!flag.delivery.includes(project)) continue;                  // not sent to this backend: FLAG_NOT_FOUND
+    const variants: Record<string, unknown> = {};
+    const last = entityLogic(flag, snap, project, fallback, variants);
+    if (last === 'not_sent') continue;
+    if (last === 'off') { flags[key] = { state: 'DISABLED', variants: anyVariant(flag), defaultVariant: null }; continue; }
+    const lastJson = JSON.stringify(asLogic(last));
+    let codeDefault = servesCodeDefault(last);
+    const logic = new Map<string, { json: string; logic: Logic }>();
+    for (const e of entities) {
+      const l = entityLogic(flag, snap, project, e, variants);
+      if (typeof l === 'string') continue;                          // not sent, or off: the same for every entity
+      if (servesCodeDefault(l)) codeDefault = true;
+      const lg = asLogic(l);
+      logic.set(e.key, { json: JSON.stringify(lg), logic: lg });
+    }
+    const branchOf = new Map<string, boolean>();
+    const needsBranch = (e: EntityInfo): boolean => {
+      let v = branchOf.get(e.key);
+      if (v === undefined) {
+        const parent = e.parent && held.has(e.parent) ? snap.entities[e.parent] : undefined;
+        v = logic.get(e.key)?.json !== lastJson || (!!parent && needsBranch(parent));
+        branchOf.set(e.key, v);
+      }
+      return v;
+    };
+    const branches: Logic[] = [];
+    for (const [i, list] of byDimension.entries()) {
+      const dimension = snap.dimensions[snap.dimensions.length - 1 - i];
+      const groups = new Map<string, { logic: Logic; keys: string[] }>();
+      for (const e of list) {
+        const l = logic.get(e.key);
+        if (!l || !needsBranch(e)) continue;
+        const g = groups.get(l.json);
+        if (g) g.keys.push(e.key); else groups.set(l.json, { logic: l.logic, keys: [e.key] });
+      }
+      for (const g of groups.values()) branches.push({ in: [{ var: dimension }, g.keys] }, g.logic);
+    }
+    if (!branches.length) {
+      // every entity gets what the last branch says: written as that entity's (or no entity's) own document has it
+      flags[key] = compileFlag(flag, snap, project, fallback)!;
+      continue;
+    }
+    // no branch is null unless it serves the app's default, so defaultVariant is null exactly then
+    flags[key] = { state: 'ENABLED', variants, defaultVariant: codeDefault ? null : Object.keys(variants).sort()[0], targeting: { if: [...branches, asLogic(last)] } };
+    if (!Object.keys(variants).length) flags[key].variants = anyVariant(flag);
+  }
+  return { $schema: FLAGD_SCHEMA, metadata: { flagSetId: serviceFlagSetId(snap.environment, project), environment: snap.environment, revision: snap.revision }, flags };
 }
 
 /** A variant for a flag that never serves one: the first that isn't a typed-in value (one entity's may be private).

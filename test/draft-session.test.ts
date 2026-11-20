@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { ApiError, type Meta } from '../web/src/api.ts';
 import { DraftSession, memoryStorage, StaleDraftError, storageKey, type DraftStorage, type Http } from '../web/src/draftSession.ts';
-import { hiddenKey, setOwnValues, type Line } from '../web/src/lines.ts';
+import { hiddenKey, setOwnValues, setVariantValues, type Line } from '../web/src/lines.ts';
 import { boot } from './helpers.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
@@ -54,7 +54,7 @@ test('opening a flag and editing it: what changed, as items and sentences, with 
   assert.equal(v.draft!.lines[0].id, override.id);
   assert.deepEqual(v.items.map((i) => [i.flag, i.entity, i.expectedVersion]), [['max_upload_mb', null, open.live!.layers.dev.base.version]]);
   assert.equal(v.sentences.length, 1);
-  assert.match(v.sentences[0], /^Add rule: .+ → 5000$/);
+  assert.match(v.sentences[0], /^Add override: .+ → 5000$/);              // an override is called one
   assert.deepEqual(v.problems, []);
   assert.equal(s.summary(meta).has('max_upload_mb'), true);
   assert.equal(s.summary(meta).changes, 1);
@@ -98,7 +98,7 @@ test('a saved draft someone else changed since: found at review and before publi
   assert.deepEqual(await s.rebase(), ['welcome_message']);
   const [g] = s.summary(meta).flags;
   assert.equal(g.stale, false);
-  assert.deepEqual(g.sentences, ['Default: holiday']);
+  assert.deepEqual(g.sentences, ['Default: the in-app default, now holiday']);
   assert.equal(g.items[0].expectedVersion, base.version + 1);
   const res = await s.publish({ meta });
   assert.equal(res.applied, true);
@@ -121,7 +121,7 @@ test('another write path in this browser tells the session what it changed: the 
   await told;
   assert.deepEqual(s.summary(meta).stale, ['api_base_url']);
   await s.rebase(['api_base_url']);
-  assert.deepEqual(s.summary(meta).flags[0].sentences, ['Default: wonka'], 'Vandelay stays removed');
+  assert.deepEqual(s.summary(meta).flags[0].sentences, ['Default: default, now wonka'], 'Vandelay stays removed');
   assert.equal((await s.publish({ meta })).applied, true);
   const now = (await flagNow('api_base_url')).layers.dev;
   assert.equal(now.base.defaultVariation, 'wonka');
@@ -158,7 +158,7 @@ test('publishing goes values → submit → clear, as one version with the sente
   const version = (await t.as('alice').get('/environments/dev/versions?page=0&size=1')).json.rows[0];
   assert.equal(version.revision, res.revision);
   assert.match(version.comment, /^Oscorp pool\n\n/);
-  assert.match(version.comment, /dark_mode_v2: Default: true/);
+  assert.match(version.comment, /dark_mode_v2: Default: false, now true/);
 });
 
 test('in a protected environment publishing makes one change set covering every flag', async () => {
@@ -276,4 +276,37 @@ test('switching flag or environment never writes one environment’s draft under
   assert.equal(stored(storage, 'dev').flags.data_region_host.draft.fallback, 'us');
   assert.equal(dev.view('data_region_host', meta).draft!.fallback, 'us');
   assert.equal(prod.view('data_region_host', meta).draft!.fallback, 'eu');
+});
+
+test('a new value for a variant waits in the draft, goes out on publish, and is refused where an approved environment serves it', async () => {
+  // a variant nobody serves yet: its new value is saved only when the draft is published
+  assert.equal((await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'trial', value: 10 }] })).status, 200);
+  const log: string[] = [];
+  const s = await opened(sessionOf('dev', { log }), 'max_upload_mb');
+  s.edit('max_upload_mb', (d) => setVariantValues(s.view('max_upload_mb', meta).flag!, d, { trial: 20 }));
+  const v = s.view('max_upload_mb', meta);
+  assert.equal(v.changed, true, 'a new value alone is a change');
+  assert.deepEqual(v.items, [], 'no layer changes');
+  assert.deepEqual(v.sentences, ['Change the value of trial: 10, now 20 (in every environment)']);
+  assert.deepEqual(s.summary(meta).flags[0].values, [{ key: 'trial', value: 20, was: 10 }]);
+  assert.equal((await flagNow('max_upload_mb')).variations.find((x: { key: string }) => x.key === 'trial').value, 10, 'not saved yet');
+  log.length = 0;
+  const res = await s.publish({ meta });
+  assert.equal(res.applied, true);
+  assert.deepEqual(log.filter((l) => !l.startsWith('GET')), ['PUT /flags/max_upload_mb/variations'], 'only the value: nothing to publish in the layers');
+  assert.equal((await flagNow('max_upload_mb')).variations.find((x: { key: string }) => x.key === 'trial').value, 20);
+  assert.equal(s.summary(meta).flags.length, 0);
+
+  // someone else changes it meanwhile: the draft is stale, as for the layers
+  const other = await opened(sessionOf('dev'), 'max_upload_mb');
+  other.edit('max_upload_mb', (d) => setVariantValues(other.view('max_upload_mb', meta).flag!, d, { trial: 30 }));
+  assert.equal((await t.as('alice').put('/flags/max_upload_mb/variations', { variations: [{ key: 'trial', value: 25 }] })).status, 200);
+  assert.deepEqual(await other.checkStale(), ['max_upload_mb']);
+
+  // a variant production serves (it needs approval) can't change under its approvers: refused, and nothing is sent
+  const prodServed = await opened(sessionOf('dev', { log }), 'max_upload_mb');
+  prodServed.edit('max_upload_mb', (d) => setVariantValues(prodServed.view('max_upload_mb', meta).flag!, d, { enterprise: 2000 }));
+  await assert.rejects(prodServed.publish({ meta }), (e: ApiError) => e.status === 409 && /served in prod/.test(e.message));
+  assert.equal((await flagNow('max_upload_mb')).variations.find((x: { key: string }) => x.key === 'enterprise').value, 1000);
+  assert.equal(prodServed.summary(meta).flags.length, 1, 'the edit stays in the draft');
 });

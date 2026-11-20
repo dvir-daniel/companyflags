@@ -150,7 +150,7 @@ describe('releases end to end', () => {
     await t.settle();
     return r;
   };
-  const has = async (env: string, entity: string, id: string | null) => (await t.trace({ environment: env, project: 'android', entity, flag: 'new_checkout',
+  const has = async (env: string, entity: string, id: string | null) => (await t.trace({ environment: env, service: 'android', entity, flag: 'new_checkout',
     attrs: { 'app.version': '6.1.0', ...(id ? { 'device.id': id } : {}) } })).value;
 
   test('GET /releases: every release, where it is in each environment, and the filters', async () => {
@@ -190,7 +190,7 @@ describe('releases end to end', () => {
     assert.equal(await has('dev', 'acme', null), false, 'no device ID: not in the %');
     await save('new_checkout', 'dev', { kind: 'everyone' });
     assert.equal(await has('dev', 'acme', null), true, 'everyone: devices without an ID too');
-    const old = await t.trace({ environment: 'dev', project: 'android', entity: 'acme', flag: 'new_checkout', attrs: { 'app.version': '4.0.0', 'device.id': early } });
+    const old = await t.trace({ environment: 'dev', service: 'android', entity: 'acme', flag: 'new_checkout', attrs: { 'app.version': '4.0.0', 'device.id': early } });
     assert.equal(old.value, false, 'the override for old android builds still wins');
     await save('new_checkout', 'dev', { kind: 'percent', percent: 50 });
     assert.deepEqual([await has('dev', 'acme', at(0, 5000)), await has('dev', 'acme', at(5000, 10000))], [true, false], 'back from everyone: the same half');
@@ -229,7 +229,7 @@ describe('releases end to end', () => {
     assert.equal((await t.as('alice').post('/flags/android_quick_share/archive')).status, 409, 'still on and sent in prod');
     const cs = await t.as('alice').post('/change-sets', { environment: 'prod', reason: 'clean up', items: [
       { flag: 'android_quick_share', entity: null, expectedLayerVersion: base.version, proposed: { ...base, enabled: false } },
-      { kind: 'delivery', flag: 'android_quick_share', entity: null, expectedLayerVersion: null, proposed: null, delivery: { before: f.delivery.prod, projects: [] } },
+      { kind: 'delivery', flag: 'android_quick_share', entity: null, expectedLayerVersion: null, proposed: null, delivery: { before: f.delivery.prod, services: [] } },
     ] });
     assert.equal(cs.status, 201, JSON.stringify(cs.json));
     await t.as('bob').post(`/change-sets/${cs.json.id}/review`, { decision: 'approve' });
@@ -254,8 +254,8 @@ describe('releases end to end', () => {
     const row = (await t.as('alice').get('/releases?page=0&q=new_search')).json.rows[0];
     assert.deepEqual([row.envs.dev.step, row.envs.dev.on, row.envs.prod.step, row.envs.prod.on], ['not_started', true, 'not_started', false]);
     assert.equal((await save('new_search', 'dev', { kind: 'entities', entities: ['acme'] })).status, 200);
-    assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'new_search' })).value, true);
-    assert.equal((await t.trace({ project: 'web', entity: 'globex', flag: 'new_search' })).value, false);
+    assert.equal((await t.trace({ service: 'web', entity: 'acme', flag: 'new_search' })).value, true);
+    assert.equal((await t.trace({ service: 'web', entity: 'globex', flag: 'new_search' })).value, false);
     // the list in one environment: rolling out in dev, not started in prod
     const keys = async (q: string) => (await t.as('alice').get(`/releases?page=0&q=new_search&${q}`)).json.rows.map((r: any) => r.key);
     assert.deepEqual(await keys('show=rolling&environment=dev'), ['new_search']);
@@ -405,7 +405,11 @@ describe('where a version release is', () => {
     assert.equal(isRollback(everyone, { kind: 'everyone', version: '1.0.0' }, ['1.0.0', '1.0.1']), true);
     assert.equal(isRollback(everyone, { kind: 'everyone', version: '1.0.0' }, ['1.0.1']), false, 'never served here');
     assert.equal(isRollback(everyone, { kind: 'everyone', version: '1.0.2' }, ['1.0.2']), false, 'forward isn’t back');
-    assert.equal(isRollback(releaseState(variants, start), { kind: 'pause' }, []), false, 'on/off releases: the switch is their way back');
+    assert.equal(isRollback(releaseState(variants, start), { kind: 'pause' }, []), false, 'not started: nothing to pause');
+    // an on/off release mid-way: pausing it is the safe direction too (everyone back on the old value, the % kept)
+    const half = releaseState(variants, step(stored(start), { kind: 'percent', percent: 5 }));
+    assert.equal(isRollback(half, { kind: 'pause' }, []), true, 'an on/off release at 5%: pause');
+    assert.equal(isRollback(half, { kind: 'percent', percent: 1 }, []), false, 'but not a smaller %');
   });
 });
 
@@ -424,7 +428,7 @@ describe('version releases end to end', () => {
   };
   const add = async (version: unknown) => { const r = await t.as('alice').post('/flags/web_bundle/versions', { version }); await t.settle(); return r; };
   const attrsOf = (id: string | null) => ({ 'app.version': '6.0.0', ...(id ? { 'device.id': id } : {}) });
-  const on = async (id: string | null, env = 'dev') => (await t.trace({ environment: env, project: 'web', entity: 'acme', flag: 'web_bundle', attrs: attrsOf(id) })).value;
+  const on = async (id: string | null, env = 'dev') => (await t.trace({ environment: env, service: 'web', entity: 'acme', flag: 'web_bundle', attrs: attrsOf(id) })).value;
   const release = (body: Record<string, unknown> = {}) => t.as('alice').post('/flags', {
     key: 'web_bundle', name: 'Web bundle', tags: [], owner: 'web-team', description: '', kind: 'release', valueType: 'string',
     variations: [{ key: k('1.0.0'), value: '1.0.0' }], delivery: { dev: ['web'], prod: ['web'] }, base: { enabled: true, defaultVariation: k('1.0.0'), rules: [] }, ...body,
@@ -576,7 +580,7 @@ describe('version releases end to end', () => {
     f = (await t.as('alice').get('/flags/web_bundle')).json;
     assert.equal(f.layers.prod.base.defaultVariation, k('1.0.0'));
     assert.equal((await breakGlass('carol', { kind: 'everyone', version: '1.0.3' })).status, 403, 'forward is a request');
-    // an on/off release has the switch for this (kill switches and ops flags only)
+    // an on/off release: break-glass turns it off or pauses it, nothing else (dropping its rules is a request)
     const nc = (await t.as('carol').get('/flags/new_checkout')).json.layers.prod.base;
     const r = await t.as('carol').put('/flags/new_checkout/layers/prod/base', { layer: { ...nc, rules: [] }, expectedVersion: nc.version, bypassReason: 'sneaky' });
     assert.equal(r.status, 403);

@@ -1,5 +1,6 @@
 ---
 title: "Releases"
+description: "Turn a feature on step by step, or roll out versions, with an ordinary flag whose purpose is Release."
 ---
 
 A **release** turns a new feature on step by step, then goes away. In CompanyFlags a release is an ordinary flag
@@ -37,12 +38,13 @@ step there turns it on.
 | **Everyone** | Every device, with a device ID or without | The default is true, and the release's rules are gone |
 | **Paused** | Nobody new | The release's rules are kept but paused, so resuming brings back the same devices |
 | **Off** | Nobody gets a value | The flag's switch: apps use the default in their code |
-| **Custom** | Depends on the rules | Anything else, such as two % rules or a % that doesn't start at 0. Edit it on the flag page. |
+| **Custom** | Depends on the rules | Anything else, such as two % rules or a % that doesn't start at 0. Edit it on the Rules tab. |
 
-The release page's card shows the step, who has it, the stages **1% · 5% · 25% · 50% · Everyone**, and the buttons for
-the next step: **Start at 1%**, **Increase to 25%**, **Roll back to 5%**, **Pause** or **Resume**, and **Release to
-everyone**. Early access is added from the same card (**Give early access…**), and the flag's full rules editor sits
-right under it.
+A release has one page: its flag's page, which opens on the **Rollout** tab (`#/flag/<key>/<env>/rollout`; the old
+`#/release/<key>/<env>` lands there too). The rollout card shows the step, who has it, the stages
+**1% · 5% · 25% · 50% · Everyone**, and the buttons for the next step: **Start at 1%**, **Increase to 25%**, **Roll back
+to 5%**, **Pause** or **Resume**, and **Release to everyone**. Early access is added from the same card (**Give early
+access…**). The flag's full rules are on its **Rules** tab, next to it.
 
 - **The ladder** is 1% → 5% → 25% → 50% → everyone. A % set on the flag page (10%, say) shows where it falls, and the
   next step goes to the next one up.
@@ -61,7 +63,8 @@ The release's own rules are rules for everyone, so the chain applies as usual
 ([Dimensions → Evaluation order](/guide/dimensions#evaluation-order)). Overrides come before them: the sample's
 `new_checkout` keeps Android builds below 5.0 on the old checkout whatever the step. An entity's own rules come before
 them too: Acme's rule "Acme gets it everywhere" gives Acme and Acme Kids the new checkout on every device the override
-allows. An entity that uses "Own settings only" is never reached by the release.
+allows. An entity whose own default comes instead of the rules for everyone ("Skip what's above") is never reached
+by the release.
 
 ### How a step is saved
 
@@ -100,7 +103,7 @@ It is a release flag with text values where **every value is a version**. Versio
 - **each new version is higher than every version the release has**, so versions only go up;
 - a version never changes once added.
 
-**+ New version** on the release page suggests the next patch, with **Patch · Minor · Major** chips. Adding it isn't
+**+ New version** on the Rollout tab suggests the next patch, with **Patch · Minor · Major** chips. Adding it isn't
 reviewed and writes no history, because nobody gets it yet. The step that serves it is the reviewed change.
 
 ### Its steps
@@ -139,6 +142,9 @@ Rolling back never removes a version; the fix is always a new, higher one.
 is break-glass: it applies at once and History marks it as an emergency. It is allowed in two shapes only: every device
 back on the version everyone else is on (the % kept), or everyone on an older version this environment served while the
 flag was on. Anything else, including **Resume**, is a request. See [Approvals and history](/guide/approvals#break-glass).
+
+An on/off release works the same way: on call sees **Pause now** (everyone back on the old value, the % kept) and can
+turn it off, both at once with a reason.
 
 ## Not built yet
 

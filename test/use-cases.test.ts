@@ -9,16 +9,16 @@ after(async () => { await t.stop(); });
 
 describe('use cases', () => {
   test('UC1: android-only key does not exist for ios', async () => {
-    assert.equal((await t.trace({ project: 'android', entity: 'acme', flag: 'android_quick_share' })).value, true);
-    const ios = await t.trace({ project: 'ios', entity: 'acme', flag: 'android_quick_share' });
+    assert.equal((await t.trace({ service: 'android', entity: 'acme', flag: 'android_quick_share' })).value, true);
+    const ios = await t.trace({ service: 'ios', entity: 'acme', flag: 'android_quick_share' });
     assert.equal(ios.errorCode, 'FLAG_NOT_FOUND');
   });
 
   test('UC2 + UC3: per-customer URL, Vandelay android differs from Vandelay iOS', async () => {
-    const msAndroid = await t.trace({ project: 'android', entity: 'vandelay', flag: 'api_base_url' });
-    const msIos = await t.trace({ project: 'ios', entity: 'vandelay', flag: 'api_base_url' });
-    const wonka = await t.trace({ project: 'web', entity: 'wonka', flag: 'api_base_url' });
-    const acme = await t.trace({ project: 'web', entity: 'acme', flag: 'api_base_url' });
+    const msAndroid = await t.trace({ service: 'android', entity: 'vandelay', flag: 'api_base_url' });
+    const msIos = await t.trace({ service: 'ios', entity: 'vandelay', flag: 'api_base_url' });
+    const wonka = await t.trace({ service: 'web', entity: 'wonka', flag: 'api_base_url' });
+    const acme = await t.trace({ service: 'web', entity: 'acme', flag: 'api_base_url' });
     assert.equal(msAndroid.value, 'https://android.vandelay.api.example.com');
     assert.equal(msIos.value, 'https://vandelay.api.example.com');
     assert.equal(wonka.value, 'https://wonka.api.example.com');
@@ -28,7 +28,7 @@ describe('use cases', () => {
   test('UC4: 20% of android devices, sticky; widening to 50% moves nobody out', async () => {
     const attrs = (id: string) => ({ 'device.id': id, 'app.version': '6.1.0' });
     const ids = Array.from({ length: 400 }, (_, i) => `device-${i}`);
-    const before20 = await Promise.all(ids.map((id) => t.trace({ project: 'android', entity: 'acme', attrs: attrs(id), flag: 'new_checkout' })));
+    const before20 = await Promise.all(ids.map((id) => t.trace({ service: 'android', entity: 'acme', attrs: attrs(id), flag: 'new_checkout' })));
     const on20 = before20.filter((r) => r.value === true).length;
     assert.ok(on20 > 50 && on20 < 110, `~20% expected, got ${on20}/400`);
 
@@ -39,7 +39,7 @@ describe('use cases', () => {
     assert.equal(save.status, 200, JSON.stringify(save.json));
     await t.settle();
 
-    const after50 = await Promise.all(ids.map((id) => t.trace({ project: 'android', entity: 'acme', attrs: attrs(id), flag: 'new_checkout' })));
+    const after50 = await Promise.all(ids.map((id) => t.trace({ service: 'android', entity: 'acme', attrs: attrs(id), flag: 'new_checkout' })));
     before20.forEach((r, i) => { if (r.value === true) assert.equal(after50[i].value, true, `${ids[i]} was moved out`); });
     assert.ok(after50.filter((r) => r.value === true).length > on20);
 
@@ -53,7 +53,7 @@ describe('use cases', () => {
   });
 
   test('UC4 edge: no device id → no match (never bucket 0); unallocated bucket → continue', async () => {
-    const r = await t.trace({ project: 'android', entity: 'acme', attrs: { 'app.version': '6.0.0' }, flag: 'new_checkout' });
+    const r = await t.trace({ service: 'android', entity: 'acme', attrs: { 'app.version': '6.0.0' }, flag: 'new_checkout' });
     assert.equal(r.value, false);
     assert.equal(r.reason, 'DEFAULT');
     assert.ok(r.trace.some((s: any) => /missing → no match/.test(s.detail)));
@@ -73,7 +73,7 @@ describe('use cases', () => {
     assert.equal(bypass.status, 200, JSON.stringify(bypass.json));
     await t.settle();
     for (const project of ['android', 'web', 'server-ds']) {
-      const r = await t.trace({ environment: 'prod', project, entity: 'vandelay', flag: 'payments_enabled' });
+      const r = await t.trace({ environment: 'prod', service: project, entity: 'vandelay', flag: 'payments_enabled' });
       assert.equal(r.codeDefault, true);                    // OFF: nothing is sent, the app uses its code default
       assert.equal(r.reason, 'DISABLED');
     }
@@ -82,25 +82,25 @@ describe('use cases', () => {
   });
 
   test('UC6: locked off for android < 5.0, Wonka cannot override; missing version fails closed', async () => {
-    const old = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'app.version': '4.9.3', 'device.id': 'x' }, flag: 'new_checkout' });
+    const old = await t.trace({ service: 'android', entity: 'wonka', attrs: { 'app.version': '4.9.3', 'device.id': 'x' }, flag: 'new_checkout' });
     assert.equal(old.value, false);
     assert.equal(old.metadata.layer, 'base');
-    const v510 = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'app.version': '5.10.0', 'device.id': 'x' }, flag: 'new_checkout' });
+    const v510 = await t.trace({ service: 'android', entity: 'wonka', attrs: { 'app.version': '5.10.0', 'device.id': 'x' }, flag: 'new_checkout' });
     assert.equal(v510.value, true);                         // 5.10 > 5.0 (semver, not string compare); Wonka rule applies
-    const missing = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'device.id': 'x' }, flag: 'new_checkout' });
+    const missing = await t.trace({ service: 'android', entity: 'wonka', attrs: { 'device.id': 'x' }, flag: 'new_checkout' });
     assert.equal(missing.value, false);
     assert.ok(missing.trace[2].conditions.some((c: any) => /fails closed/.test(c.note ?? '')));
-    const garbage = await t.trace({ project: 'android', entity: 'wonka', attrs: { 'app.version': 'banana', 'device.id': 'x' }, flag: 'new_checkout' });
+    const garbage = await t.trace({ service: 'android', entity: 'wonka', attrs: { 'app.version': 'banana', 'device.id': 'x' }, flag: 'new_checkout' });
     assert.equal(garbage.value, false);
-    const ios = await t.trace({ project: 'ios', entity: 'wonka', attrs: { 'app.version': '1.0.0' }, flag: 'new_checkout' });
+    const ios = await t.trace({ service: 'ios', entity: 'wonka', attrs: { 'app.version': '1.0.0' }, flag: 'new_checkout' });
     assert.equal(ios.value, true);                          // the lock only targets android
   });
 
   test('UC7: EU host via one rule for everyone; an “Own settings only” layer is explicit and visible in the trace', async () => {
-    assert.equal((await t.trace({ project: 'web', entity: 'soylent', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
-    assert.equal((await t.trace({ project: 'web', entity: 'oscorp', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
-    assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'data_region_host' })).value, 'https://us.data.example.com');
-    const cyberdyne = await t.trace({ project: 'web', entity: 'cyberdyne', flag: 'data_region_host' });
+    assert.equal((await t.trace({ service: 'web', entity: 'soylent', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
+    assert.equal((await t.trace({ service: 'web', entity: 'oscorp', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
+    assert.equal((await t.trace({ service: 'web', entity: 'acme', flag: 'data_region_host' })).value, 'https://us.data.example.com');
+    const cyberdyne = await t.trace({ service: 'web', entity: 'cyberdyne', flag: 'data_region_host' });
     assert.equal(cyberdyne.value, 'https://us.data.example.com');
     assert.ok(cyberdyne.trace.some((s: any) => s.outcome === 'skipped' && /uses only its own settings/.test(s.detail)));
     const impact = (await t.as('alice').get('/flags/data_region_host/impact/dev')).json;
@@ -111,7 +111,7 @@ describe('use cases', () => {
     const s = await t.as('alice').put('/flags/data_region_host/layers/dev/soylent', { layer: netflixLayer, expectedVersion: null });
     assert.equal(s.status, 200, JSON.stringify(s.json));
     await t.settle();
-    assert.equal((await t.trace({ project: 'web', entity: 'soylent', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
+    assert.equal((await t.trace({ service: 'web', entity: 'soylent', flag: 'data_region_host' })).value, 'https://eu.data.example.com');
   });
 
   test('entities have a key, a name, a dimension and, below the top, a parent; renames are audited', async () => {
@@ -138,13 +138,13 @@ describe('use cases', () => {
     assert.equal(view.rows.length, (await t.as('alice').get('/flags?environment=dev&page=0&size=200')).json.matched);
     // other entities' typed-in values never show up on this entity's page
     assert.ok(view.rows.every((f: any) => f.variations.every((v: any) => !v.own || f.hasOwn)));
-    assert.equal((await t.as('alice').get('/dimensions/company/nope/flags')).status, 404);
+    assert.equal((await t.as('alice').get('/dimensions/company/nope/flags?environment=dev')).status, 404);
   });
 
   test('UC8: a flag sent only to server-ds never reaches a phone; Soylent gets its own value', async () => {
-    const phone = await t.trace({ project: 'android', entity: 'soylent', flag: 'ds_backend_config' });
+    const phone = await t.trace({ service: 'android', entity: 'soylent', flag: 'ds_backend_config' });
     assert.equal(phone.errorCode, 'FLAG_NOT_FOUND');
-    const ds = await t.trace({ project: 'server-ds', entity: 'soylent', flag: 'ds_backend_config' });
+    const ds = await t.trace({ service: 'server-ds', entity: 'soylent', flag: 'ds_backend_config' });
     assert.deepEqual(ds.value, { host: 'ds-soylent.internal', poolSize: 40 });
   });
 
@@ -152,14 +152,14 @@ describe('use cases', () => {
     const c = await t.as('alice').post('/dimensions/company', { key: 'brand-new', name: 'Brand New Inc' });
     assert.equal(c.status, 201);
     await t.settle();
-    const r = await t.trace({ project: 'web', entity: 'brand-new', flag: 'api_base_url' });
+    const r = await t.trace({ service: 'web', entity: 'brand-new', flag: 'api_base_url' });
     assert.equal(r.value, 'https://api.example.com');
     assert.equal(r.metadata.layer, 'base');
   });
 
   test('UC10: trace explains every layer and the bucket', async () => {
     const id = deviceIn('new_checkout', 0, 2000);
-    const r = await t.trace({ project: 'android', entity: 'vandelay', attrs: { 'device.id': id, 'app.version': '6.0.0' }, flag: 'new_checkout' });
+    const r = await t.trace({ service: 'android', entity: 'vandelay', attrs: { 'device.id': id, 'app.version': '6.0.0' }, flag: 'new_checkout' });
     assert.equal(r.value, true);
     assert.equal(r.reason, 'SPLIT');
     const split = r.trace.find((s: any) => s.split?.bucket !== undefined);

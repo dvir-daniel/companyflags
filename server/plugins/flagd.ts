@@ -7,5 +7,5 @@ import { flagdRoutes } from '../delivery.ts';
 
 export const flagd = () => definePlugin({
   id: 'flagd',
-  setup: (ctx) => ({ routes: flagdRoutes(ctx) }),
+  setup: (ctx) => ({ routes: flagdRoutes(ctx), prefixes: ['/sdk/v1/flagd'] }),
 });

@@ -18,11 +18,17 @@ export async function startFlags() {
   const key = import.meta.env.VITE_FLAGS_KEY;
   if (!key) console.warn('Set VITE_FLAGS_KEY in .env.local (see .env.example): the page shows the defaults.');
 
-  // What the browser knows about itself, and who signed in: the company, by its dimension.
+  // What the browser knows about itself, and who signed in: targetingKey is the device a % of devices is decided for;
+  // the company is named by its dimension, never by targetingKey.
   await OpenFeature.setContext({ targetingKey: deviceId(), app: { version: APP_VERSION }, company: 'acme' });
   OpenFeature.setProvider(new OFREPWebProvider({
     baseUrl,
     headers: [['Authorization', `Bearer ${key ?? ''}`]],
     pollInterval: 60_000,
+    // The provider keeps the last answers in localStorage and shows them first on the next visit. Its own cache key
+    // has the device but not the entity, so put the dimensions in it: after a sign-in, sign-out or switch, the page
+    // never shows another entity's values first.
+    cacheKeyGenerator: ({ url, auth, domain, targetingKey, context }) =>
+      JSON.stringify([url, auth ?? '', domain ?? '', targetingKey ?? '', context.company ?? '', context.brand ?? '']),
   }));
 }

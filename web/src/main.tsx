@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useT
 import { createRoot } from 'react-dom/client';
 import { api, ApiError, entityLabel, errorCode, invalidate, SIGNED_OUT_EVENT, title as dimTitle, type Meta } from './api.ts';
 import { AppContext, go, type AppCtx, type DialogOpts } from './app.ts';
-import { pageEnv, preload, routeParts } from './paths.ts';
+import { movedAddress, pageEnv, preload, routeParts } from './paths.ts';
+import { CommandPalette } from './commandPalette.tsx';
 import { useDraftNotices } from './useDraft.ts';
 import { Actions, Field, Modal } from './ui.tsx';
 import { textareaField } from './uiKit.ts';
@@ -58,6 +59,8 @@ const GetStarted = lazy(() => import('./pages/setup.tsx').then((m) => ({ default
 const People = lazy(() => PAGE_CODE.people().then((m) => ({ default: m.People })));
 const Migration = lazy(() => PAGE_CODE.migration().then((m) => ({ default: m.Migration })));
 const Webhooks = lazy(() => PAGE_CODE.webhooks().then((m) => ({ default: m.Webhooks })));
+// an admin the sign-in rules ask to set up two-factor sign-in first sees only this (server/access.ts needsTwoFactor)
+const TwoFactorGate = lazy(() => import('./pages/twoFactor.tsx').then((m) => ({ default: m.TwoFactorGate })));
 // signing in needs Better Auth's client; people who are signed in never download it
 const SIGN_IN_CODE = () => import('./signin.tsx');
 const SignInPage = lazy(() => SIGN_IN_CODE().then((m) => ({ default: m.SignInPage })));
@@ -67,7 +70,7 @@ const ResetPage = lazy(() => SIGN_IN_CODE().then((m) => ({ default: m.ResetPage 
 /** Starts downloading the code of the page at this address. Never fails (a failed chunk shows in the page). */
 const loadPageCode = (hash: string): Promise<unknown> => {
   const [first, second] = routeParts(hash) ?? [];
-  const page = (first === 'settings' && second === 'people' ? 'people' : first) as keyof typeof PAGE_CODE | undefined;
+  const page = (first === 'settings' && second === 'people' ? 'people' : first === 'services' ? 'settings' : first) as keyof typeof PAGE_CODE | undefined;
   return page && page in PAGE_CODE ? PAGE_CODE[page]().catch(() => {}) : Promise.resolve();
 };
 
@@ -77,6 +80,12 @@ const NAV_WAIT_MS = 300;
 
 // the address in the window; no page (or just "#/") opens the flag list
 const currentHash = () => (location.hash.length > 2 ? location.hash : '#/flags');
+// an address that moved (each environment's revisions are in History, Settings → Services in Connect) opens where it went, in place
+// of the old entry in the browser's history
+const moved = movedAddress(location.hash);
+if (moved) history.replaceState(history.state, '', moved);
+// the page an address is, without its query: a change of filters in the query (#/history?env=…) stays on the page
+const pagePart = (hash: string) => hash.split('?')[0];
 // a link that can't be decoded (e.g. "#/flag/%E0%A4%A") is a page that doesn't exist, not a crash
 const BAD_ADDRESS = ['\u0000bad-address'];
 const routeOf = (hash: string) => routeParts(hash) ?? BAD_ADDRESS;
@@ -87,7 +96,7 @@ function knownRoute([page, a]: string[]): boolean {
     case 'flag': case 'release': case 'dimensions': return !!a;
     case 'approvals': return !a || /^\d+$/.test(a);
     case 'settings': return !a || isSettingsKey(a);
-    case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'migration': case 'webhooks': return true;
+    case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'migration': case 'webhooks': case 'services': return true;
     default: return false;
   }
 }
@@ -95,7 +104,7 @@ function knownRoute([page, a]: string[]): boolean {
 function NotFound() {
   return (
     <div className="grid max-w-[620px] content-start gap-4 p-12 max-sm:p-6">
-      <h1 className="m-0 text-[28px] leading-tight font-semibold text-ink">Page not found</h1>
+      <h1 tabIndex={-1} data-page-title className="m-0 text-28 font-semibold text-ink outline-none">Page not found</h1>
       <p className="m-0 text-ink-2">There’s no page at this address. It may have been mistyped, or the link may be from an older version of the console.</p>
       <div><Button onClick={() => go('flags')}>Go to flags</Button></div>
     </div>
@@ -105,7 +114,7 @@ function NotFound() {
 /** The tab's title for each page, so tabs and history entries can be told apart. */
 function titleFor([page, a, b]: string[], meta: Meta | null): string {
   const name: Record<string, string> = {
-    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', tokens: 'Access tokens', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', webhooks: 'Webhooks', join: 'Join',
+    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', tokens: 'Access tokens', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', webhooks: 'Webhooks', services: 'Services', join: 'Join',
   };
   const dim = page === 'dimensions' && a ? meta?.dimensions.find((d) => d.key === a) : undefined;
   const dimName = dim ? dimTitle(dim) : a;
@@ -129,8 +138,12 @@ function useGuardedRoute(isDirty: () => boolean, confirmLeave: () => Promise<boo
   const seq = useRef(0);
   useEffect(() => {
     const on = async () => {
+      const away = movedAddress(location.hash);
+      if (away) { location.replace(away); return; }   // its own hashchange follows
       const next = currentHash();
       if (skip.current) { skip.current = false; return; }
+      // the same page with other filters in its query: no wait, no "discard changes?" (the page reads its query itself)
+      if (pagePart(next) === pagePart(current.current)) { current.current = next; setHash(next); return; }
       if (next !== current.current && isDirty()) {
         // Stay put until the user decides. `replace` swaps the history entry instead of adding one, so going
         // back after "Discard changes" doesn't return to the page you just left.
@@ -156,7 +169,7 @@ function useGuardedRoute(isDirty: () => boolean, confirmLeave: () => Promise<boo
 }
 
 // pages built as dense console pages (full width, sticky page bar); the rest sit in a centred column
-const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'compare', 'approvals', 'keys', 'tokens', 'history', 'settings', 'migration']);
+const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'compare', 'approvals', 'keys', 'tokens', 'history', 'settings', 'services', 'migration']);
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 type Answer = { action: string | null; reason: string };
@@ -292,7 +305,7 @@ function App() {
     return () => { stopped = true; clearTimeout(retryTimer); clearTimeout(burstTimer); es?.close(); };
   }, [signedIn, reload]);
 
-  // one toast at a time, at the bottom right of the main pane (the shared Toaster); errors in red
+  // toasts stack at the bottom right of the main pane (the shared Toaster; one with Undo is never pushed out); errors in red
   // errors say what happened in a sentence and offer the next step (Nielsen 9): stale data → Reload, offline → Reload.
   // Which is which comes from the error's code (api.ts ErrorCode), never from its words.
   const toast = useCallback((m: string | Error, kind?: 'ok' | 'err', action?: { label: string; onClick: () => void }) => {
@@ -312,7 +325,37 @@ function App() {
   // the window doesn't scroll, the main pane does: start each page at its top
   useEffect(() => { pane.current?.scrollTo({ top: 0 }); }, [routeKey]);
 
-  // Search flags (sidebar, ⌘K on a Mac, Ctrl+K elsewhere): open the flag list and put the cursor in its search
+  // After going to another page, say so and put focus on its title, so the keyboard carries on from the top of the page
+  // and a screen reader reads where it is. Focus stays where it was when it's still on the page (the sidebar, the
+  // tab bar, a dialog), or when the page put it somewhere itself (a search box). Not on the first page.
+  const [announced, setAnnounced] = useState('');
+  const handledRoute = useRef(routeKey);
+  const ready = !waiting && !!meta;
+  useEffect(() => {
+    if (!ready || handledRoute.current === routeKey) return;
+    handledRoute.current = routeKey;
+    let frames = 0;
+    let raf = 0;
+    const settle = () => {
+      const main = document.getElementById('main');
+      const heading = main?.querySelector<HTMLElement>('[data-page-title]') ?? main?.querySelector<HTMLElement>('h1');
+      const at = document.activeElement;
+      // wait for the page's title, and for a dialog that led here (⌘K) to close and hand focus back
+      if (!heading || at?.closest('[role="dialog"]')) { if (frames++ < 60) raf = requestAnimationFrame(settle); return; }
+      setAnnounced(document.title);
+      // focus handed back to the Search that opened ⌘K counts as lost: the person went somewhere from there
+      const kept = at && at !== document.body && at.isConnected && !main?.contains(at) && !at.closest('[data-slot="sidebar-search"]');
+      if (kept || (at && main?.contains(at) && at !== main)) return;
+      if (!heading.hasAttribute('tabindex')) heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    };
+    raf = requestAnimationFrame(settle);
+    return () => cancelAnimationFrame(raf);
+  }, [routeKey, ready]);
+
+  // ⌘K on a Mac, Ctrl+K elsewhere, or Search in the sidebar: the command palette (commandPalette.tsx).
+  const [palette, setPalette] = useState(false);
+  // "Search in the flag list" from the palette: open the flag list and put the cursor in its search
   // box once that page is on screen (its code may still be downloading, or a "discard changes?" may be open).
   const wantSearch = useRef(false);
   const pageRef = useRef(page);
@@ -338,13 +381,14 @@ function App() {
     const onKey = (e: globalThis.KeyboardEvent) => {
       // Ctrl+K in a text field on a Mac deletes to the end of the line: leave it alone there
       if (e.key.toLowerCase() !== 'k' || e.altKey || e.shiftKey || !(isMac ? e.metaKey : e.ctrlKey)) return;
-      if (document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
-      searchFlags();
+      // ⌘K again closes it; another dialog open (a drawer, a question) keeps it closed
+      setPalette((o) => o || !document.querySelector('[role="dialog"]'));
     };
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
-  }, [searchFlags]);
+  }, []);
+  const openPalette = useCallback(() => setPalette(true), []);
 
   const ctx = useMemo<AppCtx | null>(() => (meta ? {
     meta, reload, user: meta.me.key, revisionTick: tick, pendingApprovals: pending, toast, ask, setDirty,
@@ -384,8 +428,8 @@ function App() {
       {title}
       <AppFrame
         titleBar={<><Banner banner={meta?.banner} /><TitleBar synced={synced} /></>}
-        sidebar={<Sidebar meta={meta} page={page} sub={route[1]} pending={pending} onSearch={searchFlags} className="max-md:hidden" />}
-        footer={<><Footer meta={meta} /><MobileNav meta={meta} page={page} sub={route[1]} pending={pending} onSearch={searchFlags} /></>}>
+        sidebar={<Sidebar meta={meta} page={page} sub={route[1]} pending={pending} onSearch={openPalette} className="max-md:hidden" />}
+        footer={<><Footer meta={meta} /><MobileNav meta={meta} page={page} sub={route[1]} pending={pending} onSearch={openPalette} /></>}>
           {/* on a phone the sidebar is hidden, so the page takes the frame's second row (the first stays empty) */}
           <MainPane id="main" wide fluid={DENSE.has(page)} key={meta?.me.key} ref={pane} aria-busy={waiting || !meta || undefined} className="max-md:row-start-2">
               {waiting && <div data-nav-progress aria-hidden
@@ -396,12 +440,13 @@ function App() {
                 <Suspense fallback={skeleton}>
                   {/* a crash in a page shows in its place; another address starts that page fresh */}
                   <ErrorBoundary key={routeKey} where={page}>
-                    {!knownRoute(route) ? <NotFound /> : page === 'settings' ? <SettingsFrame sub={route[1]}>{route[1] === 'people' ? <People /> : <Settings section={route[1]} />}</SettingsFrame>
+                    {meta.me.needsTwoFactor ? <TwoFactorGate /> : !knownRoute(route) ? <NotFound /> : page === 'settings' ? <SettingsFrame sub={route[1]}>{route[1] === 'people' ? <People /> : <Settings section={route[1]} />}</SettingsFrame>
                       : page === 'tokens' ? <Tokens />
                       : page === 'webhooks' ? <Webhooks />
+                      : page === 'services' ? <Settings section="services" />
                       : !setUp ? <GetStarted /> : <>
                       {page === 'flags' && <Flags envKey={route[1]} tab={route[2]} />}
-                      {page === 'flag' && route[1] && <FlagPage flagKey={route[1]} envKey={route[2]} />}
+                      {page === 'flag' && route[1] && <FlagPage flagKey={route[1]} envKey={route[2]} tabKey={route[3]} />}
                       {page === 'releases' && <Releases envKey={route[1]} />}
                       {page === 'release' && route[1] && <ReleasePage flagKey={route[1]} envKey={route[2]} />}
                       {page === 'approvals' && <Approvals selected={route[1] ? Number(route[1]) : undefined} />}
@@ -419,6 +464,8 @@ function App() {
       </AppFrame>
       {dialog && <DialogView key={dialog.id} d={dialog} onDone={(r) => closeDialog(dialog, r)} />}
       {meta && <DraftNotices />}
+      {meta && <CommandPalette meta={meta} open={palette} onOpenChange={setPalette} onSearchFlags={searchFlags} />}
+      <div role="status" aria-live="polite" className="sr-only">{announced}</div>
       <Toaster />
     </AppContext>
   );

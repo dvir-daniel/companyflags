@@ -83,7 +83,7 @@ export function createIdentity(signIn: SignIn, access: Access, auth?: BetterAuth
     return { email: p.key, name: p.name === p.key ? '' : p.name };
   };
   routes.post('/invites', async (c) => {
-    const body = await c.req.json<{ token?: unknown }>().catch(() => ({} as { token?: unknown }));
+    const body = ((await c.req.json<{ token?: unknown } | null>().catch(() => null)) ?? {}) as { token?: unknown };
     return c.json(await invited(typeof body.token === 'string' ? body.token : ''));
   });
   // Better Auth: sign up, sign in, sign out, provider callbacks, single sign-on, the session (betterAuth.ts)

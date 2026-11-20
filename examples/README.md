@@ -14,9 +14,9 @@ Small apps that read CompanyFlags with OpenFeature's own SDKs and providers. The
    http://localhost:8787). Or with Docker:
 
    ```bash
-   docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \
-     -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" -e BETTER_AUTH_URL=http://localhost:8787 \
-     ghcr.io/dvir-daniel/companyflags
+   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env   # keep it: it signs sign-in sessions
+   docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \
+     -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags
    ```
 
 2. **Make the admin account** with the setup link the server prints (`docker logs companyflags`):

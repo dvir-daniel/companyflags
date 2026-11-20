@@ -24,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!error) return this.props.children;
     return (
       <div role="alert" className="grid max-w-[620px] content-start gap-4 p-12 max-sm:p-6">
-        <h1 className="m-0 text-[28px] leading-tight font-semibold text-ink">Something went wrong on this page</h1>
+        <h1 className="m-0 text-28 font-semibold text-ink">Something went wrong on this page</h1>
         <p className="m-0 text-ink-2">
           The page hit an error and stopped. Nothing you saved is lost; unsaved edits are kept in this browser.
           Reload to try again, or go to another page.

@@ -1,12 +1,12 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ArrowSquareOutIcon, CaretLeftIcon, CopyIcon } from '@phosphor-icons/react';
+import { ArrowSquareOutIcon, CopyIcon } from '@phosphor-icons/react';
 import { Button } from '@companyflags/ui/components/button';
 import { Callout } from '@companyflags/ui/components/callout';
 import { BulkBar, ColumnHead, KeyHints, RowCheck, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyflags/ui/components/data-table';
 import { Drawer, DrawerRow, DrawerSection } from '@companyflags/ui/components/drawer';
 import { Input } from '@companyflags/ui/components/input';
 import { NativeSelect } from '@companyflags/ui/components/native-select';
-import { BAR_CONTROLS, barTextButton, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { BAR_CONTROLS, barTextButton, crumbLink, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
 import { SearchField } from '@companyflags/ui/components/search-field';
 import { cn } from '@companyflags/ui/lib/utils';
 import {
@@ -479,20 +479,20 @@ export function EntityHeader({ entity, dimension, above, under, childDimension, 
   const chain = [...above].reverse();
   return (
     <header className="px-6 pt-4 pb-5 max-sm:px-4">
-      {/* up the chain: the dimension's page, then each entity above this one, the top first */}
+      {/* up the chain, as the page bar's crumbs: the dimension's page, then each entity above this one, the top first */}
       <nav aria-label="Up the chain" className="-ml-1 flex min-w-0 flex-wrap items-center gap-x-1 text-13 text-ink-3">
-        <a href={`#/dimensions/${seg(dimension.key)}`} className="inline-flex items-center gap-1 text-ink-3 no-underline hover:text-ink hover:no-underline">
-          <CaretLeftIcon aria-hidden className="size-3.5" />{capital(dimension.plural)}
+        <a href={`#/dimensions/${seg(dimension.key)}`} className={crumbLink}>
+          {capital(dimension.plural)}
         </a>
         {chain.map((a) => (
           <Fragment key={a.key}>
-            <span aria-hidden className="text-ink-4">›</span>
+            <span aria-hidden className="text-ink-4">/</span>
             <a href={entityHref(a.dimension, a.key, env)} className="truncate text-ink-3 no-underline hover:text-ink hover:no-underline">{a.name}</a>
           </Fragment>
         ))}
       </nav>
       <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="m-0 min-w-0 truncate text-[22px] leading-8 font-semibold tracking-[-0.01em] text-ink">{entity.name}</h1>
+        <h1 className="m-0 min-w-0 truncate text-22 leading-8 font-semibold tracking-[-0.01em] text-ink">{entity.name}</h1>
         <span className="inline-flex min-w-0 items-center gap-0.5 font-mono text-13 text-ink-3">
           <span className="truncate">{entity.key}</span>
           <button type="button" onClick={() => void copyText(entity.key, `key ${entity.key}`, toast)} aria-label={`Copy key ${entity.key}`} title="Copy the key rules and app links use"
@@ -547,7 +547,7 @@ export function EntityHeader({ entity, dimension, above, under, childDimension, 
 function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () => void; entity: Who; env: string }) {
   const { ask, toast, meta } = useApp();
   const { envName } = useEnvs();
-  const clientApps = meta.projects.filter((p) => p.kind === 'client').map((p) => p.key);
+  const clientApps = meta.services.filter((p) => p.kind === 'client').map((p) => p.key);
   const [chosen, setApp] = useState<string | null>(null);
   const app = chosen && clientApps.includes(chosen) ? chosen : clientApps[0] ?? null;
   // the answer is kept with the entity, environment and app it's for, so another one's link (or error) never shows

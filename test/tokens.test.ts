@@ -39,7 +39,10 @@ test('a token acts as its person, without the console’s header, and an agent�
 test('never above its person: an agent is Viewer or Editor, a person’s token up to their own role', async () => {
   assert.equal((await make('bob', { name: 'agent', agent: true, role: 'approver' })).status, 422, 'an agent never approves');
   assert.equal((await make('alice', { name: 'mine', role: 'admin' })).status, 422, 'an editor makes no admin token');
-  assert.equal((await make('dana', { name: 'admin script', role: 'admin' })).status, 201, 'an admin may make an admin token');
+  assert.equal((await make('dana', { name: 'admin script', role: 'admin' })).status, 422, 'not even an admin makes an admin token');
+  const oncall = await make('dana', { name: 'admin script', role: 'oncall' });
+  assert.equal(oncall.status, 201, 'an admin’s token is On call at most');
+  assert.equal((await make('dana', { name: 'default' })).json.role, 'oncall', 'and that is its default');
   // a viewer may make a token, a viewer's
   const viewer = await make('vera', { name: 'read only' });
   if (viewer.status === 201) {
@@ -59,7 +62,7 @@ test('tokens are made in the console only, never from a browser, and stop when r
   assert.equal((await withToken(old.token, 'GET', '/api/flags')).status, 401);
   // revoked: by its person, at once
   assert.equal((await t.as('alice').del(`/tokens/${made.id}`)).status, 200);
-  assert.equal((await withToken(made.token, 'GET', '/api/flags')).status, 401);
+  assert.equal((await withToken(made.token, 'GET', '/api/flags?environment=dev')).status, 401);
   // someone else's token isn't yours to revoke; an admin's is
   const bobs = (await make('bob', { name: 'bob script' })).json;
   assert.equal((await t.as('alice').del(`/tokens/${bobs.id}`)).status, 404);
@@ -69,18 +72,18 @@ test('tokens are made in the console only, never from a browser, and stop when r
 test('removing a person ends their tokens for good: inviting them again doesn’t bring old ones back', async () => {
   await t.db.query(`insert into app_user (key, name, role) values ('erin', 'Erin (editor)', 'editor')`);
   const made = (await make('erin', { name: 'laptop script' })).json;
-  assert.equal((await withToken(made.token, 'GET', '/api/flags')).status, 200);
+  assert.equal((await withToken(made.token, 'GET', '/api/flags?environment=dev')).status, 200);
   assert.equal((await t.as('dana').del('/people/erin')).status, 200);
-  assert.equal((await withToken(made.token, 'GET', '/api/flags')).status, 401);
+  assert.equal((await withToken(made.token, 'GET', '/api/flags?environment=dev')).status, 401);
   assert.equal((await t.as('dana').post('/people/erin/invite')).status, 200);
-  assert.equal((await withToken(made.token, 'GET', '/api/flags')).status, 401, 'an invite gives back the role, not the old token');
+  assert.equal((await withToken(made.token, 'GET', '/api/flags?environment=dev')).status, 401, 'an invite gives back the role, not the old token');
   const row = (await t.as('dana').get('/tokens?all=1')).json.find((x: { id: number }) => x.id === made.id);
   assert.ok(row.revokedAt, 'shown as revoked');
 });
 
 test('where changes need approval, an agent’s change is a request a person approves', async () => {
   const agent = (await make('alice', { name: 'agent', agent: true })).json;
-  const r = await withToken(agent.token, 'PUT', '/api/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android', 'ios'] });
+  const r = await withToken(agent.token, 'PUT', '/api/flags/android_quick_share/delivery', { environment: 'prod', services: ['android', 'ios'] });
   assert.equal(r.status, 202, JSON.stringify(r.json));
   const id = r.json.changeSetId;
   assert.equal((await withToken(agent.token, 'POST', `/api/change-sets/${id}/review`, { decision: 'approve' })).status, 403, 'it can’t approve');
@@ -91,9 +94,9 @@ test('a request an agent proposes says so (byAgent); a person’s doesn’t', as
   const agent = (await make('alice', { name: 'a', agent: true })).json;
   const now: string[] = (await t.as('alice').get('/flags/android_quick_share')).json.delivery.prod;
   const next = now.includes('web') ? now.filter((p) => p !== 'web') : [...now, 'web'];
-  const byAgent = await withToken(agent.token, 'PUT', '/api/flags/android_quick_share/delivery', { environment: 'prod', projects: next });
+  const byAgent = await withToken(agent.token, 'PUT', '/api/flags/android_quick_share/delivery', { environment: 'prod', services: next });
   assert.equal(byAgent.status, 202, JSON.stringify(byAgent.json));
-  const byPerson = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: next });
+  const byPerson = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', services: next });
   assert.equal(byPerson.status, 202, JSON.stringify(byPerson.json));
   const one = async (id: number) => (await t.as('bob').get(`/change-sets/${id}`)).json;
   assert.equal((await one(byAgent.json.changeSetId)).byAgent, true);

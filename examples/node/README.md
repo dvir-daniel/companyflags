@@ -6,12 +6,17 @@ the `api` service's key.
 `GET /upload-limit?company=acme` evaluates `max_upload_mb` for that company and answers JSON:
 
 ```json
-{ "company": "acme", "maxUploadMb": 1000, "reason": "TARGETING_MATCH", "variant": "large" }
+{ "company": "acme", "maxUploadMb": 1000, "reason": "TARGETING_MATCH", "variant": "enterprise", "revision": 12 }
 ```
 
 The company goes in the evaluation context by its dimension (`{ company: 'acme' }`), as the flag's rules name it.
 Without `?company=` it gets everyone's value. A company the server doesn't know answers the code's default, with
-`"error": "INVALID_CONTEXT"`.
+`"error": "INVALID_CONTEXT"`: add it as it signs up, with `PUT /sdk/v1/entities/company/<key>` (see
+[Evaluation context](../../docs/content/docs/reading/context.md)).
+
+`targetingKey` is the visitor a % of devices is decided for: `?user=` when someone is signed in, else an ID the
+example keeps in a `visitor` cookie. One fixed ID for every anonymous request would put them all in the same group.
+`revision` is the publish that answered, from the answer's `flagMetadata`.
 
 ## Run it
 

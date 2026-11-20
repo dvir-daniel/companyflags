@@ -8,7 +8,8 @@ A Vite + React page that reads its flags with OpenFeature's React SDK and the OF
   `localStorage`), `app.version`, and the signed-in company, `acme`.
 
 The provider asks for every flag in one request, then listens to the server's change stream. Change a flag in the
-console and the page updates within a second or two.
+console and the page updates within a second or two. It keeps the last answers in `localStorage` and shows them
+first on the next visit; its cache key includes the company, so another company's values never show first.
 
 ## Run it
 

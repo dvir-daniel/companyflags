@@ -3,11 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Meta } from '../web/src/api.ts';
-import { nextStep, setupSteps } from '../web/src/pages/setupKit.ts';
+import { nextStep, setupLeft, setupSteps, stepsLead } from '../web/src/pages/setupKit.ts';
 import { everyoneFilePath } from '../web/src/paths.ts';
 import { bootProblem } from '../web/src/text.ts';
 
-const blank = { environments: [], projects: [], dimensions: [], entities: [], plugins: ['ofrep', 'flagd', 'cdn-files'] } as unknown as Meta;
+const blank = { environments: [], services: [], dimensions: [], entities: [], plugins: ['ofrep', 'flagd', 'cdn-files'] } as unknown as Meta;
 const dev = { key: 'dev', name: 'Development', minApprovals: 0, revision: 1 };
 const at = (meta: Partial<Meta>, flags?: number) => {
   const steps = setupSteps({ ...blank, ...meta } as Meta, flags);
@@ -21,7 +21,7 @@ test('the checklist marks each step done from what the server has, and goes on t
   assert.equal(at({}).next, 'environments');
   assert.deepEqual(at({ environments: [dev] }).done, ['environments']);
   assert.equal(at({ environments: [dev] }).next, 'services');
-  const ready = { environments: [dev], projects: [{ key: 'web', kind: 'client' as const }] };
+  const ready = { environments: [dev], services: [{ key: 'web', kind: 'client' as const }] };
   assert.deepEqual(at(ready).done, ['environments', 'services']);
   // no dimension or entry is needed: an app reads with its service's key
   assert.equal(at(ready).next, 'flag');
@@ -29,13 +29,34 @@ test('the checklist marks each step done from what the server has, and goes on t
   assert.equal(at(ready, 0).next, 'flag');
   assert.equal(at(ready, 3).next, 'app');
   assert.equal(at(ready, 3).step('app').href, '#/keys');
-  // connecting an app is never marked done: the console can't see it
+  // connecting an app is done once a key in use has read flags (/meta keyLastUsedAt)
   assert.equal(at(ready, 3).step('app').done, false);
+  assert.equal(at({ ...ready, keyLastUsedAt: '2026-11-20T10:00:00Z' }, 3).step('app').done, true);
+});
+
+test('the checklist shows only while a step is left, and counts its own steps', () => {
+  const ready = { environments: [dev], services: [{ key: 'web', kind: 'client' as const }] };
+  assert.equal(setupLeft(at(ready, 3).steps), true);
+  // everything done: no dimension or entity needed, so nothing is left (the banner goes away)
+  assert.equal(setupLeft(at({ ...ready, keyLastUsedAt: '2026-11-20T10:00:00Z' }, 3).steps), false);
+  // the welcome says how many steps there are, from the list itself
+  assert.equal(stepsLead(at({}).steps), 'Four steps, and your apps read their first flag.');
+  assert.equal(stepsLead(at({}).steps.slice(0, 1)), 'One step, and your apps read their first flag.');
+});
+
+test('the steps never say "entry" or "entity", and use the dimension’s word once there is one', () => {
+  for (const plugins of [['ofrep', 'flagd', 'cdn-files'], ['cdn-files']]) {
+    for (const s of at({ plugins }).steps) assert.doesNotMatch(`${s.title} ${s.text} ${s.action}`, /\bentr(y|ies)\b|\bentit(y|ies)\b/i, s.key);
+  }
+  const store = { key: 'store', singular: 'store', plural: 'stores', entities: 0, withParent: 0 };
+  assert.match(at({ dimensions: [store] }).step('flag').text, /differs per store/);
+  assert.match(at({ dimensions: [store], plugins: ['cdn-files'] }).step('app').text, /a store’s app link/);
+  assert.match(at({}).step('flag').text, /differs per user or device/);
 });
 
 test('each step links where it is done', () => {
-  assert.equal(at({}).step('environments').href, '#/settings');
-  assert.equal(at({}).step('services').href, '#/settings');
+  assert.equal(at({}).step('environments').href, '#/settings/environments');
+  assert.equal(at({}).step('services').href, '#/services');
   assert.equal(at({}).step('flag').href, '#/flags');
   // connecting an app: the API keys page, where each service's key is made
   assert.equal(at({}).step('app').href, '#/keys');
@@ -43,9 +64,9 @@ test('each step links where it is done', () => {
 });
 
 test('connecting an app says how this server is read', () => {
-  // OFREP: the service's key in the provider; CDN files only: the entry's link
+  // OFREP: the service's key in the provider; CDN files only: the service's file for everyone (no dimension yet)
   assert.match(at({}).step('app').text, /key.*OFREP provider/);
-  assert.match(at({ plugins: ['cdn-files'] }).step('app').text, /app link/);
+  assert.match(at({ plugins: ['cdn-files'] }).step('app').text, /file for everyone/);
   assert.doesNotMatch(at({ plugins: ['cdn-files'] }).step('app').text, /OFREP/);
 });
 

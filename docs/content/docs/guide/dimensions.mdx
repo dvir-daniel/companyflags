@@ -1,5 +1,6 @@
 ---
 title: "Dimensions"
+description: "Name what your installation serves config per, in your own words, and give any entity settings of its own."
 ---
 
 A **dimension** is what your installation serves config per. You define them, in your own words: one installation
@@ -73,9 +74,15 @@ Once an entity has settings of its own on a flag, they combine with the rest in 
 
 | Choice | What the entity gets |
 |---|---|
-| **Rules only** | Its rules first. If none match, whatever its parent gets (at the top: what everyone gets). It has no default of its own. |
-| **Rules + own default** | Its rules, then the rules of each level above it and everyone's, then its own default. |
-| **Own settings only** | Only its rules and its default. Every level above it and the rules for everyone are skipped. Overrides still apply. |
+| **Follow what's above** | Its rules first. If none match, whatever its parent gets (at the top: what everyone gets). It has no default of its own. |
+| **Own default last** | Its rules, then the rules of each level above it and everyone's, then its own default. |
+| **Skip what's above** | Only its rules and its default. Every level above it and the rules for everyone are skipped. Overrides still apply. |
+
+The names say what happens once the entity's own rules don't match. On a flag's page, an entity with a default of its
+own shows where it comes: **After the rules for everyone** (Own default last) or **Instead of the rules for everyone**
+(Skip what's above). Setting a default always shows that choice, and starts with "after", so the rules for everyone
+(a % rollout or a kill rule among them) still reach the entity. The API, webhooks and flags as code keep the stored names
+(`base_rules_then_base_default`, `base_rules_then_customer_default`, `customer_only`).
 
 ## Evaluation order
 
@@ -86,18 +93,18 @@ This is the order the evaluator ([`server/evaluator.ts`](https://github.com/dvir
 
 A paused rule is passed over.
 
-A level is **skipped** when an entity below it, nearer the one asking, uses "Own settings only". The trace shows skipped
-rules and says whose choice skipped them. Only "Rules + own default" and "Own settings only" bring a default; "Rules
-only" never does.
+A level is **skipped** when an entity below it, nearer the one asking, uses "Skip what's above". The trace shows
+skipped rules and says whose choice skipped them. Only "Own default last" and "Skip what's above" bring a default;
+"Follow what's above" never does. The flag page's **Rules for everyone** says how many entities skip them.
 
 For the store `umbrella-12`, in the chain `umbrella`, in the region `eu`:
 
 | Store `umbrella-12` | Chain `umbrella` | Region `eu` | `umbrella-12` gets |
 |---|---|---|---|
-| no settings | no settings | Rules only | EU's rules, everyone's rules, then everyone's default |
-| Rules only | Own settings only | anything | its rules, Umbrella's, then Umbrella's default. EU and everyone's rules are skipped |
-| Rules + own default | Rules only | Rules + own default | its rules, Umbrella's, EU's, everyone's, then its own default |
-| no settings | Rules + own default | Rules + own default | Umbrella's rules, EU's, everyone's, then Umbrella's default (the nearest) |
+| no settings | no settings | Follow what's above | EU's rules, everyone's rules, then everyone's default |
+| Follow what's above | Skip what's above | anything | its rules, Umbrella's, then Umbrella's default. EU and everyone's rules are skipped |
+| Own default last | Follow what's above | Own default last | its rules, Umbrella's, EU's, everyone's, then its own default |
+| no settings | Own default last | Own default last | Umbrella's rules, EU's, everyone's, then Umbrella's default (the nearest) |
 
 ## Rules on dimensions
 
@@ -123,8 +130,8 @@ on them don't match, but **overrides on them do**, because overrides fail closed
 turns the flag off for everyone who names no entity.
 :::
 
-A % of devices can be split by a dimension or by `entity` too, so all stores of a chain land in the same group. The
-API accepts it; the console's rule editor splits by device ID only.
+A % can be split by a dimension or by `entity` too, so all stores of a chain land in the same group. The API accepts
+it; the console's rule editor splits by device ID or session ID only.
 
 ## Why one chain
 
@@ -146,7 +153,7 @@ it. Lumen sets its own `theme`, and Bolt keeps the standard one.
 
 **A retailer** (`region` › `chain` › `store`). The chain Umbrella Retail sits in the region `eu`, with stores
 `umbrella-12` and `umbrella-14`. "Region is EU" reaches every chain and store in Europe. Umbrella can set a value for
-all its stores, and `umbrella-14` can still use "Own settings only" to keep a value of its own.
+all its stores, and `umbrella-14` can still use "Skip what's above" to keep a value of its own.
 
 **One customer level** (`customer`). Initech, Hooli and Acme Corp are each a customer, with no parents. Each one follows
 everyone's settings until it has its own.

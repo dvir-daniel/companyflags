@@ -89,7 +89,7 @@ test('opening any stored flag and saving it unchanged writes back exactly what i
     }
     const seen = new Set<string>();
     // the list is always paged (one page holds every fixture flag)
-    for (const { key } of (await alice.get('/flags?page=0&size=200')).json.rows as { key: string }[]) {
+    for (const { key } of (await alice.get('/flags?environment=dev&page=0&size=200')).json.rows as { key: string }[]) {
       const flag: FlagDetail = (await alice.get(`/flags/${key}`)).json;
       for (const [env, stored] of Object.entries(flag.layers)) {
         const back = toLayers(toDraft(flag, env), !!stored.base.enabled);
@@ -114,7 +114,7 @@ test('opening any stored flag and saving it unchanged writes back exactly what i
     assert.deepEqual(items.map((i) => [i.entity, i.layer?.inherit, i.layer?.defaultVariation, i.layer?.rules.length]), [['cyberdyne', 'customer_only', 'eu', 0]]);
     assert.equal((await alice.post('/flags/data_region_host/publish/dev', { items })).status, 200);
     await t.settle();
-    const cyberdyne = await t.trace({ flag: 'data_region_host', project: 'web', entity: 'cyberdyne' });
+    const cyberdyne = await t.trace({ flag: 'data_region_host', service: 'web', entity: 'cyberdyne' });
     assert.equal(cyberdyne.variant, 'eu');
     assert.equal(cyberdyne.decidedBy.section, 'entity_default');
     assert.ok(cyberdyne.trace.some((s: { outcome: string; detail: string }) => s.outcome === 'skipped' && /uses only its own settings/.test(s.detail)));

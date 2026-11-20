@@ -1,5 +1,5 @@
 ---
-title: "Local evaluation in apps: the CDN file"
+title: "Local evaluation in apps"
 description: "An app downloads its entity's flags as flagd JSON, cached by a CDN, and decides each flag on the device."
 ---
 
@@ -108,7 +108,8 @@ Report what your platform knows, by these names, nested as JsonLogic reads them 
 `device.platform`, `device.type`, `device.manufacturer`, `device.model`, `device.memory_class`, `device.os`,
 `device.os_version`, `device.api_level`, `device.browser`, `device.browser_version`, `device.browser_engine`,
 `geo.country`, `locale.language`, `locale.timezone`. The full list, with their known values, is in
-[Attributes](/reference/attributes).
+[Attributes](/reference/attributes); where each comes from on iOS and Android is in
+[Attributes from each platform](/reading/remote-apps#attributes-from-each-platform).
 
 - The device ID for a % of devices is `device.id`, or OpenFeature's `targetingKey` when there's no `device.id`, as
   over OFREP. A device in a % group is in the same group from the file and from the server.

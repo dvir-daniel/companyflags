@@ -263,9 +263,9 @@ describe('the protocol', () => {
     assert.equal(bulk.eventStreams.length, 1);
     const [es] = bulk.eventStreams;
     assert.equal(es.type, 'sse');
-    assert.match(es.endpoint.requestUri, /^\/ofrep\/v1\/events\/dev\/[\w-]{22}$/);
+    assert.match(es.endpoint.requestUri, /^\/ofrep\/v1\/events\/dev\/web\/acme\/[\w-]{22}$/, 'its own service’s and entity’s');
     assert.equal((await t.app.request(es.endpoint.requestUri.replace(/[\w-]{22}$/, 'x'.repeat(22)))).status, 404, 'a made-up signature');
-    assert.equal((await t.app.request('/ofrep/v1/events/prod/' + es.endpoint.requestUri.split('/').pop())).status, 404, 'another environment’s');
+    assert.equal((await t.app.request(es.endpoint.requestUri.replace('/dev/', '/prod/'))).status, 404, 'another environment’s');
 
     const res = await t.app.request(es.endpoint.requestUri, { headers: { origin: 'https://shop.example.com' } });
     assert.equal(res.status, 200);

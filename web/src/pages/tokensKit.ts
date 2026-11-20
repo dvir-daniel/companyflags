@@ -7,7 +7,7 @@ export { tokenRoles };
 
 /** A token as the server lists it (server/tokens.ts TokenInfo): never its value. */
 export type TokenRow = {
-  id: number; prefix: string; name: string; role: string; agent: boolean; person: string;
+  id: number; prefix: string; name: string; role: string; agent: boolean; person: string; alertsOnly?: boolean;
   createdAt: string; expiresAt: string; lastUsedAt: string | null; revokedAt: string | null;
 };
 export type TokenState = 'active' | 'expired' | 'revoked';
@@ -18,6 +18,10 @@ export const DEFAULT_DAYS = 90;
 
 export const TOKEN_ABOUT = 'A token acts as you, with a role up to yours, for scripts, the CLI and MCP clients.';
 export const AGENT_ABOUT = 'An agent’s changes show as an agent’s in History; where changes need approval, they’re requests someone else approves.';
+export const ALERTS_ABOUT = 'It turns kill switches off from an alert (POST /api/alerts/kill) and is refused everywhere else: it reads, changes and approves nothing.';
+
+/** Who may make an alerts-only token: those whose token may be On call (policy.ts tokenRoles), as break-glass needs. */
+export const mayMakeAlertsToken = (myRole: string) => tokenRoles({ role: myRole }, false).includes('oncall');
 
 export function tokenState(t: Pick<TokenRow, 'revokedAt' | 'expiresAt'>, now = Date.now()): TokenState {
   if (t.revokedAt) return 'revoked';

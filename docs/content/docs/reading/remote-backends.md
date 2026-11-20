@@ -39,24 +39,42 @@ await OpenFeature.setProviderAndWait(new OFREPProvider({
 }));
 
 const client = OpenFeature.getClient();
-const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme', targetingKey: userId });
+// the entity by its dimension; targetingKey: the device or user this request is for
+const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme', targetingKey: installId });
 ```
 
 `FLAGS_API_KEY` is the backend service's key. Keep it on the server. Each evaluation is one request. For many
 evaluations per second, use [flagd](/reading/local-backends): it downloads the entity's rules and answers in memory.
 
+## The context
+
+- **The entity** is always named by its dimension key: `{ company: 'acme' }`, `{ brand: 'lumen' }`. Never put it in
+  `targetingKey`.
+- **`targetingKey`** is the device or user the request is for: the ID a % of devices is decided by. Use the same one
+  the app uses, so a person gets the same answer from the app and from your backend. If the app decides by its
+  install ID, have the app send that ID with its requests to your backend, and pass it on. If you decide by the
+  signed-in user's ID, both send that. A request with no such ID leaves `targetingKey` out: a % rule then doesn't
+  apply to it, and it gets the next rule or the default. Never use one fixed ID (such as `"anonymous"`) for every
+  request: they would all land in the same group.
+- **Nested attributes**, as the rules name them: `{ app: { version: '6.0.0' } }`. Dotted ones are refused.
+
 OpenFeature's OFREP providers ask the server to evaluate. Point the provider at your server's address, e.g.
 `https://flags.example.com`, and give it the key as `Authorization: Bearer <key>` (OFREP's `X-API-Key` header works
 too).
 
-Name the entity in the evaluation context by its dimension key. The server fills in the levels above it:
+The server fills in the levels above the entity it names:
 
 ```json
 { "context": { "targetingKey": "d-1", "brand": "lumen", "app": { "version": "6.0.0" } } }
 ```
 
-Name the entity in the context by its dimension: see [Which entity asks](/reading/context#which-entity-asks).
+See [Which entity asks](/reading/context#which-entity-asks). An entity that just signed up isn't known yet: add it
+as it signs up, with `PUT /sdk/v1/entities/<dimension>/<entity>` (see
+[Entities the server doesn't know yet](/reading/context#entities-the-server-doesnt-know-yet)).
 
+- **Where an answer came from.** Each answer's `flagMetadata` has `revision` (the publish that answered), `entity`
+  (who asked) and, for a backend's key, `ruleKey` (the rule that decided). Log them with a value that looks wrong.
+- **`FLAG_NOT_FOUND`** says which: the flag isn't in this service, or there is no such flag in the environment.
 - **Code defaults.** A flag that uses the code default answers with a reason and no `value`, so the provider returns
   the default in your code.
 - **Group names** of a % rule come back in the answer's `metadata.group`.

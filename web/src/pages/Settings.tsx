@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Button } from '@companyflags/ui/components/button';
+import { Callout } from '@companyflags/ui/components/callout';
 import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
 import { Drawer, DrawerSection } from '@companyflags/ui/components/drawer';
 import { Input } from '@companyflags/ui/components/input';
@@ -17,7 +18,7 @@ import { SingleSignOn } from './sso.tsx';
 import { Cdn } from './cdn.tsx';
 import { DimensionsSection } from './dimensions.tsx';
 import { AppearanceSection } from './appearance.tsx';
-import { needsReview, roleInfo } from '../../../server/policy.ts';
+import { approvalsShortfall, needsReview, roleInfo } from '../../../server/policy.ts';
 
 /*
  * Settings: what an admin sets up once, one page each (#/settings/<page>, settingsKit.ts SETTINGS), with Settings' own
@@ -42,7 +43,7 @@ export function Settings({ section }: { section?: string }) {
   const label = SETTINGS.find((s) => s.key === at)?.label ?? 'Settings';
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar crumbs={<a href="#/settings" className="text-ink-3 no-underline hover:text-ink hover:no-underline">Settings</a>} title={label}
+      <PageBar title={label}
         count={admin ? undefined : 'Only admins can change these'} />
       <div className="grid gap-10 px-6 py-6 max-sm:px-4">
         {at === 'environments' && <><EnvironmentsSection admin={admin} /><TokensNote admin={admin} /></>}
@@ -176,7 +177,7 @@ export function ResetLink({ person, token, onClose }: { person: User; token: str
 
 /** An environment's form, new or to edit. Mounted only while open (keyed by the environment), so it starts fresh. */
 function EnvironmentDrawer({ env, onClose }: { env: Env | null; onClose: () => void }) {
-  const { toast } = useApp();
+  const { toast, ask, meta } = useApp();
   const refresh = useRefresh();
   const first = useRef<HTMLInputElement>(null);
   const [key, setKey] = useState(env?.key ?? '');
@@ -189,7 +190,21 @@ function EnvironmentDrawer({ env, onClose }: { env: Env | null; onClose: () => v
     setName(v);
     if (!env && !keyTouched) setKey(v.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').replace(/^[^a-z]+/, ''));
   };
+  // a number the people there are can't meet (nobody approves their own request): said before it's saved
+  const shortfall = approvalsShortfall({ minApprovals: approvals }, meta.users);
   const save = async () => {
+    // lowering protection is the setting that matters most here: it asks first and says what changes
+    if (env && approvals < env.minApprovals) {
+      const where = (name.trim() || env.name);
+      const d = await ask({
+        title: `Lower the approvals of ${where}?`,
+        body: approvals === 0
+          ? <p>Changes in {where} will go out at once, without a review. Requests waiting there can still be approved and applied.</p>
+          : <p>Changes in {where} will need {plural(approvals, 'approval')} instead of {env.minApprovals}. History records who lowered it.</p>,
+        actions: [{ id: 'cancel', label: 'Keep it' }, { id: 'go', label: approvals === 0 ? 'Remove approvals' : 'Lower approvals', tone: 'danger' }],
+      });
+      if (d.action !== 'go') return;
+    }
     const r = await run(() => env
       ? api('PUT', `/environments/${env.key}`, { name, minApprovals: approvals })
       : api('POST', '/environments', { key, name, minApprovals: approvals }));
@@ -217,6 +232,7 @@ function EnvironmentDrawer({ env, onClose }: { env: Env | null; onClose: () => v
             {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{approvalsText(n)}</option>)}
           </NativeSelect>
         </Field>
+        {shortfall && <Callout tone="warn" role="status">{shortfall}</Callout>}
         <ErrorList error={error} />
       </div>
       {env && <ReplaceLinks env={env} />}
@@ -253,7 +269,7 @@ function ReplaceLinks({ env }: { env: Env }) {
   );
 }
 
-type App = Meta['projects'][number];
+type App = Meta['services'][number];
 const kindName = (k: App['kind']) => (k === 'client' ? 'an app' : 'a backend');
 /** What has to be true before a service changes kind or goes (server/control.ts appUse): said before an admin tries. */
 const IN_USE = 'no flag is in it, no API key for it still works, and no request waiting to go out would put a flag in it';
@@ -294,14 +310,14 @@ function ServicesSection({ admin }: { admin: boolean }) {
         its own key in each environment (API keys): an app’s key reads values only, a backend’s key reads the rules.
       </Heading>
       <ErrorList error={error} />
-      {meta.projects.length === 0 ? (
+      {meta.services.length === 0 ? (
         <Empty action={admin ? <Button onClick={() => setDrawer({ app: null })}>+ Add service</Button> : undefined}>No services yet.</Empty>
       ) : (
         <div role="table" aria-label="Services">
           <div role="row" className={cn(APP_COLS, tableHeadClass)}>
             <span role="columnheader">Key</span><span role="columnheader" className={MD}>Kind</span><span />
           </div>
-          {meta.projects.map((p) => (
+          {meta.services.map((p) => (
             <div key={p.key} role="row" className={cn(APP_COLS, tableRowClass)}>
               <code role="cell" className="truncate font-mono text-13 font-medium">{p.key}</code>
               <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{p.kind === 'client' ? 'App: gets values only' : 'Backend: gets the rules'}</span>

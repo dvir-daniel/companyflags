@@ -1,5 +1,8 @@
 /* The docs site: Fumadocs' black-and-white theme, in better-auth.com's way (pure black or white, Geist, 1px rules,
-   square corners), and the colors our illustrations and landing page use (--cf-*). */
+   square corners), and the colors our illustrations and landing page use (--cf-*). Every color for text is at least
+   4.5:1 (WCAG AA) on the backgrounds it's used on: muted text is #6b6b6b on light (4.9:1 on #f5f5f5) and #8a8a8a or
+   lighter on dark (5.4:1 on #121212). Where we style Fumadocs, we use its props, its ids (#nd-*) and our own classes,
+   not its Tailwind class names. */
 @import 'tailwindcss';
 @import 'fumadocs-ui/css/black.css';
 @import 'fumadocs-ui/css/preset.css';
@@ -15,7 +18,7 @@
 
 :root { --fd-nav-height: 48px; --cf-nav-height: 48px; }
 .dark { --color-fd-background: #000; --color-fd-card: #0a0a0a; --color-fd-popover: #0a0a0a; --color-fd-secondary: #0a0a0a; --color-fd-muted: #0a0a0a; --color-fd-border: #262626; }
-:root:not(.dark) { --color-fd-background: #fff; --color-fd-card: #fafafa; --color-fd-border: #e5e5e5; }
+:root:not(.dark) { --color-fd-background: #fff; --color-fd-card: #fafafa; --color-fd-border: #e5e5e5; --color-fd-muted-foreground: #6b6b6b; }
 
 html { -webkit-font-smoothing: antialiased; }
 body { font-family: var(--font-sans); }
@@ -33,7 +36,7 @@ code, kbd, pre { font-family: var(--font-mono); }
   --cf-ink-1: rgba(10, 10, 10, 0.8);
   --cf-ink-nav: rgba(10, 10, 10, 0.6);
   --cf-ink-2: #525252;
-  --cf-ink-3: #737373;
+  --cf-ink-3: #6b6b6b;
   --cf-subtitle: #666666;
   --cf-rule: #e5e5e5;
   --cf-rule-2: #d4d4d4;
@@ -49,7 +52,7 @@ code, kbd, pre { font-family: var(--font-mono); }
   --cf-ink-1: rgba(250, 250, 250, 0.8);
   --cf-ink-nav: rgba(250, 250, 250, 0.65);
   --cf-ink-2: #a3a3a3;
-  --cf-ink-3: #737373;
+  --cf-ink-3: #8a8a8a;
   --cf-subtitle: #999999;
   --cf-rule: #262626;
   --cf-rule-2: #363636;
@@ -59,7 +62,7 @@ code, kbd, pre { font-family: var(--font-mono); }
 }
 /* ---- illustrations, in Better Auth's way: square icon tiles joined by thin lines, dashed "+" tiles, chips with a
    status dot, a one-line terminal, mono labels, dotted backgrounds (Illus*.vue) */
-.cf-ill { --ok: #16a34a; --warn: #d97706; --bad: #dc2626; font-family: var(--font-sans); color: var(--cf-ink); }
+.cf-ill { --ok: #15803d; --warn: #b45309; --bad: #dc2626; font-family: var(--font-sans); color: var(--cf-ink); }
 .dark .cf-ill { --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; }
 .cf-ill p { margin: 0; }
 .cf-ill .label { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-3); }
@@ -114,18 +117,18 @@ code, kbd, pre { font-family: var(--font-mono); }
 #nd-home-layout #nd-nav, #nd-home-layout #nd-nav nav { height: var(--cf-nav-height); }
 #nd-home-layout #nd-nav nav { padding: 0 0 0 16px; }
 @media (max-width: 1023px) { #nd-home-layout #nd-nav nav { padding-right: 16px; } }
-#nd-home-layout #nd-nav ul.flex { margin-left: auto; align-self: stretch; gap: 0; padding: 0; }
-#nd-home-layout #nd-nav ul.flex > li { display: flex; align-self: stretch; }
-#nd-home-layout #nd-nav ul.flex > li > a {
+#nd-home-layout #nd-nav nav > ul { margin-left: auto; align-self: stretch; gap: 0; padding: 0; }
+#nd-home-layout #nd-nav nav > ul > li { display: flex; align-self: stretch; }
+#nd-home-layout #nd-nav nav > ul > li > a {
   height: 100%; padding: 0 22px; border-left: 1px solid var(--color-fd-border);
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase;
   color: var(--cf-ink-nav); transition: color 150ms, background-color 150ms; position: relative;
 }
-#nd-home-layout #nd-nav ul.flex > li > a:hover { color: var(--cf-ink); background: var(--cf-wash); }
-#nd-home-layout #nd-nav ul.flex > li > a[data-active='true'] { color: var(--cf-ink); }
-#nd-home-layout #nd-nav ul.flex > li > a[data-active='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--cf-ink-nav); }
-#nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com'] { background: var(--cf-ink); color: var(--cf-page); }
-#nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com']:hover { background: var(--cf-ink-1); }
+#nd-home-layout #nd-nav nav > ul > li > a:hover { color: var(--cf-ink); background: var(--cf-wash); }
+#nd-home-layout #nd-nav nav > ul > li > a[data-active='true'] { color: var(--cf-ink); }
+#nd-home-layout #nd-nav nav > ul > li > a[data-active='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--cf-ink-nav); }
+#nd-home-layout #nd-nav nav > ul > li > a[href^='https://github.com'] { background: var(--cf-ink); color: var(--cf-page); }
+#nd-home-layout #nd-nav nav > ul > li > a[href^='https://github.com']:hover { background: var(--cf-ink-1); }
 
 /* ---- the docs' pages, as better-auth.com's */
 /* the version, at the top of the sidebar */
@@ -142,14 +145,11 @@ code, kbd, pre { font-family: var(--font-mono); }
 }
 .cf-page-actions > button:hover { color: var(--color-fd-foreground); background: var(--cf-wash) !important; }
 .cf-page-actions > button svg { width: 13px; height: 13px; }
-/* "On this page": the open section shaded, as better-auth.com's, with no line beside the list */
-#nd-toc .relative.flex.flex-col > div.absolute { display: none; }
-#nd-toc .relative.flex.flex-col > a > svg { display: none; }   /* each link's piece of the line */
-#nd-toc .relative.flex.flex-col > a { padding-block: 5px !important; padding-inline-end: 10px; margin: 0; transition: color 150ms, background-color 150ms; }
-#nd-toc .relative.flex.flex-col > a[style*='20px'] { padding-inline-start: 10px !important; }
-#nd-toc .relative.flex.flex-col > a:not([style*='20px']) { padding-inline-start: 24px !important; }   /* a heading one level deeper */
-#nd-toc .relative.flex.flex-col > a:hover { background: var(--cf-wash); }
-#nd-toc .relative.flex.flex-col > a[data-active='true'] { background: var(--cf-wash); color: var(--color-fd-foreground); }
+/* "On this page" is Fumadocs' block style (page.tsx): the open section shaded, as better-auth.com's */
+/* the site's links at the foot of the sidebar, below 1024px (components/site-links.tsx) */
+.cf-site-links { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 10px; border-top: 1px solid var(--color-fd-border); }
+.cf-site-links a { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; line-height: 24px; color: var(--color-fd-muted-foreground); }
+.cf-site-links a:hover { color: var(--color-fd-foreground); }
 /* "Ask AI", in the corner */
 .cf-ask {
   position: fixed; right: 20px; bottom: 20px; z-index: 40; display: inline-flex; align-items: center; gap: 10px; height: 34px;
@@ -162,19 +162,19 @@ code, kbd, pre { font-family: var(--font-mono); }
 .cf-ask kbd { font-family: var(--font-mono); font-size: 10px; }
 @media (max-width: 767px) { .cf-ask { display: none; } }
 /* the phone's menu button on the landing page: three lines, as better-auth.com's, instead of an arrow */
-#nd-home-layout #nd-nav nav > div.lg\:hidden button svg { display: none; }
-#nd-home-layout #nd-nav nav > div.lg\:hidden button::before {
+#nd-home-layout #nd-nav button[aria-label='Toggle Menu'] svg { display: none; }
+#nd-home-layout #nd-nav button[aria-label='Toggle Menu']::before {
   content: ''; width: 18px; height: 18px; background: currentColor; color: var(--cf-ink-1);
   -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
   mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 /* the landing bar's RESOURCES menu: the same small-capital cell as the links beside it */
-#nd-home-layout #nd-nav ul.flex > li > button {
+#nd-home-layout #nd-nav nav > ul > li > button {
   height: 100%; padding: 0 22px; border: 0; border-left: 1px solid var(--color-fd-border); border-radius: 0 !important;
   font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase;
   color: var(--cf-ink-nav); background: transparent; transition: color 150ms, background-color 150ms;
 }
-#nd-home-layout #nd-nav ul.flex > li > button:hover, #nd-home-layout #nd-nav ul.flex > li > button[data-state='open'] { color: var(--cf-ink); background: var(--cf-wash); }
+#nd-home-layout #nd-nav nav > ul > li > button:hover, #nd-home-layout #nd-nav nav > ul > li > button[data-state='open'] { color: var(--cf-ink); background: var(--cf-wash); }
 
 
 /* ---- the site's bar on a wide screen (components/site-bar.tsx), as better-auth.com's: it stays in place between pages.
@@ -229,7 +229,8 @@ code, kbd, pre { font-family: var(--font-mono); }
     position: fixed !important; top: 48px !important; left: 0; bottom: 0; width: var(--cf-left) !important; height: auto !important;
     animation: cf-bar-side 280ms ease-out both;
   }
-  #nd-sidebar > div:first-child > div.flex:first-child:has(a[href$='/']) { display: none; }   /* its logo row: the bar has the logo */
+  /* the sidebar's logo and the site's links: the bar has them */
+  #nd-sidebar a:has(> .cf-nav-logo), .cf-site-links { display: none; }
 }
 @keyframes cf-bar-logo { from { transform: translateX(-20px); opacity: 0; } }
 @keyframes cf-bar-tabs { from { transform: translateY(-10px); opacity: 0; } }

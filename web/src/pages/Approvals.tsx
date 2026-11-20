@@ -12,14 +12,17 @@ import { SearchField } from '@companyflags/ui/components/search-field';
 import { cn } from '@companyflags/ui/lib/utils';
 import { api, CHOICE_NAME, entityLabel, entityWordsOf, getsWithoutOwn, peek, type Layer, type Rule } from '../api.ts';
 import { Bone, CountSlot, SkeletonRows } from '../loading.tsx';
-import { CHANGE_SETS_PATH } from '../paths.ts';
+import { CHANGE_SETS_PATH, historyHref } from '../paths.ts';
 import { go, useApp } from '../app.ts';
 import { downloadCsv } from '../csv.ts';
 import { plural } from '../text.ts';
 import { AgentBadge, Badge, Collapsible, Empty, RuleSummary, When } from '../ui.tsx';
 import { denseField, monoLabel, usePersistentState, useSlashFocus } from '../uiKit.ts';
 import { useEnvs } from './envs.ts';
-import { approvalsLeft, approvalsNeeded, approvalsOf, mayApprove, mayReview, maySchedule, openForReview, roleInfo } from '../../../server/policy.ts';
+import {
+  approvalsLeft, approvalsNeeded, approvalsOf, mayApprove, mayReview, maySchedule, mayUnschedule, mayWithdraw, openForReview, rejectNeedsReason, roleInfo,
+} from '../../../server/policy.ts';
+import { fromNow, localInput, localZone, percentMoves, scheduleProblem, utcText, zonedText } from './safetyKit.ts';
 
 /*
  * Approvals: the dense console queue. A sticky page bar (search, status / environment / author filters),
@@ -31,7 +34,7 @@ import { approvalsLeft, approvalsNeeded, approvalsOf, mayApprove, mayReview, may
 // A change is to a layer (the defaults, or one entity's own settings) or to a flag's delivery: which apps get it.
 // A delivery change has no entity, and its before / proposed are the app lists.
 type ItemKind = 'layer' | 'delivery';
-type Delivery = { projects: string[] };
+type Delivery = { services: string[] };
 type CsSummary = {
   id: number; environment: string; status: string; author: string; reason: string | null; createdAt: string;
   byAgent?: boolean;                  // proposed by an agent, with its person's access token (server/tokens.ts)
@@ -41,6 +44,8 @@ type CsSummary = {
 type CsItem = {
   seq: number; flag: string; entity: string | null; kind?: ItemKind; expectedLayerVersion: number | null; expectedBaseVersion: number | null;
   before: Layer | Delivery | null; proposed: Layer | Delivery | null;
+  /** its author confirmed that it reassigns which devices are inside a % (draftReview.tsx) */
+  allowReshuffle?: boolean;
 };
 type CsDetail = Omit<CsSummary, 'items' | 'reviews'> & {
   minApprovals: number; contentHash: string;
@@ -68,7 +73,6 @@ const NONE_LABEL: Record<string, string> = {
 /** Status order when sorting: where a request is in its life. */
 const RANK: Record<string, number> = { in_review: 0, approved: 1, scheduled: 2, conflict: 3, failed: 4, applied: 5, rejected: 6, cancelled: 7 };
 const SORTS: Sort[] = ['id', 'status', 'author', 'when'];
-const WITHDRAWABLE = ['in_review', 'approved', 'scheduled'];
 /** Requests that are over: they show how they ended instead of their approvals. */
 const FINAL = ['applied', 'rejected', 'cancelled'];
 
@@ -290,7 +294,8 @@ function Queue() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar title="Approvals" count={<CountSlot text={all ? (rows.length === all.length ? all.length.toLocaleString() : `${rows.length.toLocaleString()} of ${all.length.toLocaleString()}`) : undefined} />}>
+      <PageBar title="Approvals" count={<CountSlot text={all ? (rows.length === all.length ? all.length.toLocaleString() : `${rows.length.toLocaleString()} of ${all.length.toLocaleString()}`) : undefined} />}
+        actions={<a href={historyHref('requests')} className="text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">All requests in History</a>}>
         <SearchField ref={search} className="w-[240px] max-md:w-auto max-md:flex-1" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search requests by flag, author or reason" />
         <FilterSelect label="Status" value={status} onChange={setStatus}
           options={STATUSES.map((f) => [f, all ? `${STATUS_LABEL[f]} · ${count(f).toLocaleString()}` : STATUS_LABEL[f]] as [string, string])} />
@@ -416,7 +421,9 @@ function useRequest(id: number | null, onChanged?: () => void, active = true) {
   const canApply = cs?.status === 'approved';
   // scheduling it for later: its author, or someone who reviews (policy.ts, the same answer the server gives)
   const canSchedule = !!cs && maySchedule(meta.me, cs);
-  const canWithdraw = isAuthor && !!cs && WITHDRAWABLE.includes(cs.status);
+  const canWithdraw = !!cs && mayWithdraw(meta.me, cs);
+  // stopping a scheduled request before its time: its author or any reviewer (policy.ts, the same answer the server gives)
+  const canUnschedule = !!cs && mayUnschedule(meta.me, cs);
   const needed = approvalsNeeded(cs);
   const env = cs ? envName(cs.environment).toLowerCase() : '';
   const protectedEnv = !!cs && isProtected(cs.environment);
@@ -447,8 +454,20 @@ function useRequest(id: number | null, onChanged?: () => void, active = true) {
     reload().catch((e: Error) => toast(`${said}, but the console couldn’t refresh: ${e.message}`, 'err'));
     return true;
   };
-  const review = async (decision: 'approve' | 'reject', comment: string) => {
-    if (decision === 'reject' && !await confirm(`Reject request #${id}?`, `Nothing changes in ${env}. ${cs ? nameOf(cs.author) : 'The author'} has to send a new request.`, 'Reject', 'danger')) return false;
+  const review = async (decision: 'approve' | 'reject', typed: string) => {
+    let comment = typed;
+    if (decision === 'reject') {
+      // stopping what others approved (or scheduled) says why: the server asks for it too
+      const signedOff = !!cs && rejectNeedsReason(cs.status);
+      const r = await ask({
+        title: `Reject request #${id}?`,
+        body: <p>Nothing changes in {env}{cs?.status === 'scheduled' ? ', and it won’t go out as scheduled' : ''}. {cs ? nameOf(cs.author) : 'The author'} has to send a new request.</p>,
+        ...(signedOff && !typed.trim() ? { reason: { label: 'Why? (required)', placeholder: 'Not during the incident' } } : {}),
+        actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'go', label: 'Reject', tone: 'danger', needsReason: signedOff && !typed.trim() }],
+      });
+      if (r.action !== 'go') return false;
+      comment = typed.trim() || r.reason;
+    }
     return act(decision, () => api('POST', `/change-sets/${id}/review`, { decision, comment }),
       `${decision === 'approve' ? 'Approved' : 'Rejected'} request #${id} for ${what} in ${env}`,
       (after) => {
@@ -463,9 +482,25 @@ function useRequest(id: number | null, onChanged?: () => void, active = true) {
     return act('apply', () => api('POST', `/change-sets/${id}/apply`), `Applied request #${id} for ${what} to ${env}`,
       () => `Applied. It is live in ${env} now; nothing else to do.`);
   };
-  const schedule = (at: string) => act('schedule', () => api('POST', `/change-sets/${id}/schedule`, { at: new Date(at).toISOString() }),
-    `Scheduled request #${id} for ${what} to go out in ${env} at ${new Date(at).toLocaleString()}`,
-    () => 'Scheduled. It goes out on its own at that time; nothing else to do.');
+  const schedule = async (at: string) => {
+    const iso = new Date(at).toISOString();
+    // the same care as Apply now: it goes live on its own, when nobody may be watching
+    if (!await confirm(`Schedule request #${id}?`, `It goes live for every app in ${env} at ${zonedText(iso)} (${fromNow(iso)}), with every check run again.`, 'Schedule', 'primary')) return false;
+    return act('schedule', () => api('POST', `/change-sets/${id}/schedule`, { at: iso }),
+      `Scheduled request #${id} for ${what} to go out in ${env} at ${zonedText(iso)}`,
+      () => 'Scheduled. It goes out on its own at that time. If it can’t apply, it ends as a conflict here, and History says why.');
+  };
+  const unschedule = async () => {
+    const r = await ask({
+      title: `Unschedule request #${id}?`,
+      body: <p>It won’t go out {cs?.scheduledAt ? `at ${zonedText(cs.scheduledAt)}` : 'as scheduled'}. It stays approved: it can be applied, scheduled again or rejected.</p>,
+      reason: { label: 'Why? (required)', placeholder: 'Code freeze this week' },
+      actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'go', label: 'Unschedule', tone: 'danger', needsReason: true }],
+    });
+    if (r.action !== 'go') return false;
+    return act('unschedule', () => api('POST', `/change-sets/${id}/unschedule`, { reason: r.reason }), `Unscheduled request #${id} in ${env}`,
+      () => 'Unscheduled. It stays approved and goes out only when someone applies or schedules it.');
+  };
   const withdraw = async () => {
     const body = `Nothing changes in ${env}${cs?.status === 'scheduled' ? ' and it won’t go out as scheduled' : ''}. To make this change later, send a new request.`;
     if (!await confirm(`Withdraw request #${id}?`, body, 'Withdraw', 'danger')) return false;
@@ -473,7 +508,8 @@ function useRequest(id: number | null, onChanged?: () => void, active = true) {
       () => `Withdrawn. Nothing changes in ${env}.`);
   };
 
-  return { cs, missing, retry, busy, outcome, failure, isAuthor, canReview, canApprove, canApply, canSchedule, canWithdraw, approvals: cs ? approvalsOf(cs) : 0, needed, review, apply, schedule, withdraw };
+  return { cs, missing, retry, busy, outcome, failure, isAuthor, canReview, canApprove, canApply, canSchedule, canUnschedule, canWithdraw,
+    approvals: cs ? approvalsOf(cs) : 0, needed, review, apply, schedule, unschedule, withdraw };
 }
 
 /* ---------------------------------------------------------------- one request: pieces */
@@ -530,7 +566,9 @@ function requestNotes(cs: CsDetail, envName: (e: string) => string): { key: stri
   </> });
   if (cs.lastError) notes.push({ key: 'error', tone: 'error', node: cs.lastError });
   if (cs.appliedRevision) notes.push({ key: 'applied', tone: 'note', node: <>Applied as {env} revision <span className="font-mono text-ink">r{cs.appliedRevision}</span>.</> });
-  if (cs.scheduledAt && cs.status === 'scheduled') notes.push({ key: 'scheduled', tone: 'note', node: <>Scheduled to go out in {env} at <span className="font-mono text-ink">{new Date(cs.scheduledAt).toLocaleString()}</span>.</> });
+  if (cs.scheduledAt && cs.status === 'scheduled') notes.push({ key: 'scheduled', tone: 'note', node: <>
+    Scheduled to go out in {env} at <span className="font-mono text-ink" title={utcText(cs.scheduledAt)}>{zonedText(cs.scheduledAt)}</span>. Its author or a reviewer can unschedule or reject it until then.
+  </> });
   return notes;
 }
 
@@ -555,7 +593,7 @@ function ChangeList({ cs, rowClass }: { cs: CsDetail; rowClass: string }) {
         </div>
         {delivery
           ? <DeliveryDiff flag={it.flag} before={it.before as Delivery | null} after={it.proposed as Delivery | null} />
-          : <LayerDiff before={it.before as Layer | null} after={it.proposed as Layer | null} entity={it.entity} />}
+          : <LayerDiff before={it.before as Layer | null} after={it.proposed as Layer | null} entity={it.entity} reshuffle={it.allowReshuffle} />}
       </section>
     );
   };
@@ -592,9 +630,10 @@ function ReviewList({ cs, needed, rowClass }: { cs: CsDetail; needed: number; ro
       )}
       {openForReview(cs.status) && (
         <p className={cn('m-0 text-13 text-ink-3', rowClass)}>
-          {cs.status === 'approved' ? 'Approved; anyone can apply it, and its author or a reviewer can schedule it.' : `Needs ${needed === 1 ? 'an approval' : `${needed} approvals`} from someone other than ${cs.author === user ? 'you' : cs.author}.`}
+          {cs.status === 'approved' ? 'Approved; anyone can apply it, its author or a reviewer can schedule it, and a reviewer can still reject it.' : `Needs ${needed === 1 ? 'an approval' : `${needed} approvals`} from someone other than ${cs.author === user ? 'you' : cs.author}.`}
         </p>
       )}
+      {cs.status === 'scheduled' && <p className={cn('m-0 text-13 text-ink-3', rowClass)}>Scheduled; its author or a reviewer can unschedule it, and a reviewer can reject it.</p>}
     </>
   );
 }
@@ -640,9 +679,10 @@ function RequestDrawer({ id, onClose, onChanged }: { id: number | null; onClose:
         {/* the drawer covers the toast's corner, so a failure is also said here */}
         {r.failure && <p role="alert" className="m-0 basis-full border-l border-live bg-live/5 px-3 py-2 text-13 text-live [overflow-wrap:anywhere]">{r.failure}</p>}
         {r.canReview && <Input className="h-8 basis-full text-13" placeholder="Comment (optional); the author sees it" aria-label="Review comment" value={comment} onChange={(e) => setComment(e.target.value)} />}
-        <Button variant={primary || r.canReview || r.canWithdraw ? 'secondary' : 'default'} className={primary || r.canReview || r.canWithdraw ? rowBtn : undefined}
+        <Button variant={primary || r.canReview || r.canWithdraw || r.canUnschedule ? 'secondary' : 'default'} className={primary || r.canReview || r.canWithdraw || r.canUnschedule ? rowBtn : undefined}
           onClick={() => { onClose(); go(`approvals/${cs.id}`); }}>Open request <ArrowSquareOutIcon aria-hidden className="size-3.5" /></Button>
         {r.canWithdraw && <Button variant="secondary" className={cn(rowBtn, 'text-live hover:text-live')} disabled={r.busy} onClick={r.withdraw}>Withdraw</Button>}
+        {r.canUnschedule && <Button variant="secondary" className={rowBtn} disabled={r.busy} onClick={r.unschedule}>Unschedule</Button>}
         {(r.canReview || r.canApply) && (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {r.canReview && <Button variant="stop" disabled={r.busy} onClick={() => review('reject')}>Reject</Button>}
@@ -691,7 +731,10 @@ function RequestPage({ id }: { id: number }) {
   const r = useRequest(id);
   const { cs } = r;
   const [comment, setComment] = useState('');
-  const [at, setAt] = useState(() => new Date(Date.now() + 5 * 60000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+  // the earliest time the field offers: when the page opened (the server refuses a time that has passed anyway)
+  const [opened] = useState(() => new Date());
+  const [at, setAt] = useState(() => localInput(new Date(opened.getTime() + 5 * 60000)));
+  const [atProblem, setAtProblem] = useState<string | null>(null);
   const review = async (decision: 'approve' | 'reject') => { if (await r.review(decision, comment)) setComment(''); };
   const crumbs = <a href="#/approvals" className="text-ink-3 no-underline hover:text-ink hover:no-underline">Approvals</a>;
   const pad = 'px-6 max-sm:px-4';
@@ -727,10 +770,17 @@ function RequestPage({ id }: { id: number }) {
     </div>
   );
 
-  // the next step goes in the bar: apply an approved request, approve a waiting one, or withdraw your own
+  // the next step goes in the bar: apply an approved request, approve a waiting one, unschedule a scheduled one, or
+  // withdraw your own
   const next = r.canApply ? <Button disabled={r.busy} onClick={r.apply}>Apply now</Button>
     : r.canApprove ? <Button disabled={r.busy} onClick={() => review('approve')}>Approve</Button>
+    : r.canUnschedule ? <Button variant="secondary" disabled={r.busy} onClick={r.unschedule}>Unschedule</Button>
     : r.canWithdraw ? <Button variant="stop" disabled={r.busy} onClick={r.withdraw}>Withdraw</Button> : null;
+  const trySchedule = () => {
+    const problem = scheduleProblem(at);
+    setAtProblem(problem);
+    if (!problem) void r.schedule(at);
+  };
   const notes = requestNotes(cs, envName);
   // one strip under the bar, most important first: a failed action, then what just happened, then the request's
   // own state. The other notes sit in Details.
@@ -741,7 +791,7 @@ function RequestPage({ id }: { id: number }) {
     <article aria-label={`Request #${cs.id}`} className="flex min-h-full flex-1 flex-col">
       <PageBar crumbs={crumbs} title={<RequestTitle cs={cs} />} count={<StatusBadge status={cs.status} />}
         actions={(next || r.canWithdraw) && <>
-          {r.canWithdraw && (r.canApply || r.canApprove) && <Button variant="secondary" className="text-live hover:text-live" disabled={r.busy} onClick={r.withdraw}>Withdraw</Button>}
+          {r.canWithdraw && (r.canApply || r.canApprove || r.canUnschedule) && <Button variant="secondary" className="text-live hover:text-live" disabled={r.busy} onClick={r.withdraw}>Withdraw</Button>}
           {next}
         </>} />
 
@@ -775,10 +825,13 @@ function RequestPage({ id }: { id: number }) {
                 <Button disabled={r.busy} onClick={r.apply}>Apply now</Button>
                 {r.canSchedule && <>
                   <span className="text-13 text-ink-3">or at</span>
-                  <input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} aria-label="Schedule time" className={cn(denseField, 'py-0 font-mono')} />
-                  <Button variant="secondary" className={rowBtn} disabled={r.busy} onClick={() => r.schedule(at)}>Schedule</Button>
+                  <input type="datetime-local" value={at} min={localInput(opened)} onChange={(e) => { setAt(e.target.value); setAtProblem(null); }}
+                    aria-label={`Schedule time, ${localZone(opened)}`} aria-invalid={!!atProblem} aria-describedby="schedule-zone" className={cn(denseField, 'py-0 font-mono')} />
+                  <span id="schedule-zone" className="text-13 text-ink-3">{localZone(opened)}</span>
+                  <Button variant="secondary" className={rowBtn} disabled={r.busy} onClick={trySchedule}>Schedule</Button>
                 </>}
               </div>
+              {r.canSchedule && atProblem && <p role="alert" className={cn('m-0 -mt-1 pb-3 text-13 text-live', pad)}>{atProblem}</p>}
             </Section>
           )}
         </div>
@@ -824,8 +877,8 @@ function DiffLines({ lines, children }: { lines: { kind: Kind; node: ReactNode }
 
 /** What a delivery change does: "new_checkout in services: android, ios", and each service added or removed. */
 function DeliveryDiff({ flag, before, after }: { flag: string; before: Delivery | null; after: Delivery | null }) {
-  const was = before?.projects ?? [];
-  const now = after?.projects ?? [];
+  const was = before?.services ?? [];
+  const now = after?.services ?? [];
   const list = (apps: string[]) => (apps.length ? <span className="font-mono text-ink">{apps.join(', ')}</span> : <span className="text-ink-3">none</span>);
   const lines: { kind: Kind; node: ReactNode }[] = [
     ...now.filter((p) => !was.includes(p)).map((p) => ({ kind: 'add' as const, node: <>Put in <span className="font-mono">{p}</span></> })),
@@ -845,7 +898,7 @@ function DeliveryDiff({ flag, before, after }: { flag: string; before: Delivery 
 /** What a change does to one layer (the defaults or one entity's own settings): + added, − removed, ~ changed.
  *  `entity`: whose settings (null: the defaults), so a removal says what it gets now: what its parent gets, or
  *  everyone's at the top. */
-export function LayerDiff({ before, after, entity }: { before: Layer | null; after: Layer | null; entity?: string | null }) {
+export function LayerDiff({ before, after, entity, reshuffle }: { before: Layer | null; after: Layer | null; entity?: string | null; reshuffle?: boolean }) {
   const { meta } = useApp();
   if (!after) {
     const who = entityWordsOf(meta.entities, entity);
@@ -865,8 +918,17 @@ export function LayerDiff({ before, after, entity }: { before: Layer | null; aft
   after.rules.forEach((r, i) => {
     const old = beforeRules.get(r.ruleKey);
     const kind: Kind = !old ? 'add' : ruleSig(old) !== ruleSig(r) ? 'mod' : 'same';
+    // a % that changes: how many points of devices get another value, and whether they were reassigned (its author confirmed)
+    const moves = kind === 'mod' ? percentMoves(old, r) : null;
+    const pts = (n: number) => `${Number(n.toFixed(2))}%`;
     lines.push({ kind, node: <><RuleSummary rule={r} index={i} />{kind === 'mod' && old && (
       <div className="mt-1 flex items-baseline gap-2 text-ink-3"><span className={monoLabel}>was</span><div className="min-w-0 opacity-70"><RuleSummary rule={old} /></div></div>
+    )}{moves && moves.moved > 0 && (
+      <p className={cn('m-0 mt-1 text-13', reshuffle || moves.reshuffled ? 'font-medium text-live' : 'text-ink-2')}>
+        {reshuffle || moves.reshuffled
+          ? <>Reassigns which devices are inside the %: {moves.reshuffled ? 'every device is placed again' : `${pts(moves.moved)} of devices move to another group`}{moves.lose > 0 ? `, and ${pts(moves.lose)} lose the value they had` : ''}.</>
+          : <>{pts(moves.moved)} of devices get another value{moves.lose > 0 ? `; ${pts(moves.lose)} lose the value they had` : ''}.</>}
+      </p>
     )}</> });
   });
   for (const r of before?.rules ?? []) if (!afterKeys.has(r.ruleKey)) lines.push({ kind: 'del', node: <div className="text-ink-2"><RuleSummary rule={r} /></div> });

@@ -13,4 +13,7 @@ const BAR_CONTROLS =
 const barTextButton =
   "inline-flex h-8 shrink-0 cursor-default items-center border-0 bg-transparent px-2 font-sans text-13 text-ink-3 outline-none transition-colors duration-150 hover:text-ink focus-visible:outline-1 focus-visible:outline-ink"
 
-export { BAR_CONTROLS, barTextButton }
+/** A link in the page bar's crumbs, to the page above this one: "Releases / new_checkout". The one way back. */
+const crumbLink = "text-ink-3 no-underline hover:text-ink hover:no-underline"
+
+export { BAR_CONTROLS, barTextButton, crumbLink }

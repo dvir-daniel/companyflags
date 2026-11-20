@@ -1,7 +1,7 @@
 import { use, type CSSProperties, type ReactNode } from 'react';
-import { ArrowLeftIcon, CaretLeftIcon } from '@phosphor-icons/react';
+import { ArrowLeftIcon } from '@phosphor-icons/react';
 import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
-import { FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
+import { crumbLink, FilterSelect, PageBar } from '@companyflags/ui/components/page-bar';
 import { Panel } from '@companyflags/ui/components/panel';
 import { cn } from '@companyflags/ui/lib/utils';
 import { dimensionOf, title as titleOf, type Meta } from './api.ts';
@@ -88,13 +88,16 @@ export function BackArrow({ href, label }: { href: string; label: string }) {
 }
 
 /**
- * A flag's or a release's bar before the flag is in: the back arrow, the name and key as bones, the environment
- * (`env`: its chip, once the console knows its name) and the on/off state with its switch.
+ * A flag's or a release's bar before the flag is in: the way back (the list's name as a crumb, `crumb`, as every detail
+ * page has it; the arrow only while a page still draws one), the name and key as bones, the environment (`env`: its
+ * chip, once the console knows its name) and the on/off state with its switch.
  */
-export function DetailBarSkeleton({ back, backLabel, env, copy }: { back: string; backLabel: string; env?: ReactNode; copy?: boolean }) {
+export function DetailBarSkeleton({ back, backLabel, crumb, env, copy }: { back: string; backLabel: string; crumb?: string; env?: ReactNode; copy?: boolean }) {
   return (
     <PageBar
-      title={<span className="flex min-w-0 items-center gap-1.5"><BackArrow href={back} label={backLabel} /><Bone className="h-3.5 w-40 max-sm:w-24" /></span>}
+      crumbs={crumb ? <a href={back} className={crumbLink}>{crumb}</a> : undefined}
+      title={crumb ? <Bone className="h-3.5 w-40 max-sm:w-24" />
+        : <span className="flex min-w-0 items-center gap-1.5"><BackArrow href={back} label={backLabel} /><Bone className="h-3.5 w-40 max-sm:w-24" /></span>}
       actions={<><Bone className="w-8" /><Bone className="h-8 w-[76px]" /></>}>
       <Bone className="w-28 max-sm:w-20" />
       {copy && <span className="-ml-2 inline-block size-8 shrink-0" />}
@@ -202,8 +205,8 @@ export function EntityHeaderSkeleton({ back }: { back?: { href: string; label: s
   return (
     <header className="px-6 pt-4 pb-5 max-sm:px-4">
       {back ? (
-        <a href={back.href} className="-ml-1 inline-flex items-center gap-1 text-13 text-ink-3 no-underline hover:text-ink hover:no-underline">
-          <CaretLeftIcon aria-hidden className="size-3.5" />{back.label}
+        <a href={back.href} className={`text-13 ${crumbLink}`}>
+          {back.label}
         </a>
       ) : <div className="flex h-5 items-center"><Bone className="h-3.5 w-20" /></div>}
       <div className="mt-1.5 flex h-8 items-center"><Bone className="h-5 w-48" /></div>
@@ -214,12 +217,12 @@ export function EntityHeaderSkeleton({ back }: { back?: { href: string; label: s
 
 const TITLES: Record<string, string> = {
   flags: 'Flags', releases: 'Releases', approvals: 'Approvals', compare: 'Compare',
-  history: 'History', keys: 'API keys', tokens: 'Access tokens', settings: 'Settings',
+  history: 'History', keys: 'API keys', tokens: 'Access tokens', settings: 'Settings', services: 'Services',
 };
 /** the pages whose bar has a button (+ New flag, + Add …, Export…) */
 const WITH_ACTIONS = new Set(['flags', 'releases', 'dimensions', 'keys', 'tokens', 'history']);
 /** the pages whose filters sit in a row of their own under the bar, not in it */
-const NO_BAR_FILTERS = new Set(['settings', 'history']);
+const NO_BAR_FILTERS = new Set(['settings', 'services', 'history']);
 
 /**
  * What the main pane shows while a page's code is on its way (the first load, or a page opened for the first time
@@ -256,7 +259,7 @@ export function RouteSkeleton({ route, env }: { route: string[]; env?: ReactNode
   if (page === 'settings' && a === 'people') {
     return (
       <div aria-busy className="flex min-h-full flex-1 flex-col">
-        <PageBar crumbs={<a href="#/settings" className="text-ink-3 no-underline hover:text-ink hover:no-underline">Settings</a>} title="People"
+        <PageBar title="People"
           count={<CountSlot />} actions={<Bone className="h-8 w-28" />} />
       </div>
     );
@@ -266,7 +269,7 @@ export function RouteSkeleton({ route, env }: { route: string[]; env?: ReactNode
   // the bar as the page draws it: its count, its filters and its button take their room (on a phone they wrap)
   return (
     <div aria-busy className="flex min-h-full flex-1 flex-col">
-      <PageBar title={title} count={page === 'settings' ? undefined : <CountSlot />} actions={WITH_ACTIONS.has(page) ? <Bone className="h-8 w-28" /> : undefined}>
+      <PageBar title={title} count={page === 'settings' || page === 'services' ? undefined : <CountSlot />} actions={WITH_ACTIONS.has(page) ? <Bone className="h-8 w-28" /> : undefined}>
         {NO_BAR_FILTERS.has(page) ? undefined : <Bone className="h-8 w-40" />}
       </PageBar>
     </div>

@@ -10,10 +10,11 @@ import { boot } from './helpers.ts';
 // The facts the tables are written against, stated here rather than read from policy.ts.
 const REVIEWERS = ['approver', 'oncall', 'admin'];
 const BREAK_GLASS_ROLES = ['oncall', 'admin'];
-const BREAK_GLASS_KINDS = ['kill_switch', 'ops'];
 const KINDS = ['release', 'kill_switch', 'ops', 'experiment', 'config', 'permission'];
 const STATUSES = ['in_review', 'approved', 'scheduled', 'applied', 'conflict', 'failed', 'rejected', 'cancelled'];
 const OPEN = ['in_review', 'approved'];
+// a reviewer can still reject these (scheduled too), and their author withdraw them
+const STILL_OPEN = ['in_review', 'approved', 'scheduled'];
 const PROD = { minApprovals: 1 };
 const DEV = { minApprovals: 0 };
 
@@ -60,8 +61,10 @@ test('may approve: role × author × change set status × already reviewed × fr
     const where = `${role}, ${own ? 'author' : 'not author'}, ${status}, ${said}`;
     assert.equal(reviewRefusal({ key: 'me', role }, cs)?.why ?? null, why, where);
     assert.equal(mayApprove({ key: 'me', role }, cs), why === null, where);
-    // rejecting: the same, except having approved already doesn't stop it
-    assert.equal(mayReview({ key: 'me', role }, cs), why === null || why === 'done', where);
+    // rejecting: also a scheduled request (it can still be stopped), and having approved already doesn't stop it
+    const rejectWhy = !STILL_OPEN.includes(status) ? 'closed' : own ? 'own' : !REVIEWERS.includes(role) ? 'role' : null;
+    assert.equal(reviewRefusal({ key: 'me', role }, cs, 'reject')?.why ?? null, rejectWhy, `reject: ${where}`);
+    assert.equal(mayReview({ key: 'me', role }, cs), rejectWhy === null, where);
     rows++;
   }
   assert.equal(rows, 5 * 2 * STATUSES.length * 3);
@@ -76,8 +79,8 @@ test('the switch: role × flag kind × protected or not', () => {
   let rows = 0;
   for (const role of ROLES) for (const kind of KINDS) for (const env of [DEV, PROD]) {
     const where = `${role}, ${kind}, ${needsReview(env) ? 'protected' : 'not protected'}`;
-    const off = role === 'viewer' ? null : !needsReview(env) ? 'now'
-      : BREAK_GLASS_ROLES.includes(role) && BREAK_GLASS_KINDS.includes(kind) ? 'break-glass' : 'review';
+    // break-glass turns any kind of flag off (a release mid-rollout is what goes wrong most)
+    const off = role === 'viewer' ? null : !needsReview(env) ? 'now' : BREAK_GLASS_ROLES.includes(role) ? 'break-glass' : 'review';
     const on = role === 'viewer' ? null : !needsReview(env) ? 'now' : 'review';      // break-glass only ever turns a flag off
     assert.equal(switchPath({ role }, { kind }, env, false), off, `off: ${where}`);
     assert.equal(switchPath({ role }, { kind }, env, true), on, `on: ${where}`);
@@ -96,12 +99,12 @@ test('the switch plan for several flags: now, review or break-glass, and the sav
   const has = (k: string) => drafted.has(k);
   const oncall = switchPlan({ role: 'oncall' }, flags, PROD, false, has);
   assert.deepEqual(oncall, {
-    now: [], review: ['checkout', 'api_url'], breakGlass: ['payments', 'queue'], unchanged: ['old'], refused: [],
+    now: [], review: [], breakGlass: ['payments', 'queue', 'checkout', 'api_url'], unchanged: ['old'], refused: [],
     drafted: ['payments', 'checkout'],                       // `old` doesn't change, so its draft stays
   });
-  assert.deepEqual(flags.map((f) => pathIn(oncall, f.key)), ['break-glass', 'break-glass', 'review', 'review', null]);
+  assert.deepEqual(flags.map((f) => pathIn(oncall, f.key)), ['break-glass', 'break-glass', 'break-glass', 'break-glass', null]);
   // the switch on one flag's page asks the same: one flag, its page's edits as the draft
-  assert.deepEqual(switchPlan({ role: 'oncall' }, [flags[0]], PROD, false, () => true), { ...oncall, review: [], breakGlass: ['payments'], unchanged: [], drafted: ['payments'] });
+  assert.deepEqual(switchPlan({ role: 'oncall' }, [flags[0]], PROD, false, () => true), { ...oncall, breakGlass: ['payments'], unchanged: [], drafted: ['payments'] });
   assert.deepEqual(switchPlan({ role: 'editor' }, flags, PROD, false, has).review, ['payments', 'queue', 'checkout', 'api_url']);
   assert.deepEqual(switchPlan({ role: 'oncall' }, flags, DEV, false, () => false),
     { now: ['payments', 'queue', 'checkout', 'api_url'], review: [], breakGlass: [], unchanged: ['old'], refused: [], drafted: [] });
@@ -116,7 +119,7 @@ describe('through the server', () => {
   before(async () => { t = await boot(); });
   after(async () => { await t.stop(); });
 
-  test('on call turning several flags off in prod: break-glass for kill switch and ops flags, a review request for the others', async () => {
+  test('turning several flags off in prod: an editor sends requests; on call breaks glass on every kind, a release and a config flag too', async () => {
     const ops = await t.as('dana').post('/flags', {
       key: 'search_queue', valueType: 'bool', kind: 'ops', variations: [{ key: 'on', value: true }, { key: 'off', value: false }],
       delivery: { dev: ['web'], prod: ['web'] }, base: { enabled: true, defaultVariation: 'on', rules: [] },
@@ -133,41 +136,53 @@ describe('through the server', () => {
     const picked = ['payments_enabled', 'search_queue', 'new_checkout', 'api_base_url'];
 
     // what the Flags page's bulk bar has: the rows of the list, the environment and who is signed in
-    const meta = (await t.as('carol').get('/meta')).json;
-    const rows = (await t.as('carol').get('/flags?page=0&size=50&environment=prod')).json.rows.filter((r: any) => picked.includes(r.key));
-    const plan = switchPlan(meta.me, rows.map((r: any) => ({ key: r.key, kind: r.kind, enabled: !!r.envs.prod?.enabled })),
-      meta.environments.find((e: any) => e.key === 'prod'), false, () => false);
-    assert.deepEqual([plan.breakGlass.sort(), plan.review.sort()], [['payments_enabled', 'search_queue'], ['api_base_url', 'new_checkout']]);
-
-    // and what it sends for each, one by one
+    const planFor = async (who: string) => {
+      const meta = (await t.as(who).get('/meta')).json;
+      const rows = (await t.as(who).get('/flags?page=0&size=50&environment=prod')).json.rows.filter((r: any) => picked.includes(r.key));
+      return switchPlan(meta.me, rows.map((r: any) => ({ key: r.key, kind: r.kind, enabled: !!r.envs.prod?.enabled })),
+        meta.environments.find((e: any) => e.key === 'prod'), false, () => false);
+    };
     const reason = 'INC-77: search and payments down';
-    const answers: Record<string, { status: number; json: any }> = {};
-    for (const key of [...plan.breakGlass, ...plan.review]) {
-      const base = (await t.as('carol').get(`/flags/${key}`)).json.layers.prod.base;
-      answers[key] = await t.as('carol').put(`/flags/${key}/layers/prod/base`, {
-        layer: { ...base, enabled: false }, expectedVersion: base.version, reason, bypassReason: plan.breakGlass.includes(key) ? reason : undefined,
-      });
-    }
-    for (const key of plan.breakGlass) assert.deepEqual([answers[key].status, answers[key].json.bypass], [200, true], key);
-    for (const key of plan.review) assert.equal(answers[key].status, 202, key);
-    await t.settle();
+    const off = async (who: string, key: string, bypass: boolean) => {
+      const base = (await t.as(who).get(`/flags/${key}`)).json.layers.prod.base;
+      return t.as(who).put(`/flags/${key}/layers/prod/base`, { layer: { ...base, enabled: false }, expectedVersion: base.version, reason, bypassReason: bypass ? reason : undefined });
+    };
 
+    // an editor can't break glass: every switch-off is a request
+    const editor = await planFor('alice');
+    assert.deepEqual([editor.breakGlass, editor.review.sort()], [[], [...picked].sort()]);
+    const ids: number[] = [];
+    for (const key of ['new_checkout', 'api_base_url']) {
+      const r = await off('alice', key, false);
+      assert.equal(r.status, 202, key);
+      ids.push(r.json.changeSetId);
+    }
+    assert.equal((await off('alice', 'payments_enabled', true)).status, 403, 'an editor asking for break-glass is refused');
+
+    // on call: break-glass for each, whatever its kind
+    const plan = await planFor('carol');
+    assert.deepEqual([plan.breakGlass.sort(), plan.review], [[...picked].sort(), []]);
+    for (const key of plan.breakGlass) {
+      const r = await off('carol', key, true);
+      assert.deepEqual([r.status, r.json.bypass], [200, true], key);
+    }
+    await t.settle();
     for (const key of plan.breakGlass) {
       const h = (await t.as('dana').get(`/history?flag=${key}&environment=prod`)).json[0];
       assert.deepEqual([h.actorType, h.changedBy, h.comment], ['bypass', 'carol', `BREAK-GLASS: ${reason}`], key);
-      assert.equal((await t.trace({ environment: 'prod', project: 'web', entity: 'acme', flag: key })).reason, 'DISABLED', key);
+      assert.equal((await t.trace({ environment: 'prod', service: 'web', entity: 'acme', flag: key })).reason, 'DISABLED', key);
     }
-    for (const key of plan.review) {
-      assert.equal((await t.as('carol').get(`/flags/${key}`)).json.layers.prod.base.enabled, true, `${key} waits for review`);
-    }
+    // break-glass never turns a flag on, of any kind
+    const back = (await t.as('carol').get('/flags/new_checkout')).json.layers.prod.base;
+    const onAgain = await t.as('carol').put('/flags/new_checkout/layers/prod/base', { layer: { ...back, enabled: true }, expectedVersion: back.version, bypassReason: 'sneaky' });
+    assert.equal(onAgain.status, 403);
 
-    // the sidebar's count: carol can't approve her own requests, bob can; approving twice is refused
+    // the sidebar's count: an editor can't approve, bob can; approving twice is refused
     const waiting: ChangeSetFacts[] = (await t.as('bob').get('/change-sets?status=in_review')).json;
-    const ids = plan.review.map((k) => answers[k].json.changeSetId);
     const mine = waiting.filter((c: any) => ids.includes(c.id));
     assert.equal(mine.length, 2);
-    assert.ok(mine.every((c) => !mayApprove({ key: 'carol', role: 'oncall' }, c) && mayApprove({ key: 'bob', role: 'approver' }, c)));
-    assert.equal((await t.as('carol').post(`/change-sets/${ids[0]}/review`, { decision: 'approve' })).status, 403);
+    assert.ok(mine.every((c) => !mayApprove({ key: 'alice', role: 'editor' }, c) && mayApprove({ key: 'bob', role: 'approver' }, c)));
+    assert.equal((await t.as('alice').post(`/change-sets/${ids[0]}/review`, { decision: 'approve' })).status, 403);
     assert.equal((await t.as('bob').post(`/change-sets/${ids[0]}/review`, { decision: 'approve' })).json.status, 'approved');
     assert.equal((await t.as('bob').post(`/change-sets/${ids[0]}/review`, { decision: 'approve' })).status, 409);
     const [approved] = (await t.as('bob').get('/change-sets?status=approved')).json.filter((c: any) => c.id === ids[0]);

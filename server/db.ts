@@ -4,10 +4,10 @@
 
 import { PGlite } from '@electric-sql/pglite';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
-import { closeSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import pg from 'pg';
-import { migrate } from './migrate.ts';
+import { checkSchema, migrate } from './migrate.ts';
 
 export type Rows<T> = { rows: T[]; affected?: number };          // affected: rows an insert, update or delete changed
 
@@ -26,15 +26,21 @@ export interface Db extends Queryable {
 export type DbOptions = {
   url?: string;                          // a Postgres server, e.g. postgres://user:pass@host:5432/flags?sslmode=verify-full
   dataDir?: string;                      // no url: embedded Postgres kept in this folder (nothing = in memory)
+  pool?: number;                         // a Postgres server: at most this many connections (default FF_DB_POOL, else 10)
   log?: (m: string) => void;
+  /** tests: an in-memory embedded database made from this one (embeddedTemplate), migrated already, instead of
+   *  replaying every migration: it counts as new (`fresh`). */
+  template?: Blob;
 };
 
-/** Opens the database and brings its schema up to date. `fresh`: it was empty before this start. */
-export async function openDb(o: DbOptions = {}): Promise<{ db: Db; fresh: boolean; applied: string[] }> {
+/** Opens the database and brings its schema up to date. `fresh`: it was empty before this start. With `migrate:
+ *  false` it only checks the schema (checkSchema): `newer` lists the migrations of a newer version it has. */
+export async function openDb(o: DbOptions & { migrate?: boolean } = {}): Promise<{ db: Db; fresh: boolean; applied: string[]; newer: string[] }> {
   const db = await connectDb(o);
   try {
+    if (o.migrate === false) return { db, fresh: false, applied: [], ...(await checkSchema(db)) };
     const { fresh, applied } = await migrate(db);
-    return { db, fresh, applied };
+    return { db, fresh: fresh || !!o.template, applied, newer: [] };
   } catch (e) {
     await db.close();
     throw e;
@@ -43,27 +49,57 @@ export async function openDb(o: DbOptions = {}): Promise<{ db: Db; fresh: boolea
 
 /** Opens the database without touching its schema. */
 export async function connectDb(o: DbOptions = {}): Promise<Db> {
-  return o.url ? server(o.url, o.log ?? (() => {})) : embedded(o.dataDir);
+  return o.url ? server(o.url, o.log ?? (() => {}), o.pool) : embedded(o.dataDir, o.template);
 }
 
-async function embedded(dataDir?: string): Promise<Db> {
+/** tests: a new in-memory embedded database with every migration applied, as a template for many (DbOptions.template):
+ *  loading one is cheaper than migrating each. */
+export async function embeddedTemplate(): Promise<Blob> {
+  const p = new PGlite({ extensions: { btree_gist } });
+  try {
+    await p.waitReady;
+    await migrate(wrap(p));
+    return await p.dumpDataDir('none');
+  } finally {
+    await p.close();
+  }
+}
+
+/** The Postgres major version of the embedded database (PGlite, pinned to one version in package.json). A data folder
+ *  holds the major version that made it (PG_VERSION), and opens with that one only. */
+export const EMBEDDED_PG_MAJOR = '18';
+
+export class FolderVersionError extends Error {}
+
+async function embedded(dataDir?: string, template?: Blob): Promise<Db> {
+  const made = dataDir && existsSync(join(dataDir, 'PG_VERSION')) ? readFileSync(join(dataDir, 'PG_VERSION'), 'utf8').trim() : null;
+  if (made && made !== EMBEDDED_PG_MAJOR) {
+    throw new FolderVersionError(`${dataDir} was made by Postgres ${made}, and this version of CompanyFlags embeds Postgres ${EMBEDDED_PG_MAJOR}: `
+      + 'run the version that made it, and move to a Postgres server with companyflags copy-to-postgres (docs: self-hosting/backups)');
+  }
   const unlock = dataDir ? lockFolder(dataDir) : () => {};
   try {
-    const opts = { extensions: { btree_gist } };
+    const opts = { extensions: { btree_gist }, ...(template && !dataDir ? { loadDataDir: template } : {}) };
     const p = dataDir ? new PGlite(dataDir, opts) : new PGlite(opts);
     await p.waitReady;
-    const on = (q: Pick<PGlite, 'query' | 'exec'>): Queryable => ({
-      query: async <T>(sql: string, params: unknown[] = []) => {
-        const r = await q.query<T>(sql, params as any[]);
-        return { rows: r.rows, affected: r.affectedRows };
-      },
-      exec: async (sql) => { await q.exec(sql); },
-    });
-    return { ...on(p), transaction: (fn) => p.transaction((tx) => fn(on(tx))), close: () => p.close().finally(unlock) };
+    const db = wrap(p);
+    return { ...db, close: () => p.close().finally(unlock) };
   } catch (e) {
     unlock();
     throw e;
   }
+}
+
+/** A PGlite as a Db (its close is PGlite's own). */
+function wrap(p: PGlite): Db {
+  const on = (q: Pick<PGlite, 'query' | 'exec'>): Queryable => ({
+    query: async <T>(sql: string, params: unknown[] = []) => {
+      const r = await q.query<T>(sql, params as any[]);
+      return { rows: r.rows, affected: r.affectedRows };
+    },
+    exec: async (sql) => { await q.exec(sql); },
+  });
+  return { ...on(p), transaction: (fn) => p.transaction((tx) => fn(on(tx))), close: () => p.close() };
 }
 
 /** The embedded database must only ever be open in one process: two writing the same folder damage it.
@@ -71,7 +107,7 @@ async function embedded(dataDir?: string): Promise<Db> {
  *  a database that already exists) names the process that has it. A second server refuses to open the folder,
  *  and a lock left by a process that has ended (a crash) is taken over. Returns the release. */
 export class FolderInUseError extends Error {}
-function lockFolder(dataDir: string): () => void {
+export function lockFolder(dataDir: string): () => void {
   const file = `${resolve(dataDir)}.lock`;
   mkdirSync(dirname(file), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -116,8 +152,8 @@ const PARSERS: Record<number, (v: string) => unknown> = {
 };
 const types = { getTypeParser: (oid: number, format?: string) => PARSERS[oid] ?? builtin(oid, format) } as pg.CustomTypesConfig;
 
-function server(url: string, log: (m: string) => void): Db {
-  const pool = new pg.Pool({ connectionString: url, types, max: Number(process.env.FF_DB_POOL ?? 10) });
+function server(url: string, log: (m: string) => void, size?: number): Db {
+  const pool = new pg.Pool({ connectionString: url, types, max: size ?? Number(process.env.FF_DB_POOL || 10) });
   // A connection that drops while idle (a failover, a restart) is replaced on the next query.
   // Without this listener the error would end the process.
   pool.on('error', (e) => log(`database connection lost: ${e.message}`));
@@ -158,18 +194,42 @@ export async function all<T>(q: Queryable, sql: string, params: unknown[] = []):
   return (await q.query<T>(sql, params)).rows;
 }
 
-/** A stable name for an error the console acts on (sent as `code` in the JSON error body), so it never has to read the
- *  message: `conflict` someone else changed what you edited, `needs_reshuffle` a % change needs a confirmed reshuffle. */
-export type ErrorCode = 'conflict' | 'needs_reshuffle';
+/** The stable codes of the HTTP API's errors (docs/reference/http-api.md lists them), sent as `code` beside the
+ *  sentence in `error`. A caller acts on the code, never the words: the words may change in any release, the codes
+ *  don't. Each has the status it goes with; an error that names no code gets its status's (codeOf). */
+export const ERROR_CODES = {
+  bad_request: 400,      // a value is missing or of the wrong form (in the address, the query or the body)
+  bad_json: 400,         // the body isn't a JSON object
+  unauthorized: 401,     // not signed in, or an unknown, expired or revoked token
+  forbidden: 403,        // signed in, but this person's role (or this token) may not do it
+  not_found: 404,        // no such flag, environment, entity, … (or no such endpoint)
+  already_exists: 409,   // the key is taken already
+  conflict: 409,         // someone else changed it since you read it: read it again
+  blocked: 409,          // not now: something else has to change first (it's in use, turn it off first, …)
+  too_large: 413,        // the body is larger than this address takes
+  invalid: 422,          // understood, but what it asks for breaks a rule (the words say which)
+  needs_reshuffle: 422,  // a % change moves devices to other values: send it again with allowReshuffle
+  too_many_requests: 429,
+  internal: 500,         // a bug: logged on the server, and nothing about it in the answer
+  unavailable: 503,      // the database isn't answering
+} as const;
+export type ErrorCode = keyof typeof ERROR_CODES;
+
+const CODE_OF_STATUS: Record<number, ErrorCode> = {
+  400: 'bad_request', 401: 'unauthorized', 403: 'forbidden', 404: 'not_found', 409: 'blocked', 413: 'too_large', 422: 'invalid',
+  429: 'too_many_requests', 500: 'internal', 503: 'unavailable',
+};
+/** The code an error gets from its status when it names none. */
+export const codeOf = (status: number): ErrorCode => CODE_OF_STATUS[status] ?? (status >= 500 ? 'internal' : 'bad_request');
 
 export class HttpError extends Error {
   status: number;
   body: Record<string, unknown>;
-  code?: ErrorCode;
+  code: ErrorCode;
   constructor(status: number, message: string, body: Record<string, unknown> = {}, code?: ErrorCode) {
     super(message);
     this.status = status;
     this.body = body;
-    this.code = code;
+    this.code = code ?? codeOf(status);
   }
 }

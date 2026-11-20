@@ -10,9 +10,11 @@ users and their data never leave them.
 ## Sign-in with your identity provider
 
 People sign in with your organization's single sign-on, over **SAML 2.0** or **OIDC** (Okta, Entra ID, Google
-Workspace, JumpCloud and others). People at your email domains can join by themselves as viewers, and an admin gives
-them a role. Email and password, Google, GitHub and Microsoft sign-in work too.
-See [Sign-in and single sign-on](/self-hosting/sign-in).
+Workspace, JumpCloud and others). People at your email domains can join by themselves, with the role you choose
+(Viewer by default), or the role their identity provider groups give. Require single sign-on, and someone removed
+from the identity provider is out of the console within 12 hours; one break-glass admin keeps a password. Email and
+password (with two-factor sign-in, which you can require of admins), Google, GitHub and Microsoft sign-in work too.
+Sign-ins and other security events can go to your SIEM. See [Sign-in and single sign-on](/self-hosting/sign-in).
 
 ## Roles and approvals
 
@@ -21,14 +23,14 @@ See [Sign-in and single sign-on](/self-hosting/sign-in).
 - **Approvals per environment:** Production can need one or more approvals before any change goes out. Nobody
   approves their own change. See [Protected environments](/guide/approvals#protected-environments).
 - **Scheduled changes:** an approved change can wait for the time you choose.
-- **Break-glass:** on call can turn a flag off in an emergency without waiting for approval. The change is recorded
-  with its reason. See [Break-glass](/guide/approvals#break-glass).
+- **Break-glass:** on call can turn any flag off, pause a release, or serve a kill switch's safe value in an emergency,
+  without waiting for approval. The change is recorded with its reason. See [Break-glass](/guide/approvals#break-glass).
 
 ## Audit history and restore
 
 Every change is kept in an append-only history: who made it, when, from where (the console, a token, an agent or a
 webhook) and what it changed. You can filter it and export it to CSV. Each environment has versions you can compare and
-restore. See [History](/guide/approvals#history) and [Versions and restore](/guide/approvals#versions-and-restore).
+restore. See [History](/guide/approvals#history) and [Revisions and restore](/guide/approvals#revisions-and-restore).
 
 ## Security
 

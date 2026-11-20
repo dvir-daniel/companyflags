@@ -1,7 +1,8 @@
-// Reviewing and publishing the draft: every flag's changes, as sentences, published together as one version
-// (or sent as one request where the environment needs review). The draft session (draftSession.ts) decides all of
-// it: what changed, whether a flag is stale, the rebase, and the order publishing goes in.
-import { useEffect, useMemo, useState } from 'react';
+// Reviewing and publishing the draft: every flag's changes, as sentences and as each layer before and after (the same
+// diff the approver sees, Approvals.tsx LayerDiff), published together as one revision of the environment (or sent as
+// one request where the environment needs review). The draft session (draftSession.ts) decides all of it: what
+// changed, whether a flag is stale, the rebase, and the order publishing goes in.
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { StatusMark } from '@companyflags/ui/components/badge';
 import { Button } from '@companyflags/ui/components/button';
 import { Callout } from '@companyflags/ui/components/callout';
@@ -11,12 +12,17 @@ import { cn } from '@companyflags/ui/lib/utils';
 import { api, entityIndex, entityLabel } from '../api.ts';
 import { go, useApp } from '../app.ts';
 import { followingText } from '../dimWords.ts';
+import { historyHref } from '../paths.ts';
 import { useDraft } from '../useDraft.ts';
 import { plural } from '../text.ts';
-import { Actions, ErrorList, Field, Modal } from '../ui.tsx';
+import { Actions, Collapsible, ErrorList, Field, Modal } from '../ui.tsx';
 import { monoLabel, textareaField, useAsync } from '../uiKit.ts';
 import { useEnvs } from './envs.ts';
 import { approvalsNeeded } from '../../../server/policy.ts';
+import type { Layer } from '../api.ts';
+
+// the approver's diff of one layer, loaded with the review (it lives with the requests, Approvals.tsx)
+const LayerDiff = lazy(() => import('./Approvals.tsx').then((m) => ({ default: m.LayerDiff })));
 
 /**
  * The bar under the page's tabs while a draft exists (Zeigarnik: unfinished work stays in view):
@@ -67,7 +73,8 @@ export function ReviewDraft({ env, onClose }: { env: string; onClose: () => void
     const res = await run(() => session.publish({ meta, reason, allowReshuffle: reshuffle }));
     if (!res) return;
     const what = `${plural(res.changes, 'change')} in ${plural(res.flags.length, 'flag')}`;
-    if (res.applied) toast(`Published ${what} to ${where} as version ${res.revision}`, 'ok', { label: 'View', onClick: () => go(`flags/${env}/versions`) });
+    if (res.applied && res.revision === undefined) toast(`Published ${what}: the new values are saved`);
+    else if (res.applied) toast(`Published ${what} to ${where} as revision ${res.revision}`, 'ok', { label: 'View', onClick: () => { location.hash = historyHref('revisions', { env }); } });
     else toast(`Sent ${what} in ${where} for review (request #${res.changeSetId})`, 'ok', { label: 'View', onClick: () => go(`approvals/${res.changeSetId}`) });
     reload().catch(() => {});
     onClose();
@@ -90,12 +97,18 @@ export function ReviewDraft({ env, onClose }: { env: string; onClose: () => void
       <p className="m-0 text-13 text-ink-2">
         {needsApproval
           ? `Everything below goes to an approver as one request (${plural(approvals, 'approval')} needed). Nothing changes in ${where} until it’s approved and applied.`
-          : `Everything below goes live together as one new version of ${where}. You can roll back to the current version from the Versions tab.`}
+          : `Everything below goes live together as one new revision of ${where}. You can roll back to the current one from the Revisions tab.`}
       </p>
+      {s.flags.some((g) => g.values.length > 0) && (
+        <Callout role="note">
+          A variant’s value is the same in every environment, so a new one is saved for all of them when you {needsApproval ? 'send this' : 'publish'}.
+          It’s refused while an environment that needs approval serves that variant, or a request waiting there uses it: add a new variant instead.
+        </Callout>
+      )}
       {s.stale.length > 0 && (
         <Callout tone="error" role="status">
           Someone changed {s.stale.join(', ')} in {where} since your draft began, so publishing it would be refused.{' '}
-          <Button variant="link" disabled={busy} onClick={() => void keepMine()}>Keep my edits on the new version</Button>
+          <Button variant="link" disabled={busy} onClick={() => void keepMine()}>Keep my edits on the newest settings</Button>
         </Callout>
       )}
       {s.flags.map((g) => (
@@ -116,10 +129,25 @@ export function ReviewDraft({ env, onClose }: { env: string; onClose: () => void
               return text && <li key={`f-${it.entity}`} className="border-b border-grid py-1.5 text-13 text-ink-2 last:border-b-0">{text}</li>;
             })}
           </ul>
+          {/* each changed layer before and after, as the approver will see it */}
+          {g.items.length > 0 && (
+            <Collapsible title={`Before and after (${plural(g.items.length, 'setting')})`} defaultOpen={g.items.length <= 2}>
+              <Suspense fallback={<p className="m-0 text-13 text-ink-3">Loading…</p>}>
+                <div className="grid gap-3">
+                  {g.items.map((it) => (
+                    <div key={it.entity ?? ''} className="grid gap-1">
+                      <span className={monoLabel}>{it.entity ? `${entityLabel(meta.entities, it.entity)}’s own settings` : 'Overrides, rules for everyone and the default'}</span>
+                      <LayerDiff before={g.before[it.entity ?? ''] ?? null} after={it.layer as Layer | null} entity={it.entity} />
+                    </div>
+                  ))}
+                </div>
+              </Suspense>
+            </Collapsible>
+          )}
         </section>
       ))}
       {!s.flags.length && <Callout>Your draft in {where} is empty.</Callout>}
-      <Field label={needsApproval ? 'Why? (the approver sees this)' : 'Note for the version (optional)'}>
+      <Field label={needsApproval ? 'Why? (the approver sees this)' : 'Note for the revision (optional)'}>
         <textarea rows={2} data-autofocus value={reason} placeholder="Move the EU to the new cluster" onChange={(e) => setReason(e.target.value)} className={textareaField} />
       </Field>
       {needsReshuffle && (

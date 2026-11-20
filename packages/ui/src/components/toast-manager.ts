@@ -42,23 +42,40 @@ interface NotifyAction {
   onClick: () => void
 }
 
-/** One toast on screen: a new one closes the one before at once, so they never pile up over the page. */
-const MAX_TOASTS = 1
-const shown: string[] = []
+/** At most this many toasts on screen, stacked, the newest at the bottom. */
+const MAX_TOASTS = 3
+/** How long a toast with Undo stays. Every toast also stays while the pointer or focus is on it. */
+const UNDO_MS = 20000
+/** The toasts on screen, oldest first, and whether each offers an action (Undo, Retry, View). */
+const shown: { id: string; action: boolean }[] = []
 
-/** Show a toast. The one call the app uses. Toasts with Undo stay a little longer; `tone: "error"` turns it red. */
+/**
+ * Show a toast. The one call the app uses. `tone: "error"` turns it red and announces it at once. Toasts stack: a new
+ * one never replaces one that offers an action (Undo stays its full 20 seconds); when the stack is full, the oldest
+ * plain notice goes first.
+ */
 function notify(message: string, action?: NotifyAction, opts: { timeout?: number; tone?: "error" } = {}) {
-  while (shown.length >= MAX_TOASTS) toast.close(shown.shift()!)
+  while (shown.length >= MAX_TOASTS) {
+    const plain = shown.findIndex((t) => !t.action)
+    const [gone] = shown.splice(plain >= 0 ? plain : 0, 1)
+    toast.close(gone.id)
+  }
   const id = addToast(message, action, opts)
-  shown.push(id)
+  shown.push({ id, action: !!action })
   return id
 }
 
 function addToast(message: string, action?: NotifyAction, opts: { timeout?: number; tone?: "error" } = {}) {
-  return toast.add({
+  const id: string = toast.add({
     title: message,
     type: opts.tone,
-    timeout: opts.timeout ?? (action?.label === "Undo" ? 10000 : undefined),
+    priority: opts.tone === "error" ? "high" : "low",
+    timeout: opts.timeout ?? (action?.label === "Undo" ? UNDO_MS : undefined),
+    // gone from the screen (its time is up, or it was closed): no longer counted
+    onRemove: () => {
+      const i = shown.findIndex((t) => t.id === id)
+      if (i >= 0) shown.splice(i, 1)
+    },
     actionProps: action
       ? {
           children: action.label,
@@ -68,6 +85,7 @@ function addToast(message: string, action?: NotifyAction, opts: { timeout?: numb
         }
       : undefined,
   })
+  return id
 }
 
 export { notify, toast, useBottomReserve }

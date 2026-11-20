@@ -98,9 +98,9 @@ export function createAppearance(db: Db, fromConfig?: unknown) {
       });
       app.get('/appearance/images/:image', async (c) => {
         const which = c.req.param('image');
-        if (!(which in IMAGES)) return c.json({ error: `no such image: ${which} (logo, logo-dark or icon)` }, 404);
+        if (!(which in IMAGES)) return c.json({ error: `no such image: ${which} (logo, logo-dark or icon)`, code: 'not_found' }, 404);
         const v = (await read()).settings[IMAGES[which as keyof typeof IMAGES]];
-        if (!v) return c.json({ error: `no ${which} is set` }, 404);
+        if (!v) return c.json({ error: `no ${which} is set`, code: 'not_found' }, 404);
         const { type } = imageOf(v, Math.max(LIMITS.image, LIMITS.icon));
         const body = Buffer.from(v.slice(v.indexOf(',') + 1), 'base64');
         c.header('Content-Type', type);

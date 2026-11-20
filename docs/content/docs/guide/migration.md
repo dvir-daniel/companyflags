@@ -1,5 +1,6 @@
 ---
 title: "Moving from another system"
+description: "Run CompanyFlags next to the system you have now and move flags over one at a time."
 ---
 
 You don't switch on one day. CompanyFlags runs next to the config system you have now, and flags move over one at

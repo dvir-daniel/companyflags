@@ -10,7 +10,7 @@ import { useApp } from '../app.ts';
 import { CountSlot } from '../loading.tsx';
 import { pagerRow } from '../loadingKit.ts';
 import { plural } from '../text.ts';
-import { Badge, Empty, ErrorList, PAGE_SIZE, Pager } from '../ui.tsx';
+import { Badge, Empty, ErrorList, PAGE_SIZE, Pager, When } from '../ui.tsx';
 import { useAsync, usePersistentState, useSlashFocus } from '../uiKit.ts';
 import { InviteLink, PersonDrawer, ResetLink } from './Settings.tsx';
 import { ROLE_OPTIONS, roleName, selectField, useRefresh } from './settingsKit.ts';
@@ -23,8 +23,8 @@ import { roleInfo, ROLES } from '../../../server/policy.ts';
  * The list is the console's own (/meta's users), so it opens at once and filters as you type.
  */
 
-/** person (name, then email), role, status, the row's actions */
-const COLS = 'grid grid-cols-[minmax(0,1.6fr)_minmax(180px,1fr)_120px_minmax(0,auto)] max-md:grid-cols-[minmax(0,1fr)_minmax(0,auto)]';
+/** person (name, then email), role, status, last signed in, the row's actions */
+const COLS = 'grid grid-cols-[minmax(0,1.6fr)_minmax(180px,1fr)_120px_120px_minmax(0,auto)] max-md:grid-cols-[minmax(0,1fr)_minmax(0,auto)]';
 const MD = 'max-md:hidden';
 /** a row: the name, then the email under it */
 const ROW = 'min-h-[53px]';
@@ -131,7 +131,7 @@ export function People() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar crumbs={<a href="#/settings" className="text-ink-3 no-underline hover:text-ink hover:no-underline">Settings</a>} title="People"
+      <PageBar title="People"
         count={<CountSlot text={filtered ? `${rows.length.toLocaleString()} of ${everyone.length.toLocaleString()}` : everyone.length.toLocaleString()} />}
         actions={admin && <Button onClick={() => setAdding(true)}>+ Add person</Button>} />
 
@@ -148,7 +148,7 @@ export function People() {
       <div role="table" aria-label="People" className="flex-1">
         <div role="row" className={cn(COLS, tableHeadClass)}>
           <span role="columnheader">Person</span><span role="columnheader" className={MD}>Role</span>
-          <span role="columnheader" className={MD}>Status</span><span />
+          <span role="columnheader" className={MD}>Status</span><span role="columnheader" className={MD}>Last signed in</span><span />
         </div>
         {shown.length === 0 ? (
           <div className="px-6 py-10 max-sm:px-4">
@@ -170,6 +170,7 @@ export function People() {
               <span role="cell" className={MD} title={STATUS_HELP[s]}>
                 {s === 'active' ? <span className="text-13 text-ink-2">Active</span> : <Badge kind={s === 'removed' ? undefined : 'warn'}>{STATUS_TEXT[s]}</Badge>}
               </span>
+              <span role="cell" className={MD}>{u.lastSignedInAt ? <When iso={u.lastSignedInAt} /> : <span className="text-13 text-ink-3">Never</span>}</span>
               <span role="cell" className="flex justify-end gap-2">
                 {/* on a phone the role and status columns are hidden: the status goes here */}
                 {s !== 'active' && <span className="md:hidden"><Badge kind={s === 'removed' ? undefined : 'warn'}>{STATUS_TEXT[s]}</Badge></span>}
@@ -185,7 +186,7 @@ export function People() {
 
       <div className={cn('flex flex-wrap items-center gap-4 border-t border-rule px-6 max-sm:px-4', pagerRow)}>
         <span className="text-13 text-ink-3 max-md:hidden">
-          {plural(everyone.filter((u) => statusOf(u) !== 'removed').length, 'person', 'people')} can sign in. With single sign-on, people at your organization’s domains join on their own as viewers.
+          {plural(everyone.filter((u) => statusOf(u) !== 'removed').length, 'person', 'people')} can sign in. With single sign-on, people at your organization’s domains join on their own, with the role set in Settings → Single sign-on.
         </span>
         <span className="flex-1" />
         <Pager page={at} size={PAGE_SIZE} matched={rows.length} noun="people" onPage={(p) => { setPage(p); search.current?.closest('main')?.scrollTo({ top: 0 }); }} />

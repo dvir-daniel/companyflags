@@ -1,5 +1,7 @@
-// The sidebar, in the order and groups of the old one: each group with its icon, opened only for the page you're on.
-// Pages are found by address in the loaded source, so a page that's renamed or removed fails the build here.
+// The sidebar: each group with its icon. Getting started and Reading flags are open; the others open for the page
+// you're on. Its order is the pages' previous/next order too, so the quickstart leads on to reading flags.
+// Pages are found by address in the loaded source, so a page that's renamed or removed fails the build here, and so
+// does a page with no description.
 import type * as PageTree from 'fumadocs-core/page-tree';
 import type { ReactNode } from 'react';
 import { source } from './source';
@@ -19,26 +21,29 @@ const ICONS = {
   reference: icon(<path d="M4 4v16M8 4v16M12 4l4 16M17 4h3v16h-3z" />),
 };
 
-const GROUPS: { name: string; icon: keyof typeof ICONS; pages: [string, string][] }[] = [
-  { name: 'Getting started', icon: 'start', pages: [['Introduction', '/guide/introduction'], ['Quickstart', '/guide/quickstart'], ['Examples', '/guide/examples'], ['Compared with others', '/guide/comparison'], ['Enterprise', '/guide/enterprise']] },
+const GROUPS: { name: string; icon: keyof typeof ICONS; open?: boolean; pages: [string, string][] }[] = [
+  { name: 'Getting started', icon: 'start', open: true, pages: [['Introduction', '/guide/introduction'], ['Quickstart', '/guide/quickstart']] },
+  { name: 'Reading flags', icon: 'reading', open: true, pages: [['Overview', '/reading/overview'], ['Evaluation context', '/reading/context'], ['Remote evaluation in apps', '/reading/remote-apps'], ['Remote evaluation in backends', '/reading/remote-backends'], ['Local evaluation in apps', '/reading/local-apps'], ['Local evaluation in backends', '/reading/local-backends'], ['Testing', '/reading/testing'], ['Examples', '/guide/examples']] },
   { name: 'Concepts', icon: 'concepts', pages: [['How it fits together', '/guide/concepts'], ['Architecture', '/guide/architecture'], ['Dimensions', '/guide/dimensions'], ['Flags and rules', '/guide/flags-and-rules'], ['Services', '/guide/services']] },
-  { name: 'Reading flags', icon: 'reading', pages: [['Overview', '/reading/overview'], ['Evaluation context', '/reading/context'], ['Remote · apps', '/reading/remote-apps'], ['Remote · backends', '/reading/remote-backends'], ['Local · apps: CDN file', '/reading/local-apps'], ['Local · backends: flagd', '/reading/local-backends']] },
   { name: 'Changing flags', icon: 'changing', pages: [['Releases', '/guide/releases'], ['Approvals and history', '/guide/approvals'], ['Flags as code', '/guide/flags-as-code'], ['Flags in the age of AI', '/guide/ai'], ['AI resources', '/guide/ai-resources']] },
   { name: 'Plugins', icon: 'plugins', pages: [['Plugins', '/reference/plugins'], ['Webhooks', '/guide/webhooks']] },
-  { name: 'Migration', icon: 'migration', pages: [['Moving from another system', '/guide/migration']] },
-  { name: 'Self-hosting', icon: 'hosting', pages: [['Docker', '/self-hosting/docker'], ['Configuration', '/self-hosting/configuration'], ['Sign-in and single sign-on', '/self-hosting/sign-in'], ['CDN (Cloudflare)', '/self-hosting/cdn'], ['Appearance', '/self-hosting/appearance'], ['Production checklist', '/self-hosting/production']] },
+  { name: 'Self-hosting', icon: 'hosting', pages: [['Docker', '/self-hosting/docker'], ['Configuration', '/self-hosting/configuration'], ['Sign-in and single sign-on', '/self-hosting/sign-in'], ['CDN (Cloudflare)', '/self-hosting/cdn'], ['Appearance', '/self-hosting/appearance'], ['Production checklist', '/self-hosting/production'], ['Backups', '/self-hosting/backups'], ['Upgrading', '/self-hosting/upgrading']] },
   { name: 'Reference', icon: 'reference', pages: [['HTTP API', '/reference/http-api'], ['CLI', '/reference/cli'], ['Attributes', '/reference/attributes'], ['Security model', '/guide/security']] },
+  { name: 'More', icon: 'migration', pages: [['Moving from another system', '/guide/migration'], ['Compared with others', '/guide/comparison'], ['Enterprise', '/guide/enterprise']] },
 ];
 
 export function sidebarTree(): PageTree.Root {
-  const known = new Set(source.getPages().map((p) => p.url));
+  const pages = source.getPages();
+  const bare = pages.filter((p) => !p.data.description).map((p) => p.url);
+  if (bare.length) throw new Error(`every page needs a description in its front matter: ${bare.join(', ')}`);
+  const known = new Set(pages.map((p) => p.url));
   return {
     name: 'Docs',
     children: GROUPS.map((g): PageTree.Folder => ({
       type: 'folder',
       name: g.name,
       icon: ICONS[g.icon],
-      defaultOpen: false,
+      defaultOpen: g.open ?? false,
       children: g.pages.map(([name, url]): PageTree.Item => {
         if (!known.has(url)) throw new Error(`the sidebar links to ${url}, which isn't a page in content/docs`);
         return { type: 'page', name, url };

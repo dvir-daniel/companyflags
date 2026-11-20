@@ -4,10 +4,10 @@
 #   docker compose up -d
 # then docker compose logs companyflags shows a setup link: open it to make the admin account. Settings: .env.example.
 # It listens on 127.0.0.1:8787 only: put your proxy in front, or set COMPANYFLAGS_BIND=0.0.0.0 in .env.
-# The release it runs: COMPANYFLAGS_VERSION in .env (0.8, 0.8.0, …), or the default below.
+# The release it runs: COMPANYFLAGS_VERSION in .env (0.9, 0.9.0, …), or the default below.
 services:
   companyflags:
-    image: ghcr.io/dvir-daniel/companyflags:${COMPANYFLAGS_VERSION:-0.8}
+    image: ghcr.io/dvir-daniel/companyflags:${COMPANYFLAGS_VERSION:-0.9}
     ports:
       - "${COMPANYFLAGS_BIND:-127.0.0.1}:8787:8787"
     # every setting in .env reaches the server (.env.example lists them); these three are set here

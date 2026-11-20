@@ -1,6 +1,6 @@
 import * as React from "react"
 import { cn } from "../lib/utils.ts"
-import { demoControlClass, sidebarItemClass } from "./app-frame-classes.ts"
+import { sidebarItemClass } from "./app-frame-classes.ts"
 import { Badge } from "./badge.tsx"
 import { Kbd } from "./kbd.tsx"
 
@@ -13,7 +13,7 @@ import { Kbd } from "./kbd.tsx"
  *   </AppFrame>
  *
  * Every part takes className and the usual element props, so an app can add its own
- * (Tauri's data-tauri-drag-region, a router's active state, and so on).
+ * (a router's active state, and so on).
  * In a narrow window (under 768px) the app hides the sidebar and the footer and shows its own bottom tab
  * bar instead (the console's MobileNav; DESIGN.md "Patterns"): the frame's grid then gives the page the width.
  */
@@ -49,20 +49,9 @@ function TitleBar({ className, ...props }: React.ComponentProps<"header">) {
   return <header data-slot="title-bar" className={cn("flex h-11 shrink-0 items-stretch border-b border-rule", className)} {...props} />
 }
 
-/** The left cluster: window squares (browser only), the product mark, the wordmark and a tag. */
+/** The left cluster: the mark (or the installation's logo) and the name. */
 function TitleBarBrand({ className, ...props }: React.ComponentProps<"div">) {
   return <div data-slot="title-bar-brand" className={cn("flex items-center gap-2.5 pr-4 pl-4", className)} {...props} />
-}
-
-/** Three grey squares standing in for the window controls when the app runs in a browser. */
-function WindowLights({ className }: { className?: string }) {
-  return (
-    <span aria-hidden="true" className={cn("mr-3.5 flex gap-[5px]", className)}>
-      <i className="size-2 bg-rule" />
-      <i className="size-2 bg-rule" />
-      <i className="size-2 bg-rule" />
-    </span>
-  )
 }
 
 /** The product's mark: three stepped bars, the layers from the defaults down to one entry. Drawn in the text color. */
@@ -74,7 +63,7 @@ function BrandMark({ className }: { className?: string }) {
   )
 }
 
-/** The product name in caps with a closing period: COMPANYMEMORY. */
+/** The console's name in the title bar, as it is written: the installation's own name, or CompanyFlags. */
 function Wordmark({ className, ...props }: React.ComponentProps<"span">) {
   return <span data-slot="wordmark" className={cn("text-sm leading-none font-semibold tracking-[0.01em]", className)} {...props} />
 }
@@ -147,8 +136,15 @@ function SidebarLabel({ className, ...props }: React.ComponentProps<"div">) {
  * A titled group of sidebar links. Groups sit 20px apart and a title sits 6px above its own links, so each
  * title reads as part of its group, not the one above (proximity). Screen readers announce the group by name.
  */
-function SidebarGroup({ label, className, children, ...props }: React.ComponentProps<"div"> & { label: React.ReactNode }) {
+function SidebarGroup({ label, className, children, ...props }: React.ComponentProps<"div"> & { label?: React.ReactNode }) {
   const id = React.useId()
+  // with no title: the links alone, spaced from the groups around them
+  if (label === undefined)
+    return (
+      <div data-slot="sidebar-group" className={cn("flex flex-col gap-px [&+&]:mt-5", className)} {...props}>
+        {children}
+      </div>
+    )
   return (
     <div role="group" aria-labelledby={id} data-slot="sidebar-group" className={cn("flex flex-col gap-px [&+&]:mt-5", className)} {...props}>
       <SidebarLabel id={id}>{label}</SidebarLabel>
@@ -159,6 +155,7 @@ function SidebarGroup({ label, className, children, ...props }: React.ComponentP
 
 /** A sidebar link as a plain anchor. */
 function SidebarItem({ className, ...props }: React.ComponentProps<"a">) {
+  // oxlint-disable-next-line jsx-a11y/anchor-has-content -- the link's text is its children, in props
   return <a data-slot="sidebar-item" className={cn(sidebarItemClass, className)} {...props} />
 }
 
@@ -232,16 +229,10 @@ function FooterSlash() {
   return <span className="text-ink-4">/</span>
 }
 
-/** The "Demo /" prefix inside a demo control. */
-function DemoTag() {
-  return <span className="mr-1.5 text-ink-4">Demo /</span>
-}
-
 export {
   AppFrame,
   Avatar,
   BrandMark,
-  DemoTag,
   Footer,
   FooterSlash,
   MainPane,
@@ -255,9 +246,7 @@ export {
   TitleBar,
   TitleBarBrand,
   TitleBarStatus,
-  WindowLights,
   Wordmark,
   WordmarkTag,
-  demoControlClass,
   sidebarItemClass,
 }

@@ -96,7 +96,11 @@ Every service gets keys, one service and one environment each. A key goes in the
   is now: moving an entity out from under a `below` key's entity takes it out of reach at once. Outside the scope, the
   answer is `403`.
 - **Revoking** a key stops it at once on the instance that revoked it and within a minute on the others.
-- Only admins make and revoke keys, as for the rest of Settings. Each is recorded in History.
+- **Expiry.** A key works until it is revoked, or for 30 days, 90 days, 1 or 2 years when it is made (`days` on
+  `POST /api/api-keys`, up to 1095). The list shows when it ends; an expired key gets `401`, at once on every
+  instance.
+- Only admins make and revoke keys, as for the rest of Settings, signed in: an access token can't. Each is recorded in
+  History.
 
 :::warning[Keep backend keys on your servers]
 A backend's key reads the rules, and with scope `all` every entity's. Never put one in an app or a web page. The server
@@ -110,11 +114,15 @@ entity can get. Another entity's own values and keys aren't in it.
 ## Access tokens
 
 An access token is for the console's API (`/api`): scripts, the CLI and MCP clients. It acts as you, with a role up
-to yours.
+to yours, and **On call at most**: a token never changes settings.
 
 - **Make one** in the console: your name at the foot of the sidebar → **Access tokens** → **+ New token**. Give it a
-  name, a role (Viewer, Editor or your own) and how long it works: 30, 90 or 365 days. It is shown once; the server
-  keeps only its hash and a prefix (`cfp_` and 6 characters).
+  name, a role (Viewer, Editor or your own; an admin's is On call at most) and how long it works: 30, 90 or 365 days.
+  It is shown once; the server keeps only its hash and a prefix (`cfp_` and 6 characters). A token made as an admin
+  before acts as On call.
+- **Only a person, signed in,** manages people, invites and password resets, single sign-on, the sign-in rules and
+  the appearance, and lowers an environment's approvals. A token gets `403` there, so a leaked one can't hand out
+  access or take a safeguard away.
 - **Send it** as `Authorization: Bearer cfp_…` on `/api`. No cookie and no `X-Requested-With` header: a token isn't
   sent by a browser on its own, so it needs neither.
 - **For an agent** (Claude, Cursor, Codex…), tick **For an agent**. Its role is Viewer or Editor only, so it never
@@ -168,7 +176,8 @@ Accepted, and why:
   same computer could claim the scheme; PKCE means a stolen code is useless without its verifier.
 - **A token's role follows its person's.** It goes down with theirs, and back up if an admin raises theirs again (never
   above the token's own role). Revoke tokens you no longer trust.
-- **Requiring single sign-on doesn't revoke tokens.** Remove a person to end their tokens.
+- **Requiring single sign-on doesn't revoke tokens, and leaving the identity provider doesn't either.** Sessions end
+  within 12 hours there; tokens last until they expire. Remove a person to end their tokens.
 - **Without `BETTER_AUTH_URL`**, the OAuth documents name the address the request asked for (its `Host`). Set it in
   production.
 - **`companyflags mcp --token` and `flags --token`** show the token in the computer's process list. Use
@@ -179,8 +188,15 @@ Accepted, and why:
 
 Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single sign-on](/self-hosting/sign-in)):
 
-- sessions are a cookie, signed with `BETTER_AUTH_SECRET`, lasting 7 days and renewed while used;
+- sessions are a cookie, signed with `BETTER_AUTH_SECRET`, lasting 7 days and renewed while used; where single
+  sign-on is required, 12 hours at most (`FF_SSO_SESSION_HOURS`), so the identity provider is asked again;
 - passwords are kept as hashes, and have at least 10 characters;
+- **two-factor sign-in**: anyone with a password can add an authenticator app's code and recovery codes, kept
+  encrypted. An admin can require it of admins with a password (**Settings → Single sign-on**): until they set it up,
+  the API refuses them everything but the setup. A password reset link turns it off for that person;
+- each sign-in and each failed one (a wrong password or code, a refusal) is in History, with how; People shows when
+  each person last signed in. Security events can go to a SIEM through a webhook
+  ([Webhooks → Security events](/guide/webhooks#security-events));
 - the providers' tokens are stored encrypted with the secret;
 - rate limits on sign-in are on unless `NODE_ENV` is `development` or `test`. They count the connection's address,
   or what your own proxies say (`FF_TRUSTED_PROXIES`), never a header a client sets itself;
@@ -195,8 +211,12 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
 - **the first account is the admin's, made only with the setup link** the server prints while nobody has an
   account. Until then nobody else joins, however they sign in. See
   [Sign-in → The first account](/self-hosting/sign-in#the-first-account);
-- where a single sign-on connection requires single sign-on, nobody at its domains but admins signs in with a
-  password, Google, GitHub or Microsoft. Turning it on signs them out at once.
+- where a single sign-on connection requires single sign-on, nobody at its domains but the one **break-glass admin**
+  an admin chose signs in with a password, Google, GitHub or Microsoft. Turning it on asks first, needs a sign-in with
+  the connection before (Test sign-in), and signs the others out at once;
+- people who join without an invite get the join role: Viewer unless an admin chose another (never Admin). Viewers
+  read every flag and entity. A connection can give roles from the identity provider's groups instead
+  ([Sign-in → Group roles](/self-hosting/sign-in#group-roles)).
 
 ## Changes from the console
 
@@ -213,8 +233,13 @@ sends no CORS headers, so no other site gets that permission.
   exact content, the values of the variants it serves included. A request can't be edited: to change it, its author
   withdraws it and sends a new one. While a request waits, nobody can change a value it uses, and if one changes
   anyway, the request ends as a conflict instead of serving it.
-- **Break-glass** (on call and admins): turn a kill switch or ops flag off, or roll a version release back, without
-  review. It needs a reason, and History keeps it.
+- **Break-glass** (on call and admins): turn any flag off, serve a kill switch's or ops flag's safe value, pause a
+  release, or roll a version release back, without review. It needs a reason, and History keeps it. Only admins name a
+  safe value while an environment is protected, since break-glass serves it without review.
+- **Scheduled requests can be stopped.** Its author or any reviewer can unschedule one, and a reviewer can reject it
+  until it applies. A scheduled request that can't apply, a withdrawal and an unschedule are in History and on the
+  reviews webhook.
+- **Lowering approvals asks first.** The drawer also warns when the people there can't meet the number.
 - **History is append-only.** Database triggers refuse to update, delete or truncate it, whatever the server does.
   Someone with the database owner's credentials can still drop the triggers: keep those credentials away from people
   who use the console.

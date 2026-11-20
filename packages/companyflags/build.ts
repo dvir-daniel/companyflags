@@ -23,11 +23,18 @@ const root = join(here, '..', '..');
 const dist = join(here, 'dist');
 const fail = (m: string) => { console.error(`build: ${m}`); process.exit(1); };
 
-// the package says what the root does: its version and its dependencies
+// the package says what the root does: its version and its dependencies. hono is a peer dependency there (PEERS), so
+// a plugin's own `import { Hono } from 'hono'` gets the server's copy, and its types match.
 const pkg = JSON.parse(readFileSync(join(here, 'package.json'), 'utf8'));
 const rootPkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-for (const key of ['version', 'dependencies', 'engines', 'license'] as const) {
+for (const key of ['version', 'engines', 'license'] as const) {
   if (JSON.stringify(pkg[key]) !== JSON.stringify(rootPkg[key])) fail(`packages/companyflags/package.json "${key}" differs from the root's: copy it over`);
+}
+const PEERS = ['hono'];
+const sorted = (o: Record<string, string>) => JSON.stringify(Object.fromEntries(Object.entries(o).sort(([a], [b]) => a.localeCompare(b))));
+if (sorted({ ...pkg.dependencies, ...pkg.peerDependencies }) !== sorted(rootPkg.dependencies)
+  || JSON.stringify(Object.keys(pkg.peerDependencies ?? {}).sort()) !== JSON.stringify(PEERS)) {
+  fail(`packages/companyflags/package.json: "dependencies" and "peerDependencies" (${PEERS.join(', ')}) together must be the root's "dependencies": copy them over`);
 }
 if (!existsSync(join(root, 'web', 'dist', 'index.html'))) fail('no web/dist: run vite build first (pnpm pack:npm does)');
 

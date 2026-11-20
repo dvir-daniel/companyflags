@@ -214,7 +214,7 @@ test('Compare names whose settings decided: the company’s for a brand, the bra
   await setLayer('velvet', 'base_rules_then_customer_default', 'brand');
   await t.settle();
   const sources = async (lang: string) => {
-    const r = await t.as('alice').post('/compare', { a: { environment: 'dev', project: 'web', entity: 'velvet' }, b: { environment: 'dev', project: 'web', entity: 'onyx' },
+    const r = await t.as('alice').post('/compare', { a: { environment: 'dev', service: 'web', entity: 'velvet' }, b: { environment: 'dev', service: 'web', entity: 'onyx' },
       attrs: { 'locale.language': lang } });
     assert.equal(r.status, 200, JSON.stringify(r.json));
     const row = r.json.rows.find((x: any) => x.key === 'brand_matrix');
@@ -265,11 +265,11 @@ test('“Use Tyrell’s again” removes the brand’s own settings on that flag
 
 test('a backend asking for a brand gets its company’s settings too, and answers like the server', async () => {
   const dana = t.as('dana');
-  assert.equal((await dana.put('/flags/brand_matrix/delivery', { environment: 'dev', projects: ['web', 'server-ds'] })).status, 200);
+  assert.equal((await dana.put('/flags/brand_matrix/delivery', { environment: 'dev', services: ['web', 'server-ds'] })).status, 200);
   await setLayer('tyrell', 'base_rules_then_customer_default', 'company');
   await setLayer('velvet', null, 'brand');
   await t.settle();
-  const key = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'velvet' })).json.key;
+  const key = (await dana.post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'entity', entity: 'velvet' })).json.key;
   const res = await t.call('GET', '/sdk/v1/flagd', undefined, { authorization: `Bearer ${key}` });
   assert.equal(res.status, 200, JSON.stringify(res.json));
   const doc = res.json as FlagdDoc;
@@ -281,7 +281,7 @@ test('a backend asking for a brand gets its company’s settings too, and answer
   }
   assert.equal(flagdEvaluate(doc, 'brand_matrix', nest({ 'locale.language': 'de' })).value, 'company_rule', 'Tyrell’s rule reaches Velvet on the backend too');
   // a shared backend names the entity in the path, by its dimension
-  const shared = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+  const shared = (await dana.post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
   const onyx = (await t.call('GET', '/sdk/v1/flagd/brand/onyx', undefined, { authorization: `Bearer ${shared}` })).json as FlagdDoc;
   assert.equal(onyx.metadata.flagSetId, 'dev/server-ds/onyx');
   assert.equal(same(flagdEvaluate(onyx, 'brand_matrix', nest({ 'locale.language': 'de' }))), same(ours(snap, 'brand_matrix', 'server-ds', 'onyx', { 'locale.language': 'de' })));

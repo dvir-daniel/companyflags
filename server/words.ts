@@ -38,10 +38,19 @@ export function conditionText(c: ConditionLike, vocab?: Vocab): string {
   return `${label} ${opLabel(c.op)} ${vals.join(' or ') || '…'}`;
 }
 
-// A whole "when": every check, plus the % of devices. Empty means every request.
-export function whenText(cs: ConditionLike[], opts: { percent?: number | null; vocab?: Vocab; empty?: string } = {}): string {
+/** What a % is a share of, from the attribute it splits by: "devices" (device ID), "sessions" (session ID), a
+ *  dimension's plural ("stores"), else "<attribute> values". */
+export function splitUnit(by: string | null | undefined, dims: Dimensions = []): string {
+  if (!by || by === 'device.id') return 'devices';
+  if (by === 'session.id') return 'sessions';
+  const d = dims.find((x) => x.key === by);
+  return d ? d.plural.toLocaleLowerCase() : `${fieldLabel(by, dims)} values`;
+}
+
+// A whole "when": every check, plus the % (of devices, or of what `by` names). Empty means every request.
+export function whenText(cs: ConditionLike[], opts: { percent?: number | null; by?: string | null; vocab?: Vocab; empty?: string } = {}): string {
   const parts = cs.map((c) => conditionText(c, opts.vocab));
-  if (opts.percent != null) parts.push(`${+opts.percent.toFixed(2)}% of devices`);
+  if (opts.percent != null) parts.push(`${+opts.percent.toFixed(2)}% of ${splitUnit(opts.by, opts.vocab?.dimensions)}`);
   return parts.join(' and ') || (opts.empty ?? 'every request');
 }
 
@@ -69,12 +78,14 @@ const listed = (names: string[]) => (names.length <= 1 ? names.join('') : `${nam
 
 // ---- an entity's three choices --------------------------------------------------------------
 // How an entity's own settings combine with the rest (flag_layer.inherit; the order is server/evaluator.ts entityChain).
+// Each name says what happens once the entity's own rules don't match. The identifiers are stored and sent (webhooks,
+// the API, flags as code), so they stay; only the names people read changed.
 
 export const CHOICES: Inherit[] = ['base_rules_then_base_default', 'base_rules_then_customer_default', 'customer_only'];
 export const CHOICE_NAME: Record<Inherit, string> = {
-  base_rules_then_base_default: 'Rules only',
-  base_rules_then_customer_default: 'Rules + own default',
-  customer_only: 'Own settings only',
+  base_rules_then_base_default: 'Follow what’s above',
+  base_rules_then_customer_default: 'Own default last',
+  customer_only: 'Skip what’s above',
 };
 
 /** What a choice does. With the entity, the text names those above it ("everything Acme gets"); without, the general text. */

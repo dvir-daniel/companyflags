@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from "react"
 
 /*
- * Light or dark: two choices, nothing else. Until a person chooses, the app starts the way the installation set it
- * (<html data-mode="light|dark">, put in by the server) or else the way the device is set; once they choose, their
- * choice is kept in localStorage. The theme is written to <html data-theme="light|dark">, which styles.css reads.
+ * Light, dark, or auto. Auto (until a person chooses, and again when they go back to it) is the way the installation
+ * set it (<html data-mode="light|dark">, put in by the server) or else the way the device is set, and it follows the
+ * device when that changes. A person's own light or dark is kept in localStorage. The theme in use is written to
+ * <html data-theme="light|dark">, which styles.css reads.
  *
  * Call `initTheme()` once at startup, and put `themeBootScript` in index.html's <head> so the
  * first paint already has the right colors:
@@ -11,17 +12,25 @@ import { useSyncExternalStore } from "react"
  */
 
 export type Theme = "light" | "dark"
+/** What a person picked: a theme, or "auto" (the installation's default, else the device). */
+export type ThemeChoice = Theme | "auto"
 
 export const THEME_STORAGE_KEY = "companyflags-theme"
 
 let fallback: Theme | null = null
-const deviceTheme = (): Theme =>
-  typeof window !== "undefined" && window.matchMedia && !window.matchMedia("(prefers-color-scheme: dark)").matches ? "light" : "dark"
+const media = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null)
+const deviceTheme = (): Theme => (media() && !media()!.matches ? "light" : "dark")
 /** The installation's default (setDefaultTheme, or <html data-mode>), else the device's. */
 function defaultTheme(): Theme {
   if (fallback) return fallback
   const m = typeof document !== "undefined" ? document.documentElement.dataset.mode : undefined
   return m === "light" || m === "dark" ? m : deviceTheme()
+}
+/** Whether auto follows the device (no installation default). */
+export function autoIsDevice(): boolean {
+  if (fallback) return false
+  const m = typeof document !== "undefined" ? document.documentElement.dataset.mode : undefined
+  return m !== "light" && m !== "dark"
 }
 
 function saved(): Theme | null {
@@ -35,9 +44,14 @@ function saved(): Theme | null {
 
 const listeners = new Set<() => void>()
 let current: Theme | null = null
+let choice: ThemeChoice | null = null
 /** The theme in use: the person's own, or the installation's default, or the device's. */
 export function readTheme(): Theme {
   return (current ??= saved() ?? defaultTheme())
+}
+/** What the person picked: light, dark or auto. */
+export function readThemeChoice(): ThemeChoice {
+  return (choice ??= saved() ?? "auto")
 }
 
 function apply(theme: Theme) {
@@ -46,14 +60,16 @@ function apply(theme: Theme) {
   listeners.forEach((l) => l())
 }
 
-/** The person's choice: kept in this browser. */
-export function setTheme(theme: Theme) {
+/** The person's choice: kept in this browser. "auto" forgets it, and the theme follows the default again. */
+export function setTheme(theme: ThemeChoice) {
+  choice = theme
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme)
+    if (theme === "auto") localStorage.removeItem(THEME_STORAGE_KEY)
+    else localStorage.setItem(THEME_STORAGE_KEY, theme)
   } catch {
     /* private mode: the choice lasts until reload */
   }
-  apply(theme)
+  apply(theme === "auto" ? defaultTheme() : theme)
 }
 
 /** The installation's default ("device": none). Changes the look now for someone who hasn't chosen. */
@@ -63,15 +79,30 @@ export function setDefaultTheme(mode: Theme | "device") {
     if (fallback) document.documentElement.dataset.mode = fallback
     else delete document.documentElement.dataset.mode
   }
-  if (!saved()) apply(defaultTheme())
+  if (readThemeChoice() === "auto") apply(defaultTheme())
 }
 
-/** Light ↔ dark. */
-export const toggleTheme = () => setTheme(readTheme() === "dark" ? "light" : "dark")
+/** The next choice, from the one in use: auto → the other look → this look → auto, so each click changes something. */
+export function nextThemeChoice(): ThemeChoice {
+  const c = readThemeChoice()
+  const d = defaultTheme()
+  const other: Theme = d === "dark" ? "light" : "dark"
+  return c === "auto" ? other : c === other ? d : "auto"
+}
 
-/** Applies the theme. Safe to call twice. */
+/** Auto → the other look → this look → auto. */
+export const toggleTheme = () => setTheme(nextThemeChoice())
+
+let watching = false
+/** Applies the theme, and follows the device while the choice is auto. Safe to call twice. */
 export function initTheme() {
   apply(readTheme())
+  const m = media()
+  if (watching || !m) return
+  watching = true
+  m.addEventListener?.("change", () => {
+    if (readThemeChoice() === "auto") apply(defaultTheme())
+  })
 }
 
 const subscribe = (l: () => void) => {
@@ -81,10 +112,11 @@ const subscribe = (l: () => void) => {
   }
 }
 
-/** The current theme, kept up to date, and a way to change it. */
-export function useTheme(): { theme: Theme; setTheme: (t: Theme) => void; toggle: () => void } {
+/** The current theme and choice, kept up to date, and a way to change them. */
+export function useTheme(): { theme: Theme; choice: ThemeChoice; setTheme: (t: ThemeChoice) => void; toggle: () => void } {
   const theme = useSyncExternalStore(subscribe, readTheme, () => "dark" as Theme)
-  return { theme, setTheme, toggle: toggleTheme }
+  const picked = useSyncExternalStore(subscribe, readThemeChoice, () => "auto" as ThemeChoice)
+  return { theme, choice: picked, setTheme, toggle: toggleTheme }
 }
 
 /** Inline in index.html's <head>: sets data-theme before the first paint, so nothing flashes. */

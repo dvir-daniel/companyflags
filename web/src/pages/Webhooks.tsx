@@ -265,6 +265,7 @@ function OutDrawer({ webhook, onClose, onSaved, onDelete, onNewSecret }: {
           <div className="grid gap-1.5">
             <label className="inline-flex items-center gap-2 text-13"><Checkbox checked={events.includes('changes')} onCheckedChange={(v) => setEvents(toggle(events, 'changes', v === true))} /> Changes: what an environment serves</label>
             <label className="inline-flex items-center gap-2 text-13"><Checkbox checked={events.includes('reviews')} onCheckedChange={(v) => setEvents(toggle(events, 'reviews', v === true))} /> Reviews: a request made, approved, rejected or scheduled</label>
+            <label className="inline-flex items-center gap-2 text-13"><Checkbox checked={events.includes('security')} onCheckedChange={(v) => setEvents(toggle(events, 'security', v === true))} /> Security events, for a SIEM: sign-ins and failed ones, people and roles, tokens, keys, single sign-on (every environment’s)</label>
           </div>
         </Field>
         <Field label="Environments">

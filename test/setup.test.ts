@@ -169,7 +169,7 @@ describe('a new install, start to finish (in order)', () => {
     assert.equal((await lee.post('/services', { key: 'tv', kind: 'fridge' })).status, 422);
     const meta = (await lee.get('/meta')).json;
     assert.deepEqual(meta.environments.map((e: any) => [e.key, e.name, e.minApprovals]), [['dev', 'Development', 0], ['prod', 'Production', 1]]);
-    assert.deepEqual(meta.projects.map((p: any) => p.key), ['web', 'checkout-api']);
+    assert.deepEqual(meta.services.map((p: any) => p.key), ['web', 'checkout-api']);
     assert.equal((await lee.put('/environments/prod', { name: 'Live', minApprovals: 2 })).json.minApprovals, 2);
     assert.equal((await lee.put('/environments/prod', { name: 'Production', minApprovals: 1 })).status, 200);
   });
@@ -204,10 +204,10 @@ describe('a new install, start to finish (in order)', () => {
 
   test('viewers can look but not change anything; settings are for admins only', async () => {
     const sam = await as('sam@corp.com');
-    assert.equal((await sam.get('/flags')).status, 200);
+    assert.equal((await sam.get('/flags?environment=dev')).status, 200);
     assert.equal((await sam.post('/flags', flag('by_a_viewer'))).status, 403);
     assert.equal((await sam.post('/dimensions/customer', { key: 'acme', name: 'Acme' })).status, 403);
-    assert.equal((await sam.post('/trace', { environment: 'dev', project: 'web', entity: null, attrs: {} })).status, 200, 'trying rules changes nothing');
+    assert.equal((await sam.post('/trace', { environment: 'dev', service: 'web', entity: null, attrs: {} })).status, 200, 'trying rules changes nothing');
     const lee = await as('lee@corp.com');
     assert.equal((await lee.put('/people/sam@corp.com', { role: 'editor' })).status, 200);
     assert.equal((await sam.post('/dimensions/customer', { key: 'acme', name: 'Acme' })).status, 201, 'an editor can');
@@ -237,7 +237,7 @@ describe('a new install, start to finish (in order)', () => {
     assert.equal(again.status, 403);
     assert.match(again.json.message, /removed your access/);
     const users = (await lee.get('/meta')).json.users;
-    assert.deepEqual(users.at(-1), { key: 'kim@corp.com', name: 'Kim Ito', role: 'editor', status: 'removed' }, 'still listed (history names them), last');
+    assert.deepEqual({ ...users.at(-1), lastSignedInAt: !!users.at(-1).lastSignedInAt }, { lastSignedInAt: true, key: 'kim@corp.com', name: 'Kim Ito', role: 'editor', status: 'removed' }, 'still listed (history names them), last');
     assert.equal((await lee.put('/people/kim@corp.com', { role: 'admin' })).status, 409, 'no role without access');
 
     const back = await lee.post('/people/kim@corp.com/invite');

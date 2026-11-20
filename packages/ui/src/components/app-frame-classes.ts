@@ -11,8 +11,5 @@ const sidebarItemClass = cn(
   "aria-[current=page]:bg-wash aria-[current=page]:text-ink aria-[current=page]:shadow-[inset_2px_0_0_var(--tint-mark)] aria-[current=page]:[&_svg]:text-tint [&_svg]:shrink-0 [&_svg]:opacity-85"
 )
 
-/** Classes for a prototype-only control in the footer: dashed and labeled "Demo /". */
-const demoControlClass =
-  "shrink-0 cursor-default whitespace-nowrap border border-dashed border-rule-2 bg-transparent px-2 leading-[20px] text-ink-2 uppercase hover:border-ink-3 hover:text-ink"
 
-export { demoControlClass, sidebarItemClass }
+export { sidebarItemClass }

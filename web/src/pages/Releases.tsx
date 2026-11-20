@@ -2,7 +2,7 @@
 // a flag of kind 'release': its step is read from the flag's defaults (server/release.ts), so nothing is stored for it
 // apart from the flag, and release flags are still on the Flags page too.
 //   #/releases/<env>         this list, in one environment (the last one used when none is given)
-//   #/release/<key>/<env>    one release (ReleasePage.tsx)
+//   #/flag/<key>/<env>/rollout    one release: its flag's page, on its Rollout tab (ReleasePage.tsx)
 import { useEffect, useRef, useState } from 'react';
 import { Badge as UIBadge } from '@companyflags/ui/components/badge';
 import { Button } from '@companyflags/ui/components/button';
@@ -106,10 +106,10 @@ export function Releases({ envKey }: { envKey?: string }) {
 }
 
 function Row({ r, env }: { r: ReleaseRow; env: string }) {
-  const href = `#/release/${encodeURIComponent(r.key)}/${encodeURIComponent(env)}`;
+  const href = `#/flag/${encodeURIComponent(r.key)}/${encodeURIComponent(env)}/rollout`;
   const s = r.envs[env] ?? null;
   return (
-    <div role="row" onClick={() => go(`release/${r.key}/${env}`)} onPointerEnter={() => { void prefetch(flagPath(r.key)); }}
+    <div role="row" onClick={() => go(`flag/${r.key}/${env}/rollout`)} onPointerEnter={() => { void prefetch(flagPath(r.key)); }}
       className={cn(COLS, tableRowClass, ROW, 'cursor-default')}>
       <span role="cell" className="min-w-0">
         <a href={href} onClick={(e) => e.stopPropagation()} className="block min-w-0 text-ink no-underline hover:no-underline">
@@ -158,7 +158,7 @@ function CreateRelease({ onClose, owners }: { onClose: () => void; owners: strin
   const [owner, setOwner] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [removeBy, setRemoveBy] = useState(() => new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10));
-  const [apps, setApps] = useState<string[]>(meta.projects.filter((p) => p.kind === 'client').map((p) => p.key));
+  const [apps, setApps] = useState<string[]>(meta.services.filter((p) => p.kind === 'client').map((p) => p.key));
   const { busy, error, run } = useAsync();
   const keyError = key && !/^[a-z][a-z0-9_]*$/.test(key) ? 'Start with a letter; use lowercase letters, digits and _' : null;
   const tagError = cleanTags(tags).problem;
@@ -173,7 +173,7 @@ function CreateRelease({ onClose, owners }: { onClose: () => void; owners: strin
         base: { enabled: true, defaultVariation: hiddenKey(first), rules: [] } }
       : { ...common, valueType: 'bool', removeBy, variations: [{ key: 'on', value: true }, { key: 'off', value: false }],
         base: { enabled: true, defaultVariation: 'off', rules: [] } }));
-    if (res) { toast(`Created ${name.trim() || key}`); onClose(); go(`release/${key}`); }
+    if (res) { toast(`Created ${name.trim() || key}`); onClose(); go(`flag/${key}`); }
   };
   return (
     <Modal title="New release" onClose={onClose} wide footer={
@@ -222,9 +222,9 @@ function CreateRelease({ onClose, owners }: { onClose: () => void; owners: strin
       </Field>
       <div className="grid gap-1.5" role="group" aria-label="Services">
         <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">Services</span>
-        {meta.projects.length === 0 ? <NoServices what="this release" /> : (
+        {meta.services.length === 0 ? <NoServices what="this release" /> : (
           <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
-            {meta.projects.map((p) => (
+            {meta.services.map((p) => (
               <Switch key={p.key} label={p.key} checked={apps.includes(p.key)} onChange={(on) => setApps(on ? [...apps, p.key] : apps.filter((x) => x !== p.key))}>
                 <span className="font-mono text-13 text-ink">{p.key}</span>
               </Switch>

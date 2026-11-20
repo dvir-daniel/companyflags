@@ -10,7 +10,7 @@ CompanyFlags has no SDK of its own: you use OpenFeature's providers. There are f
 | | **The server decides** (remote evaluation) | **Your code decides** (local evaluation) |
 |---|---|---|
 | **App** (web, mobile) | [OFREP providers for web, React, Android and iOS](/reading/remote-apps) | [The CDN file](/reading/local-apps): flagd JSON for the app's entity, with only the checks the device knows. Safe to share, cached by a CDN |
-| **Backend** | [OFREP providers for Node.js, Go, Java, Python, .NET](/reading/remote-backends) | [flagd JSON](/reading/local-backends): flagd JSON for the backend's entity, with its full rules. Secret, never cached by a CDN |
+| **Backend** | [OFREP providers for Node.js, Go, Java, Python, .NET](/reading/remote-backends) | [flagd JSON](/reading/local-backends): flagd JSON for the backend's entity, or one document for every entity it serves, with the full rules. Secret, never cached by a CDN |
 
 Both local ways read the same format, [flagd](https://flagd.dev) JSON, with OpenFeature's flagd evaluator. What the
 server puts in it differs: for a **backend** it keeps the rules that depend on the request, behind the backend's

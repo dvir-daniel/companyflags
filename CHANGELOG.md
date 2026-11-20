@@ -4,6 +4,211 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+## 0.9.0 (2026-11-20)
+
+What a panel of 10 UX and 10 developer-experience reviewers found, fixed.
+
+**Upgrading from 0.8.0:** stop every instance and start them all on 0.9.0 together (0.8.0 can't read the secrets 0.9.0
+seals, and has no `--no-migrate`); from now on, [rolling upgrades](docs/content/docs/self-hosting/upgrading.md) work.
+Breaking: the console API says `service` (not `project`) and never picks an environment for you; OFREP refuses dotted
+attributes (nest them); a flags file that lists `services` needs `"owns"` to include them; an admin's access token is
+On call at most; Compose and the docs pin `0.9`.
+
+### Docs site and README
+
+- **No npm install yet.** The `companyflags` package isn't published on npm, so the docs, the landing page and the
+  README no longer show `npx companyflags`. Run it with Docker or from a clone; the CLI runs as `pnpm cli` there.
+- **The quickstart keeps its secret.** `BETTER_AUTH_SECRET` goes in `.env` first, so starting the container again
+  with the same file keeps everyone signed in and the setup link the same.
+- **Old addresses work again.** `/guide/apps`, `/guide/flag-sets`, `/guide/backends`, `/sdk/openfeature`,
+  `/sdk/app-file` and `/sdk/cdn-file` send you to the page that has their content now (`docs/scripts/redirects.ts`).
+- **Links in `llms.txt`, `llms-full.txt` and each page's `.md` have the site's full address,** so an agent following
+  one under `/companyflags/` finds the page.
+- **A Testing page** under Reading flags: OpenFeature's in-memory provider in unit tests, a local CompanyFlags in
+  integration tests, the same % group every time, and flagd JSON in a file for offline tests.
+- **The sidebar leads from the quickstart to reading flags.** Getting started and Reading flags are open; Examples
+  and Testing follow the reading pages; moving from another system, the comparison and Enterprise are last. The four
+  reading pages have one kind of name everywhere ("Remote evaluation in apps" and so on), and every page has a
+  description, which the build checks.
+- **Landing page:** a plain headline instead of a superlative, OFREP shown as the `POST` the server takes, with
+  OFREP's own reasons, and only the platforms the docs give a way to read flags in.
+- **Below 1024px** the docs' sidebar lists the site's links and Resources, and the landing page's menu has light and
+  dark. The Resources menu says "GitHub releases" and "Security model", so no name goes to two places.
+- **Contrast:** muted text and the green and amber in drawings meet WCAG AA (4.5:1) in both themes. "On this page"
+  uses Fumadocs' own block style instead of CSS on its class names.
+
+### Reading flags
+
+- **One flagd for a backend shared by many entities.** `GET /sdk/v1/flagd/service` is one flagd document for every
+  entity a backend's secret key may ask about, with the entity picked inside it by the request's dimension keys
+  (`{"company": "acme"}`). One document per entity still works.
+- **Add entities from your backend as they sign up.** `PUT /sdk/v1/entities/<dimension>/<entity>`, with a backend's
+  key for every entity, adds one (or leaves it as it is), so its first request already asks as it.
+- **Answers say where they came from.** Each OFREP answer's `flagMetadata` has `revision` and `entity`; a backend's
+  secret key also gets `ruleKey`, the rule that decided. A publish that changes nothing for a context is still a `304`.
+- **Mistakes in the context are errors, not quiet defaults.** A key that looks like a misspelled dimension
+  (`"compnay"`), `"entity"`, and an attribute written dotted (`{"app.version": …}`: flagd JSON reads only nested ones)
+  are `400 INVALID_CONTEXT`, saying which. **Change:** dotted attributes worked over OFREP before; nest them.
+- **`FLAG_NOT_FOUND` says why** to a backend's key: the flag isn't in this service, or there is no such flag.
+- **Change events only for the apps whose answers changed.** Each answer's event stream is for its service and entity;
+  a change to one entity's settings no longer wakes every app in the environment.
+- **Docs:** the web provider's cache and the entity (a `cacheKeyGenerator` with the dimensions), one meaning for
+  `targetingKey`, React Native with polling, mobile attributes per platform, recovering after an app link is replaced,
+  server-side rendering, and how soon a flagd backend sees a change.
+
+### Safety
+
+- **On call can turn any flag off in a protected environment, and pause a release,** with a reason and without a
+  review. Before, a release mid-rollout (the default purpose) needed an approver.
+- **Kill switches and ops flags can name a safe value.** The emergency dialog offers "Serve the safe value" (every
+  device gets it, entities' own settings included) and "Stop sending" (no value: each app's code default), and says
+  what each does. Only admins name a safe value while an environment needs approval.
+- **Any reviewer can stop a scheduled request:** unschedule it (back to approved) or reject it, with a reason. A
+  scheduled request that can't apply, a withdrawal and an unschedule are now in History and on the reviews webhook.
+- **Archived flags can be restored,** with their key, settings and services as they were (off and in no service where
+  an environment needs approval now).
+- **Scheduling shows your time zone and refuses a time that has passed** (422), and asks you to confirm.
+- The environment drawer warns when its approvals can't be met (one admin and 1 approval), and lowering approvals asks
+  first. A flag's page says when a request waits to change it there, and a review says how many % points of devices a
+  change moves.
+
+### Flags as code
+
+- **The file says what it owns.** `owns` lists the fields it decides; without it, each flag's definition (details,
+  variants, default), and its services only when listed. Rules stay in the console. A field the file doesn't own
+  can't be in it. Breaking: a file with `services` and no `owns` needs `"owns"` to list `services` (`flags pull`
+  writes it).
+- **"Managed in repo".** Each push records what it applied to each flag. The console shows it on those flags, with
+  the fields the file owns, and says a change there is undone by the next push. The plan marks each step that undoes
+  a console change.
+- **`default` applies to existing flags,** as a request where changes need approval.
+- **A push again files no second request.** An open request for the same change is reused, and `plan` shows it as
+  waiting, with the other open requests on the file's flags.
+- **Several repositories on one server:** `scope` (a key prefix, or services) and `source`. A push refuses flags
+  outside its scope, or managed by another file.
+- **`--reason` and `--link` on `flags push`,** on its requests and in History. In GitHub Actions and GitLab CI the
+  link defaults to the pull request.
+- **`--json` and `--exit-code`** on `flags plan` and `flags push`.
+- **A JSON Schema for flags.json,** on the docs site and at each server's `/flags.schema.json`; `flags pull` writes
+  `$schema`.
+- **`flags export --flagd`** writes one service's flags as flagd JSON from the database, for tests and offline flagd.
+- **`flags unused` reads every OpenFeature SDK's calls:** the `…Details` forms, React hooks, Go, Python, Ruby, .NET
+  and Rust. It skips more build folders and flagd JSON files.
+- **CI fails on a missing secret.** An empty `--url` or `--token` is an error, and in CI the `flags` commands never
+  open an embedded database. The CI recipe uses a Viewer's token to plan and an Editor's to push, with a pinned image.
+
+### Getting started and the flags list
+
+- **The setup checklist goes away when it's done.** It shows above the flags list only while a step is left, and
+  dimensions are optional everywhere it speaks. "Connect an app" is done once an app reads flags with a key (`/meta`
+  now has `keyLastUsedAt`), and "Add a service" opens Settings → Services.
+- **The first flag answers with a value.** New flag starts On / off with the Default `off` (a named value, not the
+  in-app default), and says where the flag starts on and where it waits to be turned on.
+- **A new key comes with code.** The key drawer shows a curl and OpenFeature's OFREP provider, with the key and the
+  server's address filled in (and the flagd JSON download for a backend's key that names one entity).
+- **Bulk on/off is one change.** Where nothing is reviewed, the flags switch together in one version; in a protected
+  environment they go to approvers as one request.
+- **The flags list lives in the address.** The search, filters, sort and environments shown are in the link
+  (`#/flags/prod?owner=payments-team`), and saved views keep the search. Selection stays while you page, "Select all
+  matching" and Export cover every page, and there's an Overdue filter (past the remove-by date), an "All
+  environments" view, a compact density and 50, 100 or 200 rows a page. An environment's versions are in History.
+
+### The flag page and the rule editor
+
+- **"Check who gets what" says when it can't be sure.** Add device details (an app version, a device ID…) to the
+  check. When a row on the way reads a detail the check doesn't have, the answer says **Depends on the device** instead
+  of naming a row that decides: an override that matches only because a value isn't sent no longer looks certain.
+- **Setting an entity's default shows where it comes.** Choose **After the rules for everyone** or **Instead of the
+  rules for everyone**; a new default starts after them, so rollouts and kill rules still reach it. The three choices
+  have names that say what they do: **Follow what's above**, **Own default last**, **Skip what's above** (the stored
+  names are unchanged). Rules for everyone say how many entities skip them.
+- **Your publish review shows each setting before and after,** as the approver sees it, and its sentences say what a
+  rule was and is, moves, pauses, names and overrides.
+- **Splits across several values.** A % rule can serve several variants (50% `a`, 25% `b`, 25% `c`), by device ID or
+  session ID, and says what's left for the next row.
+- **Rules have names and can be paused** from the editor. A new rule starts with an empty check, not "Service is …".
+- **A new value for a variant goes into your draft** and out when you publish, like every other change, instead of
+  being saved at once. Each variant says how often it's served here.
+- **A release has one page.** It's the flag's page, which opens on a **Rollout** tab; `#/release/…` links land there.
+  The tab is in the address (`#/flag/<key>/<env>/<tab>`).
+- **"Revision" for an environment's numbered states** (the Revisions tab, "published as revision 12"); "version" is kept
+  for app versions and version releases.
+- Fixed: the Debug tab could fail on a % rule made in the editor and not yet published.
+
+### Console
+
+- **History is the one place for what changed,** in three views with their own addresses: Changes, Revisions
+  (`#/history?view=revisions&env=…`, with roll back) and Requests. Its filters are in the address, so a link shows the
+  same list. Old `#/flags/<env>/versions` and `?view=versions` links open History's Revisions. Approvals stays the
+  reviewer's inbox.
+- **Connect holds what talks to the server:** Services (moved from Settings; `#/settings/services` opens it), API keys,
+  Access tokens, Webhooks and Migration. The sidebar has no group named after its only item.
+- **⌘K opens a command palette:** flags, entities, pages, settings and actions.
+- **The keyboard:** list shortcuts work only while focus is in the list, and j, k, x and / can be turned off in the
+  account menu. Going to another page puts focus on its title and says its name. Tabs and choices take the arrow
+  keys. Disabled buttons say why to the keyboard and screen readers too. The selected option's focus ring shows.
+- **Contrast and motion:** the edges of inputs, checkboxes and switches read at 3:1. With reduced motion, drawers,
+  toasts and dialogs fade in place. Toasts stack, and Undo stays 20 seconds without being pushed out.
+- **Appearance:** the violet, green, orange and rose accents are gone, since those colors mean something here (a saved
+  one becomes indigo, teal or none). Switches and focus rings no longer take the accent. Your own color is darkened or
+  lightened per theme until it reads at 4.5:1. The name shows as typed, and the theme toggle can go back to Auto.
+- Buttons look the same in any container, page titles use three sizes, and detail pages go back with a crumb.
+
+### Sign-in and administration
+
+- **Leaving the identity provider ends console access within 12 hours.** Where single sign-on is required, a session
+  lasts `FF_SSO_SESSION_HOURS` (12) at most, then the identity provider is asked again. Access tokens still last
+  until they expire: remove people in People when they leave. The console now says exactly this.
+- **One break-glass admin, not every admin.** Where single sign-on is required, only the admin chosen in **Settings →
+  Single sign-on → Break-glass admin** keeps a password. Requiring single sign-on asks first, and needs a sign-in with
+  the connection before (**Test sign-in**).
+- **Two-factor sign-in** for password accounts: an authenticator app's code and ten recovery codes (your account menu
+  → Access tokens and two-factor sign-in). An admin can require it of admins with a password. A password reset link
+  turns it off for that person.
+- **Single sign-on connections can be edited**: domains, the identity provider's details, and **group roles**, which
+  give each person a role from their identity provider groups (an OIDC claim or a SAML attribute) at each sign-in.
+- **The join role.** People who join without an invite get Viewer, or the role an admin chose (never Admin).
+- **Tokens can't hand out access.** Access tokens are refused on people, invites, password resets, single sign-on, the
+  sign-in rules, the appearance and lowering an environment's approvals, and are On call at most: an Admin token acts
+  as On call. **Alerts tokens** turn kill switches off from Grafana or Datadog and do nothing else.
+- **API keys can expire** (30 days to 2 years, or never), shown in the list; an expired key gets `401`.
+- **People shows when each person last signed in**, and sign-ins, failed sign-ins, role changes, tokens, keys and
+  single sign-on changes are in History and can go to a SIEM: a webhook's new **Security events**.
+
+### HTTP API and operations
+
+- **A stable API for scripts and integrations, `/api/v1`.** Flags per environment (read, on or off), publish,
+  History and entities (add or change), with one contract: errors are `{ error, code }` with stable codes, lists
+  page with `?limit` and `?cursor` into `{ items, next }`, the environment is in the address, and a service is a
+  service. The HTTP API reference says exactly what is stable; the rest of `/api` is the console's own.
+- **Errors say what happened, with a code.** Every error of the HTTP API is `{ error, code }`. A key that is taken is
+  `409 already_exists` everywhere (a new flag's too, archived flags included); the database's own words go to the log,
+  never into an answer; an empty or broken body is `400 bad_json`, never a 500.
+- **The console's API never picks an environment.** A request about one environment that doesn't name it gets `400`
+  instead of the first environment's data. It says `service` everywhere: `services` in `/api/meta`, the delivery
+  change and change requests, `service` on API keys, trace and compare (breaking for scripts that sent `project`).
+- **A key scoped to an entity can't learn which entities exist**: `/sdk/v1/links` and `/sdk/v1/flagd` answer it
+  `403` for one that doesn't exist, as for one outside its scope, as OFREP does.
+- **Operations.** The server says its version (its first log line, `/healthz`, `/api/meta`, `companyflags --version`).
+  A publish whose snapshot can't be built is logged every time, and `/readyz` fails while it does and reports each
+  environment's publish lag. A new `metrics()` plugin serves Prometheus metrics at `/metrics` (requests, flag reads,
+  publish lag, open event streams), and plugins can add middleware. The publish log keeps 30 days
+  (`retention.publishLogDays`); history is kept forever. The Docker health check follows `server.port`.
+- **Backups and a way off the embedded database**: `companyflags backup` (pg_dump, or a copy of the embedded folder)
+  and `companyflags copy-to-postgres <url>`. PGlite is pinned to one version, and a folder made by another Postgres
+  major version isn't opened.
+- **Rolling upgrades**: `companyflags start --no-migrate` (`FF_MIGRATE=off`) only checks the schema, so
+  `companyflags migrate` can run as its own step and the version before keeps running on the new schema. Upgrading
+  from 0.8.0, which has no such switch, upgrade the instances together.
+- **Secrets kept for other systems are sealed at rest**: the CDN token and webhooks' headers and signing secrets, with
+  a key from `BETTER_AUTH_SECRET`. The first start seals the ones saved before (migration 0020). Changing
+  `BETTER_AUTH_SECRET` means setting them again.
+- **Plugins**: a route outside the plugin's own prefixes, or a prefix of the core's (`/oauth`, `/.well-known`,
+  `/healthz`, …), stops the start. `hono` is a peer dependency of the npm package, and `pluginRoutes()` makes a
+  plugin's routes. Plugins get `secrets` and `publishState`, and console routes get `body(c)`.
+- **Contributors**: `server/schema.sql` (`pnpm schema`) is the current schema, kept up to date by a test; migration
+  numbers are checked for collisions; `pnpm format` runs oxfmt.
+
 ## 0.8.0 (2026-11-20)
 
 ### Security
@@ -53,8 +258,8 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 - **No more compatibility code; one name for each thing.** The CDN file's plugin is `cdnFiles()` (id `cdn-files`), at
   `/cdn/v1/flags/…`. Gone: `?flagSet=`, the `X-Customer-Id` header, the `customer.*` attributes and history kinds,
-  the console's `#/customers` addresses, the "people from before accounts" path, hash version 1 on save, and the
-  docs' redirect pages. Reading flags is described the same way in the docs, on the landing page and in the README.
+  the console's `#/customers` addresses, the "people from before accounts" path and hash version 1 on save. Reading
+  flags is described the same way in the docs, on the landing page and in the README.
 
 - **The CDN file is flagd JSON (breaking for apps that read it).** The CDN file, now at `/cdn/v1/flags/…`, answers with the same flagd
   JSON backends get, made for the app service and the entity, so web apps and React Native read it with OpenFeature's
@@ -64,7 +269,7 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 - **Docs: "Reading flags" by who decides.** Six pages: an overview with the four ways (an app or a backend, and the
   server or your code deciding), the evaluation context, remote evaluation in apps and in backends (OFREP), and local
-  evaluation in apps (the CDN file, formerly the app file) and in backends (flagd). The old pages point to the new ones.
+  evaluation in apps (the CDN file, formerly the app file) and in backends (flagd).
 
 - **The docs site runs on Next.js and Fumadocs,** as better-auth.com's does, instead of VitePress. The pages are the
   same, at the same addresses, in `docs/content/docs/`. You get a sidebar of groups that open and close, a search box,
@@ -90,7 +295,7 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## 0.6.0 (2026-11-20)
 
-- **On npm as `companyflags`:** `npx companyflags start` runs the server and the console from any folder, and every
+- **Packaged for npm as `companyflags` (not published yet):** `npx companyflags start` runs the server and the console from any folder, and every
   other command works the same way (`init`, `migrate`, `flags …`, `mcp`). After `npm i companyflags`, a
   `companyflags.config.ts` in that folder imports `companyflags/config` and `companyflags/plugins`, with types. MCP
   clients that start local servers run `npx -y companyflags mcp`.

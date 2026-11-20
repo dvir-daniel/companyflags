@@ -210,10 +210,10 @@ function sideOf(x: unknown, what: string, envKeys: string[], entityKeys: Set<str
     const isEnv = envKeys.includes(x);
     const isEntity = entityKeys.has(x);
     if (isEnv && isEntity) throw new ToolError(`${what}: "${x}" is an environment and an entity: say which, e.g. {"environment": "${x}"} or {"entity": "${x}"}`);
-    if (isEnv) return { environment: x, project: service, entity: null };
+    if (isEnv) return { environment: x, service, entity: null };
     if (!isEntity) throw new ToolError(`${what}: no environment or entity "${x}"`);
     if (!environment) throw new ToolError(`${what}: an entity needs environment`);
-    return { environment, project: service, entity: x };
+    return { environment, service, entity: x };
   }
   if (!x || typeof x !== 'object' || Array.isArray(x)) throw new ToolError(`${what}: an entity or environment key, or {"environment", "entity", "service"}`);
   const o = x as Args;
@@ -221,7 +221,7 @@ function sideOf(x: unknown, what: string, envKeys: string[], entityKeys: Set<str
   if (!env) throw new ToolError(`${what}: environment is needed`);
   if (!envKeys.includes(env)) throw new ToolError(`${what}: no environment "${env}"`);
   if (o.entity != null && !entityKeys.has(o.entity)) throw new ToolError(`${what}: no entity "${o.entity}"`);
-  return { environment: env as string, project: (o.service ?? service) as string, entity: (o.entity ?? null) as string | null };
+  return { environment: env as string, service: (o.service ?? service) as string, entity: (o.entity ?? null) as string | null };
 }
 
 /** What a change tool answers once it called the API: applied, or a request where approval is needed. */
@@ -266,11 +266,14 @@ const TOOLS: Tool[] = [
     description: 'List flags: key, kind, owner, tags, and whether each is on per environment. Search and filter.',
     inputSchema: { type: 'object', properties: {
       q: str('Part of a key, name, description or tag'), tag: str('Only flags with this tag'), owner: str('Only flags with this owner'),
-      environment: str('The environment whose services are shown (default: the first)'),
+      environment: str('The environment whose services are shown (default: the first one, named in the answer)'),
     } },
     run: async (a, api) => {
-      const r = await api.get('/flags', { q: a.q, tag: a.tag, owner: a.owner, environment: a.environment, page: 0, size: 200 });
-      return { matched: r.matched, flags: r.rows.map(flagRow) };
+      // the API never picks an environment: this tool does, and says which
+      const environment = (a.environment as string | undefined) ?? (await environments(api))[0]?.key;
+      if (!environment) return { environment: null, matched: 0, flags: [] };
+      const r = await api.get('/flags', { q: a.q, tag: a.tag, owner: a.owner, environment, page: 0, size: 200 });
+      return { environment, matched: r.matched, flags: r.rows.map(flagRow) };
     },
   },
   {
@@ -283,7 +286,7 @@ const TOOLS: Tool[] = [
     name: 'list_services', readOnly: true,
     description: 'The services (apps and backends) flags are sent to.',
     inputSchema: { type: 'object', properties: {} },
-    run: async (_a, api) => (await api.get('/meta')).projects,
+    run: async (_a, api) => (await api.get('/meta')).services,
   },
   {
     name: 'list_environments', readOnly: true,
@@ -363,7 +366,7 @@ const TOOLS: Tool[] = [
     description: 'What a service gets: one flag, or every flag sent to it, for an entity and what the app reports.',
     inputSchema: { type: 'object', properties: { ...TARGET, flag: str('One flag key (default: every flag)') }, required: ['environment', 'service'] },
     run: async (a, api, ok) => {
-      const r = ok(await api.send('POST', '/trace', { environment: a.environment, project: a.service, entity: a.entity ?? null, attrs: a.attrs ?? {}, flag: a.flag }));
+      const r = ok(await api.send('POST', '/trace', { environment: a.environment, service: a.service, entity: a.entity ?? null, attrs: a.attrs ?? {}, flag: a.flag }));
       const answer = (x: any) => ({ key: x.key, value: x.codeDefault ? null : x.value, variant: x.variant, codeDefault: !!x.codeDefault, reason: x.reason,
         ...(x.errorCode ? { error: x.errorCode } : {}) });
       if (a.flag) return answer(r.result);
@@ -376,7 +379,7 @@ const TOOLS: Tool[] = [
     description: 'Why a flag gives what it does: the evaluator’s steps, rule by rule, for an entity and what the app reports.',
     inputSchema: { type: 'object', properties: { flag: str('Flag key'), ...TARGET }, required: ['flag', 'environment', 'service'] },
     run: async (a, api, ok) => {
-      const r = ok(await api.send('POST', '/trace', { environment: a.environment, project: a.service, entity: a.entity ?? null, attrs: a.attrs ?? {}, flag: a.flag })).result;
+      const r = ok(await api.send('POST', '/trace', { environment: a.environment, service: a.service, entity: a.entity ?? null, attrs: a.attrs ?? {}, flag: a.flag })).result;
       return {
         key: r.key, value: r.codeDefault ? null : r.value, variant: r.variant, codeDefault: !!r.codeDefault, reason: r.reason, decidedBy: r.decidedBy,
         steps: r.trace.map((s: any) => ({ stage: s.stage, outcome: s.outcome, detail: s.detail, rule: s.ruleName ?? undefined, owner: s.owner,
@@ -463,7 +466,7 @@ const TOOLS: Tool[] = [
       const after = [...new Set(a.services as string[])];
       if ([...before].sort().join() === [...after].sort().join()) return { applied: false, unchanged: true, message: `${a.flag} is already in exactly these services in ${env.key}` };
       if (!a.apply) return plan(env, { flag: a.flag, environment: env.key, services: { from: before, to: after } });
-      return outcome(await api.send('PUT', `/flags/${seg(a.flag)}/delivery`, { environment: env.key, projects: after, before, reason: a.reason }), ok, env.key);
+      return outcome(await api.send('PUT', `/flags/${seg(a.flag)}/delivery`, { environment: env.key, services: after, before, reason: a.reason }), ok, env.key);
     },
   },
   {
@@ -726,7 +729,7 @@ async function answer(method: string, params: unknown, api: Api, ok: (r: Answer)
       }
     }
     case 'resources/list': {
-      const flags = await api.get('/flags', { page: 0, size: 200 });
+      const flags = await api.get('/flags', { environment: (await environments(api))[0]?.key, page: 0, size: 200 });
       return { resources: [
         { uri: ATTRIBUTES, name: 'attributes', title: 'Attributes', description: 'Every attribute a rule can check', mimeType: 'application/json' },
         ...flags.rows.map((f: any) => ({ uri: `companyflags://flags/${f.key}`, name: f.key, title: f.name ?? f.key, description: f.description ?? undefined, mimeType: 'application/json' })),

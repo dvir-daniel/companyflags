@@ -1,5 +1,6 @@
 // Tells the console about every publish, so open pages refresh (GET /api/events), and the plugins' live readers, so
-// apps fetch their flags again at once (OFREP's GET /ofrep/v1/events, ofrep.ts). It fires in every server process for
+// apps fetch their flags again at once (OFREP's GET /ofrep/v1/events, ofrep.ts, which tells only the streams whose answers
+// may have changed: it compares the snapshots before and after). It fires in every server process for
 // each publish: its own, and those of other processes it catches up with (workers.ts).
 
 export class EventHub {

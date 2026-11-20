@@ -14,11 +14,13 @@ import { downloadCsv } from '../csv.ts';
 import { KEYS_PATH } from '../paths.ts';
 import { useApp } from '../app.ts';
 import { plural } from '../text.ts';
-import { Badge, Empty, ErrorList, Field, When } from '../ui.tsx';
+import { Badge, Empty, ErrorList, Field, Segmented, When } from '../ui.tsx';
 import { copyText, useAsync, usePersistentState, useSlashFocus } from '../uiKit.ts';
 import { useEnvs } from './envs.ts';
+import { expiresText } from './tokensKit.ts';
 import { EntityPicker } from './flagParts.tsx';
 import { roleInfo } from '../../../server/policy.ts';
+import { keySnippets, scopeAnyLabel, scopeHints, type Snippet, type SnippetFlag } from './keysKit.ts';
 
 /*
  * API keys: the dense console list. A sticky page bar (search, filters, New key), a sortable
@@ -27,20 +29,20 @@ import { roleInfo } from '../../../server/policy.ts';
  * Enter open, Esc clear.
  */
 
-// `scope`: which entries of the dimensions the key may ask about (server/auth.ts): its own (`entity`), its own and
+// `scope`: which entities of the dimensions the key may ask about (server/auth.ts): its own (`entity`), its own and
 // every one under it (`below`), or any (`all`). `entity`, `dimension`: the key's own, for `entity` and `below`.
 type KeyRow = {
-  id: number; prefix: string; label: string | null; environment: string; project: string; projectKind: string; scope: string;
+  id: number; prefix: string; label: string | null; environment: string; service: string; serviceKind: string; scope: string;
   entity: string | null; dimension: string | null; createdAt: string; lastUsedAt: string | null; revokedAt: string | null;
+  /** when it stops working; null: until it is revoked */
+  expiresAt: string | null;
 };
+/** How long a new key works: until it's revoked (0), or a number of days. */
+const KEY_EXPIRY: [number, string][] = [[0, 'Until revoked'], [30, '30 days'], [90, '90 days'], [365, '1 year'], [730, '2 years']];
+const keyExpired = (k: Pick<KeyRow, 'expiresAt'>) => !!k.expiresAt && Date.parse(k.expiresAt) <= Date.now();
 type Sort = 'key' | 'env' | 'used' | 'created';
 type State = 'active' | 'revoked' | 'all';
 
-const SCOPE_HINT: Record<string, string> = {
-  entity: 'The key asks about one entry only.',
-  below: 'The key asks about one entry, or any under it: each request names which (in the context, or the address).',
-  all: 'The key asks about any entry: each request names which (in the context, or the address).',
-};
 /** What a key may ask about, in words: "Only Acme", "Acme and everything under it", "Any". */
 function scopeText(k: Pick<KeyRow, 'scope' | 'entity'>, meta: Meta) {
   const name = k.entity ? entityLabel(meta.entities, k.entity) : '';
@@ -99,7 +101,7 @@ export function Keys() {
     const ts = (iso: string | null) => (iso ? Date.parse(iso) : 0);
     return (keys ?? [])
       .filter((k) => (state === 'all' || (state === 'active') === !k.revokedAt)
-        && (!env || k.environment === env) && (!app || k.project === app)
+        && (!env || k.environment === env) && (!app || k.service === app)
         && (!needle || k.prefix.toLowerCase().includes(needle) || !!k.label?.toLowerCase().includes(needle)))
       .sort((a, b) => m * (order.by === 'key' ? a.prefix.localeCompare(b.prefix)
         : order.by === 'env' ? a.environment.localeCompare(b.environment) || a.prefix.localeCompare(b.prefix)
@@ -166,8 +168,8 @@ export function Keys() {
       { label: 'Retry', onClick: () => revokeAll(failed.map((f) => f.k)) });
   };
   const exportCsv = () => {
-    downloadCsv('api-keys.csv', ['prefix', 'label', 'environment', 'service', 'scope', 'entity', 'created_at', 'last_used_at', 'revoked_at'],
-      chosen.map((k) => [k.prefix, k.label, k.environment, k.project, k.scope, k.entity, k.createdAt, k.lastUsedAt, k.revokedAt]));
+    downloadCsv('api-keys.csv', ['prefix', 'label', 'environment', 'service', 'scope', 'entity', 'created_at', 'last_used_at', 'revoked_at', 'expires_at'],
+      chosen.map((k) => [k.prefix, k.label, k.environment, k.service, k.scope, k.entity, k.createdAt, k.lastUsedAt, k.revokedAt, k.expiresAt]));
     toast(`Exported ${plural(chosen.length, 'key')} to api-keys.csv`);
   };
 
@@ -180,7 +182,7 @@ export function Keys() {
         actions={admin ? <Button onClick={() => setCreating(true)}>+ New key</Button> : <span className="text-13 text-ink-3">Only admins make and revoke keys</span>}>
         <SearchField ref={search} className="w-[240px] max-md:w-auto max-md:flex-1 max-md:basis-full" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search keys by prefix or label" />
         <FilterSelect label="Environment" value={env} onChange={setEnv} options={[['', 'All'], ...meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])]} />
-        <FilterSelect label="Service" value={app} onChange={setApp} options={[['', 'All'], ...meta.projects.map((p) => [p.key, p.key] as [string, string])]} />
+        <FilterSelect label="Service" value={app} onChange={setApp} options={[['', 'All'], ...meta.services.map((p) => [p.key, p.key] as [string, string])]} />
         <FilterSelect<State> label="State" value={state} onChange={setState} options={[['active', 'Active'], ['revoked', 'Revoked'], ['all', 'All']]} />
         {filtered && <button type="button" onClick={clearFilters} className={barTextButton}>Reset</button>}
       </PageBar>
@@ -191,7 +193,7 @@ export function Keys() {
           <SortHeader label="Key" sortKey="key" {...sortProps} />
           <span className={MD}><SortHeader label="Environment" sortKey="env" {...sortProps} /></span>
           <span role="columnheader" className={MD}>Service</span>
-          <ColumnHead className={XL} label="Asks about" help="Which entries of your dimensions the key may ask about. A backend names the one it wants in the address, by its dimension: /sdk/v1/flagd/<dimension>/<key>." />
+          <ColumnHead className={XL} label="Asks about" help={meta.dimensions.length ? 'Which part of your dimensions the key may ask about. A backend names the one it wants in the address, by its dimension: /sdk/v1/flagd/<dimension>/<key>.' : 'Any: with no dimension, a key reads every flag in its service.'} />
           <SortHeader label="Last used" sortKey="used" {...sortProps} />
           <span className={MD}><SortHeader label="Created" sortKey="created" {...sortProps} /></span>
         </div>
@@ -216,13 +218,14 @@ export function Keys() {
                 <button type="button" className={openButton} aria-haspopup="dialog" onClick={(e) => { e.stopPropagation(); list.setActive(i); openKey(k.id); }}>
                   <span className="flex min-w-0 items-center gap-2">
                     <code className={cn('truncate font-mono text-13 font-medium', k.revokedAt && 'font-normal line-through decoration-ink-4')}>{k.prefix}…</code>
-                    {k.revokedAt && <Badge kind="danger">revoked</Badge>}
+                    {k.revokedAt ? <Badge kind="danger">revoked</Badge> : keyExpired(k) && <Badge kind="danger">expired</Badge>}
                   </span>
                   {k.label && <span className="block truncate text-ink-3">{k.label}</span>}
+                  {k.expiresAt && !k.revokedAt && !keyExpired(k) && <span className="block truncate text-11 text-ink-3">Expires {expiresText(k.expiresAt)}</span>}
                 </button>
               </span>
               <span role="cell" className={MD}><Badge kind={isProtected(k.environment) ? 'danger' : undefined}>{envName(k.environment)}</Badge></span>
-              <span role="cell" className={cn(MD, 'truncate font-mono text-xs text-ink-2')}>{k.project}</span>
+              <span role="cell" className={cn(MD, 'truncate font-mono text-xs text-ink-2')}>{k.service}</span>
               <span role="cell" className={cn(XL, 'truncate text-ink-2')}>{scopeText(k, meta)}</span>
               <span role="cell" className={time}>{k.lastUsedAt ? <When iso={k.lastUsedAt} /> : 'never'}</span>
               <span role="cell" className={cn(MD, time)}><When iso={k.createdAt} /></span>
@@ -257,25 +260,26 @@ function KeyDrawer({ k, open, onClose, onRevoke }: { k: KeyRow | null; open: boo
   const exact = (iso: string) => <>{new Date(iso).toLocaleString()} <span className="text-ink-3">· <When iso={iso} /></span></>;
   return (
     <Drawer open={open} onClose={onClose} title={<span className="font-mono">{k ? `${k.prefix}…` : ''}</span>}
-      subtitle={k ? [k.label, envName(k.environment), k.project].filter(Boolean).join(' · ') : undefined}
+      subtitle={k ? [k.label, envName(k.environment), k.service].filter(Boolean).join(' · ') : undefined}
       footer={k && !k.revokedAt && onRevoke ? <Button variant="stop" onClick={() => onRevoke(k)}>Revoke key</Button> : undefined}>
       {k && <>
         <DrawerSection title="Key">
-          <DrawerRow label="State">{k.revokedAt ? <Badge kind="danger">revoked</Badge> : 'Active'}</DrawerRow>
+          <DrawerRow label="State">{k.revokedAt ? <Badge kind="danger">revoked</Badge> : keyExpired(k) ? <Badge kind="danger">expired</Badge> : 'Active'}</DrawerRow>
+          <DrawerRow label="Expires">{k.expiresAt ? <>{exact(k.expiresAt)} <span className="text-ink-3">· {expiresText(k.expiresAt)}</span></> : <span className="text-ink-3">Never: until it’s revoked</span>}</DrawerRow>
           <DrawerRow label="Prefix"><code className="font-mono">{k.prefix}…</code></DrawerRow>
           <DrawerRow label="Label">{k.label ?? <span className="text-ink-3">—</span>}</DrawerRow>
           <DrawerRow label="Environment">{envName(k.environment)}</DrawerRow>
-          <DrawerRow label="Service"><span className="font-mono">{k.project}</span> <span className="text-ink-3">· {k.projectKind === 'client' ? 'app' : 'backend'}</span></DrawerRow>
-          <DrawerRow label="Asks about">{scopeText(k, meta)}<span className="block text-ink-3">{SCOPE_HINT[k.scope]}</span></DrawerRow>
+          <DrawerRow label="Service"><span className="font-mono">{k.service}</span> <span className="text-ink-3">· {k.serviceKind === 'client' ? 'app' : 'backend'}</span></DrawerRow>
+          <DrawerRow label="Asks about">{scopeText(k, meta)}<span className="block text-ink-3">{scopeHints(meta.dimensions)[k.scope]}</span></DrawerRow>
         </DrawerSection>
-        {k.projectKind !== 'client' && <DrawerSection title="flagd JSON">
+        {k.serviceKind !== 'client' && <DrawerSection title="flagd JSON">
           <DrawerRow label="Address">
             <span className="flex min-w-0 items-center gap-2">
               <code className="min-w-0 truncate font-mono text-13">{flagdAddress(k)}</code>
               {k.scope !== 'all' && <Button variant="secondary" onClick={() => void copyText(`${location.origin}${flagdAddress(k)}`, 'the address', toast)}>Copy</Button>}
             </span>
-            <span className="block text-ink-3">{k.scope === 'all' ? 'Put the dimension and the key of the entry it’s for in the address.'
-              : k.scope === 'below' ? 'Or the dimension and key of any entry under it.' : 'Send the key in the Authorization header: Bearer <key>.'}</span>
+            <span className="block text-ink-3">{k.scope === 'all' ? 'Put the dimension and the key of the one it’s for in the address.'
+              : k.scope === 'below' ? 'Or the dimension and key of any one under it.' : 'Send the key in the Authorization header: Bearer <key>.'}</span>
           </DrawerRow>
         </DrawerSection>}
         <DrawerSection title="Activity">
@@ -297,7 +301,7 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
   const keyField = useRef<HTMLInputElement>(null);
   const { meta, toast } = useApp();
   const { envName } = useEnvs();
-  const services = meta.projects;
+  const services = meta.services;
   // a key is for one service: with none, there's nothing to make one for yet
   const none = services.length === 0;
   // the first environment and server until one is picked (and again if the picked one goes away)
@@ -309,7 +313,10 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
   const [scope, setScope] = useState('all');
   const [entity, setEntity] = useState('');
   const [label, setLabel] = useState('');
+  const [days, setDays] = useState(0);
   const [created, setCreated] = useState<string | null>(null);
+  // a flag this service reads in this environment, for the snippets (null: none yet, they use a placeholder)
+  const [sample, setSample] = useState<SnippetFlag>(null);
   const { busy, error, run } = useAsync();
 
   // says "Copied" only once the clipboard has it; the field stays selected either way, to copy by hand
@@ -318,9 +325,13 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
     keyField.current?.focus(); keyField.current?.select();
   };
   const create = async () => {
-    const r = await run(() => api('POST', '/api-keys', { environment: env, project, scope, entity: scope === 'all' ? undefined : entity, label }));
+    const r = await run(() => api('POST', '/api-keys', { environment: env, service: project, scope, entity: scope === 'all' ? undefined : entity, label, ...(days ? { days } : {}) }));
     if (!r) return;
     setCreated(r.key); setLabel(''); onCreated();
+    // the newest flag in this service here, so the snippet reads a real one; the snippet works without it
+    api<{ rows: { key: string; valueType: string; delivery: Record<string, string[]> }[] }>('GET', `/flags?environment=${encodeURIComponent(env)}&page=0&size=50&sort=changed&dir=desc`)
+      .then((l) => { const f = l.rows.find((x) => x.delivery[env]?.includes(project)); if (f) setSample({ key: f.key, valueType: f.valueType }); })
+      .catch(() => {});
     // no Copy in the toast: it would keep the key after the drawer closes. The drawer has Copy key
     toast(`Key created for ${project} in ${envName(env).toLowerCase()}`);
   };
@@ -340,9 +351,11 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
         <div className="grid gap-4" role="status">
           <Callout tone="warn"><b className="font-medium">Copy this key now.</b> Only its hash is stored, so it can’t be shown again.</Callout>
           <Input ref={keyField} readOnly value={created} onFocus={(e) => e.target.select()} className="h-[34px] font-mono text-13" aria-label="New API key" />
+          <TryIt snippets={keySnippets({ origin: location.origin, key: created, kind: isApp ? 'client' : 'server', plugins: meta.plugins, flag: sample,
+            flagdPath: scope === 'all' ? null : flagdAddress({ scope, entity: entity || null, dimension: meta.entities.find((e) => e.key === entity)?.dimension ?? null }) })} />
         </div>
       ) : none ? (
-        <Empty action={<a href="#/settings" data-slot="button" className={cn(buttonVariants({ variant: 'secondary' }), 'no-underline hover:no-underline')}>Open settings</a>}>
+        <Empty action={<a href="#/services" data-slot="button" className={cn(buttonVariants({ variant: 'secondary' }), 'no-underline hover:no-underline')}>Open services</a>}>
           No service yet. Add one in Settings → Services.
         </Empty>
       ) : (
@@ -355,24 +368,48 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
               <NativeSelect className={selectField} value={project} onChange={(e) => setProject(e.target.value)}>{services.map((p) => <option key={p.key} value={p.key}>{p.key} ({p.kind === 'client' ? 'app' : 'backend'})</option>)}</NativeSelect>
             </Field>
           </div>
-          <Field label="Asks about" hint={SCOPE_HINT[scope]}>
+          <Field label="Asks about" hint={scopeHints(meta.dimensions)[scope]}>
             <NativeSelect className={selectField} value={scope} onChange={(e) => setScope(e.target.value)}>
-              <option value="all">Any entry</option>
+              <option value="all">{scopeAnyLabel(meta.dimensions)}</option>
               <option value="entity" disabled={meta.entities.length === 0}>Only one</option>
               <option value="below" disabled={meta.entities.length === 0}>One and everything under it</option>
             </NativeSelect>
           </Field>
           {scope !== 'all' && (
-            <Field label={capital(joined(meta.dimensions, 'or')) || 'Entry'} required>
+            <Field label={capital(joined(meta.dimensions, 'or')) || 'Which one'} required>
               <EntityPicker value={entity} onChange={setEntity} placeholder="Pick one" className="h-[34px]" />
             </Field>
           )}
-          <Field label="Label">
-            <Input className="h-[34px] text-13" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ds production" />
-          </Field>
+          <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
+            <Field label="Label">
+              <Input className="h-[34px] text-13" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="ds production" />
+            </Field>
+            <Field label="Works for" hint={days ? 'Then it stops: make a new one before.' : 'Until you revoke it.'}>
+              <NativeSelect className={selectField} value={String(days)} onChange={(e) => setDays(Number(e.target.value))}>
+                {KEY_EXPIRY.map(([d, text]) => <option key={d} value={d}>{text}</option>)}
+              </NativeSelect>
+            </Field>
+          </div>
           <ErrorList error={error} />
         </div>
       )}
     </Drawer>
+  );
+}
+
+/** After a key is made: the code to read flags with it, with the server's address and the key filled in, one Copy each. */
+function TryIt({ snippets }: { snippets: Snippet[] }) {
+  const { toast } = useApp();
+  const [pick, setPick] = useState<Snippet['id'] | ''>('');
+  if (!snippets.length) return null;
+  const shown = snippets.find((s) => s.id === pick) ?? snippets[0];
+  return (
+    <div className="grid gap-2">
+      <span className="text-13 font-medium text-ink">Read flags with it</span>
+      <span className="text-13 text-ink-2">Run this, or put it in your code. The key and this server’s address are filled in.</span>
+      {snippets.length > 1 && <Segmented className="justify-self-start" label="Code" value={shown.id} onChange={setPick} options={snippets.map((s) => ({ value: s.id, label: s.label }))} />}
+      <pre aria-label={shown.label} className="m-0 max-h-[320px] overflow-auto border border-grid bg-panel p-3 font-mono text-xs leading-relaxed whitespace-pre text-ink-1 select-text">{shown.code}</pre>
+      <Button variant="secondary" className="justify-self-start" onClick={() => void copyText(shown.code, shown.label, toast)}>Copy {shown.label}</Button>
+    </div>
   );
 }

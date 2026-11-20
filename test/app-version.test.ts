@@ -23,7 +23,7 @@ test('App version is an attribute apps send and rules compare as a version', asy
   const r = await t.editBase('dark_mode_v2', 'dev', (layer) => ({ ...layer, rules: [rule, ...layer.rules] }));
   assert.equal(r.status, 200, JSON.stringify(r.json));
 
-  const get = (attrs: Record<string, string>) => t.trace({ project: 'web', entity: 'acme', attrs, flag: 'dark_mode_v2' });
+  const get = (attrs: Record<string, string>) => t.trace({ service: 'web', entity: 'acme', attrs, flag: 'dark_mode_v2' });
   const newer = await get({ 'app.version': '2.10.0' });                 // 2.10.0 ≥ 2.4.0 as a version (not as text)
   assert.equal(newer.value, true);
   assert.equal(newer.reason, 'TARGETING_MATCH');

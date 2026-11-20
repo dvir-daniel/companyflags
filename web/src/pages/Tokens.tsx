@@ -16,7 +16,8 @@ import { plural } from '../text.ts';
 import { AgentBadge, Badge, Empty, ErrorList, Field, Switch, When } from '../ui.tsx';
 import { copyText, useAsync, usePersistentState } from '../uiKit.ts';
 import { roleInfo } from '../../../server/policy.ts';
-import { AGENT_ABOUT, allowedRole, DEFAULT_DAYS, EXPIRY_DAYS, expiresText, roleChoices, TOKEN_ABOUT, tokenState, type TokenRow, type TokenState } from './tokensKit.ts';
+import { TwoFactorSection } from './twoFactor.tsx';
+import { AGENT_ABOUT, ALERTS_ABOUT, allowedRole, DEFAULT_DAYS, mayMakeAlertsToken, EXPIRY_DAYS, expiresText, roleChoices, TOKEN_ABOUT, tokenState, type TokenRow, type TokenState } from './tokensKit.ts';
 
 /*
  * Access tokens: a person's tokens for the console's API (server/tokens.ts), for scripts, the CLI and MCP clients.
@@ -102,6 +103,7 @@ export function Tokens() {
         {admin && <Switch checked={everyone} onChange={setEveryone} label="Show everyone’s tokens">Everyone’s</Switch>}
         {show !== 'active' && <button type="button" onClick={() => setShow('active')} className={barTextButton}>Reset</button>}
       </PageBar>
+      <TwoFactorSection />
       <p className="m-0 border-b border-grid px-6 py-3 text-13 text-ink-2 max-sm:px-4">{TOKEN_ABOUT} {AGENT_ABOUT}</p>
 
       <div role="table" aria-label="Access tokens" className="flex-1">
@@ -176,6 +178,7 @@ function TokenDrawer({ t, open, onClose, onRevoke }: { t: TokenRow | null; open:
           <DrawerRow label="Person">{t.person}</DrawerRow>
           <DrawerRow label="Role">{roleInfo(t.role).label}<span className="block text-ink-3">Never above its person’s role today.</span></DrawerRow>
           <DrawerRow label="For an agent">{t.agent ? <><AgentBadge /><span className="block text-ink-3">{AGENT_ABOUT}</span></> : 'No'}</DrawerRow>
+          {t.alertsOnly && <DrawerRow label="For alerts only">Yes<span className="block text-ink-3">{ALERTS_ABOUT}</span></DrawerRow>}
         </DrawerSection>
         <DrawerSection title="Activity">
           <DrawerRow label="Created">{exact(t.createdAt)}</DrawerRow>
@@ -199,8 +202,10 @@ function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const myRole = meta.me.role;
   const [name, setName] = useState('');
   const [agent, setAgent] = useState(false);
+  const [alertsOnly, setAlertsOnly] = useState(false);
   const [rolePick, setRole] = useState('');
-  const role = allowedRole(rolePick, myRole, agent);
+  const role = alertsOnly ? 'oncall' : allowedRole(rolePick, myRole, agent);
+  const mayAlert = mayMakeAlertsToken(myRole);
   const [days, setDays] = useState<number>(DEFAULT_DAYS);
   const [created, setCreated] = useState<string | null>(null);
   const { busy, error, run } = useAsync();
@@ -210,7 +215,7 @@ function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: (
     tokenField.current?.focus(); tokenField.current?.select();
   };
   const create = async () => {
-    const r = await run(() => api<{ token: string }>('POST', TOKENS_PATH, { name: name.trim(), agent, role, days }));
+    const r = await run(() => api<{ token: string }>('POST', TOKENS_PATH, alertsOnly ? { name: name.trim(), alertsOnly, days } : { name: name.trim(), agent, role, days }));
     if (!r) return;
     setCreated(r.token); onCreated();
     // no Copy in the toast: it would keep the token after the drawer closes
@@ -240,16 +245,25 @@ function CreateToken({ onClose, onCreated }: { onClose: () => void; onCreated: (
             <Input ref={firstField} className="h-[34px] text-13" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="Claude in my editor" />
           </Field>
           <label className="flex cursor-pointer items-start gap-2.5 text-sm text-ink-1">
-            <Checkbox className="mt-0.5" checked={agent} onCheckedChange={(v) => setAgent(v === true)} />
+            <Checkbox className="mt-0.5" checked={agent} disabled={alertsOnly} onCheckedChange={(v) => setAgent(v === true)} />
             <span className="grid gap-0.5">
               For an agent (Claude, Cursor, Codex…)
               <span className="text-13 text-ink-3">Viewer or Editor only. {AGENT_ABOUT}</span>
             </span>
           </label>
+          {mayAlert && (
+            <label className="flex cursor-pointer items-start gap-2.5 text-sm text-ink-1">
+              <Checkbox className="mt-0.5" checked={alertsOnly} disabled={agent} onCheckedChange={(v) => setAlertsOnly(v === true)} />
+              <span className="grid gap-0.5">
+                For alerts only (Grafana, Datadog…)
+                <span className="text-13 text-ink-3">{ALERTS_ABOUT}</span>
+              </span>
+            </label>
+          )}
           <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
-            <Field label="Role" hint="Up to your own role.">
-              <NativeSelect className={selectField} value={role} onChange={(e) => setRole(e.target.value)}>
-                {roleChoices(myRole, agent).map(([r, label]) => <option key={r} value={r}>{label}</option>)}
+            <Field label="Role" hint={alertsOnly ? 'On call: turning a flag off from an alert is break-glass.' : 'Up to your own role. An admin’s token is On call at most.'}>
+              <NativeSelect className={selectField} value={role} disabled={alertsOnly} onChange={(e) => setRole(e.target.value)}>
+                {(alertsOnly ? [['oncall', roleInfo('oncall').label]] : roleChoices(myRole, agent)).map(([r, label]) => <option key={r} value={r}>{label}</option>)}
               </NativeSelect>
             </Field>
             <Field label="Expires in">

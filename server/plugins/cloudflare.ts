@@ -17,19 +17,19 @@ export type CloudflareOptions = {
 
 export const cloudflare = (o: CloudflareOptions = {}) => definePlugin({
   id: 'cloudflare',
-  setup: ({ db, env, log }) => {
+  setup: ({ db, env, log, secrets }) => {
     const server = { zoneId: o.zoneId ?? (env.CF_ZONE_ID || undefined), token: o.token ?? (env.CF_API_TOKEN || undefined) };
-    const cdn = createCdn(db, { fetch: 'fetch' in o ? o.fetch : globalThis.fetch, server, log });
+    const cdn = createCdn(db, { fetch: 'fetch' in o ? o.fetch : globalThis.fetch, server, log, secrets });
     return {
       onPublish: cdn.purge,
       // admins set the zone and token; everyone can see whether it's set up (never the token) and how the last
       // publishes' purges went
-      console: ({ actor, adminOnly }) => {
+      console: ({ actor, adminOnly, body }) => {
         const app = consoleRoutes();
         app.get('/cdn', async (c) => c.json(await cdn.state()));
         app.put('/cdn', async (c) => {
           adminOnly(c.get('user'));
-          await cdn.save(await c.req.json(), actor(c.get('user')));
+          await cdn.save(await body(c), actor(c.get('user')));
           return c.json(await cdn.state());
         });
         app.delete('/cdn', async (c) => {
@@ -39,7 +39,7 @@ export const cloudflare = (o: CloudflareOptions = {}) => definePlugin({
         });
         app.post('/cdn/purge', async (c) => {
           adminOnly(c.get('user'));
-          const { environment } = await c.req.json<{ environment?: unknown }>();
+          const { environment } = await body<{ environment?: unknown }>(c);
           await cdn.purgeNow(environment, actor(c.get('user')));
           return c.json({ purged: true });
         });

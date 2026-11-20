@@ -2,7 +2,7 @@
   <picture>
     <source srcset=".github/assets/banner-dark.png" media="(prefers-color-scheme: dark)">
     <source srcset=".github/assets/banner-light.png" media="(prefers-color-scheme: light)">
-    <img src=".github/assets/banner-light.png" alt="CompanyFlags: the most comprehensive feature flag framework">
+    <img src=".github/assets/banner-light.png" alt="CompanyFlags: feature flags you run yourself, read with OpenFeature">
   </picture>
 </p>
 
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.
+  Feature flags and remote config you run yourself, read with OpenFeature. Open source, MIT licensed.
   <br>
   <a href="https://dvir-daniel.github.io/companyflags/"><strong>Learn more »</strong></a>
   <br>
@@ -77,10 +77,9 @@ without a deploy. See [Flags in the age of AI](https://dvir-daniel.github.io/com
 ## Quickstart
 
 ```bash
-docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \
-  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
-  -e BETTER_AUTH_URL=http://localhost:8787 \
-  ghcr.io/dvir-daniel/companyflags
+echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env   # keep it: it signs sign-in sessions
+docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \
+  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags
 docker logs companyflags   # the setup link: make the admin account at http://localhost:8787/api/setup/…
 ```
 
@@ -100,14 +99,6 @@ docker compose logs companyflags   # the setup link
 
 It runs the latest release (set `COMPANYFLAGS_VERSION` in `.env` to pin another) and answers on `127.0.0.1:8787`
 only, for a proxy in front of it. See [Docker](https://dvir-daniel.github.io/companyflags/self-hosting/docker).
-
-Or from npm (Node.js 22.18+), in a folder of its own:
-
-```bash
-npx companyflags start   # embedded Postgres in ./data; prints the setup link
-```
-
-To keep a config file next to it, install it there: `npm i companyflags`, then `npx companyflags init`.
 
 Or from source (Node.js 22.18+, pnpm 11):
 
@@ -204,8 +195,8 @@ export default defineConfig({
 });
 ```
 
-The file goes in a folder where `companyflags/config` resolves: one where you ran `npm i companyflags`, the clone's
-root, or `/app` in the Docker image.
+The file goes in a folder where `companyflags/config` resolves: the clone's root, or `/app` in the Docker image. An
+npm package is coming, but isn't published yet.
 
 Keep the flags your code reads in a file next to it, and push it from CI:
 

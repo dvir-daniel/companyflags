@@ -8,19 +8,20 @@
 export const DEFAULT_NAME = 'CompanyFlags';
 
 /** The accent colors: none (black and white), a few of our own, or one of the installation's own (`custom`). Each has
- *  a shade for light and one for dark, both readable on that page color. */
+ *  a shade for light and one for dark, both at 4.5:1 or more on that page color, so text drawn in it reads. None is
+ *  red, green, amber or purple: those colors mean production and danger, on, waiting and agents (DESIGN.md). */
 export const ACCENTS = {
   none: { label: 'None (black and white)', light: null, dark: null },
   blue: { label: 'Blue', light: '#2563eb', dark: '#60a5fa' },
   indigo: { label: 'Indigo', light: '#4f46e5', dark: '#818cf8' },
-  violet: { label: 'Violet', light: '#7c3aed', dark: '#a78bfa' },
   teal: { label: 'Teal', light: '#0f766e', dark: '#2dd4bf' },
-  green: { label: 'Green', light: '#15803d', dark: '#4ade80' },
-  orange: { label: 'Orange', light: '#c2410c', dark: '#fb923c' },
-  rose: { label: 'Rose', light: '#be123c', dark: '#fb7185' },
   custom: { label: 'Your own', light: null, dark: null },
 } as const satisfies Record<string, { label: string; light: string | null; dark: string | null }>;
 export type Accent = keyof typeof ACCENTS;
+/** Accents we no longer offer, because they were meaning colors, and what a saved one becomes. */
+export const RETIRED_ACCENTS: Record<string, Accent> = { violet: 'indigo', green: 'teal', orange: 'none', rose: 'none' };
+/** An accent as saved (perhaps a retired one) as one we offer. */
+export const knownAccent = (a: string): Accent => (a in ACCENTS ? a as Accent : RETIRED_ACCENTS[a] ?? 'none');
 
 export const MODES = { device: 'As the device is set', light: 'Light', dark: 'Dark' } as const;
 export type Mode = keyof typeof MODES;
@@ -112,7 +113,8 @@ function image(v: unknown, max: number): string | null {
 export function checkAppearance(input: unknown): Appearance {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new AppearanceError('send the appearance settings as an object');
   const i = input as Record<string, unknown>;
-  const accent = (i.accent ?? 'none') as Accent;
+  const asked = String(i.accent ?? 'none');
+  const accent = (asked in RETIRED_ACCENTS ? RETIRED_ACCENTS[asked] : asked) as Accent;
   if (!(accent in ACCENTS)) throw new AppearanceError(`the accent is one of ${Object.keys(ACCENTS).join(', ')}`);
   const accentColor = i.accentColor === undefined || i.accentColor === null || i.accentColor === '' ? null : String(i.accentColor).trim().toLowerCase();
   if (accentColor !== null && !HEX.test(accentColor)) throw new AppearanceError('the accent color is a hex color, like #2563eb');
@@ -171,21 +173,61 @@ export const inkOn = (hex: string) => (contrast(hex, '#ffffff') >= contrast(hex,
 /** The page colors the accent sits on (packages/ui styles.css --page). */
 export const PAGE = { light: '#ffffff', dark: '#000000' } as const;
 
-/** The accent's color in light and in dark, or null for none. */
+/** The contrast the accent needs on the page: it's drawn as text and icons too (the selected page's icon, links). */
+export const ACCENT_CONTRAST = 4.5;
+
+const hex2 = (n: number) => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
+/** `hex` mixed with `toward` (#rrggbb), `t` from 0 (as it is) to 1 (all `toward`). */
+const mix = (hex: string, toward: string, t: number) =>
+  `#${[0, 1, 2].map((i) => {
+    const a = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+    const b = parseInt(toward.slice(1 + i * 2, 3 + i * 2), 16);
+    return hex2(a + (b - a) * t);
+  }).join('')}`;
+
+/** A color as close to `hex` as it can be while reading on this page at 4.5:1: darker on white, lighter on black. */
+export function readableOn(hex: string, mode: 'light' | 'dark'): string {
+  if (contrast(hex, PAGE[mode]) >= ACCENT_CONTRAST) return hex;
+  const toward = mode === 'light' ? '#000000' : '#ffffff';
+  for (let t = 0.05; t < 1; t += 0.05) {
+    const c = mix(hex, toward, t);
+    if (contrast(c, PAGE[mode]) >= ACCENT_CONTRAST) return c;
+  }
+  return toward;
+}
+
+/** The accent's color in light and in dark, or null for none. One color of the installation's own is used as it is
+ *  where it reads, and darkened (on light) or lightened (on dark) just enough where it doesn't. */
 export function accentColors(a: Pick<Appearance, 'accent' | 'accentColor'>): { light: string; dark: string } | null {
-  if (a.accent === 'custom') return a.accentColor ? { light: a.accentColor, dark: a.accentColor } : null;
-  const p = ACCENTS[a.accent] ?? ACCENTS.none;
+  if (a.accent === 'custom') return a.accentColor ? { light: readableOn(a.accentColor, 'light'), dark: readableOn(a.accentColor, 'dark') } : null;
+  const p = ACCENTS[knownAccent(a.accent)];
   return p.light && p.dark ? { light: p.light, dark: p.dark } : null;
 }
 
-/** Where an accent is hard to read (a button's outline, a switch): "light" or "dark", against that page color. */
-export function lowContrast(a: Pick<Appearance, 'accent' | 'accentColor'>): Mode[] {
-  const c = accentColors(a);
-  if (!c) return [];
-  return (['light', 'dark'] as const).filter((m) => contrast(c[m], PAGE[m]) < 3);
+/** Where the installation's own color doesn't read as it is (under 4.5:1 on that page), so the console uses a
+ *  darker or lighter shade there: "light" or "dark". Our own accents read on both. */
+export function lowContrast(a: Pick<Appearance, 'accent' | 'accentColor'>): ('light' | 'dark')[] {
+  if (a.accent !== 'custom' || !a.accentColor || !HEX.test(a.accentColor)) return [];
+  const c = a.accentColor;
+  return (['light', 'dark'] as const).filter((m) => contrast(c, PAGE[m]) < ACCENT_CONTRAST);
 }
 
-/** The CSS for the accent: buttons, switches, focus rings and the selected item take its color (styles.css --tint).
+/** The meaning colors' hues (styles.css --live, --flag, --ok, --tool), which an accent shouldn't look like. */
+const MEANING_HUES: [string, number][] = [['red', 0], ['amber', 32], ['green', 142], ['purple', 265], ['red', 360]];
+/** Which meaning color `hex` looks like (within 20° of its hue, and not grey), or null. */
+export function nearMeaning(hex: string): string | null {
+  if (!HEX.test(hex)) return null;
+  const [r, g, b] = [0, 1, 2].map((i) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  if (d < 0.2) return null;                       // grey, near black or near white
+  const h = max === r ? 60 * (((g - b) / d + 6) % 6) : max === g ? 60 * ((b - r) / d + 2) : 60 * ((r - g) / d + 4);
+  return MEANING_HUES.find(([, hue]) => Math.abs(h - hue) <= 20)?.[0] ?? null;
+}
+
+/** The CSS for the accent: primary buttons and the selected item take its color (styles.css --tint). Switches and
+ *  focus rings never do.
  *  Written for `html[data-theme=…]`, so it wins over the stylesheet's own values wherever it's put in the page. */
 export function accentCss(a: Pick<Appearance, 'accent' | 'accentColor'>): string {
   const c = accentColors(a);

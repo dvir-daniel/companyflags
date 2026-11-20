@@ -13,8 +13,8 @@ const ACME: EntityWords = { key: 'acme', name: 'Acme', above: [] };
 const VELVET: EntityWords = { key: 'velvet', name: 'Velvet', above: [{ key: 'tyrell', name: 'Tyrell' }] };
 const STORE: EntityWords = { key: 'acme-12', name: 'Acme 12', above: [{ key: 'acme', name: 'Acme' }, { key: 'eu', name: 'EU' }] };
 
-test('the three choices keep their identifiers; “Own settings only” is what “Customer only” was', () => {
-  assert.deepEqual(CHOICES.map((c) => CHOICE_NAME[c]), ['Rules only', 'Rules + own default', 'Own settings only']);
+test('the three choices keep their identifiers; their names say what happens after the entity’s own rules', () => {
+  assert.deepEqual(CHOICES.map((c) => CHOICE_NAME[c]), ['Follow what’s above', 'Own default last', 'Skip what’s above']);
   assert.deepEqual(CHOICES, ['base_rules_then_base_default', 'base_rules_then_customer_default', 'customer_only']);
 });
 

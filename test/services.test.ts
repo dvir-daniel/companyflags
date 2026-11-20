@@ -10,7 +10,7 @@ before(async () => { t = await boot(); });
 after(async () => { await t.stop(); });
 
 const admin = () => t.as('dana');
-const appsNow = async () => (await admin().get('/meta')).json.projects.map((p: any) => `${p.key}:${p.kind}`) as string[];
+const appsNow = async () => (await admin().get('/meta')).json.services.map((p: any) => `${p.key}:${p.kind}`) as string[];
 const history = async (kind: string) => ((await admin().get('/history')).json as any[]).filter((h) => h.changeType === kind);
 const flag = (key: string, delivery: Record<string, string[]>) => ({
   key, valueType: 'bool', kind: 'ops', variations: [{ key: 'on', value: true }, { key: 'off', value: false }],
@@ -59,8 +59,8 @@ test('an app a flag is sent to can’t change kind or be deleted: the refusal sa
 
 test('a backend with an API key that still works can’t go; once the key is revoked it can, and its keys go with it', async () => {
   assert.equal((await admin().post('/services', { key: 'reports', kind: 'server' })).status, 201);
-  assert.equal((await t.as('alice').post('/api-keys', { environment: 'dev', project: 'reports', scope: 'all' })).status, 403, 'only admins make keys');
-  const key = await admin().post('/api-keys', { environment: 'dev', project: 'reports', scope: 'all', label: 'nightly' });
+  assert.equal((await t.as('alice').post('/api-keys', { environment: 'dev', service: 'reports', scope: 'all' })).status, 403, 'only admins make keys');
+  const key = await admin().post('/api-keys', { environment: 'dev', service: 'reports', scope: 'all', label: 'nightly' });
   assert.equal(key.status, 201, JSON.stringify(key.json));
   const download = () => t.call('GET', '/sdk/v1/flagd/company/acme', undefined, { authorization: `Bearer ${key.json.key}` });
   assert.equal((await download()).status, 200);
@@ -84,7 +84,7 @@ test('a backend with an API key that still works can’t go; once the key is rev
 
 test('a request still to go out that would send a flag to the app keeps it; cancelled, the app can go', async () => {
   assert.equal((await admin().post('/services', { key: 'tv', kind: 'client' })).status, 201);
-  const asked = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android', 'tv'] });
+  const asked = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', services: ['android', 'tv'] });
   assert.equal(asked.status, 202, 'production needs approval: a request');
   const id = asked.json.changeSetId;
 

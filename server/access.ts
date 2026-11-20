@@ -7,6 +7,9 @@
 //     .joined(email, name)        an account was made: they get their role, and their invite is used up
 //     .people() .add() .invite() .setRole() .remove()    the People list in Settings, and an admin's changes to it
 //     .invitedBy(token) .signInOptions() .connectionRemoved(q, id)    for the sign-in page and single sign-on (sso.ts)
+//     .rules() .setRules()        the organization's sign-in rules: the break-glass admin, two-factor for admins, the
+//                                 role of people who join without an invite
+//     .signedInNow() .signInFailed() .groupRole()    what the sign-in tells it: History, and roles from the provider's groups
 //   may(person, right), mustBeAllowed(person, right)    what their role lets them do (the roles are policy.ts's)
 //
 // A person's key is their email. Their role is kept here (app_user); their accounts and sessions are kept by the
@@ -23,8 +26,14 @@
 //   - Google, GitHub or Microsoft, when they confirm the email: people an admin added, or anyone at a signup domain
 //     (FF_SIGNUP_DOMAINS);
 //   - where a connection requires single sign-on, no password or Google, GitHub or Microsoft sign-ins or accounts at its
-//     domains, except for admins (a broken identity provider must not lock everyone out).
-// People who join without an invite start as viewers; an admin gives them a role.
+//     domains, except for the one break-glass admin an admin chose (a broken identity provider must not lock everyone
+//     out). There, a session lasts `ssoSessionHours` at most: then they sign in again, and the identity provider says
+//     again whether they still work there.
+// People who join without an invite start with the join role (Viewer unless an admin chose another); an admin gives
+// them a role, or the identity provider's groups do (sso.ts group roles).
+//
+// Admins who have a password must set up two-factor sign-in before they use the console, when the rules say so
+// (`needsTwoFactor`: the console's API refuses them everything else until then).
 
 import { randomBytes } from 'node:crypto';
 import { sameSecret, sha256 } from './auth.ts';
@@ -34,13 +43,30 @@ import type { Actor } from './layers.ts';
 import { isRole, roleInfo, ROLES, type Role, type RoleInfo } from './policy.ts';
 
 export type { Role };
-export type Person = { key: string; name: string; role: Role; removed: boolean };
+export type Person = { key: string; name: string; role: Role; removed: boolean; needsTwoFactor?: boolean };
 /** active; invited: hasn't used their invite link yet; removed */
 export type Status = 'active' | 'invited' | 'removed';
-export type ListedPerson = { key: string; name: string; role: Role; status: Status };
+export type ListedPerson = { key: string; name: string; role: Role; status: Status; lastSignedInAt: string | null };
 
-/** A signed-in email, from the sign-in (identity.ts): who the request says it is, before we know the person. */
-export type Who = { email: string; name?: string };
+/** A signed-in email, from the sign-in (identity.ts): who the request says it is, before we know the person.
+ *  `twoFactor`: they set up two-factor sign-in. `since`: when this session began; `end` ends it. */
+export type Who = { email: string; name?: string; twoFactor?: boolean; since?: Date; end?: () => Promise<void> };
+
+/** How someone signed in, for History: a password (and a second factor), single sign-on with a connection, or a
+ *  provider (Google, GitHub, Microsoft). */
+export type SignInWay = { with: 'password' | 'two-factor' | 'recovery code' | 'sso' | 'provider'; connection?: string; provider?: string };
+
+/** The organization's sign-in rules (Settings → Single sign-on). */
+export type SignInRules = {
+  /** the one admin who keeps their password where single sign-on is required; null: nobody does */
+  breakGlassAdmin: string | null;
+  /** admins with a password set up two-factor sign-in before they use the console */
+  adminsNeedTwoFactor: boolean;
+  /** the role of people who join without an invite (single sign-on, a provider at a signup domain) */
+  joinRole: Role;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
 
 /** Someone signing in, or making an account (`account: 'new'`). `existing`: a returning sign-in, or a new way in to
  *  the account they have (a provider or single sign-on added to it). */
@@ -72,6 +98,8 @@ export type Accounts = {
   removeSignInsWith(q: Queryable, connection: string): Promise<void>;
   /** ends the sessions of everyone at these email domains (and their subdomains), except these emails */
   endSessionsAt(q: Queryable, domains: string[], except: string[]): Promise<void>;
+  /** whether this email has set up two-factor sign-in */
+  twoFactorOn(q: Queryable, email: string): Promise<boolean>;
 };
 
 /** A single sign-on connection an admin added (sso.ts): it vouches for the people at its domains. */
@@ -88,7 +116,13 @@ export type AccessOptions = {
   setupToken?: string;
   /** the time, for invites (tests set it) */
   now?: () => Date;
+  /** where single sign-on is required, the most hours a session lasts before the identity provider is asked again
+   *  (FF_SSO_SESSION_HOURS, 12 by default) */
+  ssoSessionHours?: number;
 };
+
+/** How long a session lasts where single sign-on is required, unless set. */
+export const SSO_SESSION_HOURS = 12;
 
 /** How long an invite link works. */
 const INVITE_DAYS = 7;
@@ -133,6 +167,15 @@ const OUTSIDE_SSO: Refusal = {
 const clean = (email: unknown) => String(email ?? '').trim().toLowerCase();
 const roleProblem = (role: unknown) => (isRole(role) ? null : `role: one of ${ROLES.join(', ')}`);
 
+/** The roles people may join with, without an invite: any but an admin's. */
+export const JOIN_ROLES: readonly Role[] = ROLES.filter((r) => !roleInfo(r).changesSettings);
+const DEFAULT_RULES: SignInRules = { breakGlassAdmin: null, adminsNeedTwoFactor: false, joinRole: 'viewer', updatedAt: null, updatedBy: null };
+const RULES = `select break_glass_admin as "breakGlassAdmin", admins_need_two_factor as "adminsNeedTwoFactor", join_role as "joinRole",
+  updated_at as "updatedAt", updated_by as "updatedBy" from sign_in_rules`;
+const rulesOf = async (q: Queryable): Promise<SignInRules> => (await one<SignInRules>(q, RULES)) ?? DEFAULT_RULES;
+/** An email as History keeps someone who tried to sign in: whatever they typed, cut short. */
+const typed = (email: unknown) => clean(email).slice(0, 200) || 'unknown';
+
 /** An email at one of these domains or their subdomains, as the SSO plugin matches them. */
 const inDomains = (email: string, domains: readonly string[]) => {
   const at = email.split('@')[1]?.toLowerCase();
@@ -143,6 +186,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
   const { accounts, connections } = opts;
   const signupDomains = new Set(opts.signupDomains ?? []);
   const now = opts.now ?? (() => new Date());
+  const ssoSessionMs = (opts.ssoSessionHours ?? SSO_SESSION_HOURS) * 3_600_000;
   const inviteUntil = () => new Date(now().getTime() + INVITE_DAYS * 86_400_000).toISOString();
 
   /** How many people with an admin's role still have access (or whether this one does). */
@@ -158,20 +202,28 @@ export function createAccess(db: Db, opts: AccessOptions) {
   const mayMakeFirstAccount = async (q: Queryable, setup: string | undefined) =>
     await setupOpen(q, setup) && !(await one(q, `select 1 from app_user limit 1`));
 
-  /** Their domain has a connection that requires single sign-on, and they aren't an admin. */
-  const ssoRequired = async (q: Queryable, email: string) => {
-    if (!email.includes('@')) return false;
-    if (!(await connections(q)).some((c) => c.requireSso && inDomains(email, c.domains))) return false;
-    return !(await activeAdmins(q, email));
+  /** The break-glass admin, while they are an admin whose access isn't removed. */
+  const breakGlass = async (q: Queryable) => {
+    const key = (await rulesOf(q)).breakGlassAdmin;
+    return key && await activeAdmins(q, key) ? key : null;
   };
+
+  /** The connections that require single sign-on at this email's domain. */
+  const requiredAt = async (q: Queryable, email: string) =>
+    (email.includes('@') ? (await connections(q)).filter((c) => c.requireSso && inDomains(email, c.domains)) : []);
+
+  /** Their domain has a connection that requires single sign-on, and they aren't the break-glass admin. */
+  const ssoRequired = async (q: Queryable, email: string) =>
+    (await requiredAt(q, email)).length > 0 && email !== await breakGlass(q);
 
   const newInvite = () => {
     const token = randomBytes(24).toString('base64url');
     return { token, hash: sha256(token) };
   };
 
-  /** The person behind an email, added if they are new: the very first person is an admin, later ones viewers. */
-  const person = async (who: Who): Promise<Person> => {
+  /** The person behind an email, added if they are new: the very first person is an admin, later ones get the join
+   *  role (Viewer unless an admin chose another). */
+  const person = async (who: Pick<Who, 'email' | 'name'>): Promise<Person> => {
     const found = await one<Person>(db, PERSON, [who.email]);
     if (found) return found;
     return db.transaction(async (tx) => {
@@ -179,18 +231,29 @@ export function createAccess(db: Db, opts: AccessOptions) {
       const again = await one<Person>(tx, PERSON, [who.email]);
       if (again) return again;
       const first = !(await one(tx, `select 1 from app_user limit 1`));
+      const role = first ? 'admin' : (await rulesOf(tx)).joinRole;
       return (await one<Person>(tx, `insert into app_user (key, name, role) values ($1, $2, $3)
-        returning key, name, role, removed_at is not null as removed`, [who.email, who.name?.trim() || who.email, first ? 'admin' : 'viewer']))!;
+        returning key, name, role, removed_at is not null as removed`, [who.email, who.name?.trim() || who.email, role]))!;
     });
   };
 
   return {
     /** Who is asking: the person behind a signed-in email, added on their first sign-in (the very first person is an
-     *  admin, later ones viewers). Refused when nobody is signed in (401) or an admin removed their access (403). */
+     *  admin, later ones get the join role). Refused when nobody is signed in (401), an admin removed their access
+     *  (403), or, where single sign-on is required, their session is older than ssoSessionHours (401: it ends, and
+     *  they sign in again with the identity provider). An admin who must set up two-factor sign-in first says so
+     *  (`needsTwoFactor`). */
     async signedIn(who: Who | null): Promise<Person> {
       if (!who) throw new HttpError(401, 'not signed in');
       const p = await person(who);
       if (p.removed) throw new HttpError(403, 'an admin removed your access to CompanyFlags');
+      if (who.since && now().getTime() - who.since.getTime() > ssoSessionMs && await ssoRequired(db, p.key)) {
+        await who.end?.();
+        throw new HttpError(401, 'your organization signs in with single sign-on: sign in again');
+      }
+      if (may(p, 'changesSettings') && !who.twoFactor && (await rulesOf(db)).adminsNeedTwoFactor && await accounts.hasPassword(db, p.key)) {
+        return { ...p, needsTwoFactor: true };
+      }
       return p;
     },
 
@@ -227,7 +290,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
     },
 
     /** An account was made for this email: they are the admin if they are the first person, have the role an admin
-     *  chose if they were added, and are a viewer otherwise. Their invite is used up, and the name they gave kept. */
+     *  chose if they were added, and the join role otherwise. Their invite is used up, and the name they gave kept. */
     async joined(email: string, name?: string | null) {
       const key = clean(email);
       await person({ email: key, name: name ?? undefined });
@@ -236,8 +299,8 @@ export function createAccess(db: Db, opts: AccessOptions) {
 
     /** Everyone, removed people last (History still names them). */
     async people(): Promise<ListedPerson[]> {
-      const rows = await all<{ key: string; name: string; role: Role; removed: boolean; invited: boolean }>(db,
-        `select key, name, role, removed_at is not null as removed, invite_hash is not null as invited
+      const rows = await all<{ key: string; name: string; role: Role; removed: boolean; invited: boolean; lastSignedInAt: string | null }>(db,
+        `select key, name, role, removed_at is not null as removed, invite_hash is not null as invited, last_signed_in_at as "lastSignedInAt"
          from app_user order by removed_at is not null, id`);
       return rows.map(({ removed, invited, ...r }) => ({ ...r, status: removed ? 'removed' : invited ? 'invited' : 'active' }));
     },
@@ -256,7 +319,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
       return db.transaction(async (tx) => {
         await tx.query(`select pg_advisory_xact_lock($1)`, [PEOPLE_LOCK]);
         const cur = await one<{ removed: boolean }>(tx, `select removed_at is not null as removed from app_user where key = $1`, [email]);
-        if (cur) throw new HttpError(409, cur.removed ? `${email}’s access was removed: invite them again from their row` : `${email} is already here`);
+        if (cur) throw new HttpError(409, cur.removed ? `${email}’s access was removed: invite them again from their row` : `${email} is already here`, {}, 'already_exists');
         await tx.query(`insert into app_user (key, name, role, invite_hash, invite_expires_at) values ($1, $2, $3, $4, $5::timestamptz)`,
           [email, name, role, hash, inviteUntil()]);
         await audit(tx, actor, { kind: 'person.add', after: { person: email, role } });
@@ -361,11 +424,88 @@ export function createAccess(db: Db, opts: AccessOptions) {
       await accounts.removeSignInsWith(q, id);
     },
 
-    /** A connection requires single sign-on from now (sso.ts): everyone at its domains but the admins is signed out,
-     *  so a session made with a password or a provider before doesn't go on, and signs in again with single sign-on. */
+    /** A connection requires single sign-on from now (sso.ts): everyone at its domains but the break-glass admin is
+     *  signed out, so a session made with a password or a provider before doesn't go on, and signs in again with
+     *  single sign-on. */
     async ssoNowRequired(q: Queryable, domains: string[]) {
-      const admins = await all<{ key: string }>(q, `select key from app_user where role = any($1::text[]) and removed_at is null`, [ADMINS]);
-      await accounts.endSessionsAt(q, domains, admins.map((a) => a.key));
+      const kept = await breakGlass(q);
+      await accounts.endSessionsAt(q, domains, kept ? [kept] : []);
+    },
+
+    /** The organization's sign-in rules. */
+    rules: () => rulesOf(db),
+
+    /** Someone's own account: whether they have a password, and whether they set up two-factor sign-in. */
+    async account(email: string) {
+      return { password: await accounts.hasPassword(db, email), twoFactor: await accounts.twoFactorOn(db, email) };
+    },
+
+    /** An admin changes the sign-in rules. The break-glass admin is an admin whose access isn't removed; two-factor for
+     *  admins is turned on by an admin who has set it up (or has no password), so they aren't the first one stopped.
+     *  A break-glass admin who no longer is one, at a domain that requires single sign-on, is signed out. */
+    async setRules(input: { breakGlassAdmin?: unknown; adminsNeedTwoFactor?: unknown; joinRole?: unknown }, actor: Actor) {
+      return db.transaction(async (tx) => {
+        await tx.query(`select pg_advisory_xact_lock($1)`, [PEOPLE_LOCK]);
+        const before = await rulesOf(tx);
+        const next = { ...before };
+        if (input.breakGlassAdmin !== undefined) {
+          const key = input.breakGlassAdmin === null || input.breakGlassAdmin === '' ? null : clean(input.breakGlassAdmin);
+          if (key && !(await activeAdmins(tx, key))) throw new HttpError(422, 'break-glass admin: an admin whose access isn’t removed');
+          next.breakGlassAdmin = key;
+        }
+        if (input.adminsNeedTwoFactor !== undefined) {
+          if (typeof input.adminsNeedTwoFactor !== 'boolean') throw new HttpError(422, 'adminsNeedTwoFactor: true or false');
+          if (input.adminsNeedTwoFactor && !before.adminsNeedTwoFactor
+            && await accounts.hasPassword(tx, actor.name) && !(await accounts.twoFactorOn(tx, actor.name))) {
+            throw new HttpError(409, 'set up two-factor sign-in for yourself first: Access tokens → Two-factor sign-in');
+          }
+          next.adminsNeedTwoFactor = input.adminsNeedTwoFactor;
+        }
+        if (input.joinRole !== undefined) {
+          if (!JOIN_ROLES.includes(input.joinRole as Role)) throw new HttpError(422, `joinRole: one of ${JOIN_ROLES.join(', ')} (never admin)`);
+          next.joinRole = input.joinRole as Role;
+        }
+        await tx.query(`insert into sign_in_rules (id, break_glass_admin, admins_need_two_factor, join_role, updated_at, updated_by)
+          values (true, $1, $2, $3, now(), $4) on conflict (id) do update set break_glass_admin = $1, admins_need_two_factor = $2,
+          join_role = $3, updated_at = now(), updated_by = $4`, [next.breakGlassAdmin, next.adminsNeedTwoFactor, next.joinRole, actor.name]);
+        const pick = (r: SignInRules) => ({ breakGlassAdmin: r.breakGlassAdmin, adminsNeedTwoFactor: r.adminsNeedTwoFactor, joinRole: r.joinRole });
+        await audit(tx, actor, { kind: 'sign_in.rules', before: pick(before), after: pick(next) });
+        // the old break-glass admin's password sessions end where single sign-on is required: they sign in with it
+        const old = before.breakGlassAdmin;
+        if (old && old !== next.breakGlassAdmin) {
+          const domains = (await requiredAt(tx, old)).flatMap((c) => c.domains);
+          if (domains.length) await accounts.endSessionsAt(tx, domains, (await all<{ key: string }>(tx, `select key from app_user where key <> $1`, [old])).map((r) => r.key));
+        }
+        return rulesOf(tx);
+      });
+    },
+
+    /** Someone signed in: when, for the People list, and how, for History (and the webhooks that take security events). */
+    async signedInNow(email: string, way: SignInWay) {
+      const key = clean(email);
+      await db.query(`update app_user set last_signed_in_at = now() where key = $1`, [key]);
+      await audit(db, { name: key, type: 'user' }, { kind: 'sign_in', after: { person: key, ...way } });
+    },
+
+    /** A sign-in that didn't go through: a wrong password or code, or a refusal (its code). */
+    async signInFailed(email: unknown, way: SignInWay, why: string) {
+      const key = typed(email);
+      await audit(db, { name: key, type: 'system' }, { kind: 'sign_in.failed', after: { person: key, ...way, why: why.slice(0, 80) } });
+    },
+
+    /** The identity provider's groups give this person a role (sso.ts group roles), each time they sign in with it. The
+     *  break-glass admin's role is left alone, and so is the last admin's. */
+    async groupRole(email: string, role: Role, connection: string) {
+      const key = clean(email);
+      await db.transaction(async (tx) => {
+        await tx.query(`select pg_advisory_xact_lock($1)`, [PEOPLE_LOCK]);
+        const cur = await one<{ role: Role; removed: boolean }>(tx, `select role, removed_at is not null as removed from app_user where key = $1`, [key]);
+        if (!cur || cur.removed || cur.role === role || key === await breakGlass(tx)) return;
+        if (may(cur, 'changesSettings') && !roleInfo(role).changesSettings && await activeAdmins(tx) <= 1) return;
+        await tx.query(`update app_user set role = $2 where key = $1`, [key, role]);
+        await audit(tx, { name: `sso:${connection}`, type: 'system' },
+          { kind: 'person.role', before: { person: key, role: cur.role }, after: { person: key, role, from: 'groups' } });
+      });
     },
   };
 }

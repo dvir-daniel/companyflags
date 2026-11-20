@@ -1,5 +1,6 @@
 ---
 title: "Attributes"
+description: "Every attribute a rule can check, its type, where its value comes from, and whether a % can be split by it."
 ---
 
 An attribute is what a rule's check reads: "App version is below 5.0.0", "Company is Globex". This page lists every

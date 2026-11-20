@@ -67,7 +67,7 @@ describe('approvals', () => {
     const applied = await t.as('alice').post(`/change-sets/${id}/apply`);
     assert.equal(applied.status, 200);
     await t.settle();
-    const v = await t.trace({ environment: 'prod', project: 'web', entity: 'acme', flag: 'max_upload_mb' });
+    const v = await t.trace({ environment: 'prod', service: 'web', entity: 'acme', flag: 'max_upload_mb' });
     assert.equal(v.value, 1000);
   });
 
@@ -108,9 +108,10 @@ describe('approvals', () => {
     const base = (await t.as('alice').get('/flags/dark_mode_v2')).json.layers.prod.base;
     const r = await t.as('alice').put('/flags/dark_mode_v2/layers/prod/base', { layer: { ...base, defaultVariation: 'on' }, expectedVersion: base.version, reason: 'turn on for everyone' });
     await t.as('bob').post(`/change-sets/${r.json.changeSetId}/review`, { decision: 'approve' });
-    // an hour ago: due whatever the difference between this machine's clock and the database's
-    const scheduled = await t.as('alice').post(`/change-sets/${r.json.changeSetId}/schedule`, { at: new Date(Date.now() - 3_600_000).toISOString() });
+    // a time in the past is refused, so it's scheduled for later, then made due (an hour ago, by the database's clock)
+    const scheduled = await t.as('alice').post(`/change-sets/${r.json.changeSetId}/schedule`, { at: new Date(Date.now() + 3_600_000).toISOString() });
     assert.equal(scheduled.status, 200, JSON.stringify(scheduled.json));
+    await t.db.query(`update change_set set scheduled_at = now() - interval '1 hour' where id = $1`, [r.json.changeSetId]);
     await t.settle();
     assert.equal((await t.as('alice').get(`/change-sets/${r.json.changeSetId}`)).json.status, 'applied');
   });
@@ -128,10 +129,10 @@ describe('data plane', () => {
   });
 
   test('every service gets keys; an app’s key gets no rules, a backend’s gets its own flags only', async () => {
-    const app = await t.as('dana').post('/api-keys', { environment: 'dev', project: 'web', scope: 'entity', entity: 'acme' });
+    const app = await t.as('dana').post('/api-keys', { environment: 'dev', service: 'web', scope: 'entity', entity: 'acme' });
     assert.equal(app.status, 201);
     assert.equal((await t.call('GET', '/sdk/v1/flagd/company/acme', undefined, { authorization: `Bearer ${app.json.key}` })).status, 403);
-    const server = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+    const server = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key;
     const doc = await t.call('GET', '/sdk/v1/flagd/company/soylent', undefined, { authorization: `Bearer ${server}` });
     assert.equal(doc.status, 200);
     assert.ok(doc.json.flags.ds_backend_config);
@@ -149,7 +150,7 @@ describe('data plane', () => {
   });
 
   test('revoked keys stop working', async () => {
-    const k = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'soylent' })).json;
+    const k = (await t.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'entity', entity: 'soylent' })).json;
     const doc = await t.call('GET', '/sdk/v1/flagd', undefined, { authorization: `Bearer ${k.key}` });
     assert.equal(doc.json.metadata.flagSetId, 'dev/server-ds/soylent');                           // an entity’s key gets only its entity
     await t.as('dana').post(`/api-keys/${k.id}/revoke`);

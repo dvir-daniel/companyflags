@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { serve, type ServerType } from '@hono/node-server';
 import { boot } from './helpers.ts';
 import { main } from '../server/cli.ts';
+import { FLAGS_SCHEMA_URL } from '../server/flagsAsCode.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
 let server: ServerType;
@@ -96,7 +97,7 @@ test('the CLI over HTTP: pull, plan and push with --url and --token, or the envi
   assert.match(pulled.text, /^wrote \d+ flags to /);
   const file = JSON.parse(readFileSync(join(dir, 'flags.json'), 'utf8'));
   const env = { COMPANYFLAGS_URL: url, COMPANYFLAGS_TOKEN: agent };
-  assert.match((await run(['flags', 'plan'], dir, env)).text, /^= \d+ unchanged\nnothing to change\n$/);
+  assert.match((await run(['flags', 'plan'], dir, env)).text, /^= \d+ unchanged\n(… request #\d+ on .+\n)*nothing to change\n$/, 'open requests are listed');
 
   file.flags.cli_http_flag = { kind: 'ops', type: 'bool', services: { dev: ['web'], prod: ['web'] } };
   file.flags.payments_enabled.description = 'Pushed over HTTP';
@@ -172,4 +173,51 @@ test('flags unused with --url: the server’s flags', async () => {
   assert.match(r.text, /^\? unused: .+/m);
   assert.doesNotMatch(r.text.split('\n')[0], /\bnew_checkout\b/);
   assert.match(r.text, /^! unknown: not_a_flag \(app\.ts:1\)$/m);
+});
+
+test('the CLI over HTTP: --json and --exit-code; a push’s reason, and the pull request’s link from CI', async () => {
+  const dir = folder();
+  const agent = await token('alice', { name: 'agent for --json', agent: true });
+  const env = { COMPANYFLAGS_URL: url, COMPANYFLAGS_TOKEN: agent,
+    GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'acme/web', GITHUB_REF: 'refs/pull/7/merge', GITHUB_SHA: 'f00d' };
+  const file = { owns: ['services'], flags: { cli_json_flag: { kind: 'ops', type: 'bool', services: { dev: ['web'], prod: [] as string[] } } } };
+  writeFileSync(join(dir, 'flags.json'), JSON.stringify(file));
+  const planned = await run(['flags', 'plan', '--json', '--exit-code'], dir, env);
+  assert.equal(planned.code, 2, 'changes');
+  assert.deepEqual(JSON.parse(planned.text).steps.map((s: { do: string }) => s.do), ['create']);
+  const created = await run(['flags', 'push', '--json', '--exit-code'], dir, env);
+  assert.equal(created.code, 0, 'done, nothing waits');
+  assert.deepEqual(JSON.parse(created.text).done.map((d: { result: string }) => d.result), ['done']);
+  assert.equal((await run(['flags', 'plan', '--exit-code'], dir, env)).code, 0, 'no changes');
+
+  file.flags.cli_json_flag.services.prod = ['web'];
+  writeFileSync(join(dir, 'flags.json'), JSON.stringify(file));
+  const pushed = await run(['flags', 'push', '--reason', 'Web gets it in production', '--exit-code'], dir, env);
+  assert.equal(pushed.code, 2, `a change waits for approval: ${pushed.text}`);
+  const request = Number(/^→ request #(\d+): services of cli_json_flag in prod/m.exec(pushed.text)![1]);
+  const cs = await t.db.query<{ reason: string }>(`select reason from change_set where id = $1`, [request]);
+  assert.equal(cs.rows[0].reason, 'Web gets it in production: services of cli_json_flag in prod: none → web (https://github.com/acme/web/pull/7)');
+  const again = await run(['flags', 'push', '--exit-code'], dir, env);
+  assert.match(again.text, new RegExp(`^→ request #${request} \\(already open\\)`, 'm'));
+  assert.equal((await run(['flags', 'push', '--link', 'not a link'], dir, env)).code, 1);
+});
+
+test('the CLI over HTTP: pull keeps the file’s source, owns and scope; unused takes the server’s flags in that scope', async () => {
+  const dir = folder();
+  const viewer = await token('vera', { name: 'viewer for pull' });
+  const env = { COMPANYFLAGS_URL: url, COMPANYFLAGS_TOKEN: viewer };
+  writeFileSync(join(dir, 'flags.json'), JSON.stringify({ source: 'acme/web', owns: ['description'], scope: { prefix: 'payments_' }, flags: {} }));
+  assert.equal((await run(['flags', 'pull'], dir, env)).code, 0);
+  const pulled = JSON.parse(readFileSync(join(dir, 'flags.json'), 'utf8'));
+  assert.deepEqual([pulled.$schema, pulled.source, pulled.owns, pulled.scope], [FLAGS_SCHEMA_URL, 'acme/web', ['description'], { prefix: 'payments_' }]);
+  assert.deepEqual(Object.keys(pulled.flags), ['payments_enabled']);
+  assert.deepEqual(Object.keys(pulled.flags.payments_enabled).sort(), ['description', 'kind', 'type']);
+  writeFileSync(join(dir, 'app.ts'), 'nothing here');
+  assert.match((await run(['flags', 'unused', '--url', url, '--token', viewer], dir)).text, /^\? unused: payments_enabled\n$/);
+  // an empty secret is a mistake, never the database instead
+  for (const empty of [{ COMPANYFLAGS_URL: '' }, { COMPANYFLAGS_URL: url, COMPANYFLAGS_TOKEN: '' }]) {
+    const r = await run(['flags', 'plan'], dir, empty);
+    assert.equal(r.code, 1);
+    assert.match(r.text, /is empty: is the secret set for this job\?/);
+  }
 });

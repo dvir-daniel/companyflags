@@ -26,7 +26,7 @@ test('a flag with free values takes typed values only; a new one writes no histo
   await t.settle();
   const f = (await t.as('alice').get('/flags/api_host')).json;
   assert.deepEqual([f.freeValues, f.variations], [true, [{ key: k(US), value: US }]]);
-  assert.equal((await t.as('alice').get('/flags?page=0&q=api_host')).json.rows[0].freeValues, true);
+  assert.equal((await t.as('alice').get('/flags?environment=dev&page=0&q=api_host')).json.rows[0].freeValues, true);
 
   const named = await t.as('alice').put('/flags/api_host/variations', { variations: [{ key: 'eu', value: EU }] });
   assert.equal(named.status, 422);
@@ -40,8 +40,8 @@ test('a flag with free values takes typed values only; a new one writes no histo
     conditions: [{ field: 'entity', op: 'in', values: ['acme'] }], serveVariation: k(EU), split: null };
   assert.equal((await t.editBase('api_host', 'dev', (l) => ({ ...l, rules: [rule] }))).status, 200);
   assert.equal((await history('api_host')).length, was + 1, 'the rule that serves it is the change');
-  assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'api_host' })).value, EU);
-  assert.equal((await t.trace({ project: 'web', entity: 'globex', flag: 'api_host' })).value, US);
+  assert.equal((await t.trace({ service: 'web', entity: 'acme', flag: 'api_host' })).value, EU);
+  assert.equal((await t.trace({ service: 'web', entity: 'globex', flag: 'api_host' })).value, US);
   const file = (await t.cdnFile('dev', 'web', 'acme')).json;
   assert.equal(cdnAnswer(file, 'api_host').value, EU, 'the CDN file has the value, as for any flag');
 });

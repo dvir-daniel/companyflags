@@ -27,7 +27,7 @@ before(async () => {
 
 const meta = {
   environments: [{ key: 'dev', name: 'Development', minApprovals: 0, revision: 1 }, { key: 'prod', name: 'Production', minApprovals: 1, revision: 1 }],
-  projects: [], users: [], fields: [],
+  services: [], users: [], fields: [],
   dimensions: [{ key: 'company', singular: 'company', plural: 'companies', entities: 1, withParent: 0 }, { key: 'brand', singular: 'brand', plural: 'brands', entities: 1, withParent: 1 }],
   entities: [{ key: 'acme', name: 'Acme', dimension: 'company', createdAt: '' }, { key: 'velvet', name: 'Velvet', dimension: 'brand', parent: 'acme', createdAt: '' }],
 } as unknown as Meta;
@@ -51,12 +51,18 @@ test('a key from the address stays one segment of the request', () => {
   assert.deepEqual(paths.firstPaths('#/flag/..%2Fapi-keys', meta), ['/flags/..%2Fapi-keys']);
   assert.ok(paths.flagListPath({ env: 'a&b', q: 'x y&z', status: '', kind: '', owner: '', tag: '', sort: 'key', dir: 'asc' }, 0)
     .startsWith('/flags?environment=a%26b&page=0&size=50&q=x%20y%26z&'));
+  assert.ok(paths.flagListPath({ env: 'dev', q: '', status: '', kind: '', owner: '', tag: '', sort: 'key', dir: 'asc', stale: 'overdue' }, 2, 200)
+    .startsWith('/flags?environment=dev&page=2&size=200&'));
 });
 
 test('the first requests of each page, with what this browser remembers', () => {
   // the flags list opens in the last environment used, with its remembered filter
   assert.deepEqual(paths.firstPaths('#/flags', meta), [
-    '/flags?environment=prod&page=0&size=50&q=&status=on&kind=&owner=&tag=&sort=key&dir=asc',
+    '/flags?environment=prod&page=0&size=50&q=&status=on&kind=&owner=&tag=&sort=key&dir=asc&stale=',
+  ]);
+  // a view in the address is the whole view: what it leaves out is the default, not what this browser remembers
+  assert.deepEqual(paths.firstPaths('#/flags/dev?owner=payments-team&q=Checkout', meta), [
+    '/flags?environment=dev&page=0&size=50&q=Checkout&status=&kind=&owner=payments-team&tag=&sort=key&dir=asc&stale=',
   ]);
   // an environment in the address wins
   assert.match(paths.firstPaths('#/flags/dev', meta)[0], /^\/flags\?environment=dev&/);
@@ -95,4 +101,50 @@ test('an environment that no longer exists, remembered or in the address, falls 
 
 test('the History filters ask for one entity’s history', () => {
   assert.equal(paths.historyQuery({ entity: 'acme' }), 'entity=acme');
+});
+
+test('the flags list’s view lives in the address: read back, written with only what differs', () => {
+  const none = () => { throw new Error('a view in the address never reads what this browser remembers'); };
+  const v = paths.flagViewFrom('owner=payments-team&tag=checkout&q=new%20checkout&sort=changed&dir=desc&show=all&stale=overdue', none);
+  assert.deepEqual(v, { q: 'new checkout', status: '', kind: '', owner: 'payments-team', tag: 'checkout', stale: 'overdue', sort: 'changed', dir: 'desc', show: 'all' });
+  // back to the same address, in a fixed order
+  assert.equal(paths.flagViewQuery(v), 'q=new+checkout&owner=payments-team&tag=checkout&stale=overdue&sort=changed&dir=desc&show=all');
+  assert.equal(paths.flagsHref('prod', v), `#/flags/prod?${paths.flagViewQuery(v)}`);
+  assert.equal(paths.flagsHref('a/b', paths.FLAG_VIEW_DEFAULTS), '#/flags/a%2Fb');
+  assert.deepEqual(paths.flagViewFrom(paths.flagViewQuery(v), none), v);
+  // nonsense in the address falls back to what the list knows
+  const odd = paths.flagViewFrom('dir=sideways&show=some&stale=soon&kind=ops', none);
+  assert.equal(odd.dir, 'asc'); assert.equal(odd.show, ''); assert.equal(odd.stale, ''); assert.equal(odd.kind, 'ops');
+  // no query: what this browser remembers, but never the search
+  const remembered = paths.flagViewFrom('', (k, d) => (k === 'status' ? 'on' : k === 'q' ? 'remembered search' : d));
+  assert.equal(remembered.status, 'on');
+  assert.equal(remembered.q, '');
+  assert.equal(paths.hashQuery('#/flags/prod?owner=x'), 'owner=x');
+  assert.equal(paths.hashQuery('#/flags/prod'), '');
+  assert.equal(paths.flagPageSize(100), 100);
+  assert.equal(paths.flagPageSize(7), 50);
+});
+
+test('History keeps its view and filters in the address, so a link shows the same list', () => {
+  assert.equal(paths.historyHref('changes'), '#/history');
+  assert.equal(paths.historyHref('revisions', { env: 'prod' }), '#/history?view=revisions&env=prod');
+  assert.equal(paths.historyHref('changes', { q: 'new_checkout', entity: 'acme', when: '7', who: '' }), '#/history?flag=new_checkout&entity=acme&when=7');
+  const at = paths.readHistoryAddress('#/history?view=versions&env=prod');
+  assert.deepEqual([at.view, at.env, at.filtered], ['revisions', 'prod', true], 'versions is the old name of revisions');
+  assert.equal(paths.readHistoryAddress('#/history?view=revisions').view, 'revisions');
+  const plain = paths.readHistoryAddress('#/history');
+  assert.deepEqual([plain.view, plain.filtered], ['changes', false], 'no filters in the address: the remembered ones apply');
+  assert.equal(paths.readHistoryAddress('#/history?view=nonsense').view, 'changes');
+  // what each view asks for first
+  assert.deepEqual(paths.firstPaths('#/history?view=versions&env=prod', meta), ['/environments/prod/versions?page=0&size=50']);
+  assert.deepEqual(paths.firstPaths('#/history?view=requests', meta), ['/change-sets']);
+  assert.deepEqual(paths.firstPaths('#/history?entity=acme', meta), ['/history?entity=acme']);
+});
+
+test('addresses that moved open where they went', () => {
+  assert.equal(paths.movedAddress('#/flags/prod/versions'), '#/history?view=revisions&env=prod');
+  assert.equal(paths.movedAddress('#/settings/services'), '#/services');
+  assert.equal(paths.movedAddress('#/flags/prod'), null);
+  assert.equal(paths.movedAddress('#/flags/prod/conditions'), null);
+  assert.equal(paths.movedAddress('#/history?view=versions'), null);
 });

@@ -107,7 +107,7 @@ test('names saved in the console reach the app with each flag', async () => {
 /** Every flag's OFREP answer for acme's android app, as the app asks with its app token. */
 async function ofrep(device: string): Promise<Record<string, { value?: unknown; metadata?: { group?: string } }>> {
   const token = await appToken(t.db, 'dev', 'acme', 'android');
-  const r = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { 'device.id': device, 'app.version': '6.0.0' } }, { authorization: `Bearer ${token}` });
+  const r = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { device: { id: device }, app: { version: '6.0.0' } } }, { authorization: `Bearer ${token}` });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   return Object.fromEntries(r.json.flags.map((f: { key: string }) => [f.key, f]));
 }

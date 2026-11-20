@@ -6,12 +6,12 @@ import { useApp } from '../app.ts';
 import { roleInfo } from '../../../server/policy.ts';
 import { roleName } from './settingsKit.ts';
 import { lookName } from '../appearanceKit.ts';
-import { nextStep, setupSteps } from './setupKit.ts';
+import { nextStep, setupSteps, stepsLead } from './setupKit.ts';
 
 /*
  * The first-run checklist, built from /meta (setupKit.ts): each step shows a done mark or the way to do it. It is the
- * whole page until there is an environment (GetStarted), then it sits above the Flags list until apps can read flags
- * (a service and an entry exist).
+ * whole page until there is an environment (GetStarted), then it sits above the Flags list while a step isn't done.
+ * Dimensions are optional: they are never a step.
  */
 
 /** The steps, each with a done mark or its link. On the Flags list (`flags` known, `onNewFlag`) the flag step opens New flag.
@@ -62,7 +62,7 @@ export function GetStarted() {
     <div className="grid max-w-[760px] content-start gap-8 p-12 max-sm:p-6">
       <div className="grid gap-3">
         <h1 className="m-0 text-28 font-semibold text-ink">Welcome to {lookName()}</h1>
-        <p className="m-0 text-15 text-subtitle">Five steps, and your apps read their first flag.</p>
+        <p className="m-0 text-15 text-subtitle">{stepsLead(setupSteps(meta))}</p>
       </div>
       {admin ? (
         <section className="grid gap-3">
@@ -76,7 +76,7 @@ export function GetStarted() {
   );
 }
 
-/** Above the Flags list until apps can read flags: what's left to set up. Admins get the steps, others one sentence. */
+/** Above the Flags list while a step isn't done: what's left to set up. Admins get the steps, others one sentence. */
 export function FinishSetup({ flags, onNewFlag }: { flags?: number; onNewFlag?: () => void }) {
   const { meta } = useApp();
   const admin = roleInfo(meta.me.role).changesSettings;
@@ -85,8 +85,8 @@ export function FinishSetup({ flags, onNewFlag }: { flags?: number; onNewFlag?: 
       <div className="grid gap-1">
         <h2 id="finish-setup" className="m-0 text-sm font-semibold text-ink">Finish setting up</h2>
         <p className="m-0 text-13 text-ink-2">{admin
-          ? 'Apps can read flags once they have a service and an entry with an app link.'
-          : 'Apps can’t read flags yet: an admin still needs to add a service and a first entry in Settings.'}</p>
+          ? 'Apps read flags with a key for their service. Dimensions are optional: add them in Settings → Dimensions when some of your users need settings of their own.'
+          : meta.services.length ? 'An app hasn’t read flags yet: an admin makes its key on the API keys page.' : 'Apps can’t read flags yet: an admin still needs to add a service (Connect → Services).'}</p>
       </div>
       {admin && <SetupChecklist flags={flags} onNewFlag={onNewFlag} />}
     </section>
@@ -97,7 +97,7 @@ export function FinishSetup({ flags, onNewFlag }: { flags?: number; onNewFlag?: 
 export function NoServices({ what = 'this flag' }: { what?: string }) {
   return (
     <p className="m-0 py-1 text-13 text-ink-2">
-      No services yet: apps can’t read {what} until it’s in one. <a href="#/settings">Add one in Settings</a>.
+      No services yet: apps can’t read {what} until it’s in one. <a href="#/services">Add one</a>.
     </p>
   );
 }

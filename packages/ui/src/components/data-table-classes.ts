@@ -7,6 +7,6 @@ const tableHeadClass =
 
 /** A data row: 44px, edge to edge, 8% lines; selected rows and the keyboard's row are washed. */
 const tableRowClass =
-  "min-h-11 scroll-mt-[calc(var(--page-bar-h,3.5rem)+2.25rem)] scroll-mb-14 items-center gap-x-4 border-b border-grid px-6 py-2 text-13 text-ink transition-colors duration-150 hover:bg-wash aria-selected:bg-wash data-[active=true]:shadow-[inset_2px_0_0_var(--underline)] max-sm:px-4"
+  "min-h-11 scroll-mt-[calc(var(--page-bar-h,3.5rem)+2.25rem)] scroll-mb-14 items-center gap-x-4 border-b border-grid px-6 py-2 text-13 text-ink transition-colors duration-150 hover:bg-wash aria-selected:bg-wash data-[selected=true]:bg-wash data-[active=true]:shadow-[inset_2px_0_0_var(--underline)] max-sm:px-4"
 
 export { tableHeadClass, tableRowClass }

@@ -5,7 +5,7 @@ import { CODE_DEFAULT, type Condition, type Inherit, type Layer, type Op, type R
 import { HASH_VERSION } from './hash.ts';
 import { isVersionRelease } from './release.ts';
 import { fullVersion, parseSemver } from './semver.ts';
-import { CHOICES, fieldLabel, opLabel, OPS_BY_TYPE, type ConditionLike } from './words.ts';
+import { CHOICE_NAME, CHOICES, fieldLabel, opLabel, OPS_BY_TYPE, type ConditionLike } from './words.ts';
 
 export type RuleDoc = Partial<Omit<Rule, 'split' | 'conditions'>> & {
   conditions?: ConditionLike[];
@@ -174,7 +174,7 @@ export function checkLayer(flag: FlagFacts, fields: FieldFacts, isBase: boolean,
     const inherit = doc.inherit ?? 'base_rules_then_base_default';
     if (!CHOICES.includes(inherit)) errors.push(`unknown choice “${inherit}”`);
     if (inherit === 'base_rules_then_base_default') {
-      if (doc.defaultVariation) errors.push('“Rules only” has no default of its own — remove the default or change the choice');
+      if (doc.defaultVariation) errors.push(`“${CHOICE_NAME.base_rules_then_base_default}” has no default of its own — remove the default or change the choice`);
     } else needVar(doc.defaultVariation, 'Own default');
     layer = { version: 0, enabled: null, variationWhenOff: null, inherit, defaultVariation: inherit === 'base_rules_then_base_default' ? null : doc.defaultVariation ?? null, rules: [] };
   }

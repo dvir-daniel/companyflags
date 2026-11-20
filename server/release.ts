@@ -377,13 +377,15 @@ function versionChangeText(a: ReleaseState, av: Versions, b: ReleaseState, bv: V
   return from === to ? null : `${from} → ${to}`;
 }
 
-/** Whether a step of a version release is a rollback: every device goes back to a version it had before, which those who
- *  may break glass can do without review (policy.ts canBreakGlassRollback). Mid-way, everyone back on the version
- *  everyone else is on (the % kept); otherwise everyone on an older version this environment served while it was on
- *  (`served`: GET /flags/:key `versions[env].served`). layers.ts checks the saved layer the same way. */
+/** Whether a step of a release is a rollback: every device goes back to a value it had before, which those who may
+ *  break glass can do without review (policy.ts canBreakGlassRollback). Mid-way, paused: everyone back on the old value
+ *  (or the version everyone else is on), the % kept. A version release also: everyone on an older version this
+ *  environment served while it was on (`served`: GET /flags/:key `versions[env].served`). layers.ts checks the saved
+ *  layer the same way. */
 export function isRollback(s: ReleaseState, change: Change, served: readonly string[]): boolean {
-  if (!s.versions || !s.on || s.step === 'custom') return false;
+  if (!s.on || s.step === 'custom') return false;
   if (change.kind === 'pause') return (s.step === 'early' || s.step === 'percent') && !s.paused;
+  if (!s.versions) return false;
   return change.kind === 'everyone' && !!change.version && !!s.versions.current && served.includes(change.version)
     && compareVersions(change.version, s.versions.current) < 0;
 }

@@ -3,7 +3,8 @@
 // Out: after each change, this server sends each webhook what changed, read from the history (journal.ts):
 //   changes  what an environment serves: one message per save, with every entry of it, and `values`: what those flags
 //            are set to now (values.ts), so another system can be kept the same
-//   reviews  a request made, approved, rejected or scheduled
+//   reviews  a request made, approved, rejected, scheduled or unscheduled, withdrawn, or refused when it was applied
+//   security sign-ins (and failed ones), people and roles, access tokens, API keys, single sign-on, sign-in rules
 // as signed JSON (Standard Webhooks: webhook-id, webhook-timestamp, webhook-signature), a Slack message, or whatever a
 // JSONata expression makes of the JSON (transform.ts; nothing: that message isn't sent). Each webhook keeps its own
 // place in the history (`cursor`), so it gets every change once and in order; one that fails is tried again later
@@ -24,14 +25,21 @@ import * as journal from './journal.ts';
 import { KINDS } from './journal.ts';
 import type { Actor } from './layers.ts';
 import type { Snapshots } from './plugin.ts';
+import { SealError, type Sealer } from './sealed.ts';
 import { ExpressionLimitError, expressionProblem, runJsonata } from './transform.ts';
 import { applyImport, FORMATS_IN, toValues, valuesOf, type Imported, type ValuesDoc } from './values.ts';
 
-export const EVENTS = ['changes', 'reviews'] as const;
+export const EVENTS = ['changes', 'reviews', 'security'] as const;
 export type WebhookEvent = (typeof EVENTS)[number];
 export const OUT_FORMATS = ['json', 'slack', 'jsonata'] as const;
 export const METHODS = ['POST', 'PUT', 'PATCH'] as const;
-const REVIEW_KINDS = new Set(['change_set.create', 'change_set.approve', 'change_set.reject', 'change_set.schedule']);
+const REVIEW_KINDS = new Set(['change_set.create', 'change_set.approve', 'change_set.reject', 'change_set.schedule', 'change_set.unschedule',
+  'change_set.withdraw', 'change_set.apply_failed']);
+/** Security events, for a SIEM: sign-ins and the ones that didn't go through, people and their roles, access tokens,
+ *  API keys, single sign-on and the sign-in rules. Every environment's: the environments a webhook names don't
+ *  narrow them. */
+export const SECURITY_KINDS = new Set(['sign_in', 'sign_in.failed', 'sign_in.rules', 'person.add', 'person.role', 'person.invite',
+  'person.password_reset', 'person.remove', 'token.create', 'token.revoke', 'api_key.create', 'api_key.revoke', 'sso.add', 'sso.update', 'sso.remove']);
 export const TIMEOUT_MS = 10_000;
 /** Seconds before each next try of a message that failed; after the last, it's passed over. */
 export const RETRY_AFTER_S = [5, 30, 120, 600, 1800, 3600, 7200];
@@ -54,10 +62,11 @@ export type HistoryRow = {
 export type Filter = { events: readonly string[]; environments: readonly string[] | null };
 
 export const eventOf = (r: Pick<HistoryRow, 'kind' | 'revision'>): WebhookEvent | null =>
-  r.revision !== null ? 'changes' : REVIEW_KINDS.has(r.kind) ? 'reviews' : null;
+  r.revision !== null ? 'changes' : REVIEW_KINDS.has(r.kind) ? 'reviews' : SECURITY_KINDS.has(r.kind) ? 'security' : null;
 export const wants = (h: Filter, r: HistoryRow) => {
   const e = eventOf(r);
-  return !!e && h.events.includes(e) && (!h.environments || (r.environment !== null && h.environments.includes(r.environment)));
+  return !!e && h.events.includes(e)
+    && (e === 'security' || !h.environments || (r.environment !== null && h.environments.includes(r.environment)));
 };
 // One save's rows share its time (Postgres now() is the transaction's start) and who made it.
 const saveOf = (r: HistoryRow) => `${r.at}|${r.changedBy}`;
@@ -108,6 +117,9 @@ export function sentence(r: HistoryRow, n: Names): string {
       const at = (r.after as { scheduledAt?: string } | null)?.scheduledAt;
       return `Scheduled request${req}${at ? ` for ${at}` : ''}`;
     }
+    case 'change_set.unschedule': return `Unscheduled request${req}: it won’t go out on its own`;
+    case 'change_set.withdraw': return `Withdrew request${req}`;
+    case 'change_set.apply_failed': return `Request${req} couldn’t go out${r.comment ? `: ${r.comment}` : ''}`;
     default: return `${r.kind}${r.flag ? ` ${r.flag}` : ''}`;
   }
 }
@@ -129,7 +141,7 @@ export type Message = {
 
 export function buildMessage(rows: readonly HistoryRow[], n: Names, o: { baseURL?: string | null; values?: Record<string, ValuesDoc> } = {}): Message {
   const first = rows[0];
-  const type: WebhookEvent = rows.some((r) => eventOf(r) === 'changes') ? 'changes' : 'reviews';
+  const type: WebhookEvent = rows.some((r) => eventOf(r) === 'changes') ? 'changes' : eventOf(first) === 'security' ? 'security' : 'reviews';
   const request = type === 'reviews' ? first.changeSetId : null;
   const base = o.baseURL?.replace(/\/+$/, '');
   return {
@@ -193,6 +205,8 @@ export type WebhookOptions = {
   log?: (m: string) => void;
   gapWaitMs?: number;
   everyMs?: number;
+  /** seals the signing secrets and header values it stores (sealed.ts); without it (a test) they're kept as they are */
+  secrets?: Sealer;
 };
 
 const OUT_COLUMNS = `id::text as id, name, url, method, headers, format, expression, events, environments, secret, enabled, cursor::text as cursor,
@@ -210,6 +224,9 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {}) {
   const log = o.log ?? (() => {});
   const gapWaitMs = o.gapWaitMs ?? GAP_WAIT_MS;
+  // a webhook's signing secret and its headers' values are stored sealed (sealed.ts); the header names stay readable
+  const box: Sealer = o.secrets ?? { seal: (v) => v, open: (v) => v };
+  const sealHeaders = (h: Record<string, string>) => Object.fromEntries(Object.entries(h).map(([k, v]) => [k, box.seal(v)]));
 
   // ------------------------------------------------------------ sending
 
@@ -252,14 +269,23 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
 
   async function send(h: Pick<OutRow, 'url' | 'method' | 'headers' | 'secret'>, id: string, out: { body: string; type: string }): Promise<Sent> {
     if (!o.fetch) return { ok: false, status: null, error: 'This server doesn’t send webhooks (no network access set up).' };
+    let secret: string;
+    let headers: Record<string, string>;
+    try {
+      secret = box.open(h.secret);
+      headers = Object.fromEntries(Object.entries(isObject(h.headers) ? h.headers : {}).map(([k, v]) => [k, box.open(String(v))]));
+    } catch (e) {
+      if (!(e instanceof SealError)) throw e;
+      return { ok: false, status: null, error: 'Its secret and headers were saved with another BETTER_AUTH_SECRET: make a new signing secret and set its headers again.' };
+    }
     const timestamp = Math.floor(Date.now() / 1000);
     try {
       const res = await o.fetch(h.url, {
         method: h.method,
         headers: {
-          ...(isObject(h.headers) ? h.headers : {}),
+          ...headers,
           'content-type': out.type, 'user-agent': 'CompanyFlags-Webhooks',
-          'webhook-id': id, 'webhook-timestamp': String(timestamp), 'webhook-signature': sign(h.secret, id, timestamp, out.body),
+          'webhook-id': id, 'webhook-timestamp': String(timestamp), 'webhook-signature': sign(secret, id, timestamp, out.body),
         },
         body: out.body,
         redirect: 'manual',
@@ -428,7 +454,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
     if (i.expression !== undefined) out.expression = typeof i.expression === 'string' && i.expression.trim() ? i.expression : null;
     if (creating || i.events !== undefined) {
       const events = i.events ?? ['changes'];
-      if (!Array.isArray(events) || !events.length || events.some((e) => !EVENTS.includes(e))) throw new HttpError(422, 'Pick what it sends: changes, reviews or both.');
+      if (!Array.isArray(events) || !events.length || events.some((e) => !EVENTS.includes(e))) throw new HttpError(422, 'Pick what it sends: changes, reviews, security events, or more than one.');
       out.events = [...new Set(events as string[])];
     }
     if (i.environments !== undefined) {
@@ -525,7 +551,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
       const id = await db.transaction(async (tx) => {
         const row = await one<{ id: string }>(tx, `insert into webhook (name, url, method, headers, format, expression, events, environments, secret, cursor, created_by)
           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, (select coalesce(max(id), 0) from change_history), $10) returning id::text as id`,
-          [v.name, v.url, v.method ?? 'POST', JSON.stringify(v.headers ?? {}), v.format, v.expression ?? null, v.events, v.environments ?? null, secret, actor.name]);
+          [v.name, v.url, v.method ?? 'POST', JSON.stringify(sealHeaders(v.headers ?? {})), v.format, v.expression ?? null, v.events, v.environments ?? null, box.seal(secret), actor.name]);
         const view = viewOf((await one<Parameters<typeof viewOf>[0]>(tx, `select ${VIEW_COLUMNS} from webhook where id = $1`, [row!.id]))!);
         await journal.audit(tx, actor, { kind: 'webhook.create', after: summary(view) });
         return row!.id;
@@ -548,7 +574,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
             cursor = case when $12::boolean and not enabled then (select coalesce(max(id), 0) from change_history) else cursor end,
             attempts = 0, next_attempt_at = null, gap_since = null
           where id = $1`,
-          [id, v.name ?? null, v.url ?? null, v.method ?? null, v.headers ? JSON.stringify(v.headers) : null, format,
+          [id, v.name ?? null, v.url ?? null, v.method ?? null, v.headers ? JSON.stringify(sealHeaders(v.headers)) : null, format,
             v.expression !== undefined, v.expression ?? null, v.events ?? null, v.environments !== undefined, v.environments ?? null, v.enabled ?? null]);
         const after = viewOf((await one<Parameters<typeof viewOf>[0]>(tx, `select ${VIEW_COLUMNS} from webhook where id = $1`, [id]))!);
         await journal.audit(tx, actor, { kind: 'webhook.update', before: summary(before), after: summary(after) });
@@ -569,7 +595,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
       const before = await viewOut(id);
       const secret = newSecret();
       await db.transaction(async (tx) => {
-        await tx.query(`update webhook set secret = $2 where id = $1`, [id, secret]);
+        await tx.query(`update webhook set secret = $2 where id = $1`, [id, box.seal(secret)]);
         await journal.audit(tx, actor, { kind: 'webhook.secret', after: { name: before.name } });
       });
       return { secret };

@@ -7,11 +7,14 @@
 import { Hono } from 'hono';
 import { stream, streamSSE } from 'hono/streaming';
 import { all, HttpError, one, type Db } from './db.ts';
+import { checkBody, environmentOf, jsonBody } from './http.ts';
+import { VERSION } from './packageFolder.ts';
+import { v1Routes } from './apiV1.ts';
 import type { Identity } from './identity.ts';
 import { may, mustBeAllowed, type Access, type Person } from './access.ts';
 import { serviceProvider, type SingleSignOn } from './sso.ts';
 import type { PluginParts } from './plugin.ts';
-import type { Tokens, TokenPerson } from './tokens.ts';
+import { ALERTS_ONLY_ROUTE, type Tokens, type TokenPerson } from './tokens.ts';
 import type { AppearanceStore } from './appearanceStore.ts';
 import { applyImport, fromValues, planImport, toValues } from './values.ts';
 import { appToken, cdnFilePath } from './delivery.ts';
@@ -25,7 +28,7 @@ import { mayApprove, roleInfo, type ChangeSetFacts } from './policy.ts';
 import type { EventHub } from './events.ts';
 import { fieldInfo, type FieldInfo } from './fields.ts';
 import {
-  applyChangeSet, cancelChangeSet, createChangeSet, killFromAlert, restoreItems, reviewChangeSet, scheduleChangeSet, submitChange, summarizeLayers, versionsServed,
+  applyChangeSet, createChangeSet, serveSafeValue, unscheduleChangeSet, withdrawChangeSet, killFromAlert, restoreItems, reviewChangeSet, scheduleChangeSet, submitChange, summarizeLayers, versionsServed,
   type Actor, type Item, type LayerDoc,
 } from './layers.ts';
 import { entityKeyProblem, isVersionFlag } from './checks.ts';
@@ -33,11 +36,11 @@ import { overdue, readyToCleanUp, releaseState, stepText, type ReleaseState } fr
 import { DEFAULT_PAGE_SIZE, likePattern, listQuery, pageOf, searchHit } from './listing.ts';
 import { entityWords, sourceText } from './words.ts';
 import {
-  addVersion, archiveFlag, updateFlagMeta, createApiKey, createEnvironment, createFlag, createProject, deleteProject, dimensionRows, revokeApiKey, rotateAppLink, rotateEnvironmentLinks,
+  addVersion, archiveFlag, setSafeVariant, unarchiveFlag, updateFlagMeta, createApiKey, createEnvironment, createFlag, createProject, deleteProject, dimensionRows, revokeApiKey, rotateAppLink, rotateEnvironmentLinks,
   saveDimensions, setDelivery, updateEnvironment, updateProject, upsertEntity, upsertVariations, type NewFlag,
 } from './control.ts';
 import { loadLayers, type DataPlane } from './snapshot.ts';
-import { planFlags, pullFlags, pushFlags, type Done } from './flagsAsCode.ts';
+import { managedFlag, noteProblem, planFlags, pullFlags, pushFlags, type Done } from './flagsAsCode.ts';
 
 // `db` is the app's journaled database (journal.ts): what a change does after it commits (waking the publisher,
 // forgetting cached links and keys, building a new environment's snapshot) happens there, not in the routes.
@@ -80,11 +83,12 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
       if (c.req.header('origin')) throw new HttpError(403, 'an access token can’t be used from a browser');
       const t = await tokens.resolve(bearer);
       if (!t) throw new HttpError(401, 'unknown, expired or revoked access token');
+      // an alerts token (tokens.ts) turns kill switches off from an alert tool, and nothing else
+      if (t.token.alertsOnly && `${c.req.method} ${c.req.path}` !== ALERTS_ONLY_ROUTE) {
+        throw new HttpError(403, 'this token is for alerts only: it turns kill switches off at POST /api/alerts/kill');
+      }
       if (!READS.has(c.req.method)) {
-        const body = await c.req.text();
-        if (body) {
-          try { JSON.parse(body); } catch { throw new HttpError(400, 'the request body isn’t valid JSON'); }
-        }
+        await checkBody(c);
         if (!LOOK_ONLY.has(`${c.req.method} ${c.req.path}`)) mustBeAllowed(t, 'changes');
       }
       c.set('user', t);
@@ -97,12 +101,13 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
       if (c.req.header(CSRF_HEADER) !== CSRF_VALUE || c.req.header('sec-fetch-site') === 'cross-site') {
         throw new HttpError(403, `changes must come from the console (the ${CSRF_HEADER}: ${CSRF_VALUE} header, same site)`);
       }
-      const body = await c.req.text();
-      if (body) {
-        try { JSON.parse(body); } catch { throw new HttpError(400, 'the request body isn’t valid JSON'); }
-      }
+      await checkBody(c);
     }
     const u = await access.signedIn(who);
+    // an admin the sign-in rules ask to set up two-factor sign-in does that first (with Better Auth, at /api/auth)
+    if (u.needsTwoFactor && c.req.path !== '/api/meta' && c.req.path !== '/api/account') {
+      throw new HttpError(403, 'set up two-factor sign-in first: your organization asks it of admins who sign in with a password');
+    }
     // a viewer may make and revoke their own tokens (a token is never above its person's role)
     const ownTokens = c.req.path === '/api/tokens' || c.req.path.startsWith('/api/tokens/');
     if (!READS.has(c.req.method) && !LOOK_ONLY.has(`${c.req.method} ${c.req.path}`) && !ownTokens) mustBeAllowed(u, 'changes');
@@ -122,8 +127,13 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   /** Tokens are made and revoked in the console only: never with a token. */
   const notWithToken = (u: User) => { if ((u as Partial<TokenPerson>).token) throw new HttpError(403, 'access tokens are made and revoked in the console, signed in'); };
   const adminOnly = (u: User) => mustBeAllowed(u, 'changesSettings');
-  // when a request doesn't say which environment: the first one
-  const firstEnv = async () => (await one<{ key: string }>(db, `select key from environment order by id limit 1`))?.key ?? '';
+  /** What only a person does, signed in to the console, never with a token: people and invites, password resets,
+   *  single sign-on, the sign-in rules, the appearance, and lowering an environment's approvals. A leaked token can't
+   *  hand out access or take a safeguard away. */
+  const peopleOnly = (u: User) => {
+    if ((u as Partial<TokenPerson>).token) throw new HttpError(403, 'an access token can’t do this: sign in to the console');
+    adminOnly(u);
+  };
 
   // ------------------------------------------------------------ lists
   // Every list is paged and searched the same way (listing.ts). Without ?page the full list comes back.
@@ -148,7 +158,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
 
   // ------------------------------------------------------------ meta
   app.get('/meta', async (c) => {
-    const [environments, projects, dimensions, entities, users, fieldRows, pending, look] = await Promise.all([
+    const [environments, services, dimensions, entities, users, fieldRows, pending, look, keyUse] = await Promise.all([
       all(db, `select key, name, min_approvals as "minApprovals", revision from environment order by id`),
       all(db, `select key, kind from project order by id`),
       dimensionsNow(),
@@ -165,27 +175,33 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
           'decision', r.decision, 'current', r.for_content_hash = cs.content_hash)) from change_set_review r where r.change_set_id = cs.id), '[]') as reviews
         from change_set cs where cs.status = 'in_review'`),
       appearance.state(),
+      // when an app or backend last read flags with any key still in use: the checklist's "Connect an app" is done then
+      one<{ at: string | null }>(db, `select max(last_used_at) as at from api_key where revoked_at is null`),
     ]);
     const dataPlane = Object.fromEntries([...plane.snapshots].map(([k, s]) => [k, { revision: s.revision, builtAt: s.builtAt }]));
     const { removed: _, ...me } = c.get('user');
     const pendingApprovals = pending.filter((cs) => mayApprove(me, cs)).length;
     const fields = fieldRows.map((r) => fieldInfo(r, dimensions));
-    return c.json({ me, signIn: identity.kind, environments, projects, dimensions, entities, users, fields, dataPlane, pendingApprovals, plugins: plugins.map((p) => p.id), banner: look.banner });
+    return c.json({ version: VERSION, me, signIn: identity.kind, environments, services, dimensions, entities, users, fields, dataPlane, pendingApprovals, plugins: plugins.map((p) => p.id), banner: look.banner,
+      keyLastUsedAt: keyUse?.at ?? null });
   });
 
   // ------------------------------------------------------------ flags
   app.get('/flags', async (c) => {
     // one page for one environment (page 0 when no page is given): only these rows' delivery and status are loaded.
-    // Filters: ?status=on|off (in this environment), ?kind=, ?owner=. Sort: ?sort=key|status|owner|kind|changed&dir=asc|desc.
+    // Filters: ?status=on|off (in this environment), ?kind=, ?owner=, ?tag=, ?stale=overdue (past its remove-by date).
+    // Sort: ?sort=key|status|owner|kind|changed|removeBy&dir=asc|desc.
     const pg = query(c) ?? { page: 0, size: DEFAULT_PAGE_SIZE, q: '' };
-    const envKey = c.req.query('environment') ?? await firstEnv();
+    const envKey = environmentOf(c);
     const status = c.req.query('status') ?? '';
     const kind = c.req.query('kind') ?? '';
     const owner = c.req.query('owner') ?? '';
     const tag = c.req.query('tag') ?? '';
+    const stale = c.req.query('stale') === 'overdue' ? 'overdue' : '';
+    const today = new Date().toISOString().slice(0, 10);       // as the Releases list's Overdue (release.ts overdue)
     const dir = c.req.query('dir') === 'desc' ? 'desc' : 'asc';
     const SORT: Record<string, string> = {
-      key: 'f.key', status: 'coalesce(bl.enabled, false)', owner: `coalesce(f.owner, '')`, kind: 'f.kind', changed: 'changed.at',
+      key: 'f.key', status: 'coalesce(bl.enabled, false)', owner: `coalesce(f.owner, '')`, kind: 'f.kind', changed: 'changed.at', removeBy: 'f.remove_by',
     };
     const order = `${SORT[c.req.query('sort') ?? 'key'] ?? SORT.key} ${dir} nulls last, f.key`;
     // the counts need only the flag and its base layer here; the page also needs when it last changed (the lateral)
@@ -201,15 +217,16 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
       and ($4 = '' or coalesce(bl.enabled, false) = ($4 = 'on'))
       and ($5 = '' or f.kind = $5)
       and ($6 = '' or f.owner = $6)
-      and ($7 = '' or $7 = any(f.tags))`;
-    const args = [envKey, pg.q, likePattern(pg.q), status, kind, owner, tag];
+      and ($7 = '' or $7 = any(f.tags))
+      and ($8 = '' or (f.remove_by is not null and f.remove_by < $9::date))`;
+    const args = [envKey, pg.q, likePattern(pg.q), status, kind, owner, tag, stale, today];
     const [counts, rows, owners, tags] = await Promise.all([
       one<{ matched: string; all: string }>(db, `select count(*) filter (where ${filters}) as matched,
         count(*) filter (where f.archived_at is null) as all ${fromFlags}`, args),
       all<any>(db, `select f.id, f.key, f.name, f.tags, f.value_type as "valueType", f.kind, f.free_values as "freeValues", f.description, f.owner,
         f.remove_by::text as "removeBy", f.archived_at as "archivedAt", f.created_at as "createdAt",
         changed.at as "changedAt", changed.by as "changedBy"
-        ${from} where ${filters} order by ${order} limit $8 offset $9`, [...args, pg.size, pg.page * pg.size]),
+        ${from} where ${filters} order by ${order} limit $10 offset $11`, [...args, pg.size, pg.page * pg.size]),
       all<{ owner: string }>(db, `select distinct owner from flag where archived_at is null and owner is not null order by owner`),
       all<{ tag: string }>(db, `select distinct unnest(tags) as tag from flag where archived_at is null order by 1`),
     ]);
@@ -245,13 +262,14 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   });
 
   app.post('/flags', async (c) => {
-    const body = await c.req.json<NewFlag>();
+    const body = await jsonBody<NewFlag>(c);
     return c.json(await createFlag(db, body, actor(c.get('user'))), 201);
   });
 
   app.get('/flags/:key', async (c) => {
     const f = await one<any>(db, `select id, key, name, tags, value_type as "valueType", kind, free_values as "freeValues", json_schema as "jsonSchema", description, owner,
-      remove_by::text as "removeBy", archived_at as "archivedAt", created_at as "createdAt" from flag where key = $1`, [c.req.param('key')]);
+      remove_by::text as "removeBy", archived_at as "archivedAt", created_at as "createdAt",
+      (select v.key from flag_variation v where v.id = flag.safe_variation_id) as "safeVariant" from flag where key = $1`, [c.req.param('key')]);
     if (!f) throw new HttpError(404, 'flag not found');
     // every environment at once: one query each for the variants, the environments, the deliveries and the layers
     const [variations, envs, sent, allLayers] = await Promise.all([
@@ -303,30 +321,50 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
 
   // Where the environment needs approvals: 202 { applied: false, changeSetId } (a request); else 200 { applied: true, revision }.
   app.put('/flags/:key/delivery', async (c) => {
-    const { environment, projects, before, reason } = await c.req.json<{ environment: string; projects: string[]; before?: string[]; reason?: string }>();
-    const r = await setDelivery(db, c.req.param('key'), environment, projects, actor(c.get('user')), { before, reason });
+    const { environment, services, before, reason } = await jsonBody<{ environment: string; services: string[]; before?: string[]; reason?: string }>(c);
+    const r = await setDelivery(db, c.req.param('key'), environment, services, actor(c.get('user')), { before, reason });
     return c.json(r, r.applied ? 200 : 202);
   });
 
   app.put('/flags/:key/variations', async (c) => {
-    const { variations } = await c.req.json<{ variations: { key: string; value: unknown }[] }>();
+    const { variations } = await jsonBody<{ variations: { key: string; value: unknown }[] }>(c);
     await upsertVariations(db, c.req.param('key'), variations, actor(c.get('user')));
     return c.json({ ok: true });
   });
 
   // A version release's next version (control.ts addVersion): added everywhere, served by nobody until a step serves it.
   app.post('/flags/:key/versions', async (c) => {
-    const { version } = await c.req.json<{ version?: unknown }>();
+    const { version } = await jsonBody<{ version?: unknown }>(c);
     return c.json(await addVersion(db, c.req.param('key'), version, actor(c.get('user'))), 201);
   });
 
   app.put('/flags/:key/meta', async (c) => {
-    return c.json(await updateFlagMeta(db, c.req.param('key'), await c.req.json(), actor(c.get('user'))));
+    return c.json(await updateFlagMeta(db, c.req.param('key'), await jsonBody(c), actor(c.get('user'))));
   });
 
   app.post('/flags/:key/archive', async (c) => {
     await archiveFlag(db, c.req.param('key'), actor(c.get('user')));
     return c.json({ ok: true });
+  });
+
+  // the same flag back from the archive (control.ts unarchiveFlag)
+  app.post('/flags/:key/unarchive', async (c) => {
+    await unarchiveFlag(db, c.req.param('key'), actor(c.get('user')));
+    return c.json({ ok: true });
+  });
+
+  // a kill switch's or ops flag's safe value: { variant } (null: none). Admins only while an environment needs approval.
+  app.put('/flags/:key/safe-variant', async (c) => {
+    const { variant } = await jsonBody<{ variant?: string | null }>(c);
+    return c.json(await setSafeVariant(db, c.req.param('key'), variant ?? null, c.get('user'), actor(c.get('user'))));
+  });
+
+  // serve the safe value to everyone in one environment (layers.ts serveSafeValue): at once, by break-glass where the
+  // environment needs approval, or as a request (`request: true`)
+  app.post('/flags/:key/layers/:env/safe-value', async (c) => {
+    const body = await jsonBody<{ reason?: string; request?: boolean }>(c);
+    const r = await serveSafeValue(db, c.req.param('env'), c.req.param('key'), c.get('user'), { reason: body.reason, request: !!body.request });
+    return c.json(r, r.applied ? 200 : 202);
   });
 
   // Who a change to the rules for everyone would not reach (the warning before saving them): every entity whose chain
@@ -414,17 +452,17 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   }
 
   app.put('/flags/:key/layers/:env/:entity', async (c) => {
-    const body = await c.req.json<SaveBody>();
+    const body = await jsonBody<SaveBody>(c);
     if (!body.layer) throw new HttpError(422, 'nothing to save');
     return saveLayer(c, body, body.layer);
   });
 
-  app.delete('/flags/:key/layers/:env/:entity', async (c) => saveLayer(c, await c.req.json<SaveBody>().catch(() => ({})), null));
+  app.delete('/flags/:key/layers/:env/:entity', async (c) => saveLayer(c, await jsonBody<SaveBody>(c, true), null));
 
   // Publish several layer changes of one flag together: applied atomically (one revision) where no
   // approval is needed, otherwise one change request covering all of them.
   app.post('/flags/:key/publish/:env', async (c) => {
-    const body = await c.req.json<{ items: { entity: string | null; expectedVersion: number | null; layer: LayerDoc | null; allowReshuffle?: boolean }[]; reason?: string }>();
+    const body = await jsonBody<{ items: { entity: string | null; expectedVersion: number | null; layer: LayerDoc | null; allowReshuffle?: boolean }[]; reason?: string }>(c);
     const items: Item[] = (body.items ?? []).map((i) => ({ flag: c.req.param('key'), entity: i.entity, expectedLayerVersion: i.expectedVersion, proposed: i.layer, allowReshuffle: !!i.allowReshuffle }));
     return submitted(c, await submitChange(db, c.req.param('env'), items, c.get('user'), { reason: body.reason }));
   });
@@ -433,7 +471,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   // Publish a draft that spans flags: every change in one version where no review is needed, otherwise
   // one change request covering all of them.
   app.post('/environments/:env/publish', async (c) => {
-    const body = await c.req.json<{ items: { flag: string; entity: string | null; expectedVersion: number | null; layer: LayerDoc | null; allowReshuffle?: boolean }[]; reason?: string }>();
+    const body = await jsonBody<{ items: { flag: string; entity: string | null; expectedVersion: number | null; layer: LayerDoc | null; allowReshuffle?: boolean }[]; reason?: string }>(c);
     const items: Item[] = (body.items ?? []).map((i) => ({ flag: i.flag, entity: i.entity, expectedLayerVersion: i.expectedVersion, proposed: i.layer, allowReshuffle: !!i.allowReshuffle }));
     return submitted(c, await submitChange(db, c.req.param('env'), items, c.get('user'), { reason: body.reason }));
   });
@@ -482,14 +520,14 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   app.post('/environments/:env/versions/:revision{[0-9]+}/restore', async (c) => {
     const envKey = c.req.param('env');
     const to = Number(c.req.param('revision'));
-    const body = await c.req.json<{ reason?: string }>().catch(() => ({} as { reason?: string }));
+    const body = await jsonBody<{ reason?: string }>(c, true);
     const { items, notRolledBack } = await restoreItems(db, envKey, to);
     if (!items.length) {
       throw new HttpError(422, notRolledBack.length
         ? `Nothing to roll back: restore undoes flag settings only, and they’re all as they were in version ${to}. Not rolled back: ${notRolledBack.map((n) => n.text).join('; ')}`
         : `Nothing to roll back: every setting is already as it was in version ${to}`, { notRolledBack });
     }
-    const reason = `Roll back to version ${to}${body.reason?.trim() ? `: ${body.reason.trim()}` : ''}`;
+    const reason = `Roll back to revision ${to}${body.reason?.trim() ? `: ${body.reason.trim()}` : ''}`;
     const r = await submitChange(db, envKey, items, c.get('user'), { reason });
     return c.json({ ...r, restored: items.length, notRolledBack }, r.applied ? 200 : 202);
   });
@@ -536,20 +574,31 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     if (!cs) throw new HttpError(404, 'change set not found');
     // a layer item's before / proposed are layers; a delivery item's are { projects: [app keys] }
     cs.items = await all(db, `select i.seq, i.kind, f.key as flag, cu.key as entity, i.expected_layer_version as "expectedLayerVersion",
-      i.expected_base_version as "expectedBaseVersion", i.before, case when i.kind = 'delivery' then i.proposed else i.proposed->'doc' end as proposed
+      i.expected_base_version as "expectedBaseVersion", i.before, case when i.kind = 'delivery' then i.proposed else i.proposed->'doc' end as proposed,
+      coalesce((i.proposed->>'allowReshuffle')::bool, false) as "allowReshuffle"
       from change_set_item i join flag f on f.id = i.flag_id left join entity cu on cu.id = i.entity_id where i.change_set_id = $1 order by i.seq`, [id]);
+    // a delivery item's services, kept as { projects } (the database's word): the API says services
+    for (const it of cs.items as { kind: string; before: unknown; proposed: unknown }[]) {
+      if (it.kind !== 'delivery') continue;
+      const words = (v: unknown) => (v && typeof v === 'object' && 'projects' in v ? { services: (v as { projects: string[] }).projects } : v);
+      it.before = words(it.before);
+      it.proposed = words(it.proposed);
+    }
     cs.reviews = await all(db, `select reviewer, decision, comment, for_content_hash = $2 as current, created_at as "createdAt"
       from change_set_review where change_set_id = $1 order by created_at`, [id, cs.contentHash]);
     return c.json(cs);
   });
 
   app.post('/change-sets', async (c) => {
-    const body = await c.req.json<{ environment: string; reason?: string; items: Item[] }>();
-    return c.json(await createChangeSet(db, body.environment, body.items, actor(c.get('user')), body.reason ?? null), 201);
+    type Sent = Omit<Item, 'delivery'> & { delivery?: { before: string[]; services: string[] } };
+    const body = await jsonBody<{ environment: string; reason?: string; items: Sent[] }>(c);
+    if (!Array.isArray(body.items)) throw new HttpError(422, 'items: the changes to review');
+    const items: Item[] = body.items.map(({ delivery, ...i }) => ({ ...i, ...(delivery ? { delivery: { before: delivery.before, projects: delivery.services } } : {}) }));
+    return c.json(await createChangeSet(db, body.environment, items, actor(c.get('user')), body.reason ?? null), 201);
   });
 
   app.post('/change-sets/:id{[0-9]+}/review', async (c) => {
-    const { decision, comment } = await c.req.json<{ decision: 'approve' | 'reject'; comment?: string }>();
+    const { decision, comment } = await jsonBody<{ decision: 'approve' | 'reject'; comment?: string }>(c);
     return c.json(await reviewChangeSet(db, Number(c.req.param('id')), c.get('user'), decision, comment ?? null));
   });
 
@@ -558,13 +607,22 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   });
 
   app.post('/change-sets/:id{[0-9]+}/schedule', async (c) => {
-    const { at } = await c.req.json<{ at: string }>();
+    const { at } = await jsonBody<{ at: string }>(c);
     await scheduleChangeSet(db, Number(c.req.param('id')), at, c.get('user'));
     return c.json({ ok: true });
   });
 
+  // withdraw: its author (a reviewer rejects it instead); { reason } optional
   app.post('/change-sets/:id{[0-9]+}/cancel', async (c) => {
-    await cancelChangeSet(db, Number(c.req.param('id')), c.get('user').key);
+    const { reason } = await jsonBody<{ reason?: string }>(c, true);
+    await withdrawChangeSet(db, Number(c.req.param('id')), c.get('user'), reason ?? null);
+    return c.json({ ok: true });
+  });
+
+  // stop a scheduled request: back to approved. Its author or a reviewer, with { reason }.
+  app.post('/change-sets/:id{[0-9]+}/unschedule', async (c) => {
+    const { reason } = await jsonBody<{ reason?: string }>(c);
+    await unscheduleChangeSet(db, Number(c.req.param('id')), c.get('user'), reason ?? null);
     return c.json({ ok: true });
   });
 
@@ -603,7 +661,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   app.get('/dimensions', async (c) => c.json(await dimensionsNow()));
   app.put('/dimensions', async (c) => {
     adminOnly(c.get('user'));
-    const { dimensions } = await c.req.json<{ dimensions?: unknown }>();
+    const { dimensions } = await jsonBody<{ dimensions?: unknown }>(c);
     await saveDimensions(db, dimensions, actor(c.get('user')));
     return c.json(await dimensionsNow());
   });
@@ -653,7 +711,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   });
 
   app.post('/dimensions/:dimension', async (c) => {
-    const body = await c.req.json<{ key: string; name: string; parent?: string | null }>();
+    const body = await jsonBody<{ key: string; name: string; parent?: string | null }>(c);
     const keyProblem = entityKeyProblem(body.key ?? '');
     if (keyProblem) throw new HttpError(422, keyProblem);
     return c.json(await upsertEntity(db, c.req.param('dimension'), body.key, body, actor(c.get('user')), true, c.get('user')), 201);
@@ -667,7 +725,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   });
 
   app.put('/dimensions/:dimension/:key', async (c) => {
-    const body = await c.req.json<{ name: string; parent?: string | null }>();
+    const body = await jsonBody<{ name: string; parent?: string | null }>(c);
     return c.json(await upsertEntity(db, c.req.param('dimension'), c.req.param('key'), body, actor(c.get('user')), false, c.get('user')));
   });
 
@@ -675,7 +733,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   // depend on the request, and what everyone else gets.
   app.get('/dimensions/:dimension/:key/flags', async (c) => {
     const key = c.req.param('key');
-    const env = c.req.query('environment') ?? await firstEnv();
+    const env = environmentOf(c);
     const snap = snapshot(env);
     const entity = entityIn(snap, c.req.param('dimension'), key);
     const pg = query(c) ?? { page: 0, size: Number.MAX_SAFE_INTEGER, q: '' };
@@ -720,7 +778,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   // it. `?diff=1`: only flags where some differs. A cell's `cases`: answers that depend on the request (app, version…).
   app.get('/dimensions/:dimension/:key/children', async (c) => {
     const key = c.req.param('key');
-    const env = c.req.query('environment') ?? await firstEnv();
+    const env = environmentOf(c);
     const snap = snapshot(env);
     const entity = entityIn(snap, c.req.param('dimension'), key);
     const children = childrenOf(snap, key);
@@ -737,7 +795,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   // The link is a secret (anyone with it reads the entity's file): editors and above, not viewers.
   app.get('/dimensions/:dimension/:key/link', async (c) => {
     notViewer(c.get('user'), 'app links');
-    const env = c.req.query('environment') ?? await firstEnv();
+    const env = environmentOf(c);
     entityIn(snapshot(env), c.req.param('dimension'), c.req.param('key'));
     // with ?service=: the link for that service, and the same link as a token for OpenFeature's OFREP providers (ofrep.ts)
     const appKey = c.req.query('service');
@@ -749,15 +807,16 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   });
 
   app.post('/dimensions/:dimension/:key/link/rotate', async (c) => {
-    const env = c.req.query('environment') ?? await firstEnv();
+    const env = environmentOf(c);
     entityIn(snapshot(env), c.req.param('dimension'), c.req.param('key'));
     // the old link stops working here at once, and every environment publishes again, which purges the CDN (journal.ts)
     await rotateAppLink(db, c.req.param('key'), actor(c.get('user')));
     return c.json({ path: await cdnFilePath(db, env, c.req.param('key')) });
   });
 
-  app.get('/api-keys', async (c) => c.json(await all(db, `select k.id, k.key_prefix as prefix, k.label, e.key as environment, p.key as project,
-    p.kind as "projectKind", k.scope, cu.key as entity, d.key as dimension, k.created_at as "createdAt", k.last_used_at as "lastUsedAt", k.revoked_at as "revokedAt"
+  app.get('/api-keys', async (c) => c.json(await all(db, `select k.id, k.key_prefix as prefix, k.label, e.key as environment, p.key as service,
+    p.kind as "serviceKind", k.scope, cu.key as entity, d.key as dimension, k.created_at as "createdAt", k.last_used_at as "lastUsedAt", k.revoked_at as "revokedAt",
+    k.expires_at as "expiresAt"
     from api_key k join environment e on e.id = k.environment_id join project p on p.id = k.project_id left join entity cu on cu.id = k.entity_id
     left join dimension d on d.id = cu.dimension_id
     order by k.revoked_at nulls first, k.id desc`)));
@@ -766,8 +825,9 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   // as for the rest of Settings.
   app.post('/api-keys', async (c) => {
     adminOnly(c.get('user'));
-    const body = await c.req.json<{ environment: string; project: string; scope: string; entity?: string; label?: string }>();
-    return c.json(await createApiKey(db, body, actor(c.get('user'))), 201);
+    // `days`: when it expires; left out, it works until it is revoked
+    const body = await jsonBody<{ environment: string; service: string; scope: string; entity?: string; label?: string; days?: number }>(c);
+    return c.json(await createApiKey(db, { ...body, project: body.service }, actor(c.get('user'))), 201);
   });
 
   app.post('/api-keys/:id{[0-9]+}/revoke', async (c) => {
@@ -779,12 +839,18 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   // ------------------------------------------------------------ settings (admins): environments, services
   app.post('/environments', async (c) => {
     adminOnly(c.get('user'));
-    return c.json(await createEnvironment(db, await c.req.json(), actor(c.get('user'))), 201);   // its CDN files are served at once
+    return c.json(await createEnvironment(db, await jsonBody(c), actor(c.get('user'))), 201);   // its CDN files are served at once
   });
 
   app.put('/environments/:env', async (c) => {
     adminOnly(c.get('user'));
-    return c.json(await updateEnvironment(db, c.req.param('env'), await c.req.json(), actor(c.get('user'))));
+    const body = await jsonBody(c);
+    // fewer approvals takes a safeguard away: a person does that, signed in
+    if (body?.minApprovals !== undefined) {
+      const now = await one<{ n: number }>(db, `select min_approvals as n from environment where key = $1`, [c.req.param('env')]);
+      if (now && Number(body.minApprovals) < now.n) peopleOnly(c.get('user'));
+    }
+    return c.json(await updateEnvironment(db, c.req.param('env'), body, actor(c.get('user'))));
   });
 
   // every app link and app token in the environment replaced at once, for when its secret may have leaked (control.ts)
@@ -796,13 +862,13 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   app.post('/services', async (c) => {
     adminOnly(c.get('user'));
     // a service's key asked for before it existed is answered again once this commits (journal.ts)
-    return c.json(await createProject(db, await c.req.json(), actor(c.get('user'))), 201);
+    return c.json(await createProject(db, await jsonBody(c), actor(c.get('user'))), 201);
   });
 
   // a service's kind; its key can't change. Both this and a delete are refused (409, saying what) while anything uses it
   app.put('/services/:key', async (c) => {
     adminOnly(c.get('user'));
-    return c.json(await updateProject(db, c.req.param('key'), await c.req.json(), actor(c.get('user'))));
+    return c.json(await updateProject(db, c.req.param('key'), await jsonBody(c), actor(c.get('user'))));
   });
 
   app.delete('/services/:key', async (c) => {
@@ -810,35 +876,35 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     return c.json(await deleteProject(db, c.req.param('key'), actor(c.get('user'))));
   });
 
-  // ------------------------------------------------------------ people (access.ts)
+  // ------------------------------------------------------------ people (access.ts): admins, signed in (never a token)
   app.put('/people/:key', async (c) => {
-    adminOnly(c.get('user'));
-    const { role } = await c.req.json<{ role: string }>();
+    peopleOnly(c.get('user'));
+    const { role } = await jsonBody<{ role: string }>(c);
     return c.json(await access.setRole(c.req.param('key'), role, actor(c.get('user'))));
   });
 
   // adding someone gives them an invite link (`#/join/<invite>`), shown to the admin once
   app.post('/people', async (c) => {
-    adminOnly(c.get('user'));
-    return c.json(await access.add(await c.req.json(), actor(c.get('user'))), 201);
+    peopleOnly(c.get('user'));
+    return c.json(await access.add(await jsonBody(c), actor(c.get('user'))), 201);
   });
 
   // a new invite link (the old one stops working); also gives back access to someone whose access was removed
   app.post('/people/:key/invite', async (c) => {
-    adminOnly(c.get('user'));
+    peopleOnly(c.get('user'));
     return c.json(await access.invite(c.req.param('key'), actor(c.get('user'))));
   });
 
   // a password reset link (`#/reset/<token>`), shown to the admin once: works once, for a day (betterAuth.ts)
   app.post('/people/:key/password-reset', async (c) => {
-    adminOnly(c.get('user'));
+    peopleOnly(c.get('user'));
     if (!identity.passwordResetToken) throw new HttpError(409, 'this sign-in has no passwords');
     return c.json(await access.passwordReset(c.req.param('key'), actor(c.get('user')), identity.passwordResetToken));
   });
 
   // signs them out everywhere and deletes their accounts; their name stays in the history
   app.delete('/people/:key', async (c) => {
-    adminOnly(c.get('user'));
+    peopleOnly(c.get('user'));
     return c.json(await access.remove(c.req.param('key'), actor(c.get('user'))));
   });
 
@@ -849,12 +915,12 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     return c.json({ ...(await appearance.settings()), source: s.source, updatedAt: s.updatedAt, updatedBy: s.updatedBy });
   });
   app.put('/appearance', async (c) => {
-    adminOnly(c.get('user'));
-    await appearance.save(await c.req.json(), actor(c.get('user')));
+    peopleOnly(c.get('user'));
+    await appearance.save(await jsonBody(c), actor(c.get('user')));
     return c.json(await appearance.state());
   });
   app.delete('/appearance', async (c) => {
-    adminOnly(c.get('user'));
+    peopleOnly(c.get('user'));
     await appearance.reset(actor(c.get('user')));
     return c.json(await appearance.state());
   });
@@ -867,38 +933,59 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     return c.json({ available: sso.available, base, connections });
   });
   app.post('/sso', async (c) => {
-    adminOnly(c.get('user'));
+    peopleOnly(c.get('user'));
     const base = sso.base(c.req.url);
-    const conn = await sso.add(await c.req.json(), actor(c.get('user')), { headers: c.req.raw.headers, base });
+    const conn = await sso.add(await jsonBody(c), actor(c.get('user')), { headers: c.req.raw.headers, base });
     return c.json({ ...conn, serviceProvider: serviceProvider(base, conn.id) }, 201);
   });
+  // a connection's settings (its domains, its identity provider's details, its group roles), or requiring single
+  // sign-on: only once someone has signed in with it (a test sign-in)
   app.put('/sso/:id', async (c) => {
-    adminOnly(c.get('user'));
-    const { requireSso } = await c.req.json<{ requireSso: boolean }>();
-    return c.json(await sso.setRequireSso(c.req.param('id'), requireSso === true, actor(c.get('user'))));
+    peopleOnly(c.get('user'));
+    const base = sso.base(c.req.url);
+    const conn = await sso.update(c.req.param('id'), await jsonBody(c), actor(c.get('user')));
+    return c.json({ ...conn, serviceProvider: serviceProvider(base, conn.id) });
   });
   app.delete('/sso/:id', async (c) => {
-    adminOnly(c.get('user'));
+    peopleOnly(c.get('user'));
     return c.json(await sso.remove(c.req.param('id'), actor(c.get('user'))));
   });
+
+  // the organization's sign-in rules (access.ts): the break-glass admin, two-factor for admins, the join role
+  app.get('/sign-in-rules', async (c) => c.json(await access.rules()));
+  app.put('/sign-in-rules', async (c) => {
+    peopleOnly(c.get('user'));
+    return c.json(await access.setRules(await jsonBody(c), actor(c.get('user'))));
+  });
+
+  // your own account: whether you have a password and set up two-factor sign-in (Access tokens → Two-factor sign-in)
+  app.get('/account', async (c) => c.json(await access.account(c.get('user').key)));
 
   // ------------------------------------------------------------ flags as code (flagsAsCode.ts), for the CLI over HTTP
   // The same pull, plan and push as the CLI on the database, as the caller: an agent's token is recorded as an agent,
   // and where an environment needs approval a change of services is a request. Pull and plan for anyone signed in.
   app.get('/flags-as-code', async (c) => c.json(await pullFlags(db)));
-  app.post('/flags-as-code/plan', async (c) => c.json(await planFlags(db, await c.req.json().catch(() => null))));
+  app.post('/flags-as-code/plan', async (c) => c.json(await planFlags(db, await jsonBody(c, true))));
+  // whether a flag is managed from a file, and the fields it owns (the console's "Managed in repo"): { managed: … | null }
+  app.get('/flags-as-code/managed/:flag', async (c) => c.json({ managed: await managedFlag(db, c.req.param('flag')) }));
+  // The body is the file, or { file, reason, link }: why, and the pull request or commit, for its requests and History.
   // 200 { plan, done }; a file with problems: 422 { error, plan } and nothing is pushed; a step refused: its status,
   // with { error, plan, done } (what was done before it)
   app.post('/flags-as-code/push', async (c) => {
-    const plan = await planFlags(db, await c.req.json().catch(() => null));
-    if (plan.problems.length) return c.json({ error: 'the file has problems: nothing was pushed', plan }, 422);
+    const body = await jsonBody(c, true) as { file?: unknown; reason?: string | null; link?: string | null } | null;
+    const wrapped = !!body && typeof body === 'object' && 'file' in body;
+    const note = wrapped ? { reason: body.reason ?? null, link: body.link ?? null } : {};
+    const problem = noteProblem(note);
+    if (problem) throw new HttpError(422, problem);
+    const plan = await planFlags(db, wrapped ? body.file : body);
+    if (plan.problems.length) return c.json({ error: 'the file has problems: nothing was pushed', code: 'invalid', plan }, 422);
     try {
-      return c.json({ plan, done: await pushFlags(db, plan, actor(c.get('user'))) });
+      return c.json({ plan, done: await pushFlags(db, plan, actor(c.get('user')), note) });
     } catch (e) {
       const done = (e as Error & { done?: Done[] }).done;
       const cause = (e as Error).cause;
       if (!done || !(cause instanceof HttpError)) throw cause ?? e;       // not a refusal: the server's own error
-      return c.json({ error: (e as Error).message, plan, done }, cause.status as 422);
+      return c.json({ error: (e as Error).message, code: cause.code, plan, done }, cause.status as 422);
     }
   });
 
@@ -919,29 +1006,29 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   };
   app.post('/migration/preview', async (c) => {
     adminOnly(c.get('user'));
-    const { read, o } = await readImport(await c.req.json<ImportBody>());
+    const { read, o } = await readImport(await jsonBody<ImportBody>(c));
     // what it can read is planned too: the preview shows the changes and every problem together
     const { plan } = await planImport(db, read.doc, o);
     return c.json({ plan: { ...plan, problems: [...read.problems, ...plan.problems], warnings: [...read.warnings, ...plan.warnings] } });
   });
   app.post('/migration/import', async (c) => {
     adminOnly(c.get('user'));
-    const { read, o } = await readImport(await c.req.json<ImportBody>());
+    const { read, o } = await readImport(await jsonBody<ImportBody>(c));
     if (read.problems.length) throw new HttpError(422, 'Nothing was imported: fix these first.', { errors: read.problems });
     const r = await applyImport(db, read.doc, o, actor(c.get('user')));
     return c.json({ ...r, warnings: [...read.warnings, ...r.warnings] });
   });
   app.post('/migration/export', async (c) => {
-    const b = await c.req.json<{ environment?: string; format?: unknown; service?: string | null; expression?: string | null }>();
+    const b = await jsonBody<{ environment?: string; format?: unknown; service?: string | null; expression?: string | null }>(c);
     if (b.format === 'jsonata' && !may(c.get('user'), 'changesSettings')) throw new HttpError(403, 'only admins can export with a JSONata expression');
     return c.json({ output: await fromValues(snapshot(String(b.environment ?? '')), b.format, { service: b.service, expression: b.expression }) });
   });
 
   // ------------------------------------------------------------ trace / playground (runs the real evaluator)
   app.post('/trace', async (c) => {
-    const body = await c.req.json<{ environment: string; project: string; entity: string | null; attrs: Record<string, unknown>; flag?: string }>();
+    const body = await jsonBody<{ environment: string; service: string; entity: string | null; attrs: Record<string, unknown>; flag?: string }>(c);
     const snap = snapshot(body.environment);
-    const ctx = simulate(snap, body.project, body.entity, body.attrs);
+    const ctx = simulate(snap, body.service, body.entity, body.attrs);
     if (body.flag) return c.json({ revision: snap.revision, result: evaluate(snap, body.flag, ctx) });
     // every flag's answer, without the step-by-step explanation nobody sees here
     const results = sortedFlagKeys(snap).map((k) => {
@@ -952,13 +1039,13 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   });
 
   // Compare two sides (two entities, two environments or two services) flag by flag: what each one gets and why.
-  type Side = { environment: string; project: string; entity: string | null };
+  type Side = { environment: string; service: string; entity: string | null };
   app.post('/compare', async (c) => {
-    const body = await c.req.json<{ a: Side; b: Side; attrs?: Record<string, unknown>; q?: string; onlyDiff?: boolean; page?: number; size?: number }>();
-    if (!body.a || !body.b) throw new HttpError(422, 'a and b: the two sides to compare (environment, project, entity)');
+    const body = await jsonBody<{ a: Side; b: Side; attrs?: Record<string, unknown>; q?: string; onlyDiff?: boolean; page?: number; size?: number }>(c);
+    if (!body.a || !body.b) throw new HttpError(422, 'a and b: the two sides to compare (environment, service, entity)');
     const prep = (side: Side) => {
       const snap = snapshot(side.environment);
-      const ctx = simulate(snap, side.project, side.entity, body.attrs);
+      const ctx = simulate(snap, side.service, side.entity, body.attrs);
       // "Acme 12’s rule", and for settings it follows from above "Acme’s rule"
       const who = ctx.entity ? entityWords(ctx.entity.key, (k) => snap.entities[k]) : null;
       return { snap, side, ctx, who };
@@ -1012,7 +1099,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     if (!u.token) throw new HttpError(403, 'alerts call this with an access token: Authorization: Bearer cfp_…');
     if (u.token.agent) throw new HttpError(403, 'an agent’s token can’t turn flags off: an agent never breaks glass');
     if (!roleInfo(u.role).breaksGlass) throw new HttpError(403, 'only an On call or Admin token can turn a flag off from an alert');
-    const body = await c.req.json<unknown>().catch(() => null);
+    const body = await jsonBody<unknown>(c, true);
     const field = (k: string) => {
       const v = (body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>)[k] : undefined) ?? c.req.query(k);
       if (v !== undefined && v !== null && typeof v !== 'string') throw new HttpError(422, `${k}: a string`);
@@ -1029,7 +1116,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   app.post('/tokens', async (c) => {
     const u = c.get('user');
     notWithToken(u);
-    return c.json(await tokens.create(u, await c.req.json(), actor(u)), 201);
+    return c.json(await tokens.create(u, await jsonBody(c), actor(u)), 201);
   });
   app.delete('/tokens/:id', async (c) => {
     const u = c.get('user');
@@ -1037,9 +1124,12 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     return c.json(await tokens.revoke(u, Number(c.req.param('id')), actor(u)));
   });
 
+  // ------------------------------------------------------------ the stable API (apiV1.ts), signed in as above
+  app.route('/v1', v1Routes({ db }));
+
   // ------------------------------------------------------------ the plugins' console routes (plugin.ts), signed in as above.
   // Last, so a plugin can't answer in place of a core route (and LOOK_ONLY's viewer POSTs stay the core's).
-  for (const p of plugins) if (p.parts.console) app.route('/', p.parts.console({ actor, adminOnly }));
+  for (const p of plugins) if (p.parts.console) app.route('/', p.parts.console({ actor, adminOnly, body: jsonBody }));
 
   return app;
 }
@@ -1070,7 +1160,7 @@ function childGrid(snap: Snapshot, entity: EntityInfo, children: EntityInfo[]): 
   return rows;
 }
 
-type Prepared = { snap: Snapshot; side: { project: string }; ctx: EvalContext; who: ReturnType<typeof entityWords> | null };
+type Prepared = { snap: Snapshot; side: { service: string }; ctx: EvalContext; who: ReturnType<typeof entityWords> | null };
 // Two sides flag by flag: what each one gets and why.
 function compareAll(A: Prepared, B: Prepared): CompareRow[] {
   const outcome = (x: Prepared, key: string): Outcome => {
@@ -1078,7 +1168,7 @@ function compareAll(A: Prepared, B: Prepared): CompareRow[] {
     const sent = !r.errorCode;
     const byDevice = r.reason === 'SPLIT';
     const source = !Object.hasOwn(x.snap.flags, key) ? 'Flag doesn’t exist here'
-      : sourceText(r.decidedBy, { entity: x.who, nameOf: (k) => x.snap.entities[k]?.name, project: x.side.project, byDevice });
+      : sourceText(r.decidedBy, { entity: x.who, nameOf: (k) => x.snap.entities[k]?.name, project: x.side.service, byDevice });
     return { sent, value: sent && !r.codeDefault ? r.value : null, codeDefault: !!r.codeDefault, variant: r.variant ?? null, source, rule: r.decidedBy.ruleName, byDevice };
   };
   const keys = [...new Set([...sortedFlagKeys(A.snap), ...sortedFlagKeys(B.snap)])].sort();

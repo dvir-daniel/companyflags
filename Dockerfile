@@ -27,10 +27,12 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install
 FROM node:${NODE_VERSION}-alpine
 WORKDIR /app
 # Without DATABASE_URL the data is in embedded Postgres under /data (the volume); its lock file sits beside /data/db.
+# The server writes the port it listens on to FF_PORT_FILE, so the health check follows server.port in a config file.
 ENV NODE_ENV=production \
     PORT=8787 \
     HOST=0.0.0.0 \
-    FF_DATA_DIR=/data/db
+    FF_DATA_DIR=/data/db \
+    FF_PORT_FILE=/tmp/companyflags.port
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY server ./server
@@ -43,5 +45,5 @@ USER node
 VOLUME ["/data"]
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:${PORT}/healthz >/dev/null || exit 1
+  CMD wget -qO- "http://127.0.0.1:$(cat "$FF_PORT_FILE" 2>/dev/null || echo "$PORT")/healthz" >/dev/null || exit 1
 CMD ["node", "server/index.ts"]

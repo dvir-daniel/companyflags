@@ -5,7 +5,8 @@ import { all, HttpError, one, type Db, type Queryable, type Tx } from './db.ts';
 import type { Layer, Rule } from './evaluator.ts';
 import { checkFlagSetup, checkLayer, type FieldFacts, type LayerDoc, type PlacedLayer } from './checks.ts';
 import {
-  approvalsNeeded, needsReview, reviewRefusal, roleInfo, scheduleRefusal, switchPath, type Decision, type EnvFacts, type ReviewFacts,
+  approvalsNeeded, canBreakGlass, hasSafeValue, needsReview, rejectNeedsReason, reviewRefusal, roleInfo, scheduleRefusal, unscheduleRefusal,
+  withdrawRefusal, type Decision, type EnvFacts, type ReviewFacts,
 } from './policy.ts';
 import { loadLayers } from './snapshot.ts';
 import { isVersionFlag } from './checks.ts';
@@ -360,6 +361,10 @@ export async function reviewChangeSet(db: Db, id: number, reviewer: { key: strin
       where change_set_id = $1`, [id, cs.content_hash]);
     const refused = reviewRefusal(reviewer, { author: cs.author, status: cs.status, reviews }, decision);
     if (refused) throw new HttpError(refused.why === 'closed' || refused.why === 'done' ? 409 : 403, refused.message);
+    // stopping what others approved (or scheduled) says why, for its author and for History
+    if (decision === 'reject' && rejectNeedsReason(cs.status) && !comment?.trim()) {
+      throw new HttpError(422, `This request is ${statusText(cs.status)}: say why you reject it`);
+    }
     await tx.query(`insert into change_set_review (change_set_id, reviewer, decision, for_content_hash, comment) values ($1,$2,$3,$4,$5)
       on conflict (change_set_id, reviewer) do update set decision = excluded.decision, for_content_hash = excluded.for_content_hash,
       comment = excluded.comment, created_at = now()`, [id, reviewer.key, decision, cs.content_hash, comment]);
@@ -369,7 +374,8 @@ export async function reviewChangeSet(db: Db, id: number, reviewer: { key: strin
       const n = await one<{ n: number }>(tx, `select count(*)::int as n from change_set_review where change_set_id = $1 and decision = 'approve' and for_content_hash = $2`, [id, cs.content_hash]);
       if (n!.n >= approvalsNeeded(cs)) await tx.query(`update change_set set status = 'approved', decided_at = now() where id = $1`, [id]);
     }
-    await audit(tx, { name: reviewer.key, type: 'user' }, { kind: decision === 'approve' ? 'change_set.approve' : 'change_set.reject', comment, changeSetId: id });
+    await audit(tx, { name: reviewer.key, type: 'user' }, { kind: decision === 'approve' ? 'change_set.approve' : 'change_set.reject', environment: cs.env_id,
+      comment, changeSetId: id });
   });
   return csRow(db, id);
 }
@@ -398,8 +404,16 @@ export async function applyChangeSet(db: Db, id: number, actor: Actor) {
   } catch (e) {
     if (e === notAppliable || (e instanceof HttpError && e.status === 404)) throw e;
     const conflict = e instanceof HttpError && e.status === 409;
-    await db.query(`update change_set set status = $2, last_error = $3, apply_attempts = apply_attempts + 1 where id = $1 and status::text = any($4::text[])`,
-      [id, conflict ? 'conflict' : 'failed', (e as Error).message, allowed]);
+    const said = (e as Error).message;
+    // the end of the request, in History and on the 'reviews' webhook: a scheduled one fails when nobody is watching
+    await db.transaction(async (tx) => {
+      const ended = await one<{ env: number }>(tx, `update change_set set status = $2, last_error = $3, apply_attempts = apply_attempts + 1
+        where id = $1 and status::text = any($4::text[]) returning environment_id as env`, [id, conflict ? 'conflict' : 'failed', said, allowed]);
+      if (ended) {
+        await audit(tx, actor, { kind: 'change_set.apply_failed', environment: Number(ended.env), comment: said, changeSetId: id,
+          after: { status: conflict ? 'conflict' : 'failed' } });
+      }
+    });
     throw e;
   }
 }
@@ -414,33 +428,59 @@ export async function scheduleChangeSet(db: Db, id: number, at: string, user: { 
     const cs = await csRow(tx, id, true);
     const refused = scheduleRefusal(user, cs);
     if (refused) throw new HttpError(refused.why === 'closed' ? 409 : 403, refused.message);
+    // a time already gone would make Schedule an Apply now without its confirmation. By the database's clock, the one
+    // the scheduler goes by (workers.ts).
+    const gone = await one<{ gone: boolean }>(tx, `select $1::timestamptz <= now() as gone`, [when.toISOString()]);
+    if (gone?.gone) throw new HttpError(422, `${when.toISOString()} has passed: pick a time in the future, or apply it now`);
     const r = await tx.query(`update change_set set status = 'scheduled', scheduled_at = $2 where id = $1 and status = 'approved'`, [id, when.toISOString()]);
     if (!r.affected) throw new HttpError(409, `only approved requests can be scheduled (this one is ${statusText(cs.status)})`);
     await audit(tx, { name: user.key, type: 'user' }, { kind: 'change_set.schedule', environment: cs.env_id, after: { scheduledAt: when.toISOString() }, changeSetId: id });
   });
 }
 
-export async function cancelChangeSet(db: Db, id: number, user: string) {
-  const cs = await csRow(db, id);
-  if (cs.author !== user) throw new HttpError(403, 'only the author can cancel');
-  const r = await db.query(`update change_set set status = 'cancelled', decided_at = now()
-    where id = $1 and author = $2 and status in ('in_review', 'approved', 'scheduled')`, [id, user]);
-  if (!r.affected) throw new HttpError(409, `this request is ${statusText((await csRow(db, id)).status)}`);
+// Withdrawing a request: its author, while it is still open (policy.ts withdrawRefusal). A reviewer rejects it instead.
+// In History as change_set.withdraw, with the reason if one is given.
+export async function withdrawChangeSet(db: Db, id: number, user: { key: string; role: string }, reason: string | null = null) {
+  await db.transaction(async (tx) => {
+    const cs = await csRow(tx, id, true);
+    const refused = withdrawRefusal(user, cs);
+    if (refused) throw new HttpError(refused.why === 'closed' ? 409 : 403, refused.message);
+    await tx.query(`update change_set set status = 'cancelled', decided_at = now() where id = $1`, [id]);
+    await audit(tx, { name: user.key, type: 'user' }, { kind: 'change_set.withdraw', environment: cs.env_id, comment: reason?.trim() || null, changeSetId: id,
+      before: { status: cs.status } });
+  });
 }
 
-// M7: break-glass. Only the safe direction (turn a kill switch / ops flag's defaults OFF), by on-call, with a reason.
-// Who may, and on which flags, is policy.ts switchPath: the console offers "Turn off now" on the same answer. A version
-// release can be rolled back the same way (checkRollback).
+// Stopping a scheduled request before its time: it goes back to approved, to be applied or scheduled again (or
+// rejected). Its author or any reviewer (policy.ts unscheduleRefusal), with a reason, in History as change_set.unschedule.
+export async function unscheduleChangeSet(db: Db, id: number, user: { key: string; role: string }, reason: string | null) {
+  const why = reason?.trim();
+  if (!why) throw new HttpError(422, 'say why it shouldn’t go out as scheduled');
+  await db.transaction(async (tx) => {
+    const cs = await csRow(tx, id, true);
+    const refused = unscheduleRefusal(user, cs);
+    if (refused) throw new HttpError(refused.why === 'closed' ? 409 : 403, refused.message);
+    const was = await one<{ at: string | null }>(tx, `select scheduled_at as at from change_set where id = $1`, [id]);
+    await tx.query(`update change_set set status = 'approved', scheduled_at = null where id = $1`, [id]);
+    await audit(tx, { name: user.key, type: 'user' }, { kind: 'change_set.unschedule', environment: cs.env_id, comment: why, changeSetId: id,
+      before: { scheduledAt: was?.at ? new Date(was.at).toISOString() : null } });
+  });
+}
+
+// M7: break-glass. Only the safe direction, by on call, with a reason: any flag's defaults switched OFF (nothing else
+// changed), a release paused or a version release rolled back (checkRollback). Who may is policy.ts canBreakGlass: the
+// console offers "Turn off now" on the same answer. Serving a kill switch's safe value is serveSafeValue.
 async function checkBreakGlass(db: Db, env: EnvFacts & { id: number }, item: Item, user: { key: string; role: string }) {
-  if (!roleInfo(user.role).breaksGlass) throw new HttpError(403, 'break-glass requires the on-call role');
-  if (item.entity) throw new HttpError(403, 'break-glass only applies to the defaults');
+  if (!canBreakGlass(user.role)) throw new HttpError(403, 'Break-glass needs the On call or Admin role');
+  if (item.entity) throw new HttpError(403, 'Break-glass changes the defaults only, not an entity’s own settings');
   const flag = await flagRow(db, item.flag);
-  if (flag.kind === 'release') return checkRollback(db, env, flag, item);
-  if (switchPath(user, flag, env, false) !== 'break-glass') throw new HttpError(403, 'break-glass only applies to kill_switch / ops flags');
   const cur = await currentLayer(db, env.id, flag.id, null);
-  if (!cur?.enabled || item.proposed?.enabled !== false) throw new HttpError(403, 'break-glass can only switch a flag OFF');
-  const same = canonical({ ...stripVersion(cur), enabled: false }) === canonical(stripVersion(await normalizeLayer(db, flag, true, item.proposed, cur)));
-  if (!same) throw new HttpError(403, 'break-glass cannot change anything except enabled → false');
+  if (!cur?.enabled) throw new HttpError(403, 'Break-glass can’t turn a flag on: send a request');
+  if (!item.proposed) throw new HttpError(403, 'Break-glass can’t remove the defaults');
+  const proposed = canonical(stripVersion(await normalizeLayer(db, flag, true, item.proposed, cur)));
+  if (canonical({ ...stripVersion(cur), enabled: false }) === proposed) return;
+  if (flag.kind === 'release') return checkRollback(db, env, flag, cur, proposed);
+  throw new HttpError(403, 'Break-glass only turns a flag off and changes nothing else (or pauses a release): send a request for anything else');
 }
 
 /** A version release's versions each environment has served while it was on: its defaults' version in every recorded
@@ -457,35 +497,71 @@ export async function versionsServed(q: Queryable, flagKey: string): Promise<Map
   return served;
 }
 
-// Break-glass on a version release (docs/design/release-versions.md): only a rollback, the safe direction, where every
-// device goes back to a version it had before. Mid-way: the release's own rules switched off (everyone back on the
-// version everyone else is on, the % kept for resume). Otherwise: everyone on an older version this environment served
-// while it was on. The saved layer must be exactly that step (release.ts applyChange), with nothing else changed.
-async function checkRollback(db: Db, env: EnvFacts & { id: number }, flag: FlagRow, item: Item) {
+// Break-glass on a release (docs/design/release-versions.md): only the safe direction. Mid-way: paused, the release's own
+// rules switched off (everyone back on the old value, or the version everyone else is on, the % kept for resume). A
+// version release also: everyone on an older version this environment served while it was on. The saved layer must be
+// exactly that step (release.ts applyChange), with nothing else changed. `proposed`: the saved layer, canonical.
+async function checkRollback(db: Db, env: EnvFacts & { id: number }, flag: FlagRow, cur: Layer, proposed: string) {
   const variants = await all<{ key: string; value: unknown }>(db, `select key, value from flag_variation where flag_id = $1 and not is_code_default order by id`, [flag.id]);
-  if (!isVersionFlag({ valueType: flag.value_type, variants })) throw new HttpError(403, 'break-glass only applies to kill_switch / ops flags, and to rolling a version release back');
-  const cur = await currentLayer(db, env.id, flag.id, null);
-  if (!cur?.enabled) throw new HttpError(403, 'break-glass only rolls a version release back: it can’t turn one on');
   const now = releaseState(variants, cur);
-  const proposed = canonical(stripVersion(await normalizeLayer(db, flag, true, item.proposed as LayerDoc, cur)));
   const same = async (change: Change) => {
     let step: Layer;
     try { step = applyChange(variants, cur, change, flag.key); } catch { return false; }
     return canonical(stripVersion(await normalizeLayer(db, flag, true, step as LayerDoc, cur))) === proposed;
   };
   if ((now.step === 'early' || now.step === 'percent') && !now.paused && await same({ kind: 'pause' })) return;
-  const key = (item.proposed as LayerDoc | null)?.defaultVariation ?? null;
+  const versioned = isVersionFlag({ valueType: flag.value_type, variants });
+  const key = (JSON.parse(proposed) as { defaultVariation?: string | null }).defaultVariation ?? null;
   const version = variants.find((v) => v.key === key)?.value;
-  const lower = typeof version === 'string' && !!now.versions?.current && compareVersions(version, now.versions.current) < 0;
+  const lower = versioned && typeof version === 'string' && !!now.versions?.current && compareVersions(version, now.versions.current) < 0;
   if (lower && (await versionsServed(db, flag.key)).get(env.id)?.has(key!) && await same({ kind: 'everyone', version: version as string })) return;
   throw new HttpError(403, lower
-    ? `break-glass only rolls back to a version this environment served while it was on: ${version} never was (send a request instead)`
-    : 'break-glass only rolls a version release back: everyone on the version they’re on (keeping the %), or on an older version served here before');
+    ? `Break-glass only rolls back to a version this environment served while it was on: ${version} never was (send a request instead)`
+    : versioned
+      ? 'Break-glass only turns a release off, pauses it (keeping the %), or puts everyone on an older version served here before'
+      : 'Break-glass only turns a release off or pauses it (keeping the %): send a request for anything else');
+}
+
+// The safe value (policy.ts hasSafeValue): a kill switch or ops flag that names one serves it to every device in one
+// environment, instead of sending nothing (turning it off). The defaults stay on, with the safe value as their default
+// and every rule switched off (kept, so a later request can bring them back); each entity's own settings on the flag
+// get the same: rules switched off, and the safe value as their own default where they have one. So every device gets
+// the safe value, a valid OpenFeature answer (DEFAULT or STATIC). One change, one new version. Where the environment is
+// protected it is break-glass (on call and admins, with a reason), or a request for review (`request`).
+export async function serveSafeValue(db: Db, envKey: string, flagKey: string, user: { key: string; role: string; token?: { agent: boolean } },
+  o: { reason?: string | null; request?: boolean } = {}): Promise<Submitted> {
+  if (!roleInfo(user.role).changes) throw new HttpError(403, 'viewers can look but not change anything: ask an admin for a role');
+  const env = await one<EnvFacts & { id: number }>(db, `select id, min_approvals as "minApprovals" from environment where key = $1`, [envKey]);
+  if (!env) throw new HttpError(404, `environment ${envKey} not found`);
+  const flag = await flagRow(db, flagKey);
+  if (!hasSafeValue(flag.kind)) throw new HttpError(422, `${flagKey} isn’t a kill switch or ops flag: only those have a safe value`);
+  const safe = (await one<{ key: string | null }>(db, `select v.key from flag f left join flag_variation v on v.id = f.safe_variation_id where f.id = $1`, [flag.id]))?.key;
+  if (!safe) throw new HttpError(422, `${flagKey} has no safe value: name one in its settings first`);
+  const items: Item[] = [];
+  for (const l of await loadLayers(db, env.id, [flag.id])) {
+    const rules = l.layer.rules.map((r) => ({ ...r, disabled: true }));
+    const own = l.entityKey !== null && l.layer.inherit !== 'base_rules_then_base_default';
+    const doc: LayerDoc = l.entityKey === null
+      ? { enabled: true, variationWhenOff: l.layer.variationWhenOff, defaultVariation: safe, inherit: null, rules }
+      : { enabled: null, variationWhenOff: null, defaultVariation: own ? safe : null, inherit: l.layer.inherit, rules };
+    const was = { enabled: l.layer.enabled, variationWhenOff: l.layer.variationWhenOff, defaultVariation: l.layer.defaultVariation, inherit: l.layer.inherit, rules: l.layer.rules };
+    if (canonical(was) === canonical(doc)) continue;
+    items.push({ flag: flagKey, entity: l.entityKey, expectedLayerVersion: l.layer.version, proposed: doc });
+  }
+  if (!items.length) throw new HttpError(409, `${flagKey} already serves its safe value (${safe}) to everyone in ${envKey}`);
+  const reason = o.reason?.trim() || null;
+  const by: Actor = { name: user.key, type: user.token?.agent ? 'agent' : 'user' };
+  if (!needsReview(env)) return { applied: true, ...(await applyItems(db, envKey, items, by, { comment: reason ? `Safe value: ${reason}` : 'Safe value' })) };
+  if (!reason) throw new HttpError(422, o.request ? 'add a reason for the reviewer' : 'say why: break-glass needs a reason');
+  if (o.request) return { applied: false, changeSetId: (await createChangeSet(db, envKey, items, by, reason)).id };
+  if (!canBreakGlass(user.role)) throw new HttpError(403, 'Break-glass needs the On call or Admin role: send a request instead');
+  return { applied: true, bypass: true, ...(await applyItems(db, envKey, items, { name: user.key, type: 'bypass' }, { comment: `BREAK-GLASS (safe value): ${reason}` })) };
 }
 
 // ---------------------------------------------------------------- how a change goes live
 // Every save from the console comes through here: applied now where the environment needs no review (policy.ts
-// needsReview), otherwise a change set (with a reason for the reviewer), or break-glass for an on-call switch-off.
+// needsReview), otherwise a change set (with a reason for the reviewer), or break-glass for an on-call switch-off (or a
+// release paused or rolled back).
 export type Submitted =
   | { applied: true; revision: number; versions: Record<string, number | null>; bypass?: true }
   | { applied: false; changeSetId: number };

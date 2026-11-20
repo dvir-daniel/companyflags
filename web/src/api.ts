@@ -10,7 +10,7 @@ export { CODE_DEFAULT } from '../../server/evaluator.ts';
 export type { DecidedBy, Section, LevelName, EntityAnswer, AnswerPick, AnswerException } from '../../server/evaluator.ts';
 export {
   CHOICE_NAME, CHOICES, choiceText, conditionText, entityWords, fieldLabel, getsWithoutOwn, levelOf, noValueOp, opLabel, OPS_BY_TYPE, ownerName, sameAs,
-  SECTION_LABEL, sourceText, STAGE_LABEL, whenText, withoutOwn, type EntityWords, type Vocab,
+  SECTION_LABEL, sourceText, splitUnit, STAGE_LABEL, whenText, withoutOwn, type EntityWords, type Vocab,
 } from '../../server/words.ts';
 export {
   above, below, capital, checkDimensions, count, dimensionOf, joined, many, MAX_DIMENSIONS, one, own, PRESETS, suggestKey, title, type Dimension, type Dimensions,
@@ -38,6 +38,8 @@ export type FlagDetail = {
   freeValues?: boolean;
   /** a JSON flag's JSON Schema (server/jsonSchema.ts): every value it serves matches it */
   jsonSchema?: JsonSchema | null;
+  /** a kill switch's or ops flag's safe value (a variant key): what break-glass serves everyone instead of sending nothing */
+  safeVariant?: string | null;
   variations: Variation[]; delivery: Record<string, string[]>;
   layers: Record<string, { base: Layer; entities: { entity: string; layer: Layer }[] }>;
   /** a version release (docs/design/release-versions.md): per environment, the version it was on before its current one,
@@ -86,12 +88,18 @@ export function vocabOf(meta: Pick<Meta, 'dimensions' | 'entities'>): Vocab {
 // an attribute a rule can check, with its group, label and known values (server/fields.ts)
 export type Field = FieldInfo;
 // status: 'invited' until they use their invite link; 'removed' when an admin removed their access
-export type User = { key: string; name: string; role: string; status?: 'active' | 'invited' | 'removed' };
+export type User = {
+  key: string; name: string; role: string; status?: 'active' | 'invited' | 'removed';
+  /** when they last signed in (the People list) */
+  lastSignedInAt?: string | null;
+  /** me only: an admin the sign-in rules ask to set up two-factor sign-in first (server/access.ts) */
+  needsTwoFactor?: boolean;
+};
 export type Meta = {
   me: User;                                                   // who is signed in
   signIn: 'better-auth' | 'test-header';
   environments: { key: string; name: string; minApprovals: number; revision: number }[];
-  projects: { key: string; kind: 'client' | 'server' }[];
+  services: { key: string; kind: 'client' | 'server' }[];
   /** what config is served per, top to bottom (server/dimensions.ts) */
   dimensions: DimensionInfo[];
   entities: Entity[]; users: User[]; fields: Field[];
@@ -102,6 +110,8 @@ export type Meta = {
   plugins: string[];
   /** the notice an admin set for everyone signed in (Settings → Appearance) */
   banner: { text: string; tone: 'info' | 'warn' | 'danger' } | null;
+  /** when an app or backend last read flags with any key still in use (null: never), for the first-run checklist */
+  keyLastUsedAt: string | null;
 };
 export type TraceStep = {
   stage: string; layer: 'base' | 'entity' | null; owner?: string; ruleKey?: string; ruleName?: string | null;

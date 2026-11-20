@@ -3,6 +3,10 @@
 /** "1 flag", "2,048 flags", "3 people" (pass the plural when it isn't just "+s"). */
 export const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
 
+/** "a", "a or b", "a, b or c" (with `word` "and": "a, b and c"). */
+export const orList = (xs: readonly string[], word: 'or' | 'and' = 'or') =>
+  (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${word} ${xs[xs.length - 1]}`);
+
 /**
  * What the first page says when the console can't start (GET /meta failed, main.tsx), from the answer's status: 0 when
  * nothing answered, 403 for someone without access, and any other status when the server answered with an error (a

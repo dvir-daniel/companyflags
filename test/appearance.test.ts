@@ -5,7 +5,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './helpers.ts';
-import { accentCss, AppearanceError, checkAppearance, contrast, inkOn, intoPage, lowContrast } from '../server/appearance.ts';
+import { ACCENTS, accentColors, accentCss, AppearanceError, checkAppearance, contrast, inkOn, intoPage, knownAccent, lowContrast, nearMeaning, PAGE as PAGES, readableOn } from '../server/appearance.ts';
 import { createAppearance } from '../server/appearanceStore.ts';
 
 const SVG = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>').toString('base64')}`;
@@ -122,11 +122,31 @@ test('colors: text on the accent reads, and a pale accent is flagged', () => {
   assert.ok(contrast('#000000', '#ffffff') > 20);
   assert.deepEqual(lowContrast({ accent: 'custom', accentColor: '#fde047' }), ['light']);
   assert.deepEqual(lowContrast({ accent: 'custom', accentColor: '#1e1b4b' }), ['dark']);
-  for (const accent of ['blue', 'indigo', 'violet', 'teal', 'green', 'orange', 'rose'] as const) {
-    assert.deepEqual(lowContrast({ accent, accentColor: null }), [], `${accent} reads on both pages`);
+  // our own accents read as text on both pages (4.5:1), and none of them is a meaning color
+  for (const accent of Object.keys(ACCENTS) as (keyof typeof ACCENTS)[]) {
+    const c = accentColors({ accent, accentColor: null });
+    if (!c) continue;
+    assert.ok(contrast(c.light, PAGES.light) >= 4.5 && contrast(c.dark, PAGES.dark) >= 4.5, `${accent} reads on both pages`);
+    assert.equal(nearMeaning(c.light), null, `${accent} isn't a meaning color`);
   }
+  for (const meaning of ['#7c3aed', '#15803d', '#be123c', '#dc2626', '#b45309']) assert.ok(nearMeaning(meaning), `${meaning} is a meaning color`);
   assert.equal(accentCss({ accent: 'none', accentColor: null }), '');
   assert.equal(checkAppearance({}).accent, 'none');
+});
+
+test('colors: an accent of your own reads in each theme, and retired accents still load', () => {
+  // a dark navy is lightened on black, a pale yellow darkened on white, just enough for 4.5:1
+  const navy = accentColors({ accent: 'custom', accentColor: '#1e1b4b' })!;
+  assert.equal(navy.light, '#1e1b4b', 'as it is where it reads');
+  assert.ok(contrast(navy.dark, PAGES.dark) >= 4.5 && navy.dark !== '#1e1b4b');
+  const yellow = accentColors({ accent: 'custom', accentColor: '#fde047' })!;
+  assert.ok(contrast(yellow.light, PAGES.light) >= 4.5);
+  assert.equal(readableOn('#2563eb', 'light'), '#2563eb');
+  // violet, green, orange and rose were meaning colors: a saved one becomes the nearest we offer
+  assert.equal(checkAppearance({ accent: 'violet' }).accent, 'indigo');
+  assert.equal(checkAppearance({ accent: 'rose' }).accent, 'none');
+  assert.equal(knownAccent('green'), 'teal');
+  assert.deepEqual(accentColors({ accent: 'violet' as never, accentColor: null }), accentColors({ accent: 'indigo', accentColor: null }));
 });
 
 test('a config file names its images as files beside it', async () => {

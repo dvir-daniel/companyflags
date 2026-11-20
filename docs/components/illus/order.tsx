@@ -6,9 +6,9 @@ const steps: { label: string; title: string; text: string; chip: string; tone?: 
   { label: 'in service?', title: 'Not in this service', text: 'The flag doesn’t exist for it.', chip: 'code default', tone: 'bad' },
   { label: 'on?', title: 'The flag is off', text: 'Nothing is sent.', chip: 'code default', tone: 'bad' },
   { label: 'locked', title: 'Overrides', text: 'For everyone. A missing value counts as a match.', chip: 'value or %', tone: 'warn' },
-  { label: 'own', title: 'The entity’s own rules', text: '“Own settings only” stops here, with its own default.', chip: 'value or %', tone: 'ok' },
-  { label: 'above', title: 'Its parent’s rules, and up', text: 'Each level until one has “Own settings only”.', chip: 'value or %', tone: 'ok' },
-  { label: 'everyone', title: 'Rules for everyone', text: 'Skipped below an entity with “Own settings only”.', chip: 'value or %' },
+  { label: 'own', title: 'The entity’s own rules', text: '“Skip what’s above” stops here, with its own default.', chip: 'value or %', tone: 'ok' },
+  { label: 'above', title: 'Its parent’s rules, and up', text: 'Each level until one has “Skip what’s above”.', chip: 'value or %', tone: 'ok' },
+  { label: 'everyone', title: 'Rules for everyone', text: 'Skipped below an entity with “Skip what’s above”.', chip: 'value or %' },
   { label: 'default', title: 'The default', text: 'The nearest own default, else everyone’s.', chip: 'value' },
 ];
 

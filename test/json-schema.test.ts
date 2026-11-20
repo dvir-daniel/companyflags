@@ -5,7 +5,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { schemaProblem, valueProblems, type JsonSchema } from '../server/jsonSchema.ts';
 import { hiddenKey as k } from '../server/evaluator.ts';
-import { planFlags, pullFlags, pushFlags } from '../server/flagsAsCode.ts';
+import { OWNABLE, planFlags, pullFlags, pushFlags } from '../server/flagsAsCode.ts';
 import { AI_CONFIG_SCHEMA, aiConfigTemplate, readSchemaText, schemaText } from '../web/src/pages/flagTemplates.ts';
 import { boot } from './helpers.ts';
 
@@ -129,7 +129,7 @@ test('flags as code: pull writes jsonSchema; plan and push change it, and a bad 
   assert.equal(file.flags.max_upload_mb.jsonSchema, undefined, 'a flag without one has none in the file');
 
   const looser = { ...SCHEMA, required: [] };
-  const plan = await planFlags(t.db, { flags: { ...file.flags, support_bot_model: { ...file.flags.support_bot_model, jsonSchema: looser } } });
+  const plan = await planFlags(t.db, { ...file, flags: { ...file.flags, support_bot_model: { ...file.flags.support_bot_model, jsonSchema: looser } } });
   assert.deepEqual(plan.problems, []);
   assert.deepEqual(plan.steps.map((s) => s.do === 'details' ? [s.flag, s.fields] : [s.flag, s.do]), [['support_bot_model', ['jsonSchema']]]);
   await pushFlags(t.db, plan, { name: 'alice', type: 'user' });
@@ -141,10 +141,10 @@ test('flags as code: pull writes jsonSchema; plan and push change it, and a bad 
   assert.ok(bad.problems.includes('max_upload_mb: only JSON flags have a jsonSchema'), bad.problems.join('\n'));
 
   // a new flag from the file: its variants are checked against its schema
-  const create = await planFlags(t.db, { flags: { draft_model: { kind: 'config', type: 'json', jsonSchema: SCHEMA,
+  const create = await planFlags(t.db, { owns: [...OWNABLE], flags: { draft_model: { kind: 'config', type: 'json', jsonSchema: SCHEMA,
     variants: { fast: FAST, broken: { temperature: 1 } }, default: 'fast', services: { dev: ['server-ds'] } } } });
   await assert.rejects(pushFlags(t.db, create, { name: 'alice', type: 'user' }), /broken: model is required/);
-  const ok = await planFlags(t.db, { flags: { draft_model: { kind: 'config', type: 'json', jsonSchema: SCHEMA,
+  const ok = await planFlags(t.db, { owns: [...OWNABLE], flags: { draft_model: { kind: 'config', type: 'json', jsonSchema: SCHEMA,
     variants: { fast: FAST }, default: 'fast', services: { dev: ['server-ds'] } } } });
   await pushFlags(t.db, ok, { name: 'alice', type: 'user' });
   assert.deepEqual((await t.as('alice').get('/flags/draft_model')).json.jsonSchema, SCHEMA);
