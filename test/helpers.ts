@@ -118,6 +118,13 @@ export async function boot(opts: AppOptions = {}) {
   return { ...ctx, call, as, trace, settle, entityPath, link, appFile, baseOf, editBase };
 }
 
+/** A secret with one character changed, a few from its end: the last character of base64 can carry only padding bits,
+ *  so changing it alone may not change the secret at all. */
+export const changed = (secret: string) => {
+  const i = secret.length - 5;
+  return secret.slice(0, i) + (secret[i] === 'A' ? 'B' : 'A') + secret.slice(i + 1);
+};
+
 /** The first device id `${prefix}-0`, `${prefix}-1`… whose bucket for this salt is in [lo, hi), with the hash every % rule is
  *  saved with (or `hashVersion`). Gives up after `tries`. */
 export function deviceIn(salt: string, lo: number, hi: number, o: { prefix?: string; tries?: number; hashVersion?: number } = {}): string {

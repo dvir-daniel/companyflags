@@ -4,7 +4,7 @@
 // request where approval is needed, and the same values again change nothing (no loop). The receiving end is a fake.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, builtIns } from './helpers.ts';
+import { boot, builtIns, changed } from './helpers.ts';
 import { nextMessage, sign, type HistoryRow } from '../server/webhooks.ts';
 
 // ---------------------------------------------------------------- which rows make a message (pure)
@@ -216,7 +216,7 @@ test('incoming: another system’s values are imported into the webhook’s envi
 
 test('incoming: a wrong address, bad JSON, unknown flags and wrong types are refused, and nothing changes', async () => {
   const { token } = (await t.as('dana').post('/webhooks/in', { name: 'Strict', environment: 'dev', format: 'kv' })).json;
-  assert.equal((await send(token.slice(0, -2) + 'xx', { max_upload_mb: 100 })).status, 401);
+  assert.equal((await send(changed(token), { max_upload_mb: 100 })).status, 401);
   assert.equal((await send('nope', {})).status, 401);
   assert.equal((await send(token, '{not json')).status, 400);
   const bad = await send(token, { no_such_flag: true, max_upload_mb: 'big' });

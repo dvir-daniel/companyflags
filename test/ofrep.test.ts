@@ -8,7 +8,7 @@ import { OpenFeature as WebOpenFeature } from '@openfeature/web-sdk';
 import { OpenFeature as ServerOpenFeature } from '@openfeature/server-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 import { OFREPProvider } from '@openfeature/ofrep-provider';
-import { CSRF, startApp } from './helpers.ts';
+import { changed, CSRF, startApp } from './helpers.ts';
 import { sampleInstallation } from './sample.ts';
 import { createApiKey, rotateClientLink } from '../server/control.ts';
 import { contextFor, evaluate } from '../server/evaluator.ts';
@@ -137,7 +137,8 @@ describe('the protocol', () => {
     assert.equal((await bulk(bearer(token.replace('.web.', '.api.')), {})).status, 401, 'a backend has no app token');
     assert.equal((await bulk(bearer(token.replace('.web.', '.ios.')), {})).status, 401, 'a token is bound to its app');
     assert.equal((await bulk(bearer(await tokenFor('dev', 'ios', 'lumen')), {})).status, 200, 'the app’s own token');
-    assert.equal((await bulk(bearer(token.slice(0, -2) + 'xx'), {})).status, 401);
+    // one character in the middle of its signature changed (the last one can hold only padding bits)
+    assert.equal((await bulk(bearer(changed(token)), {})).status, 401);
 
     // every app carries its token: asking about an entity that doesn't exist gets the same answer, byte for byte, as
     // asking about one it can't ask about, so the token can't be used to list the entities (an API key's neither)
