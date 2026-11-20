@@ -184,7 +184,8 @@ test('incoming: another system’s values are imported into the webhook’s envi
   assert.equal((await t.as('alice').post('/webhooks/in', { name: 'Old', environment: 'dev', format: 'kv' })).status, 403);
   const { token, webhook } = (await t.as('dana').post('/webhooks/in', { name: 'Old config', environment: 'dev', format: 'kv' })).json;
   assert.match(token, /^ffh_\d+_/);
-  assert.ok(!JSON.stringify((await t.as('dana').get('/webhooks')).json).includes(token.split('_').at(-1)), 'the address is shown once');
+  // the whole secret: base64url may itself contain _, so it's everything after ffh_<id>_
+  assert.ok(!JSON.stringify((await t.as('dana').get('/webhooks')).json).includes(token.replace(/^ffh_\d+_/, '')), 'the address is shown once');
   const r = await send(token, { max_upload_mb: 5000 });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual([r.json.applied, r.json.changed], [true, 1]);
