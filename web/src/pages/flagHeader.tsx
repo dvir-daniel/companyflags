@@ -1,5 +1,5 @@
 // Pieces shared by the flag page and other detail pages: the flag's facts as a sentence, and an
-// environment as a place (used by a customer's page).
+// environment as a place (used by an entity's page).
 import type { ReactNode } from 'react';
 import { CaretRightIcon } from '@phosphor-icons/react';
 import { HelpTip } from '@companyflags/ui/components/tooltip';

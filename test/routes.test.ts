@@ -9,11 +9,11 @@ let t: Awaited<ReturnType<typeof boot>>;
 before(async () => { t = await boot(); });
 after(async () => { await t.stop(); });
 
-test('an unknown API, app-file or backend address is a 404 with a JSON error, not the console page', async () => {
+test('an unknown API, CDN-file or backend address is a 404 with a JSON error, not the console page', async () => {
   const signedIn = { 'x-user': 'alice' };
   const cases: [string, string, Record<string, string>][] = [
     ['GET', '/api/nope', signedIn], ['POST', '/api/flags/new_checkout/nope', signedIn], ['DELETE', '/api/customers/acme', signedIn],
-    ['GET', '/client/v1/nope', {}], ['GET', '/client', {}], ['GET', '/client/v1/flags/dev/web/acme/secret/extra', {}],
+    ['GET', '/cdn/v1/nope', {}], ['GET', '/cdn', {}], ['GET', '/cdn/v1/flags/dev/web/acme/secret/extra', {}],
     ['GET', '/sdk/v1/nope', {}], ['GET', '/sdk', {}],
   ];
   for (const [method, path, headers] of cases) {

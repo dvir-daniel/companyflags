@@ -84,7 +84,7 @@ Each entity has a secret app link per environment. An app uses it in one of two 
 | Form | Looks like | Used by |
 |---|---|---|
 | OpenFeature token | `ffl_prod.web.acme.Vx8…` | OpenFeature's OFREP providers: `Authorization: Bearer <token>`, in place of the app's key. One per service: a `web` token can't read `ios` |
-| CDN file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [CDN file](/reading/local-apps) from your CDN. The service is in the path, not in the secret: the same secret reads the entity's other app services |
+| CDN file address | `/cdn/v1/flags/prod/web/acme/Q2k…` | Code that reads the [CDN file](/reading/local-apps) from your CDN. The service is in the path, not in the secret: the same secret reads the entity's other app services |
 
 Your backend knows which entity someone belongs to. When they sign in, it asks CompanyFlags for the entity's link
 with its backend service's key, naming the app's service, and returns the token with the session:

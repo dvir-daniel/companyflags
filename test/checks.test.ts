@@ -55,13 +55,13 @@ test('a flag’s kind decides whether it needs a remove-by date and whether on-c
   assert.deepEqual([canBreakGlass('kill_switch', 'oncall'), canBreakGlass('kill_switch', 'editor'), canBreakGlass('config', 'admin')], [true, false, false]);
 });
 
-test('% of devices: every rule is saved with hash version 2 (flagd’s), one sent with 1 too', () => {
+test('% of devices: every rule is saved with hash version 2 (flagd’s); no other is taken', () => {
   const pct = (hashVersion?: number) => ({ ruleKey: KEY, split: { by: 'device.id', hashVersion, ranges: [{ variation: 'on', from: 0, to: 1000 }] } });
-  for (const v of [undefined, 1, 2]) {
+  for (const v of [undefined, 2]) {
     const r = checkRule(pct(v), config, fields, { isBase: true });
     assert.deepEqual([r.problems, r.rule.split?.hashVersion], [[], 2], `sent ${v}`);
   }
-  assert.deepEqual(checkRule(pct(3), config, fields, { isBase: true }).problems, ['% of devices: hash version 3 doesn’t exist (only 2)']);
+  for (const v of [1, 3]) assert.deepEqual(checkRule(pct(v), config, fields, { isBase: true }).problems, [`% of devices: hash version ${v} doesn’t exist (only 2)`]);
 });
 
 test('“base”, “trace” and “compare” can’t be entity or environment keys: the console’s addresses use them', () => {

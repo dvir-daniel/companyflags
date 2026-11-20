@@ -135,11 +135,10 @@ test('flags as code: pull writes the flags; plan and push make CompanyFlags matc
   // a file with problems changes nothing
   file.flags.broken = { kind: 'feature', type: 'bool', services: { dev: ['tv'], staging: [] } };
   file.flags.dark_mode.type = 'string';
-  file.flags.old_file = { kind: 'ops', type: 'bool', flagSets: { dev: ['web'] } };   // a 0.2 file
   writeFileSync(join(dir, 'flags.json'), JSON.stringify(file));
   const bad = await run(['flags', 'push'], dir, env);
   assert.equal(bad.code, 1);
-  for (const p of [/! old_file: flagSets is called services since 0\.3/, /! broken: kind is one of/, /! broken: no service "tv"/, /! broken: no environment "staging"/, /! dark_mode: its type is bool here/]) assert.match(bad.text, p);
+  for (const p of [/! broken: kind is one of/, /! broken: no service "tv"/, /! broken: no environment "staging"/, /! dark_mode: its type is bool here/]) assert.match(bad.text, p);
 
   const store = await createApp({ databaseUrl: tdb.url, dataDir: tdb.url ? undefined : dataDir, signIn: { kind: 'test-header' } });
   try {

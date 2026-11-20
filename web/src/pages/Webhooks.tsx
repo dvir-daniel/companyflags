@@ -33,7 +33,7 @@ export function Webhooks() {
     <div className="flex min-h-full flex-1 flex-col">
       <PageBar title="Webhooks" count={admin ? undefined : 'Only admins add and change webhooks'} />
       <div className="grid gap-10 px-6 py-6 max-sm:px-4">
-        {meta.plugins?.includes('webhooks')
+        {meta.plugins.includes('webhooks')
           ? <WebhooksSection admin={admin} />
           : <Empty>This server runs without the webhooks plugin. Add <code className="font-mono">webhooks()</code> to the plugins in companyflags.config.ts.</Empty>}
       </div>

@@ -85,9 +85,8 @@ export function vocabOf(meta: Pick<Meta, 'dimensions' | 'entities'>): Vocab {
 }
 // an attribute a rule can check, with its group, label and known values (server/fields.ts)
 export type Field = FieldInfo;
-// status: 'invited' until they use their invite link; 'removed' when an admin removed their access;
-// 'no_account': from before Better Auth, without an account or an invite yet
-export type User = { key: string; name: string; role: string; status?: 'active' | 'invited' | 'removed' | 'no_account' };
+// status: 'invited' until they use their invite link; 'removed' when an admin removed their access
+export type User = { key: string; name: string; role: string; status?: 'active' | 'invited' | 'removed' };
 export type Meta = {
   me: User;                                                   // who is signed in
   signIn: 'better-auth' | 'test-header';
@@ -97,13 +96,12 @@ export type Meta = {
   dimensions: DimensionInfo[];
   entities: Entity[]; users: User[]; fields: Field[];
   dataPlane: Record<string, { revision: number; builtAt: string }>;
-  /** change sets waiting for review, in every environment, that `me` may approve (server/policy.ts mayApprove;
-   *  older servers don't send it) */
-  pendingApprovals?: number;
-  /** the plugins this server runs (server/plugin.ts): 'ofrep', 'flagd', 'app-files', 'cloudflare', or its own */
+  /** change sets waiting for review, in every environment, that `me` may approve (server/policy.ts mayApprove) */
+  pendingApprovals: number;
+  /** the plugins this server runs (server/plugin.ts): 'ofrep', 'flagd', 'cdn-files', 'cloudflare', or its own */
   plugins: string[];
-  /** the notice an admin set for everyone signed in (Settings → Appearance; older servers don't send it) */
-  banner?: { text: string; tone: 'info' | 'warn' | 'danger' } | null;
+  /** the notice an admin set for everyone signed in (Settings → Appearance) */
+  banner: { text: string; tone: 'info' | 'warn' | 'danger' } | null;
 };
 export type TraceStep = {
   stage: string; layer: 'base' | 'entity' | null; owner?: string; ruleKey?: string; ruleName?: string | null;

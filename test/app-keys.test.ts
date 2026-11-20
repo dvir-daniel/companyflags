@@ -57,10 +57,3 @@ test('a backend service’s key is refused from a browser, and works from a serv
   assert.ok(fromServer.json.flags.some((f: { key: string }) => f.key === 'ds_backend_config'), 'its own backend flag');
   assert.ok(!fromServer.json.flags.some((f: { key: string }) => f.key === 'android_quick_share'), 'not another service’s');
 });
-
-test('the links endpoint still takes ?flagSet= from 0.2', async () => {
-  const ds = await keyFor('server-ds');
-  const r = await t.call('GET', '/sdk/v1/links/company/acme?flagSet=web', undefined, { authorization: `Bearer ${ds}` });
-  assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.equal(r.json.service, 'web');
-});

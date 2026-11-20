@@ -10,8 +10,8 @@ import type { Draft } from './lines.ts';
 /** This person's draft session in one environment, without re-rendering on its changes (for write paths that only
  *  tell it what they changed). */
 export function useDraftSession(env: string): DraftSession {
-  const { user, meta } = useApp();
-  return sharedSession(user, env, api, meta.environments.map((e) => e.key));
+  const { user } = useApp();
+  return sharedSession(user, env, api);
 }
 
 /** This person's draft in one environment: the session, and the draft as people read it. Re-renders when it changes;
@@ -32,7 +32,7 @@ export function useDraftNotices() {
   useEffect(() => {
     const envs = meta.environments.map((e) => e.key);
     const offs = envs.map((env) => {
-      const session = sharedSession(user, env, api, envs);
+      const session = sharedSession(user, env, api);
       // after the change that raised it has finished rendering, never during it
       const tell = () => queueMicrotask(() => { for (const n of session.takeNotices()) toast(n.message, 'err'); });
       tell();

@@ -5,7 +5,7 @@
 //   A browser never holds one: a request with an Origin header and a backend's key is refused.
 // - An app link (and its OFREP token) is signed for one entity: an app holding it can't ask as another (delivery.ts).
 //   Its secret is an HMAC of the entity and its link version, made with the environment's secret, so it differs per
-//   environment and an entity's link can be replaced on its own (rotateClientLink).
+//   environment and an entity's link can be replaced on its own (rotateAppLink).
 // The key's scope says which entities it may ask about: its own (`entity`), its own and every one under it (`below`),
 // or any (`all`). mayAsk() checks it against the snapshot's paths on every request.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';

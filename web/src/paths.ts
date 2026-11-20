@@ -27,16 +27,15 @@ export const childrenGridPath = (dimension: string, key: string, env: string, on
 export const dimensionHref = (dimension: string) => `#/dimensions/${seg(dimension)}`;
 export const entityHref = (dimension: string, key: string, env?: string, view?: string) =>
   `#/dimensions/${seg(dimension)}/${seg(key)}${env ? `/${seg(env)}${view ? `/${seg(view)}` : ''}` : ''}`;
-/** A service's app file for everyone in one environment (the app-files plugin, server/delivery.ts): the values with no
+/** A service's CDN file for everyone in one environment (the cdn-files plugin, server/delivery.ts): the values with no
  *  entry's own settings, what an app reads before it knows who is signed in. Each entry's own link is on its page. */
-export const everyoneFilePath = (env: string, service: string) => `/client/v1/flags/${seg(env)}/${seg(service)}`;
+export const everyoneFilePath = (env: string, service: string) => `/cdn/v1/flags/${seg(env)}/${seg(service)}`;
 /** The History page's filters (server/history.ts). `when`: '' (any time), 'today', a number of days ('7', '30', '90',
- *  '365'), or 'custom' with `from`/`to` dates (YYYY-MM-DD, both days included). `entity`: one entity's history
- *  (`customer`, the name from before dimensions, means the same). */
-export type HistoryFilters = { q?: string; entity?: string; customer?: string; env?: string; who?: string; change?: string; when?: string; from?: string; to?: string };
+ *  '365'), or 'custom' with `from`/`to` dates (YYYY-MM-DD, both days included). `entity`: one entity's history. */
+export type HistoryFilters = { q?: string; entity?: string; env?: string; who?: string; change?: string; when?: string; from?: string; to?: string };
 /** The persisted History filters, as the page keeps them (also what navigation prefetches). */
 export const historyFilters = (): HistoryFilters => ({
-  entity: readPersistent('history.entity', readPersistent('history.customer', '')), env: readPersistent('history.env', ''), who: readPersistent('history.who', ''),
+  entity: readPersistent('history.entity', ''), env: readPersistent('history.env', ''), who: readPersistent('history.who', ''),
   change: readPersistent('history.change', ''), when: readPersistent('history.when', ''), from: readPersistent('history.from', ''), to: readPersistent('history.to', ''),
 });
 
@@ -59,7 +58,7 @@ export function historyRange(when = '', from = '', to = '', now = new Date()): {
 export function historyQuery(f: HistoryFilters, now = new Date()): string {
   const p = new URLSearchParams();
   if (f.q?.trim()) p.set('q', f.q.trim().toLowerCase());
-  if (f.entity || f.customer) p.set('entity', (f.entity || f.customer)!);
+  if (f.entity) p.set('entity', f.entity);
   if (f.env) p.set('environment', f.env);
   if (f.who) p.set('by', f.who);
   if (f.change) p.set('type', f.change);
@@ -91,19 +90,6 @@ export const pageEnv = (meta: Meta, fromRoute?: string) => {
   return meta.environments.some((e) => e.key === last) ? last : meta.environments[0]?.key ?? '';
 };
 
-/** The address an old link means (#/customers, #/customer/<key>/<env>/brands, from before dimensions): the same page
- *  under dimensions, found from the entity's dimension. null for any other address. */
-export function newAddress(hash: string, meta: Pick<Meta, 'dimensions' | 'entities'>): string | null {
-  const parts = routeParts(hash);
-  if (!parts) return null;
-  const [page, key, env, view] = parts;
-  if (page !== 'customers' && page !== 'customer') return null;
-  const top = meta.dimensions[0]?.key;
-  const dimension = key && page === 'customer' ? meta.entities.find((e) => e.key === key)?.dimension : undefined;
-  if (dimension && key) return entityHref(dimension, key, env, view === 'brands' ? 'children' : view);
-  return top ? dimensionHref(top) : '#/settings/dimensions';
-}
-
 /** The parts of an address (#/flag/<key>/<env>…), decoded; null when the address can't be decoded (a broken link). */
 export function routeParts(hash: string): string[] | null {
   try {
@@ -126,10 +112,6 @@ export function firstPaths(hash: string, meta: Meta): string[] {
     case 'flag': return a ? [flagPath(a)] : [];
     case 'releases': return [releaseListPath(pageEnv(meta, a), readPersistent('releases.show', ''), readPersistent('releases.owner', ''), '', 0)];
     case 'release': return a ? [flagPath(a), flagRequestsPath(a)] : [];
-    case 'customers': case 'customer': {
-      const next = newAddress(hash, meta);
-      return next ? firstPaths(next, meta) : [];
-    }
     case 'dimensions': {
       if (!a) return [];
       if (!b) return [dimensionListPath(a, '', 0)];

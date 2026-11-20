@@ -66,11 +66,11 @@ test('the file is settled for its entity: no entity lists, nothing about other e
   const snap = t.plane.get('dev');
   const others = Object.keys(snap.entities).filter((k) => k !== 'acme' && !snap.entities.acme.path.includes(k));
   assert.ok(others.length > 3);
-  for (const file of [JSON.stringify(buildFlagdDoc(snap, 'web', snap.entities.acme)), JSON.stringify((await t.appFile('dev', 'web', 'acme')).json)]) {
+  for (const file of [JSON.stringify(buildFlagdDoc(snap, 'web', snap.entities.acme)), JSON.stringify((await t.cdnFile('dev', 'web', 'acme')).json)]) {
     for (const field of ['entity', 'company', 'brand', 'project', 'environment']) assert.ok(!file.includes(`{"var":"${field}"}`), `checks on ${field} are settled on the server`);
     for (const other of others) assert.ok(!file.includes(other), `nothing about ${other}`);
   }
-  const anon = JSON.stringify((await t.appFile('dev', 'web', null)).json);
+  const anon = JSON.stringify((await t.cdnFile('dev', 'web', null)).json);
   for (const key of Object.keys(snap.entities)) assert.ok(!anon.includes(key), `the file for everyone names no entity (${key})`);
 });
 
@@ -81,13 +81,13 @@ test('country rules stay in the file; the device checks them with the CDN’s co
     conditions: [{ field: 'geo.country', op: 'in', values: ['CA'] }], serveVariation: serve.key, split: null };
   const r = await t.editBase(flag, 'dev', (layer) => ({ ...layer, rules: [rule, ...layer.rules] }));
   assert.equal(r.status, 200, JSON.stringify(r.json));
-  const file = (await t.appFile('dev', 'web', 'acme')).json;
+  const file = (await t.cdnFile('dev', 'web', 'acme')).json;
   assert.ok(JSON.stringify(file.flags[flag].targeting).includes('{"var":"geo.country"}'));
   assert.deepEqual(cdnAnswer(file, flag, { 'geo.country': 'CA' }).value, serve.value);
 });
 
 test('the link: cacheable for a CDN, tagged with its environment, 304 on the same ETag, gzipped', async () => {
-  const ok = await t.appFile('dev', 'web', 'acme');
+  const ok = await t.cdnFile('dev', 'web', 'acme');
   assert.equal(ok.status, 200, JSON.stringify(ok.json));
   assert.match(ok.headers.get('cache-control')!, /^public, max-age=60/);
   assert.match(ok.headers.get('cache-control')!, /stale-if-error=86400/);
@@ -96,14 +96,14 @@ test('the link: cacheable for a CDN, tagged with its environment, 304 on the sam
   assert.deepEqual(ok.json.metadata, { flagSetId: 'dev/web/acme', environment: 'dev', revision: t.plane.get('dev').revision });
   const etag = ok.headers.get('etag')!;
   assert.match(etag, /^W\/"/, 'weak: the gzipped and plain responses are the same content');
-  const notModified = await t.appFile('dev', 'web', 'acme', { 'if-none-match': etag });
+  const notModified = await t.cdnFile('dev', 'web', 'acme', { 'if-none-match': etag });
   assert.equal(notModified.status, 304);
   assert.equal(notModified.headers.get('etag'), etag);
   assert.match(notModified.headers.get('cache-control')!, /^public, max-age=60/, 'a 304 keeps the caching headers');
   // what a CDN or a browser may send back: the ETag without W/ (a strong copy), or a list with ours in it
-  assert.equal((await t.appFile('dev', 'web', 'acme', { 'if-none-match': etag.slice(2) })).status, 304);
-  assert.equal((await t.appFile('dev', 'web', 'acme', { 'if-none-match': `W/"other", ${etag}` })).status, 304);
-  assert.equal((await t.appFile('dev', 'web', 'acme', { 'if-none-match': 'W/"other"' })).status, 200);
+  assert.equal((await t.cdnFile('dev', 'web', 'acme', { 'if-none-match': etag.slice(2) })).status, 304);
+  assert.equal((await t.cdnFile('dev', 'web', 'acme', { 'if-none-match': `W/"other", ${etag}` })).status, 304);
+  assert.equal((await t.cdnFile('dev', 'web', 'acme', { 'if-none-match': 'W/"other"' })).status, 200);
   const gz = await t.app.request(await t.link('dev', 'web', 'acme'), { headers: { 'accept-encoding': 'gzip' } });
   assert.equal(gz.headers.get('content-encoding'), 'gzip');
   assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(await gz.arrayBuffer())).toString()), ok.json);
@@ -116,12 +116,12 @@ test('a link is only good for its own entity and environment; wrong links all lo
   assert.notEqual(wonka.split('/').pop(), secret, 'each entity has its own secret');
   assert.notEqual((await t.link('prod', 'web', 'acme')).split('/').pop(), secret, 'and each environment');
   const get = (p: string) => t.call('GET', p);
-  assert.equal((await get(`/client/v1/flags/dev/web/wonka/${secret}`)).status, 404, 'acme’s secret on wonka’s path');
-  assert.equal((await get(`/client/v1/flags/prod/web/acme/${secret}`)).status, 404, 'a dev secret in prod');
-  assert.equal((await get(`/client/v1/flags/dev/web/nobody/${secret}`)).json.error, (await get(`/client/v1/flags/dev/web/acme/wrong`)).json.error);
-  assert.equal((await get(`/client/v1/flags/dev/server-ds/acme/${secret}`)).status, 404, 'backends don’t get app files');
-  assert.equal((await get(`/client/v1/flags/staging/web`)).status, 404);
-  const anon = await get('/client/v1/flags/dev/web');
+  assert.equal((await get(`/cdn/v1/flags/dev/web/wonka/${secret}`)).status, 404, 'acme’s secret on wonka’s path');
+  assert.equal((await get(`/cdn/v1/flags/prod/web/acme/${secret}`)).status, 404, 'a dev secret in prod');
+  assert.equal((await get(`/cdn/v1/flags/dev/web/nobody/${secret}`)).json.error, (await get(`/cdn/v1/flags/dev/web/acme/wrong`)).json.error);
+  assert.equal((await get(`/cdn/v1/flags/dev/server-ds/acme/${secret}`)).status, 404, 'backends don’t get CDN files');
+  assert.equal((await get(`/cdn/v1/flags/staging/web`)).status, 404);
+  const anon = await get('/cdn/v1/flags/dev/web');
   assert.equal(anon.status, 200, 'before login: what everyone gets');
   assert.equal(anon.json.metadata.flagSetId, 'dev/web', 'no entity');
 });
@@ -138,12 +138,12 @@ test('replacing an entity’s link stops the old one at once and is in History',
 });
 
 test('a publish that changes values changes the file and its ETag', async () => {
-  const before_ = await t.appFile('dev', 'android', 'wonka');
+  const before_ = await t.cdnFile('dev', 'android', 'wonka');
   assert.ok('android_quick_share' in before_.json.flags);
   const base = (await t.as('alice').get('/flags/android_quick_share')).json.layers.dev.base;
   assert.equal((await t.as('alice').put('/flags/android_quick_share/layers/dev/base', { layer: { ...base, enabled: false }, expectedVersion: base.version })).status, 200);
   await t.settle();
-  const after_ = await t.appFile('dev', 'android', 'wonka', { 'if-none-match': before_.headers.get('etag')! });
+  const after_ = await t.cdnFile('dev', 'android', 'wonka', { 'if-none-match': before_.headers.get('etag')! });
   assert.equal(after_.status, 200);
   assert.equal(after_.headers.get('etag') === before_.headers.get('etag'), false);
   assert.equal(after_.json.flags.android_quick_share.state, 'DISABLED', 'off → flagd’s DISABLED');

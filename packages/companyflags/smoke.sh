@@ -28,9 +28,9 @@ npx companyflags migrate --check
 
 cat > companyflags.config.ts <<'EOF'
 import { defineConfig, type Config } from 'companyflags/config';
-import { flagd, ofrep } from 'companyflags/plugins';
+import { cdnFiles, flagd, ofrep } from 'companyflags/plugins';
 
-const config: Config = defineConfig({ plugins: [ofrep(), flagd()] });
+const config: Config = defineConfig({ plugins: [ofrep(), flagd(), cdnFiles()] });
 export default config;
 EOF
 
@@ -42,6 +42,8 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 curl -sf "http://127.0.0.1:$port/readyz"; echo
-grep -q 'plugins: ofrep, flagd' "$work/start.log" || { cat "$work/start.log" >&2; echo 'the config file was not loaded' >&2; exit 1; }
+grep -q 'plugins: ofrep, flagd, cdn-files' "$work/start.log" || { cat "$work/start.log" >&2; echo 'the config file was not loaded' >&2; exit 1; }
+# the CDN files' address is the plugin's (no environment yet: its own 404), not an unknown endpoint
+curl -s "http://127.0.0.1:$port/cdn/v1/flags/dev/web" | grep -q 'environment \\"dev\\" not found' || { echo 'no CDN files at /cdn/v1/flags' >&2; exit 1; }
 curl -sf "http://127.0.0.1:$port/" | grep -q '<title>CompanyFlags</title>' || { echo 'no console page' >&2; exit 1; }
 echo "ok: the package installs and runs ($(basename "$tarball"))"

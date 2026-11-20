@@ -54,9 +54,9 @@ _Avoid_: fallback, local default
 The explanation of one decision: each level, what it decided, and why any level was skipped.
 _Avoid_: debug log
 
-**App file**:
-The values-only file one entity's devices read for one service in one environment.
-_Avoid_: config file, client snapshot
+**CDN file**:
+The flagd JSON file one entity's devices read for one app service in one environment, cached by a CDN: its values, and only the checks the device makes.
+_Avoid_: app file, config file, client snapshot
 
 ## Reading flags
 
@@ -85,7 +85,7 @@ A backend service's API key. It is secret: it stays on your servers, and reads v
 _Avoid_: server key, secret key
 
 **App link**:
-An entity's signed link in one environment: the optional way to give an app a signed context, so it reads as that entity and no other. A backend hands it to the app at sign-in, as an app token or an app file address; replacing it stops the old one at once. With an app key alone, the entity in the context is targeting, not proof.
+An entity's signed link in one environment: the optional way to give an app a signed context, so it reads as that entity and no other. A backend hands it to the app at sign-in, as an app token or a CDN file address; replacing it stops the old one at once. With an app key alone, the entity in the context is targeting, not proof.
 _Avoid_: client key, SDK key
 
 **App token**:
@@ -197,7 +197,7 @@ _Avoid_: restore user, reactivate
 _Avoid_: settings file, .env (CompanyFlags doesn't read one)
 
 **Plugin**:
-A part of the server an installation turns on in its config file: a way to read flags (`ofrep()`, `flagd()`, `appFiles()`) or something that runs after a publish or a change (`cloudflare()`, `webhooks()`). Made with `definePlugin`; all the built-in ones run when the config doesn't list any.
+A part of the server an installation turns on in its config file: a way to read flags (`ofrep()`, `flagd()`, `cdnFiles()`) or something that runs after a publish or a change (`cloudflare()`, `webhooks()`). Made with `definePlugin`; all the built-in ones run when the config doesn't list any.
 _Avoid_: extension, add-on, integration
 
 **Core**:

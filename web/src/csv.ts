@@ -1,4 +1,4 @@
-// CSV export shared by every list (flags, keys, history, approvals, customers).
+// CSV export shared by every list (flags, keys, history, approvals, entities).
 
 // A spreadsheet runs a cell that starts with one of these as a formula ("CSV injection"); names, reasons and
 // comments are free text, so such cells get a leading apostrophe, which spreadsheets show as plain text.

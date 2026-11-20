@@ -30,11 +30,10 @@ const MD = 'max-md:hidden';
 const ROW = 'min-h-[53px]';
 
 type Status = NonNullable<User['status']>;
-const STATUS_TEXT: Record<Status, string> = { active: 'Active', invited: 'Invited', no_account: 'No account yet', removed: 'No access' };
+const STATUS_TEXT: Record<Status, string> = { active: 'Active', invited: 'Invited', removed: 'No access' };
 const STATUS_HELP: Record<Status, string> = {
   active: 'Signs in and works with the role shown',
   invited: 'Hasn’t used their invite link yet',
-  no_account: 'Hasn’t made an account yet: send them an invite link',
   removed: 'An admin removed their access',
 };
 const statusOf = (u: User): Status => u.status ?? 'active';
@@ -43,9 +42,6 @@ export function People() {
   const { meta, toast, ask } = useApp();
   const refresh = useRefresh();
   const admin = roleInfo(meta.me.role).changesSettings;
-  // "no account yet" only means something where people sign in with Better Auth; elsewhere they're simply active
-  const accounts = meta.signIn === 'better-auth';
-  const shownStatus = (u: User): Status => (statusOf(u) === 'no_account' && !accounts ? 'active' : statusOf(u));
   const [q, setQ] = useState('');
   const [role, setRole] = usePersistentState('people.role', '');
   const [status, setStatus] = usePersistentState('people.status', '');
@@ -65,7 +61,7 @@ export function People() {
   const everyone = useMemo(() => [...meta.users].sort((a, b) => a.name.localeCompare(b.name) || a.key.localeCompare(b.key)), [meta.users]);
   const matches = (u: User, ignore?: 'role' | 'status') =>
     (ignore === 'role' || !role || u.role === role)
-    && (ignore === 'status' || !status || shownStatus(u) === status)
+    && (ignore === 'status' || !status || statusOf(u) === status)
     && (!needle || u.name.toLowerCase().includes(needle) || u.key.toLowerCase().includes(needle));
   const rows = everyone.filter((u) => matches(u));
   const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -76,8 +72,8 @@ export function People() {
   const filter = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(0); };
   // each choice says how many it would show with the other filters as they are
   const roleOptions: [string, string][] = [['', 'All'], ...ROLES.map((r) => [r, `${roleName(r)} · ${everyone.filter((u) => u.role === r && matches(u, 'role')).length}`] as [string, string])];
-  const statuses = (Object.keys(STATUS_TEXT) as Status[]).filter((s) => s !== 'no_account' || accounts);
-  const statusOptions: [string, string][] = [['', 'All'], ...statuses.map((s) => [s, `${STATUS_TEXT[s]} · ${everyone.filter((u) => shownStatus(u) === s && matches(u, 'status')).length}`] as [string, string])];
+  const statuses = Object.keys(STATUS_TEXT) as Status[];
+  const statusOptions: [string, string][] = [['', 'All'], ...statuses.map((s) => [s, `${STATUS_TEXT[s]} · ${everyone.filter((u) => statusOf(u) === s && matches(u, 'status')).length}`] as [string, string])];
 
   const newLink = async (u: User) => {
     setError(null);
@@ -161,7 +157,7 @@ export function People() {
             </Empty>
           </div>
         ) : shown.map((u) => {
-          const s = shownStatus(u);
+          const s = statusOf(u);
           return (
             <div key={u.key} role="row" className={cn(COLS, tableRowClass, ROW, s === 'removed' && 'text-ink-3')}>
               <span role="cell" className="min-w-0">
@@ -178,7 +174,6 @@ export function People() {
                 {/* on a phone the role and status columns are hidden: the status goes here */}
                 {s !== 'active' && <span className="md:hidden"><Badge kind={s === 'removed' ? undefined : 'warn'}>{STATUS_TEXT[s]}</Badge></span>}
                 {admin && s === 'invited' && <Button variant="secondary" onClick={() => void newLink(u)}>New link</Button>}
-                {admin && s === 'no_account' && u.key !== meta.me.key && <Button variant="secondary" onClick={() => void newLink(u)}>Invite link</Button>}
                 {admin && s === 'removed' && <Button variant="secondary" onClick={() => void newLink(u)}>Invite again</Button>}
                 {admin && s === 'active' && u.key !== meta.me.key && <Button variant="secondary" onClick={() => void resetLink(u)}>Reset password</Button>}
                 {admin && s !== 'removed' && u.key !== meta.me.key && <Button variant="secondary" onClick={() => void remove(u)}>Remove</Button>}
@@ -190,7 +185,7 @@ export function People() {
 
       <div className={cn('flex flex-wrap items-center gap-4 border-t border-rule px-6 max-sm:px-4', pagerRow)}>
         <span className="text-13 text-ink-3 max-md:hidden">
-          {plural(everyone.filter((u) => shownStatus(u) !== 'removed').length, 'person', 'people')} can sign in. With single sign-on, people at your organization’s domains join on their own as viewers.
+          {plural(everyone.filter((u) => statusOf(u) !== 'removed').length, 'person', 'people')} can sign in. With single sign-on, people at your organization’s domains join on their own as viewers.
         </span>
         <span className="flex-1" />
         <Pager page={at} size={PAGE_SIZE} matched={rows.length} noun="people" onPage={(p) => { setPage(p); search.current?.closest('main')?.scrollTo({ top: 0 }); }} />

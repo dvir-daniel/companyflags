@@ -4,7 +4,7 @@
 // work of its own in the background (sending webhooks), or another way into the console's API (MCP, for agents). The built-in ones are in plugins/; each is a function that
 // takes its options and returns a Plugin.
 //
-//   export default defineConfig({ plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks(), mcp()] });
+//   export default defineConfig({ plugins: [ofrep(), flagd(), cdnFiles(), cloudflare(), webhooks(), mcp()] });
 //
 // A plugin's setup runs once, when the server starts, with what the core shares (PluginContext). What it returns is
 // mounted by createApp (index.ts): its routes at the root, its console routes under /api behind the console's sign-in

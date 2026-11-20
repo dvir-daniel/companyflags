@@ -94,15 +94,8 @@ export const FIELDS: FieldDef[] = [
 const BY_NAME = new Map(FIELDS.map((f) => [f.name, f]));
 const RESOLVERS = new Map(FIELDS.flatMap((f) => (f.comesFrom === 'sdk' ? [] : [[f.name, f.resolve] as const])));
 
-// The attributes of the customer model before dimensions (migration 0013 rewrote live rules to `entity` and
-// `company`). History and change sets from before keep them, so they still read and apply exactly as they did.
-//   customer.id       the customer itself, at whatever level: `entity`
-//   customer.company  a brand's company, else the customer itself: the entity at the top of its chain
-export const ALIASES: Readonly<Record<string, string>> = { 'customer.id': ENTITY_FIELD, 'customer.company': '<top>' };
-
 type Resolve = (who: Asker) => unknown;
 const entityKey: Resolve = (who) => who.entity?.key;
-const topKey: Resolve = (who) => (who.entity ? who.entity.path[who.entity.path.length - 1] : undefined);
 const dimensionResolvers = new Map<string, Resolve>();
 const atDimension = (key: string): Resolve => {
   let r = dimensionResolvers.get(key);
@@ -116,16 +109,15 @@ export const fieldOf = (name: string): FieldDef | undefined => BY_NAME.get(name)
 export function resolverFor(name: string, dimensions: readonly string[]): Resolve | undefined {
   const r = RESOLVERS.get(name);
   if (r) return r;
-  if (name === ENTITY_FIELD || name === 'customer.id') return entityKey;
-  if (name === 'customer.company') return topKey;
+  if (name === ENTITY_FIELD) return entityKey;
   return dimensions.includes(name) ? atDimension(name) : undefined;
 }
 /** Whether the app reports this attribute: not what the server works out itself, nor an attribute whose stored copy
- *  says it comes from the link or key (the dimensions, `entity`, the aliases, and any taken off this list). */
+ *  says it comes from the link or key (the dimensions, `entity`, and any taken off this list). */
 export const reportedByApp = (name: string, stored: { comesFrom: string }) => !RESOLVERS.has(name) && stored.comesFrom === 'sdk';
 /** Whether the attribute's values are entity keys ("Store is acme-12", "Company is Globex"). */
 export const namesEntities = (name: string, dimensions: readonly string[]) =>
-  name === ENTITY_FIELD || Object.hasOwn(ALIASES, name) || dimensions.includes(name);
+  name === ENTITY_FIELD || dimensions.includes(name);
 
 // ---- the console ----------------------------------------------------------------------------
 
@@ -136,17 +128,11 @@ export type FieldInfo = {
   group: FieldGroup | null; label: string; knownValues?: KnownValues;
 };
 /** The label, group and known values of an attribute from the dimensions: "Store", "Company or brand" (`entity`, offered
- *  only with more than one dimension), and the aliases (never offered: they read as what they stand for). */
+ *  only with more than one dimension). */
 export function dimensionField(name: string, dims: Dimensions): Pick<FieldInfo, 'group' | 'label' | 'knownValues'> | null {
   const d = dims.find((x) => x.key === name);
   if (d) return { group: DIMENSION_GROUP, label: capital(d.singular), knownValues: { dimension: d.key } };
-  if (name === ENTITY_FIELD || name === 'customer.id') {
-    return { group: name === ENTITY_FIELD && dims.length > 1 ? DIMENSION_GROUP : null, label: joined(dims, 'or') || name, knownValues: 'entities' };
-  }
-  if (name === 'customer.company') {
-    const top = dims[0];
-    return { group: null, label: top ? capital(top.singular) : name, knownValues: top ? { dimension: top.key } : 'entities' };
-  }
+  if (name === ENTITY_FIELD) return { group: dims.length > 1 ? DIMENSION_GROUP : null, label: joined(dims, 'or') || name, knownValues: 'entities' };
   return null;
 }
 export function fieldInfo(row: Omit<FieldInfo, 'group' | 'label' | 'knownValues'>, dims: Dimensions = []): FieldInfo {

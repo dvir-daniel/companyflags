@@ -162,10 +162,10 @@ test('1 to 4 dimensions: evaluate(), the entity page, the CDN file and flagd JSO
 });
 const where0 = (depth: number, modes: unknown, e: EntityInfo | null) => `depth ${depth} ${JSON.stringify(modes)} ${e?.key ?? 'none'}`;
 
-/** No check on a dimension, `entity` or the old names, and no entity key, in a CDN file's or a backend's flagd flags. */
+/** No check on a dimension or `entity`, and no entity key, in a CDN file's or a backend's flagd flags. */
 function assertNothingAbout(files: unknown, dims: readonly string[], where: string) {
   const text = JSON.stringify(files);
-  for (const field of ['entity', 'customer.id', 'customer.company', ...dims]) {
+  for (const field of ['entity', ...dims]) {
     for (const s of [`"field":"${field}"`, `"var":"${field}"`, `"missing":["${field}"]`, `"by":"${field}"`]) assert.ok(!text.includes(s), `no ${s}: ${where}`);
   }
   for (const key of KEYS) assert.ok(!text.includes(`"${key}"`), `no entity key ${key}: ${where}`);

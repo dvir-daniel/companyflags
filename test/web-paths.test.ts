@@ -93,24 +93,6 @@ test('an environment that no longer exists, remembered or in the address, falls 
   assert.equal(paths.pageEnv(meta, meta.environments[0].key), meta.environments[0].key);
 });
 
-test('addresses from before dimensions open the same pages under #/dimensions', () => {
-  assert.equal(paths.newAddress('#/customers', meta), '#/dimensions/company');
-  assert.equal(paths.newAddress('#/customer/velvet', meta), '#/dimensions/brand/velvet');
-  assert.equal(paths.newAddress('#/customer/acme/prod', meta), '#/dimensions/company/acme/prod');
-  // a company's Brands tab is the tab of the entities under it
-  assert.equal(paths.newAddress('#/customer/acme/prod/brands', meta), '#/dimensions/company/acme/prod/children');
-  // a key nobody has: the top dimension's list
-  assert.equal(paths.newAddress('#/customer/gone', meta), '#/dimensions/company');
-  // no dimensions yet: where they are set up
-  assert.equal(paths.newAddress('#/customers', { ...meta, dimensions: [], entities: [] } as Meta), '#/settings/dimensions');
-  assert.equal(paths.newAddress('#/flags', meta), null);
-  // and they prefetch what the new page needs
-  assert.deepEqual(paths.firstPaths('#/customer/acme/dev/brands', meta), [
-    '/dimensions/company/acme/children?environment=dev&page=0&size=50&diff=0&q=', '/dimensions/company/acme',
-  ]);
-});
-
-test('the History filters ask for one entity’s history, also under the name from before dimensions', () => {
+test('the History filters ask for one entity’s history', () => {
   assert.equal(paths.historyQuery({ entity: 'acme' }), 'entity=acme');
-  assert.equal(paths.historyQuery({ customer: 'acme' }), 'entity=acme');
 });

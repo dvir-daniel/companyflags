@@ -74,7 +74,7 @@ function navOf(meta: Meta | null): { group: string; items: NavItem[] }[] {
     ] },
     { group: 'Connect', items: [
       { ...plainPage('keys'), label: 'API keys', icon: 'keys' },
-      ...(!meta || meta.plugins?.includes('webhooks') ? [{ ...plainPage('webhooks'), label: 'Webhooks', icon: 'webhooks' as const }] : []),
+      ...(!meta || meta.plugins.includes('webhooks') ? [{ ...plainPage('webhooks'), label: 'Webhooks', icon: 'webhooks' as const }] : []),
       { ...plainPage('migration'), label: 'Migration', icon: 'migration' },
     ] },
     { group: 'Admin', items: [

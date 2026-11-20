@@ -29,7 +29,6 @@ const VERSIONS = ['4.9.1', '5.0.0', '5.0.0-beta.1', '5.0.0-beta.10', '6.0.0', '1
 const TEXT: Record<string, string[]> = {
   'device.platform': ['android', 'ios', 'web'], 'locale.language': ['en', 'es', 'de', 'en-GB'],
   entity: Object.keys(ENTITIES), company: ['vandelay', 'wonka', 'tyrell'], brand: ['velvet', 'onyx'],
-  'customer.id': Object.keys(ENTITIES), 'customer.company': ['vandelay', 'wonka', 'tyrell'],
   project: ['server-ds', 'web'], environment: ['dev', 'prod'],
 };
 const ROLES = ['admin', 'beta', 'staff'];

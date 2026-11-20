@@ -19,7 +19,7 @@ One file says how the server runs, the way Better Auth has its `auth.ts`. A conf
 ```ts
 // companyflags.config.ts
 import { defineConfig } from 'companyflags/config';
-import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
+import { cdnFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   database: { url: process.env.DATABASE_URL },          // or { dataDir: './data' }
@@ -28,7 +28,7 @@ export default defineConfig({
   plugins: [
     ofrep(),
     flagd(),
-    appFiles(),
+    cdnFiles(),
     cloudflare(),                                       // CF_ZONE_ID and CF_API_TOKEN, unless given here
     webhooks(),
   ],

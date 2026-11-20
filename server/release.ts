@@ -13,8 +13,7 @@
 // The steps of an on/off release, as its defaults:
 //   not started   the default is the old value (false, or the in-app default) and none of the release's rules exist
 //   early access  a rule for everyone on `entity` ("Company or brand is one of …") serving the new value (true):
-//                 those entities have it on every device, whatever the %. Before dimensions the rule checked
-//                 `customer.id`, which means the same and is still recognised
+//                 those entities have it on every device, whatever the %
 //   % of devices  then a rule serving true to one range [0, N%) of devices: widening moves only its end, so every
 //                 device inside stays inside (checks.ts allows it without a reshuffle)
 //   everyone      the default is the new value, and the release's rules are gone. Not a 100% rule: a device without
@@ -114,9 +113,8 @@ function versionsOf(variants: readonly Variant[], base: LayerLike) {
   return { ok, all, current, currentKey: def, targetKey, target: targetKey ? byKey.get(targetKey)! : null, above, byKey };
 }
 
-const EARLY_FIELDS: ReadonlySet<string> = new Set(['entity', 'customer.id']);
 const isEarly = (r: RuleLike, newValue: string) => !r.locked && !r.split && r.serveVariation === newValue
-  && r.conditions.length === 1 && EARLY_FIELDS.has(r.conditions[0].field) && r.conditions[0].op === 'in';
+  && r.conditions.length === 1 && r.conditions[0].field === 'entity' && r.conditions[0].op === 'in';
 const isRollout = (r: RuleLike, newValue: string) => !r.locked && !!r.split && r.split.ranges.length === 1
   && r.split.ranges[0].from === 0 && r.split.ranges[0].variation === newValue
   && r.conditions.length <= 1 && r.conditions.every((c) => c.field === 'project' && c.op === 'in');

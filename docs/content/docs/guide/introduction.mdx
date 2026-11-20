@@ -34,9 +34,9 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
    have settings of its own. An entity follows its parent's settings until it has its own. Locked rules apply to
    everyone, always.
 3. **Apps and backends ask with OpenFeature.** Each reads a **service**: the flags you put in it. Apps use
-   OpenFeature's own OFREP providers (web, Android, iOS) with their service's public key; backends use their
-   service's secret key, or download their entity's rules as [flagd](https://flagd.dev) JSON and evaluate them
-   in-process. For very large fleets, each entity's values are also one file your CDN caches.
+   OpenFeature's own OFREP providers (web, Android, iOS) with their service's public key, and backends with their
+   secret key. Or they download their entity's flags as [flagd](https://flagd.dev) JSON and decide each flag
+   themselves: a backend in memory, an app from a CDN file your CDN caches. See [Reading flags](/reading/overview).
 
 <IllusHowItWorks />
 

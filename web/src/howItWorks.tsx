@@ -62,11 +62,11 @@ function HowItWorksPanel({ open, onClose }: { open: boolean; onClose: () => void
   const meta = use(AppContext)?.meta;
   const dims = meta?.dimensions ?? [];
   const STEPS = steps(dims);
-  // how this server's apps read flags (server/plugin.ts); a server that doesn't say serves both
-  const plugins = meta?.plugins;
-  const ofrep = plugins?.includes('ofrep') ?? true;
-  const files = plugins?.includes('app-files') ?? true;
-  const cdn = plugins?.includes('cloudflare') ?? false;
+  // how this server's apps read flags (server/plugin.ts)
+  const plugins = meta?.plugins ?? [];
+  const ofrep = plugins.includes('ofrep');
+  const files = plugins.includes('cdn-files');
+  const cdn = plugins.includes('cloudflare');
   return (
     <Drawer open={open} onClose={onClose} title="How a flag decides" subtitle="What an app gets, layer by layer"
         footer={<Button variant="secondary" onClick={onClose}>Got it</Button>}>

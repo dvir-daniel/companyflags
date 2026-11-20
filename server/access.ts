@@ -16,8 +16,7 @@
 // Who may join (`admit`):
 //   - nobody whose access an admin removed;
 //   - the first account: on a new install, whoever opens the setup link the server prints when it starts (they become
-//     the admin); on a database from before accounts (people with roles, nobody with an account yet), an existing admin
-//     with that link. Until the first account is made, nobody else joins at all;
+//     the admin). Until the first account is made, nobody else joins at all;
 //   - a password account: with the invite link an admin made for that email, while it works (once, for 7 days);
 //   - single sign-on: people at the connection's email domains (and subdomains), and people an admin added;
 //   - Google, GitHub or Microsoft, when they confirm the email: people an admin added, or anyone at a signup domain
@@ -35,8 +34,8 @@ import { isRole, roleInfo, ROLES, type Role, type RoleInfo } from './policy.ts';
 
 export type { Role };
 export type Person = { key: string; name: string; role: Role; removed: boolean };
-/** active; invited: hasn't used their invite link yet; no_account: from before accounts, hasn't made one; removed */
-export type Status = 'active' | 'invited' | 'no_account' | 'removed';
+/** active; invited: hasn't used their invite link yet; removed */
+export type Status = 'active' | 'invited' | 'removed';
 export type ListedPerson = { key: string; name: string; role: Role; status: Status };
 
 /** A signed-in email, from the sign-in (identity.ts): who the request says it is, before we know the person. */
@@ -154,11 +153,9 @@ export function createAccess(db: Db, opts: AccessOptions) {
   const setupOpen = async (q: Queryable, setup: string | undefined) =>
     !!opts.setupToken && !!setup && sameSecret(sha256(setup), sha256(opts.setupToken)) && !(await accounts.any(q));
 
-  /** The first account: made with the setup link, on a new install (no people) or by an existing admin. */
-  const mayMakeFirstAccount = async (q: Queryable, email: string, setup: string | undefined) => {
-    if (!(await setupOpen(q, setup))) return false;
-    return !(await one(q, `select 1 from app_user limit 1`)) || await activeAdmins(q, email) > 0;
-  };
+  /** The first account: made with the setup link, on a new install (no people yet). */
+  const mayMakeFirstAccount = async (q: Queryable, setup: string | undefined) =>
+    await setupOpen(q, setup) && !(await one(q, `select 1 from app_user limit 1`));
 
   /** Their domain has a connection that requires single sign-on, and they aren't an admin. */
   const ssoRequired = async (q: Queryable, email: string) => {
@@ -211,7 +208,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
       if (a.with === 'provider' && await ssoRequired(db, email)) return SSO_REQUIRED;
       if (a.account === 'existing') return null;                       // a provider sign-in again, or one added to their account
       // nobody has an account yet: only the first one, made with the setup link
-      if (!(await accounts.any(db))) return await mayMakeFirstAccount(db, email, a.setup) ? null : INVITE_REQUIRED;
+      if (!(await accounts.any(db))) return await mayMakeFirstAccount(db, a.setup) ? null : INVITE_REQUIRED;
       switch (a.with) {
         case 'password': {
           if (await ssoRequired(db, email)) return SSO_REQUIRED;
@@ -240,10 +237,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
       const rows = await all<{ key: string; name: string; role: Role; removed: boolean; invited: boolean }>(db,
         `select key, name, role, removed_at is not null as removed, invite_hash is not null as invited
          from app_user order by removed_at is not null, id`);
-      const joined = await accounts.of(db, rows.map((r) => r.key));
-      return rows.map(({ removed, invited, ...r }) => ({
-        ...r, status: removed ? 'removed' : invited ? 'invited' : joined.has(r.key) ? 'active' : 'no_account',
-      }));
+      return rows.map(({ removed, invited, ...r }) => ({ ...r, status: removed ? 'removed' : invited ? 'invited' : 'active' }));
     },
 
     /** An admin adds someone by email, with their role. They join with the invite link this returns

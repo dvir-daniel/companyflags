@@ -56,7 +56,7 @@ console only over `https`.
 
 ## 4. A CDN in front of the CDN files
 
-Put Cloudflare (or another CDN) in front of `/client/v1/flags/`, with a cache rule and purge on publish. See
+Put Cloudflare (or another CDN) in front of `/cdn/v1/flags/`, with a cache rule and purge on publish. See
 [CDN](/self-hosting/cdn).
 
 ## 5. Health checks
@@ -105,9 +105,6 @@ Open it, create the admin account, then invite everyone else from **Settings →
 join, `FF_SIGNUP_DOMAINS` and single sign-on included. The secret comes from `BETTER_AUTH_SECRET`, so every instance
 prints the same link, and it stops working once the first account exists. Until it does, keep the link as you keep
 the secret.
-
-Upgrading a database from before accounts? An existing admin opens the link and makes the first account with their
-own email. See [Sign-in → The first account](/self-hosting/sign-in#the-first-account).
 
 ## 9. The console's security headers
 

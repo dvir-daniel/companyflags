@@ -31,7 +31,7 @@ type InstallTab = keyof typeof install;
 const installTabs = Object.keys(install) as InstallTab[];
 
 const usage = {
-  'Web app': {
+  'App · remote': {
     file: 'flags.ts',
     lines: [
       "import { OpenFeature } from '@openfeature/web-sdk'",
@@ -49,7 +49,7 @@ const usage = {
       "OpenFeature.getClient().getBooleanValue('new_checkout', false)",
     ],
   },
-  Backend: {
+  'Backend · remote': {
     file: 'server.ts',
     lines: [
       "import { OpenFeature } from '@openfeature/server-sdk'",
@@ -66,7 +66,23 @@ const usage = {
       ')',
     ],
   },
-  flagd: {
+  'App · local': {
+    file: 'flags.ts',
+    lines: [
+      "import { FlagdCore } from '@openfeature/flagd-core'",
+      '',
+      '// the CDN file: this entity’s flagd JSON, cached by your CDN',
+      'const core = new FlagdCore()',
+      'core.setConfigurations(await (await fetch(',
+      "  'https://flags.example.com/cdn/v1/flags/prod/web/acme/k3J9xW…',",
+      ')).text())',
+      '',
+      "core.resolveBooleanEvaluation('new_checkout', false, {",
+      "  targetingKey: installId, app: { version: '6.0.0' },",
+      '}).value',
+    ],
+  },
+  'Backend · local': {
     file: 'terminal',
     lines: [
       '# flagd downloads one entity’s rules and answers in memory',
@@ -99,7 +115,7 @@ const features: { title: string; text: string; chips: string[] }[] = [
   { title: 'Your own dimensions.', text: 'Serve config per region › store, per team, per customer, or whatever your product is made of. Up to four levels, in your words.', chips: ['region › store', 'team', 'customer'] },
   { title: 'Settings per entity.', text: 'Any region, store or team can have settings of its own, inherited down the chain, under rules for everyone.', chips: ['inherit', 'own settings'] },
   { title: 'Locked rules.', text: 'Overrides apply to everyone, always, and fail closed when a value is missing. No entity can change them.', chips: ['override', 'fail closed'] },
-  { title: 'OpenFeature, no SDK of ours.', text: 'OFREP for OpenFeature’s web, Android, iOS and server providers; flagd JSON for in-process backends.', chips: ['OFREP', 'flagd', 'React'] },
+  { title: 'OpenFeature, no SDK of ours.', text: 'OFREP when the server decides; flagd JSON when your app or backend decides, an app’s file cached by your CDN.', chips: ['OFREP', 'flagd', 'CDN'] },
   { title: 'Move over one flag at a time.', text: 'Run it next to the system you have now. Import its values; apps read the old one for every flag not moved yet.', chips: ['import', 'side by side', 'JSONata'] },
   { title: 'Releases.', text: 'Early access, then 1% → 5% → 25% → 50% of devices, then everyone; or versions 1.0.0 → 1.0.1. On call rolls back.', chips: ['1%', '5%', '25%', '1.0.1'] },
   { title: 'Made for AI.', text: 'AI-written code ships off, then to a few, with a kill switch. Models and prompts are JSON flags you roll out and roll back.', chips: ['kill switch', 'model', 'prompt'] },
@@ -129,7 +145,7 @@ function measure(row: HTMLElement | null): Bar | undefined {
 
 export function Landing() {
   const [installTab, setInstallTab] = useState<InstallTab>('Docker');
-  const [usageTab, setUsageTab] = useState<UsageTab>('Web app');
+  const [usageTab, setUsageTab] = useState<UsageTab>('App · remote');
   const usageNow = usage[usageTab];
   const installLines: string[] = install[installTab];
 
@@ -279,14 +295,15 @@ export function Landing() {
                 <span className="file">{usageNow.file}</span>
               </div>
               <pre key={usageTab} className={swapped.usage ? 'numbered swap' : 'numbered'}><code>{usageNow.lines.map((l, i) => (
-                <span key={i} className="line" style={{ '--l': i } as CSSProperties}>{l}{'\n'}</span>
+                <span key={i} className="line" style={{ '--l': i } as CSSProperties}>{l || ' '}</span>
               ))}</code></pre>
             </div>
             <div className="side">
-              <Link href="/reading/remote-apps#web-apps" className={usageTab === 'Web app' ? 'on' : undefined}>Apps: OFREP</Link>
-              <Link href="/reading/remote-backends#ask-with-ofrep" className={usageTab === 'Backend' ? 'on' : undefined}>Backends: OFREP</Link>
-              <Link href="/reading/overview" className={usageTab === 'flagd' ? 'on' : undefined}>Backends: flagd</Link>
-              <p>No SDK of ours: OpenFeature’s own providers, on the web, Android, iOS and servers. An app reads with its service’s public key; a backend keeps its own key secret.</p>
+              <Link href="/reading/remote-apps" className={usageTab === 'App · remote' ? 'on' : undefined}>Apps: OFREP</Link>
+              <Link href="/reading/local-apps" className={usageTab === 'App · local' ? 'on' : undefined}>Apps: CDN file</Link>
+              <Link href="/reading/remote-backends" className={usageTab === 'Backend · remote' ? 'on' : undefined}>Backends: OFREP</Link>
+              <Link href="/reading/local-backends" className={usageTab === 'Backend · local' ? 'on' : undefined}>Backends: flagd</Link>
+              <p>Two OpenFeature standards, no SDK of ours: OFREP when the server decides, flagd JSON when your code does. An app reads values with a public key or link; a backend keeps its key secret.</p>
             </div>
           </div>
         </section>

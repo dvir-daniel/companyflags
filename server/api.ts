@@ -14,7 +14,7 @@ import type { PluginParts } from './plugin.ts';
 import type { Tokens, TokenPerson } from './tokens.ts';
 import type { AppearanceStore } from './appearanceStore.ts';
 import { applyImport, fromValues, planImport, toValues } from './values.ts';
-import { appToken, clientLink } from './delivery.ts';
+import { appToken, cdnFilePath } from './delivery.ts';
 import { notRolledBack, RESTORABLE } from './journal.ts';
 import { HISTORY_CSV_HEADER, historyBatches, historyCsv, historyFilter, historyPage } from './history.ts';
 import {
@@ -33,7 +33,7 @@ import { overdue, readyToCleanUp, releaseState, stepText, type ReleaseState } fr
 import { DEFAULT_PAGE_SIZE, likePattern, listQuery, pageOf, searchHit } from './listing.ts';
 import { entityWords, sourceText } from './words.ts';
 import {
-  addVersion, archiveFlag, updateFlagMeta, createApiKey, createEnvironment, createFlag, createProject, deleteProject, dimensionRows, revokeApiKey, rotateClientLink, rotateEnvironmentLinks,
+  addVersion, archiveFlag, updateFlagMeta, createApiKey, createEnvironment, createFlag, createProject, deleteProject, dimensionRows, revokeApiKey, rotateAppLink, rotateEnvironmentLinks,
   saveDimensions, setDelivery, updateEnvironment, updateProject, upsertEntity, upsertVariations, type NewFlag,
 } from './control.ts';
 import { loadLayers, type DataPlane } from './snapshot.ts';
@@ -154,8 +154,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
       dimensionsNow(),
       all(db, `select c.key, c.name, d.key as dimension, p.key as parent, c.created_at as "createdAt" from entity c
         join dimension d on d.id = c.dimension_id left join entity p on p.id = c.parent_id where c.archived_at is null order by c.name`),
-      // with their status: invited until they use their invite link, removed once an admin removed their access,
-      // no_account for people from before accounts who haven't made one (or been invited) yet
+      // with their status: invited until they use their invite link, removed once an admin removed their access
       access.people(),
       // the stored attributes, with their group, label and known values from fields.ts (code, not columns: no migration)
       all<Omit<FieldInfo, 'group' | 'label' | 'knownValues'>>(db, `select name, value_type as "valueType", comes_from as "comesFrom",
@@ -741,11 +740,11 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     const env = c.req.query('environment') ?? await firstEnv();
     entityIn(snapshot(env), c.req.param('dimension'), c.req.param('key'));
     // with ?service=: the link for that service, and the same link as a token for OpenFeature's OFREP providers (ofrep.ts)
-    const appKey = c.req.query('service') ?? c.req.query('flagSet');   // ?flagSet= from 0.2, until 0.4
+    const appKey = c.req.query('service');
     if (appKey && (await one<{ kind: string }>(db, `select kind from project where key = $1`, [appKey]))?.kind !== 'client') {
       throw new HttpError(404, `no app service "${appKey}"`);
     }
-    const path = await clientLink(db, env, c.req.param('key'), appKey);
+    const path = await cdnFilePath(db, env, c.req.param('key'), appKey);
     return c.json({ path, ...(appKey ? { token: await appToken(db, env, c.req.param('key'), appKey) } : {}) });
   });
 
@@ -753,8 +752,8 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     const env = c.req.query('environment') ?? await firstEnv();
     entityIn(snapshot(env), c.req.param('dimension'), c.req.param('key'));
     // the old link stops working here at once, and every environment publishes again, which purges the CDN (journal.ts)
-    await rotateClientLink(db, c.req.param('key'), actor(c.get('user')));
-    return c.json({ path: await clientLink(db, env, c.req.param('key')) });
+    await rotateAppLink(db, c.req.param('key'), actor(c.get('user')));
+    return c.json({ path: await cdnFilePath(db, env, c.req.param('key')) });
   });
 
   app.get('/api-keys', async (c) => c.json(await all(db, `select k.id, k.key_prefix as prefix, k.label, e.key as environment, p.key as project,
@@ -780,7 +779,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   // ------------------------------------------------------------ settings (admins): environments, services
   app.post('/environments', async (c) => {
     adminOnly(c.get('user'));
-    return c.json(await createEnvironment(db, await c.req.json(), actor(c.get('user'))), 201);   // its app files are served at once
+    return c.json(await createEnvironment(db, await c.req.json(), actor(c.get('user'))), 201);   // its CDN files are served at once
   });
 
   app.put('/environments/:env', async (c) => {

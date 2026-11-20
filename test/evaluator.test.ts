@@ -79,7 +79,7 @@ test('evaluate() says which section decided, and words.ts names it', () => {
 
 test('who is asking: the console simulates exactly what the app would send', () => {
   const snap = snapOf(flag({}));
-  const sent = { 'app.version': '6.2.0', project: 'spoofed', entity: 'wonka', company: 'wonka', brand: 'velvet', 'customer.id': 'wonka', 'customer.company': 'wonka',
+  const sent = { 'app.version': '6.2.0', project: 'spoofed', entity: 'wonka', company: 'wonka', brand: 'velvet',
     environment: 'prod', unknown: 1, 'device.id': '' };
   const app = contextFor(snap, { project: 'android', entity: 'vandelay' }, { ...sent, 'device.platform': 'android' }, { trust: 'app' });
   const console_ = contextFor(snap, { project: 'android', entity: 'vandelay' }, sent, { trust: 'console' });
@@ -186,7 +186,7 @@ test('a skipped level is shown as skipped in the trace, and its rules never run'
 
 // ---- what the server works out: one resolver each (server/fields.ts), in both walks ---------------
 
-test('the entity, its company and its brand, at each level: evaluate() and the app file agree', () => {
+test('the entity, its company and its brand, at each level: evaluate() and the CDN file agree', () => {
   const ACME = E.acme;
   const who = [VELVET, TYRELL, ACME, null];
   // what each check finds for [Velvet, Tyrell, Acme, no entity], and whether it matches. Below the asker's own level a
@@ -202,9 +202,6 @@ test('the entity, its company and its brand, at each level: evaluate() and the a
     [{ field: 'brand', op: 'not_in', values: ['velvet'] }, ['velvet', null, null, null], [false, true, true, false]],
     [{ field: 'brand', op: 'missing' }, ['velvet', null, null, null], [false, true, true, true]],
     [{ field: 'brand', op: 'exists' }, ['velvet', null, null, null], [true, false, false, false]],
-    // the names from before dimensions read as what they stand for
-    [{ field: 'customer.id', op: 'in', values: ['velvet'] }, ['velvet', 'tyrell', 'acme', null], [true, false, false, false]],
-    [{ field: 'customer.company', op: 'in', values: ['tyrell'] }, ['tyrell', 'tyrell', 'acme', null], [true, true, false, false]],
   ];
   for (const [check, found, matches] of cases) {
     const named = rule({ conditions: [check], serveVariation: 'b' });
@@ -245,7 +242,7 @@ test('below the asker’s level a dimension is none: an override on it doesn’t
   assert.deepEqual(forEntity(byBrand, W, TYRELL), { gets: { variant: 'a', section: 'default', owner: null, ruleKey: null, ruleName: null, namesEntity: false }, exceptions: [] });
 });
 
-test('the app is settled in an app file (one app) and waits for the request on the entity page (any app)', () => {
+test('the app is settled in a CDN file (one app) and waits for the request on the entity page (any app)', () => {
   const f = flag({ rules: [rule({ conditions: [{ field: 'project', op: 'in', values: ['web'] }], serveVariation: 'b' })] });
   const page = forEntity(f, W, VELVET);
   assert.deepEqual([page.gets.variant, page.exceptions.map((e) => [e.variant, e.when.map((c) => c.field)])], ['a', [['b', ['project']]]]);

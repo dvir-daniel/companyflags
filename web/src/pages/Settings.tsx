@@ -51,7 +51,7 @@ export function Settings({ section }: { section?: string }) {
         {at === 'sso' && <SingleSignOn />}
         {at === 'appearance' && <AppearanceSection />}
         {/* the Cloudflare plugin's settings (server/plugins/cloudflare.ts), when this server runs it */}
-        {at === 'cdn' && (meta.plugins?.includes('cloudflare') ? <Cdn /> : <Empty>This server runs without the Cloudflare plugin.</Empty>)}
+        {at === 'cdn' && (meta.plugins.includes('cloudflare') ? <Cdn /> : <Empty>This server runs without the Cloudflare plugin.</Empty>)}
       </div>
     </div>
   );
@@ -268,8 +268,8 @@ function ServicesSection({ admin }: { admin: boolean }) {
   const [drawer, setDrawer] = useState<{ app: App | null } | null>(null);
   const [fileOf, setFileOf] = useState<string | null>(null);
   const { error, setError, run } = useAsync();
-  // the app-files plugin serves each app service's file for everyone (server/delivery.ts), with no entry needed
-  const files = meta.plugins?.includes('app-files') ?? true;
+  // the cdn-files plugin serves each app service's file for everyone (server/delivery.ts), with no entry needed
+  const files = meta.plugins.includes('cdn-files');
 
   const remove = async (p: App) => {
     setError(null);

@@ -178,7 +178,6 @@ function readFile(file: unknown, problems: string[]): Record<string, FlagSpec> {
   for (const [key, s] of Object.entries(flags)) {
     if (!/^[a-z][a-z0-9_]*$/.test(key)) problems.push(`${key}: flag keys use lowercase letters, digits and _, starting with a letter`);
     if (!s || typeof s !== 'object') { problems.push(`${key}: not an object`); continue; }
-    if ('flagSets' in s) problems.push(`${key}: flagSets is called services since 0.3: rename it in the file`);
     if (!FLAG_KINDS.includes(s.kind as never)) problems.push(`${key}: kind is one of ${FLAG_KINDS.join(', ')}`);
     if (!TYPES.includes(s.type)) problems.push(`${key}: type is one of ${TYPES.join(', ')}`);
     if (s.variants !== undefined && (typeof s.variants !== 'object' || Array.isArray(s.variants) || s.variants === null)) problems.push(`${key}: variants is an object, variant → value`);

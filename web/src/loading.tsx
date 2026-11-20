@@ -241,8 +241,8 @@ export function RouteSkeleton({ route, env }: { route: string[]; env?: ReactNode
       </div>
     );
   }
-  // an entity's page (#/dimensions/<dimension>/<key>/…), or the old address of one
-  if ((page === 'dimensions' && b) || page === 'customer') {
+  // an entity's page (#/dimensions/<dimension>/<key>/…)
+  if (page === 'dimensions' && b) {
     const back = dim ? { href: `#/dimensions/${dim.key}`, label: titleOf(dim) } : undefined;
     return <div aria-busy className="flex min-h-full flex-1 flex-col"><EntityHeaderSkeleton back={back} /></div>;
   }

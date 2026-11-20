@@ -49,7 +49,7 @@ function SideBySide() {
         <li><b className="font-medium text-ink">Import</b> the old system’s flags below, with “Create missing flags” on. They’re in no service yet, so apps still read the old system.</li>
         <li><b className="font-medium text-ink">Put OpenFeature’s Multi-Provider</b> in each app: CompanyFlags first, the old system second. A flag that isn’t in the app’s service is “not found” here, so the old system answers.</li>
         <li><b className="font-medium text-ink">Move a flag</b> by adding it to the app’s service, on the flag’s page. From then on the app reads it here.</li>
-        <li><b className="font-medium text-ink">Keep both the same</b> meanwhile: a webhook out tells the old system each change made here, and a webhook in takes the old system’s changes{meta.plugins?.includes('webhooks') ? <> (<a href="#/webhooks">Webhooks</a>)</> : null}.</li>
+        <li><b className="font-medium text-ink">Keep both the same</b> meanwhile: a webhook out tells the old system each change made here, and a webhook in takes the old system’s changes{meta.plugins.includes('webhooks') ? <> (<a href="#/webhooks">Webhooks</a>)</> : null}.</li>
       </ol>
       <div className="grid gap-2">
         <pre className={code}>{SIDE_BY_SIDE}</pre>

@@ -16,7 +16,7 @@ const core: { icon: IconName; label: string }[] = [
 const plugins: { call: string; icon: IconName; where: string; who: string }[] = [
   { call: 'ofrep()', icon: 'devices', where: '/ofrep/v1', who: 'apps · backends' },
   { call: 'flagd()', icon: 'server', where: '/sdk/v1/flagd', who: 'backends' },
-  { call: 'appFiles()', icon: 'phone', where: '/client/v1', who: 'apps · CDN' },
+  { call: 'cdnFiles()', icon: 'phone', where: '/cdn/v1', who: 'apps · CDN' },
   { call: 'cloudflare()', icon: 'cloud', where: 'after a publish', who: 'purge' },
   { call: 'webhooks()', icon: 'globe', where: '/hooks/v1 · after a change', who: 'Slack · CI · old system' },
 ];
@@ -26,7 +26,7 @@ export function IllusArchitecture() {
     <div className="cf-ill arch">
       <div className="head dots">
         <p className="label">companyflags.config.ts</p>
-        <code className="term"><span className="p">export default</span> defineConfig({'{'} database, auth, plugins: [<span className="dim">ofrep(), flagd(), appFiles(), cloudflare(), webhooks()</span>] {'}'})</code>
+        <code className="term"><span className="p">export default</span> defineConfig({'{'} database, auth, plugins: [<span className="dim">ofrep(), flagd(), cdnFiles(), cloudflare(), webhooks()</span>] {'}'})</code>
       </div>
       <div className="core">
         <p className="label">Core</p>

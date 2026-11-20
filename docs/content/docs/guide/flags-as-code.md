@@ -44,7 +44,7 @@ companyflags flags push     # make CompanyFlags match flags.json
 | `name`, `description`, `owner`, `tags`, `removeBy` | The flag's details, as in its Settings tab. |
 | `variants` | Variant → value. An on/off flag has `on: true` and `off: false` when you leave it out. |
 | `default` | For a new flag: the variant everyone gets until you add rules. An on/off flag starts on `off`. |
-| `services` | Per environment, the [services](/guide/services) the flag is in. Before 0.3 it was `flagSets`, which a push no longer reads: rename it. |
+| `services` | Per environment, the [services](/guide/services) the flag is in. |
 | `freeValues` | `true` for a flag whose values are typed into its rules. Such a flag is made in the console. |
 | `jsonSchema` | A JSON flag's [JSON Schema](/guide/flags-and-rules#a-json-schema): every variant must match it. `null` removes it. |
 

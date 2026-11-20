@@ -97,7 +97,7 @@ test('names saved in the console reach the app with each flag', async () => {
   // other flags carry no group at all
   for (const [k, a] of Object.entries(answers)) if (k !== 'new_checkout') assert.equal(a.metadata?.group, undefined, k);
   // the CDN file: the same values, no names
-  const file = (await t.appFile('dev', 'android', 'acme')).json;
+  const file = (await t.cdnFile('dev', 'android', 'acme')).json;
   for (const device of [inside, outside]) {
     assert.deepEqual(cdnAnswer(file, 'new_checkout', { 'device.id': device, 'app.version': '6.0.0' }).value, (await ofrep(device)).new_checkout.value, device);
   }
@@ -120,6 +120,6 @@ test('a device in a named group that keeps its in-app default still hears its gr
   const device = deviceOut(stored.salt, stored.ranges[0].to);
   const answer = (await ofrep(device)).new_checkout;
   assert.deepEqual([answer.value, answer.metadata?.group], [undefined, 'checkout_control'], 'no value: the app keeps its own default');
-  const file = (await t.appFile('dev', 'android', 'acme')).json;
+  const file = (await t.cdnFile('dev', 'android', 'acme')).json;
   assert.ok(cdnAnswer(file, 'new_checkout', { 'device.id': device, 'app.version': '6.0.0' }).codeDefault, 'the CDN file: the in-app default, no name');
 });

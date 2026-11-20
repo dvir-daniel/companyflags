@@ -1,11 +1,11 @@
 // Reading flags without OFREP (OFREP itself is ofrep.ts), made to sit behind a CDN (Cloudflare): CDN files (the
-// app-files plugin), flagd JSON (the flagd plugin) and app links (the core). plugins/ mounts the plugins' routes,
+// cdn-files plugin), flagd JSON (the flagd plugin) and app links (the core). plugins/ mounts the plugins' routes,
 // index.ts the links. This file also makes and reads app tokens, the credential apps use with OFREP.
 //
 // CDN files, for apps (android, ios, web) that read a file instead of using OFREP: one file per environment, service
 // and entity, as flagd JSON (flagd.ts), read by an OpenFeature flagd provider in-process (or by flagd).
-//   GET /client/v1/flags/:env/:app                     before login: what everyone gets
-//   GET /client/v1/flags/:env/:app/:entity/:secret     the entity's file (:app is the service): the entity's app link
+//   GET /cdn/v1/flags/:env/:app                        before login: what everyone gets
+//   GET /cdn/v1/flags/:env/:app/:entity/:secret        the entity's file (:app is the service): the entity's app link
 // Everything the server knows is settled in the file (the environment, the service, the entity and those above it),
 // so it names no other entity and holds none of their values. The CDN caches by path, so this server only builds a
 // file when the CDN doesn't have it, and keeps it in memory until the next publish. Each response is tagged with its
@@ -60,15 +60,15 @@ function download(files: Files, snap: Snapshot, id: string, build: () => { conte
 }
 
 // flagd JSON (flagd.ts) for one service and entity (null: what it gets with no entity). The same document goes to
-// backends (flagdDownload, for a backend service) and to apps as their CDN file (clientDownload, for an app service).
+// backends (flagdDownload, for a backend service) and to apps as their CDN file (cdnDownload, for an app service).
 const flagdJson = (snap: Snapshot, service: string, entity: string | null) => {
   const doc = buildFlagdDoc(snap, service, entity ? snap.entities[entity] : null);
   const content = JSON.stringify(doc.flags);
   return { content, json: `{"$schema":${JSON.stringify(doc.$schema)},"metadata":${JSON.stringify(doc.metadata)},"flags":${content}}` };
 };
-const clientFiles: Files = new WeakMap();
-const clientDownload = (snap: Snapshot, service: string, entity: string | null) =>
-  download(clientFiles, snap, `${service}|${entity ?? ''}`, () => flagdJson(snap, service, entity));
+const cdnFileCache: Files = new WeakMap();
+const cdnDownload = (snap: Snapshot, service: string, entity: string | null) =>
+  download(cdnFileCache, snap, `${service}|${entity ?? ''}`, () => flagdJson(snap, service, entity));
 const flagdDocs: Files = new WeakMap();
 const flagdDownload = (snap: Snapshot, service: string, entity: string) =>
   download(flagdDocs, snap, `${service}|${entity}`, () => flagdJson(snap, service, entity));
@@ -116,11 +116,11 @@ export class AppCache {
 }
 
 // An entity's link in one environment (shown in the console, given to the app at login).
-export async function clientLink(db: Db, env: string, entity: string, app?: string) {
+export async function cdnFilePath(db: Db, env: string, entity: string, app?: string) {
   const row = await one<{ secret: string; v: number }>(db, `select e.link_secret as secret, c.client_link_version as v
     from environment e, entity c where e.key = $1 and c.key = $2 and c.archived_at is null`, [env, entity]);
   if (!row) throw new HttpError(404, 'entity or environment not found');
-  return `/client/v1/flags/${env}/${app ?? ':service'}/${encodeURIComponent(entity)}/${clientSecret(row.secret, entity, row.v)}`;
+  return `/cdn/v1/flags/${env}/${app ?? ':service'}/${encodeURIComponent(entity)}/${clientSecret(row.secret, entity, row.v)}`;
 }
 
 // An app's credential for OpenFeature's providers (OFREP, ofrep.ts): `ffl_<environment>.<app>.<entity>.<secret>`, its
@@ -165,8 +165,8 @@ const snapshotIn = (plane: Parts['plane'], env: string) => {
   return snap;
 };
 
-/** CDN files (the app-files plugin): GET /client/v1/flags/…, flagd JSON for apps and the CDN in front of them. */
-export function appFileRoutes({ db, plane, links, services: apps }: Parts) {
+/** CDN files (the cdn-files plugin): GET /cdn/v1/flags/…, flagd JSON for apps and the CDN in front of them. */
+export function cdnFileRoutes({ db, plane, links, services: apps }: Parts) {
   const app = new Hono();
   // If-None-Match → 304 the standard way (weak comparison, a list of ETags, *), keeping the headers a 304 must carry.
   // It uses the ETag each response already has, so nothing is hashed per request. Only on these paths: this app is
@@ -174,20 +174,20 @@ export function appFileRoutes({ db, plane, links, services: apps }: Parts) {
   // Web apps read their file from another origin (the console's server, or the CDN in front of it). A file is public
   // to whoever has its link and carries no cookies, so any origin may read it; the SDK reads ETag, and the country
   // when the CDN adds it to the response (cf-ipcountry).
-  app.use('/client/v1/*', cors({ origin: '*', allowMethods: ['GET', 'HEAD'], exposeHeaders: ['ETag', 'CF-IPCountry'], maxAge: 86400 }));
+  app.use('/cdn/v1/*', cors({ origin: '*', allowMethods: ['GET', 'HEAD'], exposeHeaders: ['ETag', 'CF-IPCountry'], maxAge: 86400 }));
   // A 304 keeps the CORS headers too: a browser reading the file from another origin checks them on every answer.
   const retainedHeaders = [...RETAINED_304_HEADERS, 'access-control-allow-origin', 'access-control-expose-headers', 'cache-tag'];
-  app.use('/client/v1/flags/*', etag({ retainedHeaders }));
+  app.use('/cdn/v1/flags/*', etag({ retainedHeaders }));
   const snapshotFor = (env: string) => snapshotIn(plane, env);
 
-  app.get('/client/v1/flags/:env/:app', async (c) => {
+  app.get('/cdn/v1/flags/:env/:app', async (c) => {
     const { env, app: appKey } = c.req.param();
     const snap = snapshotFor(env);
     await ensureClientApp(db, apps, appKey);
-    return send(c, await clientDownload(snap, appKey, null), CDN_CACHE, `env-${env}`);
+    return send(c, await cdnDownload(snap, appKey, null), CDN_CACHE, `env-${env}`);
   });
 
-  app.get('/client/v1/flags/:env/:app/:entity/:secret', async (c) => {
+  app.get('/cdn/v1/flags/:env/:app/:entity/:secret', async (c) => {
     const { env, app: appKey, entity, secret } = c.req.param();
     // One answer for every kind of wrong link (environment, service, entity or secret), after the same work, so links
     // can't be used to find out which entities exist: the secret is worked out for an unknown entity too.
@@ -199,20 +199,20 @@ export function appFileRoutes({ db, plane, links, services: apps }: Parts) {
     const right = sameSecret(secret, clientSecret(envSecret ?? '', entity, v ?? 0));
     if (!snap || !Object.hasOwn(snap.entities, entity) || !envSecret || v === undefined || !right) throw noFile();
     try { await ensureClientApp(db, apps, appKey); } catch { throw noFile(); }
-    return send(c, await clientDownload(snap, appKey, entity), CDN_CACHE, `env-${env}`);
+    return send(c, await cdnDownload(snap, appKey, entity), CDN_CACHE, `env-${env}`);
   });
 
   return app;
 }
 
-/** App links for backends (core): GET /sdk/v1/links/<dimension>/<entity>?service=<key>. `files`: whether app files
- *  are served (the app-files plugin), so the answer has the file's path as well as the OFREP token. */
+/** App links for backends (core): GET /sdk/v1/links/<dimension>/<entity>?service=<key>. `files`: whether CDN files
+ *  are served (the cdn-files plugin), so the answer has the file's path as well as the OFREP token. */
 export function linkRoutes({ db, plane, keys, services: apps }: Parts, o: { files: boolean }) {
   const app = new Hono();
   const snapshotFor = (env: string) => snapshotIn(plane, env);
 
   // Backend servers hand each app its entity's link at sign-in: GET /sdk/v1/links/<dimension>/<entity>?service=<key>, with
-  // the backend's API key, within its scope, for the key's environment. The answer is the link's path (the app file, from
+  // the backend's API key, within its scope, for the key's environment. The answer is the link's path (the CDN file, from
   // the address apps use) and the same link as a token for OpenFeature's OFREP providers. Never cached: it is a secret.
   app.get('/sdk/v1/links/:dimension/:entity', async (c) => {
     const p = await authenticate(db, { authorization: c.req.header('authorization'), origin: c.req.header('origin') }, keys);
@@ -222,11 +222,11 @@ export function linkRoutes({ db, plane, keys, services: apps }: Parts, o: { file
     const info = Object.hasOwn(snap.entities, entity) ? snap.entities[entity] : null;
     if (!info || info.dimension !== dimension) throw new HttpError(404, `no ${dimension} "${entity}"`);
     if (!mayAsk(p, entity, info.path)) throw new HttpError(403, `this key can’t ask about "${entity}"`);
-    const appKey = c.req.query('service') ?? c.req.query('flagSet');   // ?flagSet= from 0.2, until 0.4
+    const appKey = c.req.query('service');
     if (!appKey) throw new HttpError(400, 'name the service the link is for: ?service=<key>, e.g. ?service=web');
     await ensureClientApp(db, apps, appKey);
     c.header('Cache-Control', 'no-store');
-    return c.json({ environment: p.environment, service: appKey, entity, ...(o.files ? { path: await clientLink(db, p.environment, entity, appKey) } : {}),
+    return c.json({ environment: p.environment, service: appKey, entity, ...(o.files ? { path: await cdnFilePath(db, p.environment, entity, appKey) } : {}),
       token: await appToken(db, p.environment, entity, appKey) });
   });
   return app;
@@ -245,7 +245,7 @@ export function flagdRoutes({ db, plane, keys }: Parts) {
     const p = await authenticate(db, { authorization: c.req.header('authorization'), origin: c.req.header('origin') }, keys);
     if (p.kind !== 'server') throw new HttpError(403, 'an app’s key reads values only (OFREP): the rules as flagd JSON are for a backend’s key');
     const snap = snapshotFor(p.environment);
-    const entity = named ? named.entity : ownEntity(p, c.req.header('x-customer-id'));
+    const entity = named ? named.entity : ownEntity(p);
     const info = Object.hasOwn(snap.entities, entity) ? snap.entities[entity] : null;
     if (!info || (named && info.dimension !== named.dimension)) {
       throw new HttpError(404, named ? `no ${named.dimension} "${named.entity}"` : `"${entity}" not found`);
@@ -254,16 +254,14 @@ export function flagdRoutes({ db, plane, keys }: Parts) {
     return send(c, await flagdDownload(snap, p.project, entity), 'private, no-cache');
   };
   app.get('/sdk/v1/flagd/:dimension/:entity', (c) => flagdFor(c, { dimension: c.req.param('dimension'), entity: c.req.param('entity') }));
-  // A key for one entity (or one below, for its own) needs no path. X-Customer-Id, from before dimensions, still works
-  // with `all` keys so backends set up then don't break; it isn't documented any more.
+  // A key for one entity (or one below, for its own) needs no path.
   app.get('/sdk/v1/flagd', (c) => flagdFor(c, null));
 
   return app;
 }
 
-function ownEntity(p: Principal, legacyHeader: string | undefined): string {
+function ownEntity(p: Principal): string {
   if (p.entity) return p.entity;
-  if (legacyHeader) return legacyHeader;
   throw new HttpError(400, 'flagd JSON is one entity’s flags: name it in the path, /sdk/v1/flagd/<dimension>/<entity>');
 }
 

@@ -36,8 +36,7 @@ export function createAppearance(db: Db, fromConfig?: unknown) {
     if (cached && Date.now() - cached.at < FRESH_MS) return cached.row;
     const r = await one<{ settings: Appearance; updatedAt: string; updatedBy: string }>(db,
       `select settings, updated_at as "updatedAt", updated_by as "updatedBy" from appearance`);
-    // a row from an older version may lack a setting: the defaults fill it in
-    const row = r ? { settings: { ...EMPTY, ...r.settings }, updatedAt: String(r.updatedAt), updatedBy: r.updatedBy } : { settings: EMPTY, updatedAt: null, updatedBy: null };
+    const row = r ? { settings: r.settings, updatedAt: String(r.updatedAt), updatedBy: r.updatedBy } : { settings: EMPTY, updatedAt: null, updatedBy: null };
     cached = { at: Date.now(), row };
     return row;
   };
@@ -78,7 +77,7 @@ export function createAppearance(db: Db, fromConfig?: unknown) {
       if (server) throw fromServer();
       await db.transaction(async (tx) => {
         const gone = await one<{ settings: Appearance }>(tx, `delete from appearance returning settings`);
-        if (gone) await journal.audit(tx, actor, { kind: 'appearance.reset', before: forHistory({ ...EMPTY, ...gone.settings }) });
+        if (gone) await journal.audit(tx, actor, { kind: 'appearance.reset', before: forHistory(gone.settings) });
       });
       cached = null;
     },

@@ -23,10 +23,10 @@ test('a rule can set a remote value, or explicitly keep the code default', async
 });
 
 test('in the CDN file, a flag that only uses the code default has no value to give: the app keeps its own', async () => {
-  const acme = (await t.appFile('dev', 'web', 'acme')).json;
+  const acme = (await t.cdnFile('dev', 'web', 'acme')).json;
   assert.deepEqual([acme.flags.welcome_message.defaultVariant, acme.flags.welcome_message.targeting], [null, undefined]);
   assert.ok(cdnAnswer(acme, 'welcome_message').codeDefault);
-  const globex = (await t.appFile('dev', 'web', 'globex')).json;
+  const globex = (await t.cdnFile('dev', 'web', 'globex')).json;
   assert.equal(cdnAnswer(globex, 'welcome_message').value, (await t.trace({ project: 'web', entity: 'globex', flag: 'welcome_message' })).value);
   assert.ok(!cdnAnswer(globex, 'welcome_message').codeDefault);
 });

@@ -52,8 +52,8 @@ without a deploy. See [Flags in the age of AI](https://dvir-daniel.github.io/com
   your product is made of. You name the levels, up to four.
 - **Settings per entity, rules for everyone.** Any region, store or customer can have settings of its own on any flag,
   inherited down the chain. Locked rules apply to everyone, always. The console traces every answer step by step.
-- **OpenFeature, no SDK of ours.** Apps use OpenFeature's own OFREP providers (web, Android, iOS); backends use OFREP
-  or flagd JSON, evaluated in-process. Your flag-reading code stays standard.
+- **OpenFeature, no SDK of ours.** Two OpenFeature standards: OFREP when the server decides, and flagd JSON when your
+  app or backend decides itself (an app's file cached by your CDN). Your flag-reading code stays standard.
 - **Nothing private reaches a device.** An app reads with its service's public key and gets values only: no rules,
   no lists of entities. A signed app link from your backend keeps it to its own entity's values.
 - **Made for AI-written code and AI features.** AI-built changes ship off, then to a few, with a kill switch and a
@@ -114,8 +114,16 @@ pnpm serve           # builds the console, serves it with the API on http://loca
 
 ## Read flags with OpenFeature
 
-Each app and backend reads a service: the flags you put in it. Make the service's key on the **API keys** page and
-give it to OpenFeature's own OFREP provider. An app service's key is public, and reads values only:
+Each app and backend reads a service: the flags you put in it. There are four ways, from two questions: is it an app
+or a backend, and does the server decide (OFREP) or your code (flagd JSON)?
+
+| | The server decides (OFREP) | Your code decides (flagd JSON) |
+|---|---|---|
+| **App** | OpenFeature's OFREP web, Android and iOS providers | The CDN file: the entity's flagd JSON, cached by your CDN |
+| **Backend** | OpenFeature's OFREP server providers | flagd: the entity's rules, in memory |
+
+Most apps start with OFREP. Make the service's key on the **API keys** page and give it to OpenFeature's own OFREP
+provider. An app service's key is public, and reads values only:
 
 ```ts
 import { OpenFeature } from '@openfeature/web-sdk';
@@ -139,10 +147,9 @@ const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme
 
 Or it runs [flagd](https://flagd.dev) next to it, which downloads the entity's rules as flagd JSON, and evaluates every
 flag in memory. To pin an app to its own entity, a backend can hand it a signed app link at sign-in
-(`GET /sdk/v1/links/<dimension>/<entity>?service=web`); that is optional. See
-[OpenFeature](https://dvir-daniel.github.io/companyflags/reading/overview),
-[Services](https://dvir-daniel.github.io/companyflags/guide/services) and
-[Backends](https://dvir-daniel.github.io/companyflags/reading/overview).
+(`GET /sdk/v1/links/<dimension>/<entity>?service=web`): a token for OFREP, or the address of its CDN file. See
+[Reading flags](https://dvir-daniel.github.io/companyflags/reading/overview) and
+[Services](https://dvir-daniel.github.io/companyflags/guide/services).
 
 ## Examples
 
@@ -163,7 +170,7 @@ Everything is optional: without a file, environment variables decide. With one, 
 ```ts
 // companyflags.config.ts (companyflags init writes one)
 import { defineConfig } from 'companyflags/config';
-import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
+import { cdnFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   database: { url: process.env.DATABASE_URL },
@@ -171,7 +178,7 @@ export default defineConfig({
   plugins: [
     ofrep(),
     flagd(),
-    appFiles(),
+    cdnFiles(),
     cloudflare(),      // the zone and token from CF_ZONE_ID and CF_API_TOKEN
     webhooks(),
   ],
@@ -212,7 +219,7 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 |---|---|
 | [Introduction](https://dvir-daniel.github.io/companyflags/guide/introduction) | What it is, who it's for, what it doesn't do yet |
 | [Concepts](https://dvir-daniel.github.io/companyflags/guide/concepts) | Environments, services, dimensions, flags, rules |
-| [OpenFeature](https://dvir-daniel.github.io/companyflags/reading/overview) | Web, React, Android, iOS and backends |
+| [Reading flags](https://dvir-daniel.github.io/companyflags/reading/overview) | OFREP and flagd JSON, in apps and backends |
 | [Migration](https://dvir-daniel.github.io/companyflags/guide/migration) | Moving from another system, import, export, webhooks |
 | [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
 | [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources) | `llms.txt`, a skill for your agents, and OpenFeature's MCP server |

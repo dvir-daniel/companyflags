@@ -557,9 +557,9 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
   // here; each time the drawer opens it's asked for again
   const asked = `${entity.key}\n${env}\n${app}`;
   type Link = { path?: string; token?: string };
-  // what this server serves (server/plugin.ts): the token is for OFREP, the address for app files
-  const ofrep = meta.plugins?.includes('ofrep') ?? true;
-  const files = meta.plugins?.includes('app-files') ?? true;
+  // what this server serves (server/plugin.ts): the token is for OFREP, the address for CDN files
+  const ofrep = meta.plugins.includes('ofrep');
+  const files = meta.plugins.includes('cdn-files');
   const [got, setGot] = useState<{ asked: string; link: Link | null; error: string | null } | null>(null);
   const link = got?.asked === asked ? got.link : null;
   const error = got?.asked === asked ? got.error : null;

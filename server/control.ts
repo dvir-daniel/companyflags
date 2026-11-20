@@ -458,12 +458,12 @@ export async function revokeApiKey(db: Db, id: number, actor: Actor) {
   });
 }
 
-// An entity's app link (delivery.ts clientLink) is the address of its file: the console shows it, the entity's
+// An entity's app link (delivery.ts cdnFilePath) is the address of its file: the console shows it, the entity's
 // backend gives it to its apps at login, and the apps read their file there.
 // Replaces an entity's app links in every environment: each environment gets a new version and a publish
 // (journal.ts changeEverywhere), which purges the CDN, so the old link stops being served at once; the entity's
 // backend hands its apps the new one at the next login. The links of entities under it stay as they are.
-export async function rotateClientLink(db: Db, entityKey: string, actor: Actor) {
+export async function rotateAppLink(db: Db, entityKey: string, actor: Actor) {
   return db.transaction(async (tx) => {
     const c = await one<{ id: string; v: number }>(tx, `update entity set client_link_version = client_link_version + 1
       where key = $1 and archived_at is null returning id, client_link_version as v`, [entityKey]);
@@ -522,7 +522,7 @@ export async function createEnvironment(db: Db, input: EnvironmentInput, actor: 
       const layer = await normalizeLayer(tx, f, true, { enabled: false, variationWhenOff: f.off, defaultVariation: f.def, rules: [] } as LayerDoc, null);
       await writeLayer(tx, env.id, f, null, layer, undefined, actor);
     }
-    await change(tx, { id: env.id, key }, actor, { kind: 'environment.create', after: { key, name, minApprovals } });   // its app files are served at once
+    await change(tx, { id: env.id, key }, actor, { kind: 'environment.create', after: { key, name, minApprovals } });   // its CDN files are served at once
     return { key, name, minApprovals };
   });
 }
@@ -558,7 +558,7 @@ export async function createProject(db: Db, input: { key?: string; kind?: string
   });
 }
 
-// A service's key never changes: it is in every app file address (/client/v1/flags/<env>/<service>/…), in its API
+// A service's key never changes: it is in every CDN file address (/cdn/v1/flags/<env>/<service>/…), in its API
 // keys, in rules that check the service, and in the history. What an admin can change is its kind, and only while
 // nothing uses it (appUse): a backend's flags in an app's file would be public, and a service made for backends stops
 // being served as files. Deleting a service has the same condition. Neither changes what any environment serves, so both are history only.

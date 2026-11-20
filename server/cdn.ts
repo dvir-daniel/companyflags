@@ -1,4 +1,4 @@
-// The CDN in front of the app files (Cloudflare). After a publish the worker drops that environment's files from the
+// Cloudflare, the CDN in front of the CDN files. After a publish the worker drops that environment's files from the
 // CDN's cache (purge.ts, Cache-Tag env-<environment>), so apps get a change in seconds instead of within the cache's
 // minute. Without it nothing breaks: the CDN asks this server again after a minute.
 //
@@ -29,7 +29,7 @@ export type CdnState = {
 export type CdnOptions = { fetch?: typeof fetch; server?: Partial<CloudflareZone>; log?: (m: string) => void };
 
 const ZONE_ID = /^[0-9a-f]{32}$/;
-/** A tag no app file carries: purging it checks the zone and the token's permission without dropping anything. */
+/** A tag no CDN file carries: purging it checks the zone and the token's permission without dropping anything. */
 const CHECK_TAG = 'companyflags-check';
 
 export function createCdn(db: Db, o: CdnOptions = {}) {

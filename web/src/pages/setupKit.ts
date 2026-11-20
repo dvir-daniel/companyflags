@@ -14,15 +14,15 @@ export type SetupStep = {
   action?: string;
 };
 
-type SetupFacts = Pick<Meta, 'environments' | 'projects' | 'dimensions' | 'entities'> & { plugins?: string[] };
+type SetupFacts = Pick<Meta, 'environments' | 'projects' | 'dimensions' | 'entities' | 'plugins'>;
 
 /**
  * The steps from a new server to an app reading its first flag. `flags`: how many flags there are, when the page knows
  * (the Flags list); without it the flag step is never marked done.
  */
 export function setupSteps(meta: SetupFacts, flags?: number): SetupStep[] {
-  // what this server serves (server/plugin.ts); an older server doesn't say, and serves both
-  const ofrep = meta.plugins?.includes('ofrep') ?? true;
+  // what this server serves (server/plugin.ts)
+  const ofrep = meta.plugins.includes('ofrep');
   return [
     { key: 'environments', title: 'Environments', done: meta.environments.length > 0, href: '#/settings', action: 'Add an environment',
       text: 'Where flags live, such as Development and Production. Production can require an approval for every change.' },

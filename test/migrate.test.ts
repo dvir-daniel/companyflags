@@ -9,13 +9,8 @@ import { join } from 'node:path';
 import { connectDb, FolderInUseError, one, type Db } from '../server/db.ts';
 import { checksum, migrate, MigrationError, readMigrations, type Migration } from '../server/migrate.ts';
 import { createApp } from '../server/index.ts';
-import { cdnAnswer, CSRF, deviceIn, testDatabase } from './helpers.ts';
-import { testCondition, type Condition } from '../server/evaluator.ts';
-import { bucketFor } from '../server/hash.ts';
-import { syncFields } from '../server/fields.ts';
+import { CSRF, testDatabase } from './helpers.ts';
 import { fixtures } from './fixtures.ts';
-import { readFileSync } from 'node:fs';
-import { seedBeforeDimensions, etagOf, CHANGE_SET_RULE, CUSTOMERS, DIMENSION_OF, KEYS } from './before-dimensions.ts';
 
 const m = (name: string, sql: string): Migration => ({ name, sql, checksum: checksum(sql) });
 const SHIPPED = readMigrations();
@@ -63,156 +58,13 @@ test('an upgrade applies only the new file and keeps the data', () => withDb(asy
   assert.deepEqual((await db.query(`select id, name, note from thing`)).rows, [{ id: 1, name: 'kept', note: null }]);
 }));
 
-test('0009 moves every % of devices on a database from before it to hash version 2 (flagd’s)', () => withDb(async (open) => {
+test('a version release may go without a remove-by date; an on/off release or an experiment needs one', () => withDb(async (open) => {
   const db = await open();
   await migrate(db);
-  await syncFields(db);                                 // as the server does on start, before its setup
-  await fixtures(db);
-  // the database as 0008 left it: % rules with version 1, which was then the only one allowed
-  await db.exec(`alter table flag_rule drop constraint flag_rule_hash_version_check;
-    update flag_rule set split_hash_version = 1 where split_by is not null;
-    set constraints all immediate;
-    alter table flag_rule add constraint flag_rule_hash_version_check check (split_hash_version is null or split_hash_version = 1);
-    delete from schema_migration where name = '0009_flagd_hash.sql';`);
-  const versions = async () => (await db.query<{ v: number; n: number }>(`select split_hash_version as v, count(*)::int as n from flag_rule where split_by is not null group by 1`)).rows;
-  assert.deepEqual((await versions()).map((r) => r.v), [1]);
-  const rules = (await versions())[0].n;
-  assert.deepEqual((await migrate(db)).applied, ['0009_flagd_hash.sql']);
-  assert.deepEqual(await versions(), [{ v: 2, n: rules }], 'every % rule, and nothing else');
-  await assert.rejects(db.query(`update flag_rule set split_hash_version = 1 where split_by is not null`), /flag_rule_hash_version_check/);
-}));
-
-test('0011 lets a version release go without a remove-by date; an on/off release still needs one', () => withDb(async (open) => {
-  const db = await open();
-  await migrate(db);
-  await syncFields(db);
-  await fixtures(db);
-  // the database as 0010 left it: every release needs a remove-by date
-  await db.exec(`alter table flag drop constraint flag_remove_by_check;
-    alter table flag add constraint flag_check check (kind not in ('release','experiment') or remove_by is not null);
-    delete from schema_migration where name = '0011_version_releases.sql';`);
-  await assert.rejects(db.query(`insert into flag (key, value_type, kind) values ('web_bundle', 'string', 'release')`), /flag_check/);
-  assert.deepEqual((await migrate(db)).applied, ['0011_version_releases.sql']);
   await db.query(`insert into flag (key, value_type, kind) values ('web_bundle', 'string', 'release')`);
   await assert.rejects(db.query(`insert into flag (key, value_type, kind) values ('new_thing', 'bool', 'release')`), /flag_remove_by_check/);
   await assert.rejects(db.query(`insert into flag (key, value_type, kind) values ('an_experiment', 'string', 'experiment')`), /flag_remove_by_check/);
-  const releases = await one<{ n: number }>(db, `select count(*)::int as n from flag where kind = 'release' and remove_by is not null`);
-  assert.ok(releases!.n >= 3, 'the releases already there keep their dates');
 }));
-
-// The files in before-dimensions.json are in the app file's format of then: a value per flag, and "when" lines the
-// device picked from in order. readRecorded is what a device read from one, to compare with what an app reads from
-// its CDN file (flagd JSON) now. It reads only what those files have: checks, overrides and % of devices.
-type RecordedLine = { if: Condition[]; value?: unknown; codeDefault?: true; locked?: true; split?: { by: string; salt: string; hashVersion: number; from: number; to: number } };
-type RecordedFile = { revision: number; flags: Record<string, { value?: unknown; codeDefault?: true; when?: RecordedLine[] }> };
-function readRecorded(file: RecordedFile, key: string, attrs: Record<string, unknown>): { value?: unknown; codeDefault?: true } {
-  const f = file.flags[key];
-  const line = (f.when ?? []).find((l) => l.if.every((c) => testCondition(c, attrs[c.field]) ?? !!l.locked)
-    && (!l.split || (attrs[l.split.by] !== undefined && inside(bucketFor(l.split.salt, String(attrs[l.split.by]), l.split.hashVersion), l.split))));
-  const x = line ?? f;
-  return x.codeDefault ? { codeDefault: true } : { value: x.value };
-}
-const inside = (b: number, r: { from: number; to: number }) => b >= r.from && b < r.to;
-// every version the files' checks tell apart, and devices in each part of their % (salt "f": 0–30%, 30–40%, the rest)
-const RECORDED_DEVICES: Record<string, unknown>[] = [undefined, '1.0.0', '2.5.0', '3.1.0'].flatMap((v) =>
-  [undefined, deviceIn('f', 0, 3000), deviceIn('f', 3000, 4000), deviceIn('f', 4000, 10000)].map((id) =>
-    ({ ...(v ? { 'app.version': v } : {}), ...(id ? { 'device.id': id } : {}) })));
-
-test('0013: customers become company › brand, and every file, flagd JSON, link and key is what it was', async (t) => {
-  const golden = JSON.parse(readFileSync(new URL('./before-dimensions.json', import.meta.url), 'utf8'));
-  const tdb = await testDatabase();
-  const dir = tdb.url ? undefined : mkdtempSync(join(tmpdir(), 'ff-0013-'));
-  t.after(async () => { if (dir) rmSync(dir, { recursive: true, force: true }); await tdb.drop(); });
-  // the database as 0012 left it, with the data of before dimensions
-  const old = await connectDb(tdb.url ? { url: tdb.url } : { dataDir: dir });
-  await migrate(old, SHIPPED.filter((x) => x.name < '0013'));
-  assert.deepEqual(await names(old), golden.migrations, 'the same migrations the files were made on');
-  await syncFields(old);
-  const { changeSet } = await seedBeforeDimensions(old);
-  await old.close();
-  // the server starts on it, and applies 0013
-  const lines: string[] = [];
-  const app = await createApp({ databaseUrl: tdb.url, dataDir: dir, signIn: { kind: 'test-header' }, log: (l) => lines.push(l) });
-  t.after(async () => { await app.workers.stop(); await app.db.close(); });
-  assert.ok(lines.some((l) => /0013_dimensions/.test(l)), lines.join('\n'));
-  const call = async (method: string, path: string, o: { as?: string; body?: unknown; headers?: Record<string, string> } = {}) => {
-    const r = await app.app.request(path, { method, headers: { 'content-type': 'application/json', ...(o.as ? { 'x-user': o.as } : {}), ...(method === 'GET' ? {} : CSRF), ...o.headers },
-      body: o.body === undefined ? undefined : JSON.stringify(o.body) });
-    const text = await r.text();
-    return { status: r.status, json: text ? JSON.parse(text) : null, headers: r.headers };
-  };
-
-  // the dimensions, and every customer of then in its place
-  assert.deepEqual((await call('GET', '/api/dimensions', { as: 'alice' })).json, [
-    { key: 'company', singular: 'company', plural: 'companies', entities: 3, withParent: 0 },
-    { key: 'brand', singular: 'brand', plural: 'brands', entities: 2, withParent: 2 },
-  ]);
-  for (const c of CUSTOMERS) assert.equal((await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}`, { as: 'alice' })).status, 200, c);
-  assert.equal((await call('GET', '/api/dimensions/brand/velvet', { as: 'alice' })).json.parent, 'tyrell');
-  // live rules use today's names; the old names stay as attributes for what still has them
-  const rules = (await app.db.query<{ c: string; by: string | null }>(`select conditions::text as c, split_by as by from flag_rule`)).rows;
-  assert.ok(rules.every((r) => !r.c.includes('customer.') && !r.by?.startsWith('customer.')), JSON.stringify(rules));
-  assert.deepEqual(rules.map((r) => r.by).filter(Boolean).sort(), ['company', 'device.id', 'entity']);
-  assert.ok(await one(app.db, `select 1 from condition_field where name = 'customer.id'`));
-
-  // every CDN file: the same link (same secret), and every device gets what it got from the file of then. The files
-  // are flagd JSON now, so their bytes and ETags are new: the ETag is the hash of the new file's flags.
-  const sameAnswers = (file: any, recorded: RecordedFile, where: string) => {
-    for (const key of Object.keys(recorded.flags)) {
-      for (const attrs of RECORDED_DEVICES) {
-        const was = readRecorded(recorded, key, attrs);
-        const now = cdnAnswer(file, key, attrs);
-        assert.deepEqual(now.codeDefault ? 'code default' : now.value, was.codeDefault ? 'code default' : was.value, `${where} ${key} ${JSON.stringify(attrs)}`);
-      }
-    }
-    assert.deepEqual(Object.keys(file.flags).sort(), Object.keys(recorded.flags).sort(), `${where}: the same flags`);
-  };
-  for (const c of CUSTOMERS) {
-    const link = (await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}/link?environment=prod`, { as: 'dana' })).json.path.replace(':service', 'web');
-    assert.equal(link, golden.links[c], `${c}’s link`);
-    const file = await call('GET', link);
-    assert.equal(file.status, 200, c);
-    assert.equal(file.json.metadata.revision, golden.files[c].revision, `${c}’s file`);
-    sameAnswers(file.json, golden.files[c], `${c}’s file`);
-    assert.equal(file.headers.get('etag'), etagOf(file.json.flags), `${c}’s ETag`);
-  }
-  const anon = await call('GET', '/client/v1/flags/prod/web');
-  sameAnswers(anon.json, golden.files[''], 'before login');
-  assert.equal(anon.headers.get('etag'), etagOf(anon.json.flags));
-
-  // flagd JSON: Velvet's own key (now scope entity) and the shared one (now all), by path and by the old header
-  const flagd = (key: string, path = '', headers: Record<string, string> = {}) => call('GET', `/sdk/v1/flagd${path}`, { headers: { authorization: `Bearer ${key}`, ...headers } });
-  // the same flags and ETags; only flagSetId differs, as it names the service since 0.1.0 (<env>/<service>/<entity>)
-  const now = (c: string) => { const d = golden.flagd[c].doc; return { ...d, metadata: { ...d.metadata, flagSetId: `prod/backend/${c}` } }; };
-  const own = await flagd(KEYS.velvet);
-  assert.deepEqual([own.status, own.json, own.headers.get('etag')], [200, now('velvet'), golden.flagd.velvet.etag]);
-  for (const c of CUSTOMERS) {
-    assert.deepEqual((await flagd(KEYS.shared, `/${DIMENSION_OF[c]}/${c}`)).json, now(c), `${c} by path`);
-    const legacy = await flagd(KEYS.shared, '', { 'x-customer-id': c });
-    assert.deepEqual([legacy.json, legacy.headers.get('etag')], [now(c), golden.flagd[c].etag], `${c} by X-Customer-Id`);
-  }
-  assert.deepEqual((await app.db.query(`select scope from api_key order by id`)).rows.map((r: any) => r.scope), ['entity', 'all']);
-
-  // History from before reads: the old kinds, the entity column, and what a restore leaves alone, in words
-  const onyx = (await call('GET', '/api/history?entity=onyx', { as: 'alice' })).json;
-  assert.deepEqual(onyx.map((h: any) => [h.changeType, h.entity]), [['customer.update', 'onyx']]);
-  const preview = (await call('GET', '/api/environments/prod/versions/0/restore-preview', { as: 'alice' })).json;
-  assert.deepEqual(preview.notRolledBack.map((x: any) => x.text), ['Added Velvet under Tyrell', 'Onyx moved out of Tyrell']);
-
-  // the change set in review still applies: its rule on customer.id means what it meant
-  const cs = (await call('GET', `/api/change-sets/${changeSet}`, { as: 'alice' })).json;
-  assert.deepEqual([cs.items[0].entity, cs.items[0].proposed.rules[0].conditions[0].field], [null, 'customer.id']);
-  assert.equal((await call('POST', `/api/change-sets/${changeSet}/review`, { as: 'bob', body: { decision: 'approve' } })).status, 200);
-  const applied = await call('POST', `/api/change-sets/${changeSet}/apply`, { as: 'alice' });
-  assert.equal(applied.status, 200, JSON.stringify(applied.json));
-  await app.workers.drain();
-  const solo = await call('GET', golden.links.solo);
-  assert.deepEqual([solo.json.flags.f.targeting, cdnAnswer(solo.json, 'f').value], [undefined, 'D'], 'Solo first, by its rule from before');
-  assert.ok((await app.db.query(`select 1 from flag_rule where rule_key = $1 and conditions::text like '%customer.id%'`, [CHANGE_SET_RULE])).rows.length, 'kept as it was written');
-  const everyone = (await call('GET', '/client/v1/flags/prod/web')).json;
-  assert.deepEqual([everyone.flags.f.targeting, cdnAnswer(everyone, 'f').value], [undefined, 'A'], 'and only Solo: nobody else is named');
-  assert.ok(!JSON.stringify(everyone).includes('solo'));
-});
 
 test('a migration that fails changes nothing, and the fixed one applies later', () => withDb(async (open) => {
   const db = await open();

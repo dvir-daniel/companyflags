@@ -163,7 +163,7 @@ test('“Company is Tyrell” covers Tyrell and all its brands; “Company or br
 });
 
 test('a brand has its own app link and CDN file, like any entity', async () => {
-  const velvet = await t.appFile('dev', 'web', 'velvet', {});
+  const velvet = await t.cdnFile('dev', 'web', 'velvet', {});
   assert.equal(velvet.status, 200);
   const onyx = await t.link('dev', 'web', 'onyx');
   assert.notEqual(onyx, await t.link('dev', 'web', 'velvet'));

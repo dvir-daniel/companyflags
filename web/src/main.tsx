@@ -2,8 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useT
 import { createRoot } from 'react-dom/client';
 import { api, ApiError, entityLabel, errorCode, invalidate, SIGNED_OUT_EVENT, title as dimTitle, type Meta } from './api.ts';
 import { AppContext, go, type AppCtx, type DialogOpts } from './app.ts';
-import { newAddress, pageEnv, preload, routeParts } from './paths.ts';
-import { mayApprove, type ChangeSetFacts } from '../../server/policy.ts';
+import { pageEnv, preload, routeParts } from './paths.ts';
 import { useDraftNotices } from './useDraft.ts';
 import { Actions, Field, Modal } from './ui.tsx';
 import { textareaField } from './uiKit.ts';
@@ -88,8 +87,6 @@ function knownRoute([page, a]: string[]): boolean {
     case 'flag': case 'release': case 'dimensions': return !!a;
     case 'approvals': return !a || /^\d+$/.test(a);
     case 'settings': return !a || isSettingsKey(a);
-    // from before dimensions: they open the same pages under #/dimensions (OldAddress)
-    case 'customers': case 'customer': return true;
     case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'migration': case 'webhooks': return true;
     default: return false;
   }
@@ -159,7 +156,7 @@ function useGuardedRoute(isDirty: () => boolean, confirmLeave: () => Promise<boo
 }
 
 // pages built as dense console pages (full width, sticky page bar); the rest sit in a centred column
-const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'customers', 'customer', 'compare', 'approvals', 'keys', 'tokens', 'history', 'settings', 'migration']);
+const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'compare', 'approvals', 'keys', 'tokens', 'history', 'settings', 'migration']);
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 type Answer = { action: string | null; reason: string };
@@ -236,10 +233,8 @@ function App() {
       await Promise.all([loadPageCode(hash), Promise.race([preload(hash, m), new Promise((r) => setTimeout(r, NAV_WAIT_MS))])]);
     }
     setMeta(m);
-    // the sidebar's count: requests waiting that this person may approve (not their own, not approved by them yet);
-    // older servers don't count them in /meta
-    setPending(m.pendingApprovals
-      ?? (await api<ChangeSetFacts[]>('GET', '/change-sets?status=in_review')).filter((c) => mayApprove(m.me, c)).length);
+    // the sidebar's count: requests waiting that this person may approve (not their own, not approved by them yet)
+    setPending(m.pendingApprovals);
   }, []);
   const [bootError, setBootError] = useState<{ message: string; status: number } | null>(null);
   useEffect(() => {
@@ -404,7 +399,6 @@ function App() {
                     {!knownRoute(route) ? <NotFound /> : page === 'settings' ? <SettingsFrame sub={route[1]}>{route[1] === 'people' ? <People /> : <Settings section={route[1]} />}</SettingsFrame>
                       : page === 'tokens' ? <Tokens />
                       : page === 'webhooks' ? <Webhooks />
-                      : page === 'customers' || page === 'customer' ? <OldAddress meta={meta} />
                       : !setUp ? <GetStarted /> : <>
                       {page === 'flags' && <Flags envKey={route[1]} tab={route[2]} />}
                       {page === 'flag' && route[1] && <FlagPage flagKey={route[1]} envKey={route[2]} />}
@@ -428,16 +422,6 @@ function App() {
       <Toaster />
     </AppContext>
   );
-}
-
-/** An address from before dimensions (#/customers, #/customer/<key>/…): replaced by the same page under #/dimensions,
- *  in place, so going back doesn't return to it (paths.ts newAddress). */
-function OldAddress({ meta }: { meta: Meta }) {
-  useEffect(() => {
-    const next = newAddress(location.hash, meta);
-    if (next) location.replace(next);
-  }, [meta]);
-  return null;
 }
 
 /** What the person should hear about keeping their drafts, wherever they are in the console (useDraft.ts). */

@@ -101,15 +101,15 @@ test('a deleted app’s file stops being served at once, and so does an app made
   for (const key of ['lobby', 'signage']) assert.equal((await admin().post('/services', { key, kind: 'client' })).status, 201);
   await t.settle();
   for (const key of ['lobby', 'signage']) {
-    const file = await t.appFile('dev', key, null);
+    const file = await t.cdnFile('dev', key, null);
     assert.equal(file.status, 200);
     assert.deepEqual(file.json.flags, {}, 'nothing is sent to it');
   }
   assert.equal((await admin().del('/services/lobby')).status, 200);
   assert.equal((await admin().put('/services/signage', { kind: 'server' })).status, 200);
-  assert.equal((await t.appFile('dev', 'lobby', null)).status, 404);
-  assert.equal((await t.appFile('dev', 'signage', null)).status, 404);
-  assert.equal((await t.appFile('dev', 'signage', 'acme')).status, 404, 'nor at an entity’s link');
+  assert.equal((await t.cdnFile('dev', 'lobby', null)).status, 404);
+  assert.equal((await t.cdnFile('dev', 'signage', null)).status, 404);
+  assert.equal((await t.cdnFile('dev', 'signage', 'acme')).status, 404, 'nor at an entity’s link');
 });
 
 test('archived flags don’t keep an app: it leaves their Sent to, which History keeps', async () => {

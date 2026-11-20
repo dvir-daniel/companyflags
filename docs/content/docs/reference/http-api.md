@@ -7,8 +7,8 @@ remote evaluation and the health checks. All of them answer JSON. The examples u
 
 | Endpoint | Who calls it | Auth |
 |---|---|---|
-| `GET /client/v1/flags/<env>/<service>` | apps, before sign-in | none |
-| `GET /client/v1/flags/<env>/<service>/<entity>/<secret>` | apps | the secret link |
+| `GET /cdn/v1/flags/<env>/<service>` | apps, before sign-in | none |
+| `GET /cdn/v1/flags/<env>/<service>/<entity>/<secret>` | apps | the secret link |
 | `GET /sdk/v1/flagd/<dimension>/<entity>`, `GET /sdk/v1/flagd` | backends, flagd | a backend service's key |
 | `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` | backends | a backend service's key |
 | `POST /ofrep/v1/evaluate/flags`, `POST /ofrep/v1/evaluate/flags/<key>` | OpenFeature OFREP providers | an app service's key, an app token, or a backend service's key |
@@ -44,7 +44,7 @@ An error is JSON with a status code:
 ```
 
 An address the server doesn't know under `/api`, `/client`, `/sdk`, `/ofrep` or `/hooks` is a `404` with
-`{"error":"no such endpoint: GET /client/v1/nope"}`, never the console's page. (Under `/api`, a request that isn't
+`{"error":"no such endpoint: GET /cdn/v1/nope"}`, never the console's page. (Under `/api`, a request that isn't
 signed in gets `401` first.) An unexpected error is `500 {"error":"internal error"}`. OFREP endpoints answer their
 own errors the OFREP way (below).
 
@@ -64,8 +64,8 @@ as it arrives, also when it's sent in chunks with no `Content-Length`.
 ## CDN files
 
 ```http
-GET /client/v1/flags/<env>/<service>
-GET /client/v1/flags/<env>/<service>/<entity>/<secret>
+GET /cdn/v1/flags/<env>/<service>
+GET /cdn/v1/flags/<env>/<service>/<entity>/<secret>
 ```
 
 `<service>` is the key of an app service, such as `web`. The first is what every device reading it gets before
@@ -146,13 +146,13 @@ GET /sdk/v1/links/<dimension>/<entity>?service=<key>
   "environment": "prod",
   "service": "web",
   "entity": "acme",
-  "path": "/client/v1/flags/prod/web/acme/<secret>",
+  "path": "/cdn/v1/flags/prod/web/acme/<secret>",
   "token": "ffl_prod.web.acme.<secret>"
 }
 ```
 
-`service` names the app service the link is for (`?flagSet=<key>`, from 0.2, still works until 0.4). `path` is the
-entity's CDN file, only when the `appFiles()` plugin runs. `token` is made from the same link, with a secret of its
+`service` names the app service the link is for. `path` is the
+entity's CDN file, only when the `cdnFiles()` plugin runs. `token` is made from the same link, with a secret of its
 own for this service: an app's signed credential for OFREP (below). Both are for the key's environment.
 `Cache-Control: no-store`.
 

@@ -5,8 +5,8 @@ import { after, before, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { ApiError, type Meta } from '../web/src/api.ts';
-import { DraftSession, memoryStorage, olderKey, StaleDraftError, storageKey, type DraftStorage, type Http } from '../web/src/draftSession.ts';
-import { hiddenKey, setOwnValues, toDraft, type Line } from '../web/src/lines.ts';
+import { DraftSession, memoryStorage, StaleDraftError, storageKey, type DraftStorage, type Http } from '../web/src/draftSession.ts';
+import { hiddenKey, setOwnValues, type Line } from '../web/src/lines.ts';
 import { boot } from './helpers.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
@@ -21,8 +21,8 @@ const httpAs = (user: string, log?: string[]): Http => async (method, path, body
   if (r.status >= 400) throw new ApiError(r.status, r.json);
   return r.json;
 };
-const sessionOf = (env: string, o: { storage?: DraftStorage; log?: string[]; debounceMs?: number; environments?: string[] } = {}) =>
-  new DraftSession({ person: 'alice', env, http: httpAs('alice', o.log), storage: o.storage ?? memoryStorage(), debounceMs: o.debounceMs, environments: o.environments });
+const sessionOf = (env: string, o: { storage?: DraftStorage; log?: string[]; debounceMs?: number } = {}) =>
+  new DraftSession({ person: 'alice', env, http: httpAs('alice', o.log), storage: o.storage ?? memoryStorage(), debounceMs: o.debounceMs });
 const opened = async (s: DraftSession, ...flags: string[]) => { for (const f of flags) { s.open(f); await s.refresh(f); } return s; };
 const stored = (storage: DraftStorage, env: string) => JSON.parse(storage.getItem(storageKey('alice', env)) ?? 'null');
 const flagNow = async (key: string) => (await t.as('alice').get(`/flags/${key}`)).json;
@@ -276,47 +276,4 @@ test('switching flag or environment never writes one environment’s draft under
   assert.equal(stored(storage, 'dev').flags.data_region_host.draft.fallback, 'us');
   assert.equal(dev.view('data_region_host', meta).draft!.fallback, 'us');
   assert.equal(prod.view('data_region_host', meta).draft!.fallback, 'eu');
-});
-
-test('drafts kept by an older console (unversioned, and version 1) convert to version 2 and keep their edits', async () => {
-  // what the older consoles stored per flag: the whole flag, the draft as it opened and as edited
-  const older = async (key: string, env: string, edit: (d: ReturnType<typeof toDraft>) => ReturnType<typeof toDraft>) => {
-    const flag = await flagNow(key);
-    const orig = toDraft(flag, env);
-    return { flag, orig, draft: edit(structuredClone(orig)), at: '2026-11-01T10:00:00.000Z' };
-  };
-  const uploads = await older('max_upload_mb', 'dev', (d) => ({ ...d, fallback: 'huge' }));
-  const region = await older('data_region_host', 'prod', (d) => ({ ...d, fallback: 'eu' }));
-
-  // unversioned (environment → flag → entry): a malformed entry, an environment that's gone, a flag that's gone
-  const storage = memoryStorage();
-  storage.setItem(olderKey('alice'), JSON.stringify({
-    dev: { max_upload_mb: uploads, broken: { flag: {}, orig: {}, draft: {}, at: '' }, no_such_flag: { ...uploads, flag: { ...uploads.flag, key: 'no_such_flag' } } },
-    qa: { max_upload_mb: uploads },
-  }));
-  const s = sessionOf('dev', { storage, environments: ['dev', 'prod'] });
-  assert.deepEqual(s.takeNotices().map((n) => [n.kind, n.flags]), [['dropped', ['broken']], ['dropped', ['max_upload_mb']]]);
-  assert.equal(storage.getItem(olderKey('alice')), null, 'written back as version 2');
-  assert.equal(stored(storage, 'dev').version, 2);
-  assert.deepEqual(s.summary(meta).flags.map((f) => [f.key, f.sentences]), [['max_upload_mb', ['Default: 5000']], ['no_such_flag', ['Default: 5000']]]);
-  // the review asks the server: a flag that's no longer there leaves the draft, said once
-  assert.deepEqual(await s.checkStale(), []);
-  assert.deepEqual(s.takeNotices().map((n) => [n.kind, n.flags, /no longer there/.test(n.message)]), [['dropped', ['no_such_flag'], true]]);
-  const [g] = s.summary(meta).flags;
-  assert.equal(g.items[0].expectedVersion, uploads.flag.layers.dev.base.version, 'still against the version the edits were made on');
-  assert.equal((await s.publish({ meta })).applied, true);
-  assert.equal((await flagNow('max_upload_mb')).layers.dev.base.defaultVariation, 'huge');
-
-  // version 1 ({ version: 1, envs }): CYBERDYNE's Customer only default keeps its line, so only my edit shows
-  const v1 = memoryStorage();
-  v1.setItem(olderKey('alice'), JSON.stringify({ version: 1, envs: { prod: { data_region_host: region } } }));
-  const p = await opened(sessionOf('prod', { storage: v1, environments: ['dev', 'prod'] }), 'data_region_host');
-  assert.deepEqual(p.takeNotices(), []);
-  assert.equal(v1.getItem(olderKey('alice')), null);
-  const view = p.view('data_region_host', meta);
-  assert.equal(view.draft!.fallback, 'eu');
-  assert.deepEqual(view.sentences, ['Default: eu']);
-  const cyberdyne = (d: typeof region.orig) => d.lines.find((l) => l.entity === 'cyberdyne')!.id;
-  assert.equal(cyberdyne(view.orig!), cyberdyne(region.orig));
-  assert.equal(view.stale, false);
 });

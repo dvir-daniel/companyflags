@@ -265,7 +265,7 @@ describe('a new install, start to finish (in order)', () => {
     const sam = await as('sam@corp.com');
     assert.equal((await sam.post('/flags', flag('fast_checkout'))).status, 201);
     await ctx.workers.drain();
-    const dev = await call('GET', '/client/v1/flags/dev/web');
+    const dev = await call('GET', '/cdn/v1/flags/dev/web');
     assert.equal(dev.status, 200);
     assert.equal(cdnAnswer(dev.json, 'fast_checkout').value, true);
 
@@ -275,7 +275,7 @@ describe('a new install, start to finish (in order)', () => {
     assert.equal(f.layers.staging.base.enabled, false);
     assert.equal(f.layers.staging.base.defaultVariation, f.layers.dev.base.defaultVariation, 'the same default as before');
     assert.deepEqual(f.layers.staging.base.rules, []);
-    const staging = await call('GET', '/client/v1/flags/staging/web');
+    const staging = await call('GET', '/cdn/v1/flags/staging/web');
     assert.equal(staging.status, 200, 'its files are served at once');
     assert.ok(cdnAnswer(staging.json, 'fast_checkout').codeDefault, 'off there: apps keep the default in their code');
   });
@@ -301,44 +301,6 @@ test('how people sign in comes from the environment; production needs a secret a
   const starting = (settings: object) => startApp({ signIn: { kind: 'better-auth', settings } });
   await assert.rejects(starting({ production: true, baseURL: 'https://flags.example.com' }), SetupError, 'no secret');
   await assert.rejects(starting({ production: true, secret: 'x'.repeat(40) }), SetupError, 'no address');
-});
-
-test('a database from before Better Auth: an existing admin makes the first account, everyone else needs an invite', async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'ff-upgrade-'));
-  const tdb = await testDatabase();
-  let old: Awaited<ReturnType<typeof startApp>> | undefined;
-  t.after(async () => { await old?.stop(); await tdb.drop(); rmSync(dir, { recursive: true, force: true }); });
-  const where = { databaseUrl: tdb.url, dataDir: join(dir, 'data') };
-  // before: a sign-in that only names the person (like Cloudflare Access): Ann came first (the admin), then Bo
-  const before = await startApp({ ...where, signIn: { kind: 'test-header' } });
-  try {
-    const call = browser(before);
-    const header = (email: string) => ({ 'x-user': email });
-    assert.equal((await call('GET', '/api/meta', { headers: header('ann@corp.com') })).json.me.role, 'admin');
-    assert.equal((await call('GET', '/api/meta', { headers: header('bo@corp.com') })).json.me.role, 'viewer');
-    assert.equal((await call('PUT', '/api/people/bo@corp.com', { body: { role: 'editor' }, headers: header('ann@corp.com') })).status, 200);
-  } finally {
-    await before.stop();
-  }
-  old = await startApp({ ...where, signIn });
-  const call = browser(old);
-  const setup = { 'x-setup': old.setupToken! };
-  const up = (email: string, headers: Record<string, string> = {}) => call('POST', '/api/auth/sign-up/email', {
-    body: { email, name: email.split('@')[0], password: PASSWORD }, headers });
-  assert.equal((await call('GET', '/api/sign-in', { headers: setup })).json.firstPerson, true, 'nobody has an account yet');
-  assert.equal((await up('bo@corp.com', setup)).status, 403, 'not an admin');
-  assert.equal((await up('new@corp.com', setup)).status, 403, 'not anyone at all');
-  assert.equal((await up('ann@corp.com')).status, 403, 'not even the admin, without the setup link');
-  const ann = await up('ann@corp.com', setup);
-  assert.equal(ann.status, 200);
-  const meta = (await call('GET', '/api/meta', { cookie: ann.cookie })).json;
-  assert.equal(meta.me.role, 'admin', 'the role they had');
-  assert.deepEqual(meta.users.map((u: any) => [u.key, u.status]), [['ann@corp.com', 'active'], ['bo@corp.com', 'no_account']]);
-  assert.equal((await call('GET', '/api/sign-in')).json.firstPerson, false);
-  const link = await call('POST', '/api/people/bo@corp.com/invite', { cookie: ann.cookie, body: {} });
-  assert.equal(link.status, 200);
-  assert.equal((await up('bo@corp.com', { 'x-invite': link.json.invite })).status, 200);
-  assert.equal((await call('GET', '/api/meta', { cookie: ann.cookie })).json.users[1].role, 'editor', 'and theirs');
 });
 
 test('sessions outlive a restart: the cookie secret is kept with the data', async (t) => {

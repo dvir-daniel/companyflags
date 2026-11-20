@@ -45,13 +45,13 @@ const http = async () => { throw new Error('no server in this test'); };
 let n = 0;
 const sessionFor = () => {
   const person = `ana${++n}`;
-  return { person, key: drafts.storageKey(person, 'dev'), s: drafts.sharedSession(person, 'dev', http, ['dev']) };
+  return { person, key: drafts.storageKey(person, 'dev'), s: drafts.sharedSession(person, 'dev', http) };
 };
 const editFallback = (s: ReturnType<typeof sessionFor>['s'], to: string) => { s.open('f', flag); s.edit('f', (d) => ({ ...d, fallback: to })); };
 
 test('a draft is kept in this browser, per person and environment, with its version', () => {
   const { s, key, person } = sessionFor();
-  assert.equal(drafts.sharedSession(person, 'dev', http, ['dev']), s, 'one session per person and environment');
+  assert.equal(drafts.sharedSession(person, 'dev', http), s, 'one session per person and environment');
   editFallback(s, 'b');
   assert.equal(stored.has(key), false, 'written after a pause, not on every keystroke');
   s.flush();
@@ -90,7 +90,7 @@ test('a store in another shape, or not JSON at all, reads as empty and says so',
     const person = `ana${++n}`;
     const key = drafts.storageKey(person, 'dev');
     stored.set(key, junk);
-    const s = drafts.sharedSession(person, 'dev', http, ['dev']);
+    const s = drafts.sharedSession(person, 'dev', http);
     assert.equal(s.summary(meta).flags.length, 0, junk);
     assert.deepEqual(s.takeNotices().map((x) => x.kind), ['dropped'], junk);
     assert.equal(stored.has(key), false, `${junk}: cleared, so it isn't read again`);
@@ -120,22 +120,4 @@ test('a browser that can’t store the draft says so once, and keeps it for this
 
 test('there is no browser storage in Node unless a window has one', () => {
   assert.equal(drafts.browserStorage(), fakeStorage);
-});
-
-test('a draft saved before dimensions keeps its own settings for the same entity, not as rules for everyone', () => {
-  const person = `ana${++n}`;
-  const key = drafts.storageKey(person, 'dev');
-  // the shape a console kept before dimensions: `customers` / `customer` / `customerOnly`
-  const K = '00000000-0000-4000-8000-000000000001';
-  const own = layer({ version: 2, enabled: null, inherit: 'customer_only', defaultVariation: 'a' });
-  const oldLine = { id: K, customer: 'acme', locked: false, paused: false, name: null, conditions: [], serveVariation: 'b', split: null, customerOnly: true };
-  stored.set(key, JSON.stringify({ version: 2, flags: { f: {
-    at: new Date().toISOString(), ownIds: { acme: K },
-    based: { valueType: 'string', kind: 'config', variations: flag.variations, layers: { base: layer({}), customers: [{ customer: 'acme', layer: own }] } },
-    draft: { fallback: 'a', lines: [oldLine], newValues: {}, afterEveryone: {} },
-  } } }));
-  const s = drafts.sharedSession(person, 'dev', http, ['dev']);
-  const items = s.summary(meta).flags.flatMap((f) => f.items);
-  assert.deepEqual(items.map((i) => [i.entity, i.layer?.inherit, i.layer?.defaultVariation]), [['acme', 'customer_only', 'b']],
-    'the edit is still to acme’s own settings, still "Own settings only"');
 });

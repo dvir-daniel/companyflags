@@ -78,16 +78,12 @@ export class StaleDraftError extends Error {
 
 // ---------------------------------------------------------------- storage
 // Version 2: one key per person and environment, so an edit writes only that environment's draft, and an entry holds
-// only what the draft needs (BasedOn), not the whole flag. The older consoles kept every environment under one key
-// per person (olderKey), unversioned or as { version: 1, envs }: those drafts are converted to version 2 when read.
-// An entry that fails the shape check, or whose environment or flag no longer exists, is dropped and reported.
+// only what the draft needs (BasedOn), not the whole flag. An entry that fails the shape check, or whose flag no
+// longer exists, is dropped and reported.
 
 const STORE = 2;
 /** Where one person's draft in one environment is kept. */
 export const storageKey = (person: string, env: string) => `cf.draft.v${STORE}.${person}.${env}`;
-/** Where the older consoles kept one person's drafts: environment → flag key → { flag: FlagDetail, orig, draft, at },
- *  either as the whole value (unversioned) or as { version: 1, envs: … }. */
-export const olderKey = (person: string) => `cf.drafts.${person}`;
 type StoredFlag = { based: BasedOn; ownIds: Record<string, string>; draft: Draft; at: string };
 type Stored = { version: typeof STORE; flags: Record<string, StoredFlag> };
 
@@ -120,33 +116,6 @@ const isLine = (l: unknown) => isObj(l) && typeof l.id === 'string' && Array.isA
 const isDraft = (d: unknown): d is Draft => isObj(d) && typeof d.fallback === 'string' && Array.isArray(d.lines) && d.lines.every(isLine)
   && isObj(d.newValues) && isObj(d.afterEveryone);
 
-// Drafts saved before dimensions named an entity's settings `customers` / `customer` (and the "own settings only"
-// default `customerOnly`): read them in today's names, so a saved draft keeps its edits for the same entity instead of
-// turning its lines into rules for everyone.
-const OLD = { list: 'customers', key: 'customer', only: 'customerOnly' } as const;
-function newLine(l: unknown): unknown {
-  if (!isObj(l) || !(OLD.key in l)) return l;
-  const { [OLD.key]: who, [OLD.only]: only, ...rest } = l;
-  return { ...rest, entity: who ?? null, ...(only ? { ownOnly: true } : {}) };
-}
-function newLayers(layers: unknown): unknown {
-  if (!isObj(layers) || !Array.isArray(layers[OLD.list]) || 'entities' in layers) return layers;
-  const { [OLD.list]: list, ...rest } = layers;
-  return { ...rest, entities: (list as unknown[]).map((c) => (isObj(c) ? { entity: c[OLD.key], layer: c.layer } : c)) };
-}
-const newDraft = (d: unknown): unknown => (isObj(d) && Array.isArray(d.lines) ? { ...d, lines: d.lines.map(newLine) } : d);
-/** A stored entry in today's names (see OLD). */
-function upgraded(e: unknown): unknown {
-  if (!isObj(e)) return e;
-  return {
-    ...e,
-    ...(isObj(e.based) ? { based: { ...e.based, layers: newLayers(e.based.layers) } } : {}),
-    ...('draft' in e ? { draft: newDraft(e.draft) } : {}),
-    ...('orig' in e ? { orig: newDraft(e.orig) } : {}),
-    ...(isObj(e.flag) && isObj(e.flag.layers) ? { flag: { ...e.flag, layers: Object.fromEntries(Object.entries(e.flag.layers).map(([k, v]) => [k, newLayers(v)])) } } : {}),
-  };
-}
-
 function isStoredFlag(e: unknown): e is StoredFlag {
   if (!isObj(e) || typeof e.at !== 'string' || !isObj(e.ownIds) || !isObj(e.based) || !isDraft(e.draft)) return false;
   const b = e.based;
@@ -155,67 +124,11 @@ function isStoredFlag(e: unknown): e is StoredFlag {
     && b.layers.entities.every((c: unknown) => isObj(c) && typeof c.entity === 'string' && isLayer(c.layer));
 }
 
-/** One older entry ({ flag: FlagDetail, orig, draft, at }) as version 2 keeps it, or null when it fails the shape check. */
-function fromOlder(old: unknown, env: string): StoredFlag | null {
-  const e = upgraded(old);
-  if (!isObj(e) || typeof e.at !== 'string' || !isDraft(e.orig) || !isDraft(e.draft) || !isObj(e.flag) || !isObj(e.flag.layers)) return null;
-  const layers = e.flag.layers[env];
-  if (!isObj(layers) || !isObj(layers.base) || !Array.isArray(layers.entities)) return null;
-  const f = e.flag;
-  // the value type and kind only word the sentences and checks until the server's copy comes (it has its own)
-  const s: StoredFlag = {
-    based: { valueType: typeof f.valueType === 'string' ? f.valueType : '', kind: typeof f.kind === 'string' ? f.kind : '', variations: f.variations, layers: layers as EnvLayers },
-    ownIds: ownIdsOf(e.orig), draft: e.draft, at: e.at,
-  };
-  return isStoredFlag(s) ? s : null;
-}
-
-const droppedNotice = (env: string, flags: string[], why: 'shape' | 'no-env' | 'no-flag' = 'shape'): DraftNotice => ({
+const droppedNotice = (env: string, flags: string[], why: 'shape' | 'no-flag' = 'shape'): DraftNotice => ({
   kind: 'dropped', flags,
-  message: why === 'no-env' ? `Your saved draft of ${list(flags)} in ${env} was dropped: that environment is no longer there.`
-    : why === 'no-flag' ? `Your saved draft of ${list(flags)} in ${env} was dropped: the flag was archived or is no longer there.`
+  message: why === 'no-flag' ? `Your saved draft of ${list(flags)} in ${env} was dropped: the flag was archived or is no longer there.`
     : flags.length ? `Your saved draft of ${list(flags)} in ${env} couldn’t be read, so it was dropped.` : `Your saved draft in ${env} couldn’t be read, so it was dropped.`,
 });
-
-/**
- * Converts the drafts an older console kept (olderKey: unversioned, or { version: 1, envs }) to version 2, one key
- * per environment, and removes the old key once every environment is written. An entry that fails the shape check,
- * or whose environment isn't in `environments` (when known), is dropped and reported; the rest keep their edits.
- * Where version 2 already has the flag, the later edit wins.
- */
-export function convertOlderDrafts(storage: DraftStorage, person: string, environments?: readonly string[]): DraftNotice[] {
-  const raw = storage.getItem(olderKey(person));
-  if (raw === null) return [];
-  let old: unknown = null;
-  try { old = JSON.parse(raw); } catch { /* unreadable: dropped below */ }
-  const envs = isObj(old) && old.version === 1 && isObj(old.envs) ? old.envs : isObj(old) && !('version' in old) ? old : null;
-  if (!envs) {
-    storage.removeItem(olderKey(person));
-    return [{ kind: 'dropped', flags: [], message: 'Your saved drafts from an older version of the console couldn’t be read, so they were dropped.' }];
-  }
-  const notices: DraftNotice[] = [];
-  let written = true;
-  for (const [env, flags] of Object.entries(envs)) {
-    if (!isObj(flags)) { notices.push(droppedNotice(env, [])); continue; }
-    if (environments && !environments.includes(env)) { if (Object.keys(flags).length) notices.push(droppedNotice(env, Object.keys(flags), 'no-env')); continue; }
-    const there = (() => { try { return JSON.parse(storage.getItem(storageKey(person, env)) ?? 'null'); } catch { return null; } })();
-    const into: Record<string, unknown> = isObj(there) && there.version === STORE && isObj(there.flags) ? there.flags : {};
-    const bad: string[] = [];
-    for (const [k, e] of Object.entries(flags)) {
-      const s = fromOlder(e, env);
-      if (!s) { bad.push(k); continue; }
-      const have = into[k];
-      if (!isObj(have) || typeof have.at !== 'string' || have.at < s.at) into[k] = s;
-    }
-    if (bad.length) notices.push(droppedNotice(env, bad));
-    if (!Object.keys(into).length) continue;
-    try { storage.setItem(storageKey(person, env), JSON.stringify({ version: STORE, flags: into })); } catch { written = false; }
-  }
-  // nothing is lost: the old key stays until every environment's drafts are written as version 2
-  if (written) storage.removeItem(olderKey(person));
-  else notices.push({ kind: 'not-saved', flags: [], message: 'This browser’s storage is full, so your saved drafts couldn’t be moved to this version of the console yet; they’re kept as they were.' });
-  return notices;
-}
 
 // ---------------------------------------------------------------- the session
 
@@ -257,16 +170,12 @@ export class DraftSession {
   private merged = new Map<string, { copy: Copy; based: BasedOn; flag: FlagDetail }>();
   private shown = new Map<string, Copy>();           // the console's last copy, shown until open() keeps it
 
-  /** `environments`: the environments there are now (an older draft in any other is dropped); left out, all count. */
-  constructor(o: { person: string; env: string; http: Http; storage?: DraftStorage | null; debounceMs?: number; environments?: readonly string[] }) {
+  constructor(o: { person: string; env: string; http: Http; storage?: DraftStorage | null; debounceMs?: number }) {
     this.person = o.person;
     this.env = o.env;
     this.http = o.http;
     this.storage = o.storage ?? null;
     this.debounceMs = o.debounceMs ?? 400;
-    if (this.storage) {
-      try { this.notices.push(...convertOlderDrafts(this.storage, this.person, o.environments)); } catch { /* storage that can't be read: tried again next time */ }
-    }
     this.load();
   }
 
@@ -629,8 +538,8 @@ export class DraftSession {
 
   /** A stored entry as the session keeps it, or null when it isn't in the shape this version stores. */
   private entryOf(stored: unknown): Entry | null {
-    const e = upgraded(stored);
-    if (!isStoredFlag(e)) return null;
+    if (!isStoredFlag(stored)) return null;
+    const e = stored;
     try {
       const orig = toDraft(inEnv(this.env, e.based.layers), this.env, e.ownIds);
       changes(inEnv(this.env, e.based.layers), this.env, orig, e.draft);      // throws on a draft it can't read
@@ -702,12 +611,12 @@ function keepMine(orig: Draft, mine: Draft, theirs: Draft): Draft {
 const shared = new Map<string, DraftSession>();
 let listening = false;
 
-export function sharedSession(person: string, env: string, http: Http, environments?: readonly string[]): DraftSession {
+export function sharedSession(person: string, env: string, http: Http): DraftSession {
   for (const [k, s] of shared) if (s.person !== person) { s.close(); shared.delete(k); }
   const key = JSON.stringify([person, env]);
   let s = shared.get(key);
   if (!s) {
-    s = new DraftSession({ person, env, http, storage: browserStorage(), environments });
+    s = new DraftSession({ person, env, http, storage: browserStorage() });
     shared.set(key, s);
   }
   const w = browserWindow();

@@ -15,19 +15,19 @@ in it:
   version, its platform, its ID for a % of devices. Rules about other entities are never in it.
 - **Safe to share:** it's read at a secret link, not with a key, and a CDN may cache it.
 
-The CDN file is the `appFiles()` plugin. It runs unless your config file lists plugins without it. See
+The CDN file is the `cdnFiles()` plugin. It runs unless your config file lists plugins without it. See
 [Plugins](/reference/plugins).
 
 ## Getting it
 
 ```http
-GET /client/v1/flags/<environment>/<service>/<entity>/<secret>
+GET /cdn/v1/flags/<environment>/<service>/<entity>/<secret>
 If-None-Match: W/"…"            (the ETag of the file you have, if any)
 ```
 
 - `200` with the file and an `ETag` (weak); `304` when your copy is current.
 - `404` with `{ "error": "…" }` for any wrong link, environment or service.
-- Before sign-in, read `GET /client/v1/flags/<environment>/<service>`: what every device gets. **Settings →
+- Before sign-in, read `GET /cdn/v1/flags/<environment>/<service>`: what every device gets. **Settings →
   Services → Link** on an app service shows that address for each environment.
 - To give each signed-in user's app its entity's link, your backend asks for it: see
   [Signed app links](/reading/context#signed-app-links).
@@ -84,7 +84,7 @@ async function refresh(link: string) {
   core.setConfigurations(await res.text());
 }
 
-const link = 'https://flags.example.com/client/v1/flags/prod/web/acme/k3J9xW2mQ7vR1tY5uP8sLa';
+const link = 'https://flags.example.com/cdn/v1/flags/prod/web/acme/k3J9xW2mQ7vR1tY5uP8sLa';
 await refresh(link);
 setInterval(() => refresh(link), 60_000);
 

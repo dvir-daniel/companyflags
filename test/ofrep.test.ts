@@ -10,7 +10,7 @@ import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 import { OFREPProvider } from '@openfeature/ofrep-provider';
 import { changed, CSRF, startApp } from './helpers.ts';
 import { sampleInstallation } from './sample.ts';
-import { createApiKey, rotateClientLink } from '../server/control.ts';
+import { createApiKey, rotateAppLink } from '../server/control.ts';
 import { contextFor, evaluate } from '../server/evaluator.ts';
 import { appToken } from '../server/delivery.ts';
 
@@ -149,7 +149,7 @@ describe('the protocol', () => {
       assert.equal(text.replace('acme-not-an-entity', 'X'), (await answer(bearer(credential), { company: 'initech' }))[1].replace('initech', 'X'), 'an entity that exists');
       assert.equal(text.replace('acme-not-an-entity', 'X'), (await answer(bearer(credential), { brand: 'acme-not-an-entity' }))[1].replace('acme-not-an-entity', 'X'), 'in another dimension');
     }
-    await rotateClientLink(t.db, 'lumen', system);
+    await rotateAppLink(t.db, 'lumen', system);
     assert.equal((await bulk(bearer(token), {})).status, 401, 'the replaced link’s token');
     assert.equal((await bulk(bearer(await tokenFor('dev', 'web', 'lumen')), {})).status, 200, 'the new one');
   });

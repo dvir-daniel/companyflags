@@ -8,12 +8,12 @@ same way if it honours `Cache-Control` and can purge by tag.
 
 ## What a CDN can cache
 
-Only the CDN files at `/client/v1/flags/…`:
+Only the CDN files at `/cdn/v1/flags/…`:
 
 | Address | What it is |
 |---|---|
-| `GET /client/v1/flags/<env>/<service>` | what every device gets before sign-in |
-| `GET /client/v1/flags/<env>/<service>/<entity>/<secret>` | one entity's file, at its secret link |
+| `GET /cdn/v1/flags/<env>/<service>` | what every device gets before sign-in |
+| `GET /cdn/v1/flags/<env>/<service>/<entity>/<secret>` | one entity's file, at its secret link |
 
 A file is the same for every device that has the link, and carries values only. It never varies by cookie, user or
 country. Each answer has these headers:
@@ -38,7 +38,7 @@ Cloudflare doesn't cache JSON at an address without a file extension by default.
 files:
 
 1. In the zone, open **Caching → Cache Rules** and create a rule.
-2. When: **URI Path** starts with `/client/v1/flags/`.
+2. When: **URI Path** starts with `/cdn/v1/flags/`.
 3. Then: **Eligible for cache**.
 4. Edge TTL: **Use cache-control header if present, bypass cache if not**. The files say how long to keep them, and
    error answers (a `404` for a wrong link) carry no `Cache-Control`, so they aren't kept. A publish purges by tag, and
@@ -100,7 +100,7 @@ file's country lines itself (see [The CDN file](/reading/local-apps)).
 Cloudflare sends `CF-IPCountry` to your server, not to the device. To give it to apps, add a **Transform Rule**:
 
 1. **Rules → Transform Rules → Modify Response Header**, create a rule.
-2. When: **URI Path** starts with `/client/v1/flags/`.
+2. When: **URI Path** starts with `/cdn/v1/flags/`.
 3. Then: **Set dynamic** header `CF-IPCountry` to `ip.src.country`.
 
 Browsers may read the header from another origin: the server lists it in `Access-Control-Expose-Headers`. Without the
@@ -112,7 +112,7 @@ the evaluation context.
 
 ## Web apps on another origin
 
-Every answer under `/client/v1/` has `Access-Control-Allow-Origin: *`, allows `GET` and `HEAD`, exposes `ETag` and
+Every answer under `/cdn/v1/` has `Access-Control-Allow-Origin: *`, allows `GET` and `HEAD`, exposes `ETag` and
 `CF-IPCountry`, and caches the preflight for a day. A file is public to whoever has its link and needs no cookie, so
 any origin may read it. Keep these headers when Cloudflare caches the answers.
 
@@ -127,7 +127,7 @@ any origin may read it. Keep these headers when Cloudflare caches the answers.
 ## Checking it
 
 ```bash
-curl -sI https://flags.example.com/client/v1/flags/prod/web | grep -iE 'cache-control|etag|cf-cache-status|cf-ipcountry'
+curl -sI https://flags.example.com/cdn/v1/flags/prod/web | grep -iE 'cache-control|etag|cf-cache-status|cf-ipcountry'
 ```
 
 Run it twice: the second answer should say `cf-cache-status: HIT`.

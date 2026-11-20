@@ -37,8 +37,6 @@ const KIND_TEXT: Record<string, string> = {
   'flag.create': 'Created the flag', 'flag.archive': 'Archived the flag', 'flag.update': 'Changed the details', 'delivery.update': 'Changed its services',
   'variations.update': 'Changed the variants', 'flag.meta': 'Changed the details',
   'entity.create': 'Added an entry', 'entity.update': 'Changed an entry', 'entity.link_replaced': 'Replaced an app link',
-  // from before dimensions
-  'customer.create': 'Added an entry', 'customer.update': 'Changed an entry', 'customer.link_replaced': 'Replaced an app link',
   'dimensions.update': 'Changed the dimensions',
   'environment.create': 'Added the environment', 'environment.links_replaced': 'Replaced every app link in this environment',
   'token.create': 'Made an access token', 'token.revoke': 'Revoked an access token',

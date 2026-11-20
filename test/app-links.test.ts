@@ -1,4 +1,4 @@
-// App links as backends hand them out (GET /sdk/v1/links, server/delivery.ts), and app files read from another origin.
+// App links as backends hand them out (GET /sdk/v1/links, server/delivery.ts), and CDN files read from another origin.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './helpers.ts';
@@ -28,7 +28,7 @@ test('a backend gets an entity’s app link and OpenFeature token with its API k
   assert.equal((await ask(own, `/sdk/v1/links/${top}/acme?service=ios`)).status, 200, 'its own entity');
   assert.equal((await ask(own, `/sdk/v1/links/${top}/globex?service=ios`)).status, 403, 'another entity: outside its scope');
   assert.equal((await ask(all, `/sdk/v1/links/${top}/acme`)).status, 400, 'no app named');
-  assert.equal((await ask(all, `/sdk/v1/links/${top}/acme?service=server-ds`)).status, 404, 'a backend has no app file');
+  assert.equal((await ask(all, `/sdk/v1/links/${top}/acme?service=server-ds`)).status, 404, 'a backend has no CDN file');
   assert.equal((await ask(all, `/sdk/v1/links/${top}/nobody?service=web`)).status, 404);
   assert.equal((await ask(all, `/sdk/v1/links/not-a-dimension/acme?service=web`)).status, 404);
   assert.equal((await ask(null, `/sdk/v1/links/${top}/acme?service=web`)).status, 401);

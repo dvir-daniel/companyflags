@@ -22,7 +22,7 @@ A backend service's key never goes in an app.
 - **With an app's key, the entity is targeting, not proof.** The app names its entity in the context
   (`"company": "acme"`), and gets that entity's values, within the key's scope. With an app link or token, the entity
   comes from the link, and the app can't ask as another.
-- **The file before sign-in is public.** `GET /client/v1/flags/<env>/<service>` needs no secret: anyone who knows
+- **The file before sign-in is public.** `GET /cdn/v1/flags/<env>/<service>` needs no secret: anyone who knows
   the environment and service keys can read what every device gets before sign-in.
 
 :::warning[An app's key is public]
@@ -38,7 +38,7 @@ has one secret link per environment. The service is in the path, so the same lin
 entity:
 
 ```text
-/client/v1/flags/prod/web/acme/<secret>
+/cdn/v1/flags/prod/web/acme/<secret>
 ```
 
 - The secret is an HMAC-SHA256 of the entity and its link version, made with the environment's own secret, and cut

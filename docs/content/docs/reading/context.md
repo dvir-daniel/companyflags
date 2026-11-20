@@ -80,15 +80,15 @@ Authorization: Bearer ff_prod_api_…
   "environment": "prod",
   "service": "ios",
   "entity": "lumen",
-  "path": "/client/v1/flags/prod/ios/lumen/k3J9xW2mQ7vR1tY5uP8sLa",
+  "path": "/cdn/v1/flags/prod/ios/lumen/k3J9xW2mQ7vR1tY5uP8sLa",
   "token": "ffl_prod.ios.lumen.Hc4nT8bZ1qW6eY0rS3vJ5d"
 }
 ```
 
 - The link is for the key's environment. `service` is the key of an app service (`web`, `ios`, `android`); a
-  backend service has no file. (`?flagSet=` from 0.2 still works until 0.4.)
+  backend service has no file.
 - For the CDN file, the app reads `path` from the address apps use, usually the CDN in front of your server:
-  `https://flags.example.com/client/v1/flags/prod/ios/lumen/…`. `path` is there only when the `appFiles()` plugin
+  `https://flags.example.com/cdn/v1/flags/prod/ios/lumen/…`. `path` is there only when the `cdnFiles()` plugin
   runs.
 - For OFREP, the app's provider sends `Authorization: Bearer <token>`. The token asks as that entity only.
 - The answer has `Cache-Control: no-store`: both are secrets. See [Security model](/guide/security#app-tokens).

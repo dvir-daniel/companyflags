@@ -88,10 +88,9 @@ test('key scopes: one entity, an entity and those under it, or any; the key is t
     ['dev/server-wupserver/soylent', 'dev/server-wupserver/soylent', 'dev/server-wupserver/sl-kids', 403, 403]);
   // all: any, named in the path
   assert.deepEqual([await id(any, '/brand/sl-kids'), await id(any, '/brand/vd-latex'), await id(any)], ['dev/server-wupserver/sl-kids', 'dev/server-wupserver/vd-latex', 400]);
-  // X-Customer-Id, from before dimensions, still names the entity for an `all` key; it never widens a narrower key
-  assert.equal(await id(any, '', { 'x-customer-id': 'sl-kids' }), 'dev/server-wupserver/sl-kids');
-  assert.equal(await id(own, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/soylent', 'an entity’s key ignores it');
-  assert.equal(await id(below, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/soylent');
+  // a header never names the entity: only the path or the key does
+  assert.equal(await id(any, '', { 'x-customer-id': 'sl-kids' }), 400);
+  assert.equal(await id(own, '', { 'x-customer-id': 'acme' }), 'dev/server-wupserver/soylent');
   // moving Soylent Kids out from under Soylent takes it out of the `below` key's reach at once (the key cache is untouched)
   assert.equal((await dana.put('/dimensions/brand/sl-kids', { name: 'Soylent Kids', parent: 'vandelay' })).status, 200);
   await t.settle();
@@ -141,7 +140,7 @@ test('prototype names are unknown keys like any other', async () => {
     assert.equal((await t.as('alice').post('/trace', { environment: 'dev', project: 'web', entity: key, attrs: {} })).status, 404, `trace as ${key}`);
     const flag = await t.as('alice').post('/trace', { environment: 'dev', project: 'web', entity: null, attrs: { [key]: 'x' }, flag: key });
     assert.equal(flag.json.result.errorCode, 'FLAG_NOT_FOUND', `flag ${key}`);
-    assert.equal((await t.call('GET', `/client/v1/flags/dev/web/${key}/secret`)).status, 404, `file of ${key}`);
+    assert.equal((await t.call('GET', `/cdn/v1/flags/dev/web/${key}/secret`)).status, 404, `file of ${key}`);
   }
   assert.equal((await t.as('alice').get('/dimensions/company/constructor/flags')).status, 404);
   assert.equal((await t.as('alice').get('/dimensions/company/acme/flags?environment=constructor')).status, 404, 'an environment too');
@@ -179,13 +178,13 @@ test('replacing an entity’s link is a new version in every environment, so its
 test('every wrong app link gets the same answer, so links can’t be used to find out which entities exist', async () => {
   const fake = 'AAAAAAAAAAAAAAAAAAAAAA';
   const answer = async (path: string) => { const r = await t.call('GET', path); return JSON.stringify([r.status, r.json]); };
-  const wrong = await answer(`/client/v1/flags/dev/web/no-such-entity/${fake}`);
+  const wrong = await answer(`/cdn/v1/flags/dev/web/no-such-entity/${fake}`);
   assert.equal(wrong, JSON.stringify([404, { error: 'no file at this link' }]));
   for (const path of [
-    `/client/v1/flags/dev/web/vandelay/${fake}`,                          // an entity that exists, a wrong secret
-    `/client/v1/flags/dev/zz-not-a-flag-set/vandelay/${fake}`,            // and a service that doesn't
-    `/client/v1/flags/dev/zz-not-a-flag-set/no-such-entity/${fake}`,
-    `/client/v1/flags/zz-not-an-env/web/vandelay/${fake}`,
+    `/cdn/v1/flags/dev/web/vandelay/${fake}`,                          // an entity that exists, a wrong secret
+    `/cdn/v1/flags/dev/zz-not-a-flag-set/vandelay/${fake}`,            // and a service that doesn't
+    `/cdn/v1/flags/dev/zz-not-a-flag-set/no-such-entity/${fake}`,
+    `/cdn/v1/flags/zz-not-an-env/web/vandelay/${fake}`,
     (await t.link('dev', 'web', 'wonka')).replace('/web/', '/zz-not-a-flag-set/'),   // the right secret, a service that doesn't exist
   ]) assert.equal(await answer(path), wrong, path);
 });
@@ -269,10 +268,10 @@ test('the API key cache keeps the keys used most recently, so a spray of made-up
 });
 
 test('a client app that doesn’t exist is answered from memory; adding it makes its file appear at once', async () => {
-  assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 404);
-  assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 404);
+  assert.equal((await t.call('GET', '/cdn/v1/flags/dev/tvos')).status, 404);
+  assert.equal((await t.call('GET', '/cdn/v1/flags/dev/tvos')).status, 404);
   assert.equal((await t.as('dana').post('/services', { key: 'tvos', kind: 'client' })).status, 201);
-  assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 200);
+  assert.equal((await t.call('GET', '/cdn/v1/flags/dev/tvos')).status, 200);
 });
 
 test('a % of devices is saved with hash version 2; a file that failed to build is built again on the next request', async () => {
@@ -282,7 +281,8 @@ test('a % of devices is saved with hash version 2; a file that failed to build i
   assert.equal(bad.status, 422);
   assert.match(bad.json.errors.join(), /hash version 3 doesn’t exist/);
   await assert.rejects(t.db.query(`update flag_rule set split_hash_version = 1 where split_by is not null`), /flag_rule_hash_version_check/);
-  assert.equal((await t.editBase('max_upload_mb', 'dev', pct(1))).status, 200, 'sent with 1 (an older version restored): saved with 2');
+  assert.equal((await t.editBase('max_upload_mb', 'dev', pct(1))).status, 422, 'hash version 1 is gone too');
+  assert.equal((await t.editBase('max_upload_mb', 'dev', pct(2))).status, 200);
   const saved = (await t.baseOf('max_upload_mb', 'dev')).layer.rules.find((r: any) => r.split?.by === 'entity');
   assert.equal(saved.split.hashVersion, 2);
 
@@ -296,7 +296,7 @@ test('a % of devices is saved with hash version 2; a file that failed to build i
   assert.ok(logs.some((l) => /unsupported hash_version 3/.test(l) && /at /.test(l)), 'logged, with its stack');
   const secret = link.split('/').pop()!;
   assert.ok(logs.every((l) => !l.includes(secret)), 'never the link’s secret: the log names the route');
-  assert.ok(logs.some((l) => l.includes('GET /client/v1/flags/:env/:app/:entity/:secret')));
+  assert.ok(logs.some((l) => l.includes('GET /cdn/v1/flags/:env/:app/:entity/:secret')));
   // …and isn't kept: once the snapshot is right again, the same publish's file is built
   rule.split!.hashVersion = 2;
   assert.equal((await t.call('GET', link)).status, 200);

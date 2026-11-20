@@ -17,7 +17,7 @@ import { boot, deviceIn } from './helpers.ts';
 const fields: FieldFacts = {
   project: { valueType: 'string', canSplitBy: false }, 'app.version': { valueType: 'semver', canSplitBy: false },
   'device.id': { valueType: 'string', canSplitBy: true }, 'session.id': { valueType: 'string', canSplitBy: true },
-  entity: { valueType: 'string', canSplitBy: true }, 'customer.id': { valueType: 'string', canSplitBy: true },
+  entity: { valueType: 'string', canSplitBy: true },
 };
 const variants = [{ key: 'on', value: true }, { key: 'off', value: false }];
 const flag = { key: 'rel', kind: 'release', variants: new Set(['on', 'off']) };
@@ -104,11 +104,6 @@ describe('where a release is', () => {
     ] });
     const s = releaseState(variants, l);
     assert.deepEqual([s.step, s.percent, s.apps, s.entities], ['percent', 20, ['android'], ['wonka']]);
-    // early access from before dimensions checked customer.id, which means the same: still read as early access
-    const old = stored({ ...l, rules: [{ ...l.rules[0], conditions: [{ field: 'customer.id', op: 'in', values: ['wonka'] }] }, l.rules[1]] });
-    assert.deepEqual(releaseState(variants, old).entities, ['wonka']);
-    assert.deepEqual(step(old, { kind: 'entities', entities: ['wonka', 'acme'] }).rules[0].conditions, [{ field: 'entity', op: 'in', values: ['wonka', 'acme'] }],
-      'changing it writes today’s name');
     assert.equal(stepText(s), '20% of devices on android');
     assert.deepEqual(nextChange(s), { kind: 'percent', percent: 25 }, 'a % off the ladder goes to the next one on it');
     assert.deepEqual(backChange(s), { kind: 'percent', percent: 5 });
@@ -486,7 +481,7 @@ describe('version releases end to end', () => {
 
     // what the app reads: its entity's CDN file, and the same flagd JSON as built, agree with the server for every device
     const snap = t.plane.get('dev');
-    const file = (await t.appFile('dev', 'web', 'acme')).json;
+    const file = (await t.cdnFile('dev', 'web', 'acme')).json;
     const doc = buildFlagdDoc(snap, 'web', snap.entities.acme);
     assert.deepEqual(file.flags, doc.flags);
     for (const id of [early, later, null, deviceIn('web_bundle/1.0.1', 9000, 10000)]) {

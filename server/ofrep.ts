@@ -16,7 +16,7 @@
 //   - the entity is named in the evaluation context by its dimension, as the rules name it: {"company": "acme"}. When
 //     several dimensions are named, the lowest asks and the others must be the ones above it. The server fills in the
 //     levels above from its own data, and ignores anything else the context says about who is asking (the app, the
-//     environment), as for app files (evaluator.ts contextFor);
+//     environment), as for CDN files (evaluator.ts contextFor);
 //   - naming none: a key for one entity (or one with the entities below it) asks as that entity; an `all` key asks as
 //     no entity (what everyone gets before sign-in).
 // The rest of the context is what the device or request knows about itself, nested or dotted ({"app": {"version":

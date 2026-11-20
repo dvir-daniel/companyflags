@@ -42,7 +42,7 @@ test('a flag with free values takes typed values only; a new one writes no histo
   assert.equal((await history('api_host')).length, was + 1, 'the rule that serves it is the change');
   assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'api_host' })).value, EU);
   assert.equal((await t.trace({ project: 'web', entity: 'globex', flag: 'api_host' })).value, US);
-  const file = (await t.appFile('dev', 'web', 'acme')).json;
+  const file = (await t.cdnFile('dev', 'web', 'acme')).json;
   assert.equal(cdnAnswer(file, 'api_host').value, EU, 'the CDN file has the value, as for any flag');
 });
 

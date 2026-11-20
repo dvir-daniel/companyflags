@@ -86,24 +86,6 @@ test('without a setup link, a new install makes no first account at all', async 
   await admits(access, [['the first account', withSetup(password('lee@corp.com'), ''), 'invite_required']]);
 });
 
-test('a database from before accounts: an existing admin makes the first account with the setup link, nobody else does', async () => {
-  const { access, joins } = await install();
-  // people from the sign-in before accounts: the first to sign in is the admin, the next a viewer the admin promotes
-  await access.signedIn({ email: 'ann@corp.com', name: 'Ann' });
-  await access.signedIn({ email: 'bo@corp.com', name: 'Bo' });
-  await access.setRole('bo@corp.com', 'editor', by('ann@corp.com'));
-  await admits(access, [
-    ['an existing admin', withSetup(password('ann@corp.com')), null],
-    ['an existing admin, without the setup link', password('ann@corp.com'), 'invite_required'],
-    ['an existing person who isn’t an admin', withSetup(password('bo@corp.com')), 'invite_required'],
-    ['anyone else', withSetup(password('new@corp.com')), 'invite_required'],
-  ]);
-  await joins('ann@corp.com');
-  assert.equal((await access.signedIn({ email: 'ann@corp.com' })).role, 'admin', 'the role she had');
-  await access.setRole('bo@corp.com', 'admin', by('ann@corp.com'));
-  await admits(access, [['once someone has an account, another admin needs an invite too', password('bo@corp.com'), 'invite_required']]);
-});
-
 test('who may join an install in use: invites, signup domains, single sign-on, removed people', async () => {
   const { access, joins } = await install([{ id: 'okta', domains: ['corp.example'], requireSso: false }]);
   await joins('lee@corp.com');                                              // the admin

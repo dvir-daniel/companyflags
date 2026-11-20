@@ -45,9 +45,9 @@ type Kind = {
 };
 
 const settingsOf = (e: Said, name: (k: string) => string) => `${e.flag}${e.entity ? ` for ${name(e.entity)}` : ''}`;
-// An entity as History keeps it. Entries from before dimensions (the customer.* kinds) call the parent `company`.
-type EntityState = { key: string; name: string; dimension?: string; parent?: string | null; company?: string | null } | null;
-const parentOf = (s: EntityState) => s?.parent ?? s?.company ?? null;
+// An entity as History keeps it.
+type EntityState = { key: string; name: string; dimension?: string; parent?: string | null } | null;
+const parentOf = (s: EntityState) => s?.parent ?? null;
 const entityAdded = (e: Said, n: (k: string) => string) => {
   const a = e.after as EntityState;
   const parent = parentOf(a);
@@ -93,10 +93,6 @@ export const KINDS = {
   'entity.update': { serves: 'everywhere', restore: false, says: entityChanged },
   // the old link's file stops being served: every environment publishes (and purges the CDN) again
   'entity.link_replaced': { serves: 'everywhere', restore: false, then: ['forgetClientLinks'], says: linkReplaced },
-  // before dimensions: the same changes, read the same way
-  'customer.create': { serves: 'everywhere', restore: false, then: ['forgetClientLinks'], says: entityAdded },
-  'customer.update': { serves: 'everywhere', restore: false, says: entityChanged },
-  'customer.link_replaced': { serves: 'everywhere', restore: false, then: ['forgetClientLinks'], says: linkReplaced },
 
   // nothing served changes: history only
   'api_key.create': { serves: null, restore: false },

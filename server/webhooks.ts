@@ -215,10 +215,9 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
 
   async function names(rows: readonly HistoryRow[]): Promise<Names> {
     const people = [...new Set(rows.map((r) => r.changedBy))];
-    // an entity's parent, in History's entries (before dimensions, the parent was `company`)
-    type Was = { parent?: unknown; company?: unknown } | null;
-    const parents = (s: unknown) => [(s as Was)?.parent, (s as Was)?.company];
-    const ents = [...new Set(rows.flatMap((r) => [r.entity, ...parents(r.before), ...parents(r.after)]))]
+    // an entity's parent, in History's entries
+    const parentOf = (s: unknown) => (s as { parent?: unknown } | null)?.parent;
+    const ents = [...new Set(rows.flatMap((r) => [r.entity, parentOf(r.before), parentOf(r.after)]))]
       .filter((k): k is string => typeof k === 'string');
     const [p, e, env] = await Promise.all([
       all<{ key: string; name: string }>(db, `select key, coalesce(name, key) as name from app_user where key = any($1::text[])`, [people]),

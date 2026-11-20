@@ -62,8 +62,8 @@ export function DimensionsSection({ admin, focus }: { admin: boolean; focus?: bo
   useEffect(() => { setDirty('dimensions', edited); return () => setDirty('dimensions', false); }, [edited, setDirty]);
 
   const problems = checkDimensions(rows);
-  // until there's an entry, the only file an app can read is its service's file for everyone (the app-files plugin)
-  const files = meta.plugins?.includes('app-files') ?? true;
+  // until there's an entry, the only file an app can read is its service's file for everyone (the cdn-files plugin)
+  const files = meta.plugins.includes('cdn-files');
   const until = files ? ' Until then, apps can read only the file for everyone (Services → Link).' : '';
   const set = (i: number, change: Partial<Row>) => setRows((rs) => rs.map((r, j) => {
     if (j !== i) return r;

@@ -85,8 +85,6 @@ Which comparisons each type allows is in [Flags and rules → Operators](/guide/
 - Below the asker's level the value is "none": for Globex itself, "Brand is Lumen" is false and "Brand is not set" is
   true. With no entity named at all, these values are missing, which an override counts as a match.
 - A % split by a dimension puts every device of an entity, and of the entities under it, in the same group.
-- `customer.id` and `customer.company` are older names for `entity` and the top dimension. Old History entries and
-  requests still use them; the editor doesn't offer them.
 
 See [Dimensions](/guide/dimensions#rules-on-dimensions).
 

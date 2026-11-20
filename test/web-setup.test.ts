@@ -7,7 +7,7 @@ import { nextStep, setupSteps } from '../web/src/pages/setupKit.ts';
 import { everyoneFilePath } from '../web/src/paths.ts';
 import { bootProblem } from '../web/src/text.ts';
 
-const blank = { environments: [], projects: [], dimensions: [], entities: [], plugins: ['ofrep', 'flagd', 'app-files'] } as unknown as Meta;
+const blank = { environments: [], projects: [], dimensions: [], entities: [], plugins: ['ofrep', 'flagd', 'cdn-files'] } as unknown as Meta;
 const dev = { key: 'dev', name: 'Development', minApprovals: 0, revision: 1 };
 const at = (meta: Partial<Meta>, flags?: number) => {
   const steps = setupSteps({ ...blank, ...meta } as Meta, flags);
@@ -43,15 +43,15 @@ test('each step links where it is done', () => {
 });
 
 test('connecting an app says how this server is read', () => {
-  // OFREP: the service's key in the provider; app files only: the entry's link
+  // OFREP: the service's key in the provider; CDN files only: the entry's link
   assert.match(at({}).step('app').text, /key.*OFREP provider/);
-  assert.match(at({ plugins: ['app-files'] }).step('app').text, /app link/);
-  assert.doesNotMatch(at({ plugins: ['app-files'] }).step('app').text, /OFREP/);
+  assert.match(at({ plugins: ['cdn-files'] }).step('app').text, /app link/);
+  assert.doesNotMatch(at({ plugins: ['cdn-files'] }).step('app').text, /OFREP/);
 });
 
 test('a service’s file for everyone: its address, one segment per key', () => {
-  assert.equal(everyoneFilePath('prod', 'web'), '/client/v1/flags/prod/web');
-  assert.equal(everyoneFilePath('a/b', 'c?d'), '/client/v1/flags/a%2Fb/c%3Fd');
+  assert.equal(everyoneFilePath('prod', 'web'), '/cdn/v1/flags/prod/web');
+  assert.equal(everyoneFilePath('a/b', 'c?d'), '/cdn/v1/flags/a%2Fb/c%3Fd');
 });
 
 test('the first page tells a server that answered with an error from one that can’t be reached', () => {

@@ -103,8 +103,8 @@ export async function boot(opts: AppOptions = {}) {
   // What an app reads: its entity's CDN file (flagd JSON) at the entity's link (or, with no entity, the before-sign-in file)
   const link = async (environment: string, app: string, entity: string) =>
     (await as('dana').get(`${await entityPath(entity)}/link?environment=${environment}`)).json.path.replace(':service', app) as string;
-  const appFile = async (environment: string, app: string, entity: string | null, headers: Record<string, string> = {}) =>
-    call('GET', entity ? await link(environment, app, entity) : `/client/v1/flags/${environment}/${app}`, undefined, headers);
+  const cdnFile = async (environment: string, app: string, entity: string | null, headers: Record<string, string> = {}) =>
+    call('GET', entity ? await link(environment, app, entity) : `/cdn/v1/flags/${environment}/${app}`, undefined, headers);
   /** A flag's defaults in an environment as a layer to save: without version, updatedAt and updatedBy. */
   const baseOf = async (flag: string, env: string) => {
     const { version, updatedAt: _u, updatedBy: _b, ...layer } = (await as('alice').get(`/flags/${flag}`)).json.layers[env].base;
@@ -117,7 +117,7 @@ export async function boot(opts: AppOptions = {}) {
     await settle();
     return r;
   };
-  return { ...ctx, call, as, trace, settle, entityPath, link, appFile, baseOf, editBase };
+  return { ...ctx, call, as, trace, settle, entityPath, link, cdnFile, baseOf, editBase };
 }
 
 /** A secret with one character changed, a few from its end: the last character of base64 can carry only padding bits,

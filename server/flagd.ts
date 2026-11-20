@@ -1,7 +1,7 @@
 // flagd JSON: one entity's flags in one service as a flagd flag set (https://flagd.dev/reference/flag-definitions/), for
 // flagd itself or an OpenFeature flagd provider evaluating in-process. Backends get it with an API key
 // (GET /sdk/v1/flagd/<dimension>/<entity>); apps get the same document as their CDN file, at their app link
-// (GET /client/v1/flags/<env>/<service>/<entity>/<secret>, or /client/v1/flags/<env>/<service> before sign-in: no entity).
+// (GET /cdn/v1/flags/<env>/<service>/<entity>/<secret>, or /cdn/v1/flags/<env>/<service> before sign-in: no entity).
 // Both are served by delivery.ts.
 //
 // forEntity settles everything the server knows for every request of this service (the environment, the service, the

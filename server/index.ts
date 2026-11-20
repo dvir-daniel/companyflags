@@ -116,7 +116,7 @@ export async function createApp(opts: AppOptions = {}) {
   const app = new Hono();
   app.onError(errorHandler(log));
   // Every response: no sniffing, never in a frame, no referrer beyond the origin. HSTS is left to whatever ends TLS in
-  // front of this server; the app files set their own CORS (delivery.ts), so no Cross-Origin-Resource-Policy here.
+  // front of this server; the CDN files set their own CORS (delivery.ts), so no Cross-Origin-Resource-Policy here.
   app.use('*', secureHeaders({
     strictTransportSecurity: false, crossOriginResourcePolicy: false, crossOriginEmbedderPolicy: false,
     xFrameOptions: 'DENY', referrerPolicy: 'strict-origin-when-cross-origin',
@@ -136,15 +136,15 @@ export async function createApp(opts: AppOptions = {}) {
   app.route('/api', appearance.routes());                // the name, logo and note the sign-in page shows: open too
   const tokens = createTokens(db);
   app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins, appearance }));
-  app.route('/', linkRoutes({ db, plane, links, keys, services: apps }, { files: on.has('app-files') }));   // app links, for backends
+  app.route('/', linkRoutes({ db, plane, links, keys, services: apps }, { files: on.has('cdn-files') }));   // app links, for backends
   for (const p of plugins) if (p.parts.routes) app.route('/', p.parts.routes);
   // OAuth sign-in for MCP clients (oauth.ts): on with the mcp plugin
   if (on.has('mcp')) app.route('/', oauthRoutes({ db, identity, access, baseURL: settings?.baseURL }));
-  // An unknown address under the API, the app files or the backend downloads is a 404 with a JSON error,
+  // An unknown address under the API, the CDN files or the backend downloads is a 404 with a JSON error,
   // never the console's page (which answers every other address, below). The built-in plugins' prefixes stay JSON
   // even when the plugin is off.
   const noSuchEndpoint = (c: Context) => c.json({ error: `no such endpoint: ${c.req.method} ${c.req.path}` }, 404);
-  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', '/hooks', '/mcp', ...(on.has('mcp') ? OAUTH_PREFIXES : []), ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
+  const prefixes = new Set(['/api', '/cdn', '/sdk', '/ofrep', '/hooks', '/mcp', ...(on.has('mcp') ? OAUTH_PREFIXES : []), ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
   for (const prefix of prefixes) {
     app.all(prefix, noSuchEndpoint);
     app.all(`${prefix}/*`, noSuchEndpoint);
@@ -235,7 +235,7 @@ export function errorHandler(log: (m: string) => void): ErrorHandler {
 }
 
 /** Where an error happened, for the log. The console's API as it is (its addresses hold no secrets); anything else by
- *  its route as written (/client/v1/flags/:env/:app/:entity/:secret), never the address, which can be a secret (an
+ *  its route as written (/cdn/v1/flags/:env/:app/:entity/:secret), never the address, which can be a secret (an
  *  app link, a webhook's address, an invite); with no such route, only the address's first two parts. */
 function loggedPath(c: Context): string {
   const path = c.req.path;

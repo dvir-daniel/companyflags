@@ -1,8 +1,7 @@
 // No word left behind (docs/design/dimensions.md "Words"): nothing a console user or a rule author reads says
 // "customer", "company" or "brand" unless the installation's own dimensions are called that.
 //   - Every sentence the server and the console build, with dimensions called something else entirely, has none.
-//   - The console's and the server's code has none in a string or in JSX text, except identifiers kept on purpose (the
-//     old attribute and History names read as aliases, old addresses that still open the new pages, the presets).
+//   - The console's and the server's code has none in a string or in JSX text, except the presets.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -51,7 +50,7 @@ test('sentences about entities, their choices and what decided an answer use the
       }
     }
     const vocab = { dimensions: dims, nameOf: (k: string) => ents[k]?.name };
-    for (const field of [...dims.map((d) => d.key), 'entity', 'customer.id', 'customer.company']) {
+    for (const field of [...dims.map((d) => d.key), 'entity']) {
       for (const op of ['in', 'not_in', 'exists', 'missing']) clean('condition', conditionText({ field, op, values: ['w1', 'g1'] }, vocab));
     }
     for (const g of FIELD_GROUPS) clean('group', groupLabel(g, dims));
@@ -60,7 +59,7 @@ test('sentences about entities, their choices and what decided an answer use the
 
 test('every attribute the rule editor shows, the dimensions’ own included, is named without those words', () => {
   for (const dims of CHAINS) {
-    const rows = [...FIELDS.map((f) => f.name), ...dims.map((d) => d.key), 'entity', 'customer.id', 'customer.company']
+    const rows = [...FIELDS.map((f) => f.name), ...dims.map((d) => d.key), 'entity']
       .map((name) => fieldInfo({ name, valueType: 'string', comesFrom: 'token', canSplitBy: true, description: '' }, dims));
     for (const f of rows) clean(`label of ${f.name}`, f.label);
   }
@@ -99,11 +98,9 @@ test('History, a release’s steps and a layer’s problems say it without those
     { flag: 'f', entity: 'z1', before: null, after: { key: 'z1', name: 'Gizmo One', dimension: 'gizmo', parent: 'g1' } },
     { flag: null, entity: 'z1', before: { key: 'z1', name: 'Gizmo One', parent: 'g1' }, after: { key: 'z1', name: 'Gizmo One', parent: null } },
     { flag: null, entity: 'z1', before: { key: 'z1', name: 'Gizmo One', parent: null }, after: { key: 'z1', name: 'Gizmo One', parent: 'g1' } },
-    // an entry from before dimensions, its parent called `company`
-    { flag: null, entity: 'z1', before: { key: 'z1', name: 'Gizmo One', company: 'g1' }, after: { key: 'z1', name: 'Gizmo One', company: 'w1' } },
   ];
   for (const [kind, k] of Object.entries(KINDS) as [string, { says?: (e: unknown, n: (k: string) => string) => string }][]) {
-    if (!/^(entity|customer|layer)\./.test(kind)) continue;
+    if (!/^(entity|layer)\./.test(kind)) continue;
     for (const e of said) if (k.says) clean(`History ${kind}`, k.says(e, n));
   }
 
@@ -144,11 +141,7 @@ const files = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
   return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) ? [p] : [];
 });
 
-// Identifiers kept on purpose: the old attribute names (fields.ts ALIASES), the old History kinds, old console
-// addresses and saved drafts read in the new names, the backends' old header, the History filter that also finds old
-// entries. Product and package names aren't the word either.
-const KEPT = new Set(["'customer.id'", "'customer.company'", "'customer.create'", "'customer.update'", "'customer.link_replaced'",
-  "'customers'", "'customer'", "'brands'", "'x-customer-id'", "'history.customer'", "'entity,customer'"]);
+// Product and package names aren't the word.
 const PRODUCT = /companyflags|company-os/i;
 
 test('no string or JSX text in the console or the server says those words', () => {
@@ -156,7 +149,7 @@ test('no string or JSX text in the console or the server says those words', () =
   const hits: string[] = [];
   for (const file of [...files('web/src'), ...files('server').filter((f) => !f.includes('migrations'))]) {
     for (const { line, text } of texts(file)) {
-      if (!WORD.test(text.replace(PRODUCT, '')) || KEPT.has(text)) continue;
+      if (!WORD.test(text.replace(PRODUCT, ''))) continue;
       if (file.endsWith('dimensions.ts') && presets.has(text)) continue;
       hits.push(`${file}:${line}: ${text.trim().slice(0, 120)}`);
     }

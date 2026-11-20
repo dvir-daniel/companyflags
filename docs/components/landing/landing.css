@@ -201,7 +201,7 @@
 .cf-landing .side a.on, .cf-landing .side a:hover { color: var(--cf-ink); background: var(--cf-wash); }
 .cf-landing .side a.on { padding-left: 22px; box-shadow: inset 2px 0 0 var(--cf-ink); }
 /* a new example's lines come in from the top down */
-.cf-landing .numbered .line { display: inline-block; animation: cf-line-in 380ms var(--cf-ease) calc(var(--l) * 22ms) both; }
+.cf-landing .numbered .line { display: block; animation: cf-line-in 380ms var(--cf-ease) calc(var(--l) * 22ms) both; }
 @keyframes cf-line-in { from { opacity: 0; transform: translateX(-4px); } }
 .cf-landing .side p { margin: auto 0 0; padding: 16px; font-size: 13px; line-height: 1.6; color: var(--cf-ink-2); }
 

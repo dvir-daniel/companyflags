@@ -26,7 +26,7 @@ the console and serves it with the API on http://localhost:8787, as in productio
 
 | Path | What it is |
 |---|---|
-| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, app files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` is the type of `companyflags.config.ts` and `configFile.ts` reads it; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
+| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, CDN files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` is the type of `companyflags.config.ts` and `configFile.ts` reads it; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
 | `web/` | The console: React 19, Vite, Tailwind 4 |
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
 | `packages/companyflags` | The npm package, built from `server/` and `web/dist` by `build.ts` (`pnpm pack:npm`; `pnpm test:npm` installs it and tries it). Not a workspace project: its version and dependencies are the root's |

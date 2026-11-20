@@ -24,7 +24,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // every address the server answers besides the console: the API, the plugins (OFREP, webhooks, MCP), OAuth discovery
-    proxy: { '/api': api, '/sdk': api, '/client': api, '/ofrep': api, '/hooks': api, '/mcp': api, '/oauth': api, '/.well-known': api, '/healthz': api, '/readyz': api },
+    proxy: { '/api': api, '/sdk': api, '/cdn': api, '/ofrep': api, '/hooks': api, '/mcp': api, '/oauth': api, '/.well-known': api, '/healthz': api, '/readyz': api },
     fs: { allow: [import.meta.dirname, ui] },
   },
 });

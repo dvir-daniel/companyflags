@@ -29,8 +29,6 @@ invite everyone else from **Settings → People**.
 - Until then nobody else can join at all: not with Google, GitHub or Microsoft at a domain in `FF_SIGNUP_DOMAINS`,
   and not with single sign-on.
 - Scripts can send the secret in an `X-Setup` header instead of opening the link.
-- A database from before accounts (people with roles, nobody with an account yet) needs the link too: an existing
-  admin opens it and makes the first account with their own email.
 
 :::warning[Keep the setup link secret]
 Until the admin account exists, whoever has the link can make it. Don't paste it anywhere others can read.

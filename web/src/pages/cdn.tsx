@@ -16,7 +16,7 @@ import { roleInfo } from '../../../server/policy.ts';
 import { cloudflareFailure } from './cdnKit.ts';
 
 /*
- * Settings → CDN (server/cdn.ts): the Cloudflare zone the app files are served through, and a token that may purge
+ * Settings → CDN (server/cdn.ts): the Cloudflare zone the CDN files are served through, and a token that may purge
  * its cache. After each publish the server drops that environment's files from Cloudflare, so apps get a change in
  * seconds instead of within the cache's minute. Set on the server (CF_ZONE_ID, CF_API_TOKEN), it shows here read-only.
  */

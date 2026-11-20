@@ -17,14 +17,14 @@ test('two servers on one database serve the same thing after a round', { skip: n
       const r = await server.app.request(path);
       return { status: r.status, body: r.status === 200 ? await r.json() as FlagdDoc : null };
     };
-    const onA = cdnAnswer((await fileOn(a, '/client/v1/flags/dev/web')).body!, 'payments_enabled');
+    const onA = cdnAnswer((await fileOn(a, '/cdn/v1/flags/dev/web')).body!, 'payments_enabled');
     assert.ok(!onA.codeDefault);
-    assert.deepEqual(cdnAnswer((await fileOn(b, '/client/v1/flags/dev/web')).body!, 'payments_enabled'), onA, 'b starts with what a has');
+    assert.deepEqual(cdnAnswer((await fileOn(b, '/cdn/v1/flags/dev/web')).body!, 'payments_enabled'), onA, 'b starts with what a has');
 
     // a switches payments off; b catches up on its next round
     await a.editBase('payments_enabled', 'dev', (layer) => ({ ...layer, enabled: false }));
     await b.workers.drain();
-    const onB = await fileOn(b, '/client/v1/flags/dev/web');
+    const onB = await fileOn(b, '/cdn/v1/flags/dev/web');
     assert.equal(onB.body!.flags.payments_enabled.state, 'DISABLED', 'off: the app keeps the default in its code');
     assert.equal(onB.body!.metadata.revision, a.plane.get('dev').revision);
 
@@ -40,7 +40,7 @@ test('two servers on one database serve the same thing after a round', { skip: n
     // an environment added on a is served by b
     assert.equal((await a.as('dana').post('/environments', { key: 'staging', name: 'Staging' })).status, 201);
     await b.workers.drain();
-    assert.equal((await fileOn(b, '/client/v1/flags/staging/web')).status, 200);
+    assert.equal((await fileOn(b, '/cdn/v1/flags/staging/web')).status, 200);
   } finally {
     await b.workers.stop();
     await b.db.close();

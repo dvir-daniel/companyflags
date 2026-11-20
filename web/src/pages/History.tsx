@@ -31,8 +31,6 @@ const CHANGE_LABEL: Record<string, string> = {
   'layer.create': 'added own settings', 'layer.update': 'changed rules', 'layer.delete': 'removed own settings',
   'flag.create': 'created the flag', 'flag.update': 'changed settings', 'flag.archive': 'archived the flag', 'delivery.update': 'changed its services',
   'variations.update': 'changed variants', 'entity.create': 'added an entry', 'entity.update': 'changed an entry', 'entity.link_replaced': 'replaced an app link',
-  // from before dimensions
-  'customer.create': 'added an entry', 'customer.update': 'changed an entry', 'customer.link_replaced': 'replaced an app link',
   'dimensions.update': 'changed the dimensions',
   'api_key.create': 'created an API key', 'api_key.revoke': 'revoked an API key', 'change_set.create': 'requested approval',
   'change_set.approve': 'approved', 'change_set.reject': 'rejected', 'change_set.schedule': 'scheduled a request',
@@ -60,11 +58,10 @@ const PAGE = 200;
 const options = (values: string[], current: string, name: (v: string) => string = (v) => v): [string, string][] =>
   [['', 'All'], ...[...new Set([...values, ...(current ? [current] : [])])].map((v) => [v, name(v)] as [string, string]).sort((a, b) => a[1].localeCompare(b[1]))];
 /** What a change is about, for the Change filter: the server matches every kind of change about it. Entries are the
- *  dimensions' entities, named by the installation's words ("Companies and brands"); their changes from before
- *  dimensions were `customer.*`. */
+ *  dimensions' entities, named by the installation's words ("Companies and brands"). */
 const subjects = (dims: Dimensions): [string, string][] => [
   ['layer', 'Rules and defaults'], ['flag', 'Flag details'], ['variations', 'Variants'], ['delivery', 'Services of a flag'],
-  ['entity,customer', capital(listWords(dims, 'and', true)) || 'Entries'], ['dimensions', 'Dimensions'], ['change_set', 'Requests and reviews'],
+  ['entity', capital(listWords(dims, 'and', true)) || 'Entries'], ['dimensions', 'Dimensions'], ['change_set', 'Requests and reviews'],
   ['environment', 'Environments'], ['app', 'Services'], ['api_key', 'API keys'], ['person', 'People'], ['sso', 'Single sign-on'], ['cdn', 'CDN'], ['appearance', 'Appearance'], ['webhook,webhook_in', 'Webhooks'],
 ];
 const WHEN: [string, string][] = [['', 'Any time'], ['today', 'Today'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'],

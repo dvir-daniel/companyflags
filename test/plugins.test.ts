@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { boot } from './helpers.ts';
 import {
-  appFiles, cloudflare, consoleRoutes, defaultPlugins, definePlugin, flagd, HttpError, ofrep, PluginError, type PluginContext,
+  cdnFiles, cloudflare, consoleRoutes, defaultPlugins, definePlugin, flagd, HttpError, ofrep, PluginError, type PluginContext,
 } from '../server/plugins/index.ts';
 import { ConfigError, defineConfig, type Config } from '../server/config.ts';
 import { loadConfig, resolveConfig } from '../server/configFile.ts';
@@ -21,16 +21,16 @@ const ids = (plugins: { id: string }[]) => plugins.map((p) => p.id);
 test('without a list, every built-in plugin runs, and the console is told which', async () => {
   const t = await boot();
   try {
-    assert.deepEqual((await t.as('alice').get('/meta')).json.plugins, ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks', 'mcp']);
+    assert.deepEqual((await t.as('alice').get('/meta')).json.plugins, ['ofrep', 'flagd', 'cdn-files', 'cloudflare', 'webhooks', 'mcp']);
     assert.equal((await t.as('alice').get('/cdn')).status, 200, 'the Cloudflare plugin’s console routes');
   } finally { await t.stop(); }
 });
 
-test('only the listed plugins run: the others’ addresses are a JSON 404, and links leave out the app file', async () => {
+test('only the listed plugins run: the others’ addresses are a JSON 404, and links leave out the CDN file', async () => {
   const t = await boot({ plugins: [ofrep()] });
   try {
     assert.deepEqual((await t.as('alice').get('/meta')).json.plugins, ['ofrep']);
-    for (const path of ['/client/v1/flags/dev/web', '/sdk/v1/flagd/company/acme']) {
+    for (const path of ['/cdn/v1/flags/dev/web', '/sdk/v1/flagd/company/acme']) {
       const r = await t.call('GET', path);
       assert.equal(r.status, 404, path);
       assert.match(r.json.error, /^no such endpoint/, path);
@@ -44,7 +44,7 @@ test('only the listed plugins run: the others’ addresses are a JSON 404, and l
     const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
     const link = await t.call('GET', '/sdk/v1/links/company/acme?service=web', undefined, { authorization: `Bearer ${key}` });
     assert.equal(link.status, 200, JSON.stringify(link.json));
-    assert.equal(link.json.path, undefined, 'no app files: no path');
+    assert.equal(link.json.path, undefined, 'no CDN files: no path');
     assert.match(link.json.token, /^ffl_dev\.web\./);
     const ofrepAnswer = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { targetingKey: 'd-1' } }, { authorization: `Bearer ${link.json.token}` });
     assert.equal(ofrepAnswer.status, 200, JSON.stringify(ofrepAnswer.json));
@@ -72,7 +72,7 @@ test('a plugin of one’s own: its routes, its console routes behind the sign-in
       };
     },
   });
-  const t = await boot({ plugins: [audit, appFiles()] });
+  const t = await boot({ plugins: [audit, cdnFiles()] });
   try {
     assert.equal(typeof (await t.call('GET', '/audit-feed/v1/revisions')).json.dev, 'number');
     assert.match((await t.call('GET', '/audit-feed/nothing')).json.error, /^no such endpoint/, 'its prefix is JSON, not the console page');
@@ -174,7 +174,7 @@ test('the config: the file’s settings, else the environment’s, else the defa
   const env = { DATABASE_URL: 'postgres://env/db', PORT: '9000', BETTER_AUTH_URL: 'https://env.example.com', CF_ZONE_ID: 'z', CF_API_TOKEN: 't' };
   const none = resolveConfig({}, {});
   assert.deepEqual([none.databaseUrl, none.dataDir, none.port, none.host], [undefined, './data', 8787, '0.0.0.0']);
-  assert.deepEqual(ids(none.plugins), ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks', 'mcp']);
+  assert.deepEqual(ids(none.plugins), ['ofrep', 'flagd', 'cdn-files', 'cloudflare', 'webhooks', 'mcp']);
   const fromEnv = resolveConfig({}, env);
   assert.deepEqual([fromEnv.databaseUrl, fromEnv.port], ['postgres://env/db', 9000]);
   assert.equal(fromEnv.signIn.kind === 'better-auth' && fromEnv.signIn.settings.baseURL, 'https://env.example.com');
@@ -188,7 +188,7 @@ test('the config: the file’s settings, else the environment’s, else the defa
   // production is NODE_ENV's alone: a file can't turn off the production checks
   const prod = resolveConfig({ auth: { production: false } } as Config, { NODE_ENV: 'production' });
   assert.equal(prod.signIn.kind === 'better-auth' && prod.signIn.settings.production, true);
-  assert.deepEqual(ids(defaultPlugins()), ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks', 'mcp']);
+  assert.deepEqual(ids(defaultPlugins()), ['ofrep', 'flagd', 'cdn-files', 'cloudflare', 'webhooks', 'mcp']);
   assert.equal(cloudflare().id, 'cloudflare');
 });
 

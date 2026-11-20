@@ -1,5 +1,5 @@
 // After a publish, drop the environment's files from Cloudflare's cache so apps get the new values in
-// seconds instead of within a minute. Every app file is tagged with its environment (delivery.ts Cache-Tag).
+// seconds instead of within a minute. Every CDN file is tagged with its environment (delivery.ts Cache-Tag).
 // Which zone and token: cdn.ts (cloudflare()'s options, else CF_ZONE_ID and CF_API_TOKEN, else Settings → CDN).
 // Only the cloudflare plugin's `fetch` reaches Cloudflare: tests hand it a fake, so they never purge a real zone.
 
@@ -28,5 +28,5 @@ export class CloudflareError extends Error {
   constructor(status: number, said: string) { super(`Cloudflare said ${status}: ${said}`); this.status = status; }
 }
 
-/** The tag every app file of an environment carries (delivery.ts). */
+/** The tag every CDN file of an environment carries (delivery.ts). */
 export const envTag = (environment: string) => `env-${environment}`;

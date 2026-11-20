@@ -9,13 +9,13 @@ Better Auth's plugins:
 
 ```ts
 import { defineConfig } from 'companyflags/config';
-import { appFiles, cloudflare, flagd, mcp, ofrep, webhooks } from 'companyflags/plugins';
+import { cdnFiles, cloudflare, flagd, mcp, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   plugins: [
     ofrep(),
     flagd(),
-    appFiles(),
+    cdnFiles(),
     cloudflare(),
     webhooks(),
     mcp(),
@@ -25,7 +25,7 @@ export default defineConfig({
 
 With no config file, or a config without `plugins`, all six built-in plugins run. With a list, only the plugins on it
 run. The server says which ones when it starts, and the console hides what belongs to a plugin that's off: the CDN
-settings without `cloudflare()`, for example, the CDN file's address without `appFiles()`, or the webhooks without
+settings without `cloudflare()`, for example, the CDN file's address without `cdnFiles()`, or the webhooks without
 `webhooks()`.
 
 ## Built-in plugins
@@ -34,13 +34,13 @@ settings without `cloudflare()`, for example, the CDN file's address without `ap
 |---|---|---|
 | `ofrep()` | `ofrep` | [OpenFeature's Remote Evaluation Protocol](/reading/overview): `POST /ofrep/v1/evaluate/flags`, one flag, and change events. For OpenFeature's OFREP providers on the web, Android, iOS and servers. |
 | `flagd()` | `flagd` | [flagd JSON](/reading/overview) for backends that evaluate in-process: `GET /sdk/v1/flagd/<dimension>/<entity>`, with a backend service's key. |
-| `appFiles()` | `app-files` | [CDN files](/reading/local-apps): flagd JSON per environment, app service and entity, for a CDN to cache. `GET /client/v1/flags/…`. |
+| `cdnFiles()` | `cdn-files` | [CDN files](/reading/local-apps): flagd JSON per environment, app service and entity, for a CDN to cache. `GET /cdn/v1/flags/…`. |
 | `cloudflare(options?)` | `cloudflare` | [Purges Cloudflare's cache](/self-hosting/cdn#purge-on-publish) after each publish, and adds **Settings → CDN** to the console. |
 | `webhooks(options?)` | `webhooks` | [Webhooks](/guide/webhooks): out, after each change (signed JSON, Slack, or your own shape), and in, `POST /hooks/v1/<token>`. Adds them to the console's **Migration** page. |
 | `mcp()` | `mcp` | An MCP server for AI agents at `POST /mcp` (Streamable HTTP, stateless), with an access token (`Authorization: Bearer cfp_…`). Its tools read, explain and compare flags, and change them through the console's API (flags, services, defaults, rules, an entity's own default, release steps), so roles and approvals hold: where an environment needs approval, a change is a request, and `request_status` follows it. For clients that only start local servers: `companyflags mcp`. |
 
 App links stay in the core: `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` always answers with the OFREP
-token, and with the CDN file's `path` when `appFiles()` runs.
+token, and with the CDN file's `path` when `cdnFiles()` runs.
 
 ### `cloudflare(options)`
 
@@ -150,7 +150,7 @@ app.get('/audit-feed/check/:entity', (c) => {
 
 | | |
 |---|---|
-| The built-in plugins | `ofrep`, `flagd`, `appFiles`, `cloudflare`, `webhooks`, and the types `CloudflareOptions`, `WebhooksOptions` |
+| The built-in plugins | `ofrep`, `flagd`, `cdnFiles`, `cloudflare`, `webhooks`, and the types `CloudflareOptions`, `WebhooksOptions` |
 | For writing one | `definePlugin`, `consoleRoutes`, `HttpError`, `PluginError` |
 | Types | `Plugin`, `PluginContext`, `PluginParts`, `ConsoleHelpers`, `ConsoleRoutes`, `OnPublish`, `Evaluate`, `Asking`, `Snapshots`, `Db`, `Queryable`, `Snapshot`, `EvalResult`, `Person`, `Actor` |
 

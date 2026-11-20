@@ -27,12 +27,12 @@ export function plurals(dims: Dimensions, entities: Entity[], keys: readonly str
 }
 
 /** The attributes an entity's own rules can't vary on: its dimension and those above it (always its own and its
- *  parents'), the attributes from before dimensions, and `entity` itself when nothing is under it. The dimensions below
+ *  parents'), and `entity` itself when nothing is under it. The dimensions below
  *  stay: its rules apply to the entities under it that follow it ("Store is Acme 12" in a chain's own settings). */
 export function settledAt(dims: Dimensions, entities: Entity[], key: string): Set<string> {
   const e = entityIndex(entities).get(key);
   const at = e ? dims.findIndex((d) => d.key === e.dimension) : -1;
-  const out = new Set<string>(['customer.id', 'customer.company']);
+  const out = new Set<string>();
   dims.forEach((d, i) => { if (i <= at) out.add(d.key); });
   if (at === dims.length - 1) out.add('entity');
   return out;

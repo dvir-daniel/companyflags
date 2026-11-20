@@ -4,6 +4,11 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **No more compatibility code; one name for each thing.** The CDN file's plugin is `cdnFiles()` (id `cdn-files`), at
+  `/cdn/v1/flags/…`. Gone: `?flagSet=`, the `X-Customer-Id` header, the `customer.*` attributes and history kinds,
+  the console's `#/customers` addresses, the "people from before accounts" path, hash version 1 on save, and the
+  docs' redirect pages. Reading flags is described the same way in the docs, on the landing page and in the README.
+
 - **The CDN file is flagd JSON (breaking for apps that read it).** `/client/v1/flags/…` now answers with the same flagd
   JSON backends get, made for the app service and the entity, so web apps and React Native read it with OpenFeature's
   `@openfeature/flagd-core` instead of code of your own. Off and code-default flags are now in it (the app's default

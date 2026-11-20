@@ -27,9 +27,6 @@ test('every attribute in fields.ts is offered by the rule editor, under its grou
   // one dimension: `entity` is the same as its attribute, so it isn't offered
   const one = [{ key: 'customer', singular: 'customer', plural: 'customers' }];
   assert.deepEqual([fieldInfo(stored('entity'), one).group, fieldInfo(stored('entity'), one).label, fieldInfo(stored('customer'), one).label], [null, 'Customer', 'Customer']);
-  // the names from before dimensions are read as what they stand for, never offered
-  assert.deepEqual([fieldInfo(stored('customer.id'), DIMS).label, fieldInfo(stored('customer.id'), DIMS).group], ['Company or brand', null]);
-  assert.deepEqual([fieldInfo(stored('customer.company'), DIMS).label, fieldInfo(stored('customer.company'), DIMS).group], ['Company', null]);
 });
 
 test('the editor’s suggestions: the fixed lists, the apps, every entity, or one dimension’s entities', () => {
@@ -52,10 +49,9 @@ test('labels and entity names come from the entries and the dimensions', () => {
   const vocab = { dimensions: DIMS, nameOf: (k: string) => names[k] };
   assert.equal(conditionText({ field: 'company', op: 'in', values: ['tyrell'] }, vocab), 'Company is Tyrell');
   assert.equal(conditionText({ field: 'entity', op: 'not_in', values: ['velvet'] }, vocab), 'Company or brand is not Velvet');
-  assert.equal(conditionText({ field: 'customer.id', op: 'in', values: ['velvet', 'nobody'] }, vocab), 'Company or brand is Velvet or nobody', 'old rules read the same way');
   assert.equal(conditionText({ field: 'project', op: 'in', values: ['velvet'] }, vocab), 'Service is velvet', 'only entity attributes name entities');
-  assert.deepEqual(['company', 'brand', 'entity', 'customer.id', 'customer.company', 'project', 'store'].filter((f) => namesEntities(f, ['company', 'brand'])),
-    ['company', 'brand', 'entity', 'customer.id', 'customer.company']);
+  assert.deepEqual(['company', 'brand', 'entity', 'project', 'store'].filter((f) => namesEntities(f, ['company', 'brand'])),
+    ['company', 'brand', 'entity']);
 });
 
 test('what the server works out has a resolver and is never taken from the app; the rest is', () => {
@@ -63,7 +59,7 @@ test('what the server works out has a resolver and is never taken from the app; 
     assert.equal(!!resolverFor(f.name, []), f.comesFrom !== 'sdk', f.name);
     assert.equal(reportedByApp(f.name, f), f.comesFrom === 'sdk', f.name);
   }
-  for (const f of ['entity', 'company', 'brand', 'customer.id', 'customer.company']) {
+  for (const f of ['entity', 'company', 'brand']) {
     assert.ok(resolverFor(f, ['company', 'brand']), `${f}: worked out on the server`);
     assert.equal(reportedByApp(f, { comesFrom: 'token' }), false, f);
   }

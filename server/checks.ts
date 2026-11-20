@@ -118,10 +118,9 @@ export function checkRule(r: RuleDoc, flag: FlagFacts, fields: FieldFacts, opts:
     if (fb && !canUseBackupId(flag.kind)) problems.push(`only release flags may use a backup ID for % of devices — ${flag.kind.replace('_', ' ')} values must be sticky`);
     const ranges = [...(r.split.ranges ?? [])].sort((a, b) => a.from - b.from)
       .map(({ group, ...rg }) => ({ ...rg, ...(groupName(group) ? { group: groupName(group) } : {}) }));
-    // M6: every % rule is saved with hash version 2, flagd's (hash.ts), so backends evaluating our flagd JSON (flagd.ts)
-    // agree with the server. A rule sent with version 1 (an older version being restored, an older console) is saved
-    // with 2: the database has no other since migration 0009. Any other version would break every file build.
-    if (r.split.hashVersion != null && r.split.hashVersion !== 1 && r.split.hashVersion !== HASH_VERSION) {
+    // Every % rule is saved with hash version 2, flagd's (hash.ts), so backends evaluating our flagd JSON (flagd.ts)
+    // agree with the server. Any other version would break every file build.
+    if (r.split.hashVersion != null && r.split.hashVersion !== HASH_VERSION) {
       problems.push(`% of devices: hash version ${r.split.hashVersion} doesn’t exist (only ${HASH_VERSION})`);
     }
     const outsideGroup = groupName(r.split.outsideGroup);

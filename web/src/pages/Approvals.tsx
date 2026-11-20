@@ -29,7 +29,7 @@ import { approvalsLeft, approvalsNeeded, approvalsOf, mayApprove, mayReview, may
  */
 
 // A change is to a layer (the defaults, or one entity's own settings) or to a flag's delivery: which apps get it.
-// A delivery change has no entity, and its before / proposed are the app lists. No `kind` (an older server): a layer.
+// A delivery change has no entity, and its before / proposed are the app lists.
 type ItemKind = 'layer' | 'delivery';
 type Delivery = { projects: string[] };
 type CsSummary = {
