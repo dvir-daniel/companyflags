@@ -224,6 +224,10 @@
 }
 @media (max-width: 640px) {
   .cf-landing .grid, .cf-landing .grid.three { grid-template-columns: 1fr; }
+  /* on a phone the hero is words only, as better-auth.com's: no drawing, a smaller title, no footer links */
+  .cf-landing .hero-art, .cf-landing .hero-foot { display: none; }
+  .cf-landing .hero-body { padding: 40px 16px 32px; }
+  .cf-landing h1 { font-size: 26px; margin-bottom: 20px; }
   .cf-landing .b0 { width: 160px; }
   .cf-landing .b1 { width: 112px; }
   .cf-landing .b2 { width: 66px; }

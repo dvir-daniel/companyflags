@@ -113,6 +113,7 @@ code, kbd, pre { font-family: var(--font-mono); }
 #nd-home-layout { --fd-layout-width: 100vw; }
 #nd-home-layout #nd-nav, #nd-home-layout #nd-nav nav { height: var(--cf-nav-height); }
 #nd-home-layout #nd-nav nav { padding: 0 0 0 16px; }
+@media (max-width: 1023px) { #nd-home-layout #nd-nav nav { padding-right: 16px; } }
 #nd-home-layout #nd-nav ul.flex { margin-left: auto; align-self: stretch; gap: 0; padding: 0; }
 #nd-home-layout #nd-nav ul.flex > li { display: flex; align-self: stretch; }
 #nd-home-layout #nd-nav ul.flex > li > a {
@@ -178,3 +179,10 @@ code, kbd, pre { font-family: var(--font-mono); }
 .cf-ask-rule { width: 1px; height: 16px; background: var(--color-fd-border); }
 .cf-ask kbd { font-family: var(--font-mono); font-size: 10px; }
 @media (max-width: 767px) { .cf-ask { display: none; } }
+/* the phone's menu button on the landing page: three lines, as better-auth.com's, instead of an arrow */
+#nd-home-layout #nd-nav nav > div.lg\:hidden button svg { display: none; }
+#nd-home-layout #nd-nav nav > div.lg\:hidden button::before {
+  content: ''; width: 18px; height: 18px; background: currentColor; color: var(--cf-ink-1);
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
+}
