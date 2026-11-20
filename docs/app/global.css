@@ -126,3 +126,39 @@ code, kbd, pre { font-family: var(--font-mono); }
 #nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com'] { background: var(--cf-ink); color: var(--cf-page); }
 #nd-home-layout #nd-nav ul.flex > li > a[href^='https://github.com']:hover { background: var(--cf-ink-1); }
 #nd-home-layout #nd-nav nav > div.flex-1 { flex: none; padding: 0 12px; border-left: 1px solid var(--color-fd-border); align-self: stretch; }
+
+/* ---- the docs' pages, as better-auth.com's */
+/* the bar across the top, over the page and "On this page" (components/site-tabs.tsx) */
+.cf-tabs { display: none; }
+@media (min-width: 1024px) {
+  #nd-docs-layout { --fd-header-height: 48px !important; }
+  .cf-tabs {
+    grid-area: 1 / 3 / 2 / -1; position: sticky; top: 0; z-index: 30; display: flex; height: 48px;
+    justify-content: flex-end; border-bottom: 1px solid var(--color-fd-border); background: var(--color-fd-background);
+    min-width: 0; contain: inline-size; overflow: hidden;   /* never widens the grid's columns */
+  }
+  .cf-tabs > a {
+    position: relative; display: flex; align-items: center; padding: 0 22px; border-left: 1px solid var(--color-fd-border);
+    font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--cf-ink-nav);
+    transition: color 150ms, background-color 150ms;
+  }
+  .cf-tabs > a:hover { color: var(--cf-ink); background: var(--cf-wash); }
+  .cf-tabs > a[data-active] { color: var(--cf-ink); }
+  .cf-tabs > a[data-active]::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--cf-ink-nav); }
+  .cf-tabs > a.cf-tabs-github { background: var(--cf-ink); color: var(--cf-page); }
+  .cf-tabs > a.cf-tabs-github:hover { background: var(--cf-ink-1); }
+}
+/* the version, at the top of the sidebar */
+.cf-version { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--color-fd-border); transition: background-color 150ms; }
+.cf-version:hover { background: var(--cf-wash); }
+.cf-version-label { font-size: 13px; font-weight: 500; color: var(--color-fd-foreground); }
+.cf-version-number { font-family: var(--font-mono); font-size: 12px; color: var(--color-fd-muted-foreground); }
+/* the title, with Copy Markdown and Open in small capitals at its right */
+.cf-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.cf-page-actions { display: flex; gap: 4px; padding-top: 6px; }
+.cf-page-actions > button {
+  height: 28px; padding: 0 8px; gap: 6px; border: 0 !important; background: transparent !important; box-shadow: none !important;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--color-fd-muted-foreground);
+}
+.cf-page-actions > button:hover { color: var(--color-fd-foreground); background: var(--cf-wash) !important; }
+.cf-page-actions > button svg { width: 13px; height: 13px; }

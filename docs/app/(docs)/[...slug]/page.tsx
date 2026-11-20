@@ -13,13 +13,15 @@ export default async function Page({ params }: Props) {
   // each page's Markdown is written beside it at build time (scripts/llms.ts): /guide/quickstart.md
   const markdownUrl = `${BASE}${page.url}.md`;
   return (
-    <DocsPage toc={page.data.toc}>
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
-      <div className="-mt-4 mb-2 flex flex-row flex-wrap items-center gap-2 border-b border-fd-border pb-6">
-        <MarkdownCopyButton markdownUrl={markdownUrl} />
-        <ViewOptionsPopover markdownUrl={markdownUrl} githubUrl={`${REPO}/blob/main/docs/content/docs/${page.path}`} />
+    <DocsPage toc={page.data.toc} breadcrumb={{ enabled: false }}>
+      <div className="cf-title-row">
+        <DocsTitle>{page.data.title}</DocsTitle>
+        <div className="cf-page-actions">
+          <MarkdownCopyButton markdownUrl={markdownUrl} />
+          <ViewOptionsPopover markdownUrl={markdownUrl} githubUrl={`${REPO}/blob/main/docs/content/docs/${page.path}`} />
+        </div>
       </div>
+      <DocsDescription>{page.data.description}</DocsDescription>
       <DocsBody>
         <MDX components={getMDXComponents()} />
       </DocsBody>
