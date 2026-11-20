@@ -1,6 +1,6 @@
 # CDN (Cloudflare)
 
-Apps read one file per environment, flag set and entity. Every device of an entity reads the same file, so a CDN in
+Apps read one file per environment, service and entity. Every device of an entity reads the same file, so a CDN in
 front of CompanyFlags can answer almost all of those requests. This page sets up Cloudflare; another CDN works the
 same way if it honours `Cache-Control` and can purge by tag.
 
@@ -10,8 +10,8 @@ Only the app files at `/client/v1/flags/…`:
 
 | Address | What it is |
 |---|---|
-| `GET /client/v1/flags/<env>/<flag set>` | what every device gets before sign-in |
-| `GET /client/v1/flags/<env>/<flag set>/<entity>/<secret>` | one entity's file, at its secret link |
+| `GET /client/v1/flags/<env>/<service>` | what every device gets before sign-in |
+| `GET /client/v1/flags/<env>/<service>/<entity>/<secret>` | one entity's file, at its secret link |
 
 A file is the same for every device that has the link, and carries values only. It never varies by cookie, user or
 country. Each answer has these headers:

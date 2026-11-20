@@ -126,7 +126,7 @@ export const SECTION_LABEL: Record<Section, string> = {
 
 // The trace's steps, named like the sections above.
 export const STAGE_LABEL: Record<string, string> = {
-  delivery: 'In this flag set?', enabled: 'Flag on?', locked: SECTION_LABEL.override, entity: SECTION_LABEL.entity_rule,
+  delivery: 'In this service?', enabled: 'Flag on?', locked: SECTION_LABEL.override, entity: SECTION_LABEL.entity_rule,
   entity_default: SECTION_LABEL.entity_default, base: SECTION_LABEL.everyone_rule, default: SECTION_LABEL.default,
 };
 

@@ -11,7 +11,7 @@ export type WebhookOut = {
   lastStatus: number | null; lastError: string | null; lastSentAt: string | null; lastFailedAt: string | null; attempts: number; nextAttemptAt: string | null;
 };
 export type WebhookIn = {
-  id: number; name: string; environment: string; format: string; expression: string | null; createFlags: boolean; flagSets: string[]; enabled: boolean;
+  id: number; name: string; environment: string; format: string; expression: string | null; createFlags: boolean; services: string[]; enabled: boolean;
   createdAt: string; createdBy: string; lastReceivedAt: string | null; lastStatus: number | null; lastResult: string | null;
 };
 export type WebhookList = { reachable: boolean; webhooks: WebhookOut[]; incoming: WebhookIn[] };
@@ -47,7 +47,7 @@ await OpenFeature.setProviderAndWait(new MultiProvider([
       baseUrl: 'https://flags.example.com',
       headers: [['Authorization', \`Bearer \${session.flagsToken}\`]],
   }) },
-  { provider: oldSystemProvider },   // every flag not in this app's flag set yet
+  { provider: oldSystemProvider },   // every flag not in this app's service yet
 ], new FirstMatchStrategy()));`;
 
 /** Saves text as a file in the browser's downloads. */

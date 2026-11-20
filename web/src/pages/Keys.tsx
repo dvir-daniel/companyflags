@@ -37,8 +37,8 @@ type State = 'active' | 'revoked' | 'all';
 
 const SCOPE_HINT: Record<string, string> = {
   entity: 'The key asks about one entry only.',
-  below: 'The key asks about one entry, or any under it: the address names which.',
-  all: 'The key asks about any entry: the address names which.',
+  below: 'The key asks about one entry, or any under it: each request names which (in the context, or the address).',
+  all: 'The key asks about any entry: each request names which (in the context, or the address).',
 };
 /** What a key may ask about, in words: "Only Acme", "Acme and everything under it", "Any". */
 function scopeText(k: Pick<KeyRow, 'scope' | 'entity'>, meta: Meta) {
@@ -51,7 +51,7 @@ function flagdAddress(k: Pick<KeyRow, 'scope' | 'entity' | 'dimension'>) {
   return k.scope === 'all' || !mine ? '/sdk/v1/flagd/<dimension>/<key>' : mine;
 }
 
-/** checkbox, key, environment, flag set, asks about, last used, created */
+/** checkbox, key, environment, service, asks about, last used, created */
 const COLS = 'grid grid-cols-[28px_minmax(0,2fr)_104px_minmax(0,0.8fr)_minmax(0,1.3fr)_96px_96px] max-xl:grid-cols-[28px_minmax(0,2fr)_104px_minmax(0,0.8fr)_96px_96px] max-md:grid-cols-[28px_minmax(0,1fr)_84px]';
 const XL = 'max-xl:hidden';
 const MD = 'max-md:hidden';
@@ -165,7 +165,7 @@ export function Keys() {
       { label: 'Retry', onClick: () => revokeAll(failed.map((f) => f.k)) });
   };
   const exportCsv = () => {
-    downloadCsv('api-keys.csv', ['prefix', 'label', 'environment', 'flag_set', 'scope', 'entity', 'created_at', 'last_used_at', 'revoked_at'],
+    downloadCsv('api-keys.csv', ['prefix', 'label', 'environment', 'service', 'scope', 'entity', 'created_at', 'last_used_at', 'revoked_at'],
       chosen.map((k) => [k.prefix, k.label, k.environment, k.project, k.scope, k.entity, k.createdAt, k.lastUsedAt, k.revokedAt]));
     toast(`Exported ${plural(chosen.length, 'key')} to api-keys.csv`);
   };
@@ -179,7 +179,7 @@ export function Keys() {
         actions={admin ? <Button onClick={() => setCreating(true)}>+ New key</Button> : <span className="text-13 text-ink-3">Only admins make and revoke keys</span>}>
         <SearchField ref={search} className="w-[240px] max-md:w-auto max-md:flex-1 max-md:basis-full" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search keys by prefix or label" />
         <FilterSelect label="Environment" value={env} onChange={setEnv} options={[['', 'All'], ...meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])]} />
-        <FilterSelect label="Flag set" value={app} onChange={setApp} options={[['', 'All'], ...meta.projects.map((p) => [p.key, p.key] as [string, string])]} />
+        <FilterSelect label="Service" value={app} onChange={setApp} options={[['', 'All'], ...meta.projects.map((p) => [p.key, p.key] as [string, string])]} />
         <FilterSelect<State> label="State" value={state} onChange={setState} options={[['active', 'Active'], ['revoked', 'Revoked'], ['all', 'All']]} />
         {filtered && <button type="button" onClick={clearFilters} className={barTextButton}>Reset</button>}
       </PageBar>
@@ -189,7 +189,7 @@ export function Keys() {
           <RowCheck head checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all keys" />
           <SortHeader label="Key" sortKey="key" {...sortProps} />
           <span className={MD}><SortHeader label="Environment" sortKey="env" {...sortProps} /></span>
-          <span role="columnheader" className={MD}>Flag set</span>
+          <span role="columnheader" className={MD}>Service</span>
           <ColumnHead className={XL} label="Asks about" help="Which entries of your dimensions the key may ask about. A backend names the one it wants in the address, by its dimension: /sdk/v1/flagd/<dimension>/<key>." />
           <SortHeader label="Last used" sortKey="used" {...sortProps} />
           <span className={MD}><SortHeader label="Created" sortKey="created" {...sortProps} /></span>
@@ -204,7 +204,7 @@ export function Keys() {
           : rows.length === 0 ? (
             <div className="px-6 py-10 max-sm:px-4">
               <Empty action={filtered ? <Button variant="secondary" onClick={clearFilters}>Clear filters</Button> : admin ? <Button onClick={() => setCreating(true)}>+ New key</Button> : undefined}>
-                {filtered ? 'No keys match these filters.' : 'No keys yet. Each backend server needs a key for an environment before it can download its rules. Apps don’t need one.'}
+                {filtered ? 'No keys match these filters.' : 'No keys yet. Each service needs a key in each environment: an app puts its key in its OpenFeature provider, a backend keeps its key secret.'}
               </Empty>
             </div>
           ) : rows.map((k, i) => (
@@ -264,10 +264,10 @@ function KeyDrawer({ k, open, onClose, onRevoke }: { k: KeyRow | null; open: boo
           <DrawerRow label="Prefix"><code className="font-mono">{k.prefix}…</code></DrawerRow>
           <DrawerRow label="Label">{k.label ?? <span className="text-ink-3">—</span>}</DrawerRow>
           <DrawerRow label="Environment">{envName(k.environment)}</DrawerRow>
-          <DrawerRow label="Flag set"><span className="font-mono">{k.project}</span> <span className="text-ink-3">· {k.projectKind === 'client' ? 'for apps' : 'for backends'}</span></DrawerRow>
+          <DrawerRow label="Service"><span className="font-mono">{k.project}</span> <span className="text-ink-3">· {k.projectKind === 'client' ? 'app' : 'backend'}</span></DrawerRow>
           <DrawerRow label="Asks about">{scopeText(k, meta)}<span className="block text-ink-3">{SCOPE_HINT[k.scope]}</span></DrawerRow>
         </DrawerSection>
-        <DrawerSection title="flagd JSON">
+        {k.projectKind !== 'client' && <DrawerSection title="flagd JSON">
           <DrawerRow label="Address">
             <span className="flex min-w-0 items-center gap-2">
               <code className="min-w-0 truncate font-mono text-13">{flagdAddress(k)}</code>
@@ -276,7 +276,7 @@ function KeyDrawer({ k, open, onClose, onRevoke }: { k: KeyRow | null; open: boo
             <span className="block text-ink-3">{k.scope === 'all' ? 'Put the dimension and the key of the entry it’s for in the address.'
               : k.scope === 'below' ? 'Or the dimension and key of any entry under it.' : 'Send the key in the Authorization header: Bearer <key>.'}</span>
           </DrawerRow>
-        </DrawerSection>
+        </DrawerSection>}
         <DrawerSection title="Activity">
           <DrawerRow label="Created">{exact(k.createdAt)}</DrawerRow>
           <DrawerRow label="Last used">{k.lastUsedAt ? exact(k.lastUsedAt) : <span className="text-ink-3">Never</span>}</DrawerRow>
@@ -296,14 +296,15 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
   const keyField = useRef<HTMLInputElement>(null);
   const { meta, toast } = useApp();
   const { envName } = useEnvs();
-  const servers = meta.projects.filter((p) => p.kind === 'server');
-  // a key is for one flag set for backends: with none, there's nothing to make one for yet
-  const none = servers.length === 0;
+  const services = meta.projects;
+  // a key is for one service: with none, there's nothing to make one for yet
+  const none = services.length === 0;
   // the first environment and server until one is picked (and again if the picked one goes away)
   const [envPick, setEnv] = useState('');
   const env = meta.environments.some((e) => e.key === envPick) ? envPick : meta.environments[0]?.key ?? '';
   const [projectPick, setProject] = useState('');
-  const project = servers.some((p) => p.key === projectPick) ? projectPick : servers[0]?.key ?? '';
+  const project = services.some((p) => p.key === projectPick) ? projectPick : services[0]?.key ?? '';
+  const isApp = services.find((p) => p.key === project)?.kind === 'client';
   const [scope, setScope] = useState('all');
   const [entity, setEntity] = useState('');
   const [label, setLabel] = useState('');
@@ -325,7 +326,7 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
 
   return (
     <Drawer open onClose={onClose} title={created ? 'Copy your new key' : 'New key'} initialFocus={firstField}
-      subtitle={created ? `${project} · ${envName(env)}` : 'For backend servers. Apps don’t need a key: they read their file at an app link (on each entry’s page).'}
+      subtitle={created ? `${project} · ${envName(env)}` : 'A key reads one service’s flags in one environment.'}
       footer={created ? <>
         <Button onClick={() => copy(created)}>Copy key</Button>
         <Button variant="secondary" onClick={onClose}>Done</Button>
@@ -341,7 +342,7 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
         </div>
       ) : none ? (
         <Empty action={<a href="#/settings" data-slot="button" className={cn(buttonVariants({ variant: 'secondary' }), 'no-underline hover:no-underline')}>Open settings</a>}>
-          No flag set for backends yet. Add one in Settings → Flag sets.
+          No service yet. Add one in Settings → Services.
         </Empty>
       ) : (
         <div className="grid gap-4">
@@ -349,8 +350,8 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
             <Field label="Environment">
               <NativeSelect ref={firstField} className={selectField} value={env} onChange={(e) => setEnv(e.target.value)}>{meta.environments.map((e) => <option key={e.key} value={e.key}>{envName(e.key)}</option>)}</NativeSelect>
             </Field>
-            <Field label="Flag set" hint="Only flag sets for backends use API keys.">
-              <NativeSelect className={selectField} value={project} onChange={(e) => setProject(e.target.value)}>{servers.map((p) => <option key={p.key}>{p.key}</option>)}</NativeSelect>
+            <Field label="Service" hint={isApp ? 'An app’s key is public: it goes in the app, and reads this service’s values only.' : 'A backend’s key is secret: keep it on the server. It reads this service’s rules too.'}>
+              <NativeSelect className={selectField} value={project} onChange={(e) => setProject(e.target.value)}>{services.map((p) => <option key={p.key} value={p.key}>{p.key} ({p.kind === 'client' ? 'app' : 'backend'})</option>)}</NativeSelect>
             </Field>
           </div>
           <Field label="Asks about" hint={SCOPE_HINT[scope]}>

@@ -1,6 +1,6 @@
 // Import and export (server/values.ts): another system's values in, ours out, in CompanyFlags values, key-value
 // JSON, flagd and JSONata. An import shows what it would change first, refuses everything while anything is wrong,
-// creates missing flags only when asked (in no flag set, so apps keep reading the old system), sets entities' own
+// creates missing flags only when asked (in no service, so apps keep reading the old system), sets entities' own
 // values, and asks for review where approval is needed. An export imports back unchanged, and the values it gives for an
 // entity are what the evaluator answers.
 import { after, before, test } from 'node:test';
@@ -49,20 +49,20 @@ test('the preview says what would change, and every problem; with a problem noth
   assert.equal((await t.baseOf('max_upload_mb', 'dev')).layer.defaultVariation, 'standard', 'nothing changed');
 });
 
-test('a missing flag is created when asked: a config flag in no flag set, so apps keep reading the old system', async () => {
+test('a missing flag is created when asked: a config flag in no service, so apps keep reading the old system', async () => {
   const input = { flags: { banner_text: { value: 'Hello', name: 'Banner text', entities: { acme: 'Hello, Acme' } } } };
   const plan = (await preview({ format: 'values', input, createFlags: true })).json.plan;
-  assert.deepEqual(plan.create.map((l: { text: string }) => l.text), ['New flag: everyone gets "Hello", 1 entity gets its own value, in no flag set yet']);
+  assert.deepEqual(plan.create.map((l: { text: string }) => l.text), ['New flag: everyone gets "Hello", 1 entity gets its own value, in no service yet']);
   const r = await doImport({ format: 'values', input, createFlags: true, reason: 'From the old config service' });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual([r.json.created, r.json.applied], [1, true]);
   const flag = (await t.as('alice').get('/flags/banner_text')).json;
   assert.equal(flag.kind ?? flag.flag?.kind, 'config');
   assert.deepEqual(flag.delivery ?? flag.flag?.delivery, { dev: [], prod: [] });
-  // not in the web flag set: OFREP says it isn't there, so OpenFeature's Multi-Provider asks the old system
+  // not in the web service: OFREP says it isn't there, so OpenFeature's Multi-Provider asks the old system
   const before = await t.trace({ project: 'web', entity: 'acme', flag: 'banner_text' });
   assert.equal(before.errorCode, 'FLAG_NOT_FOUND');
-  // in the web flag set: acme gets its own value, everyone else the default
+  // in the web service: acme gets its own value, everyone else the default
   assert.equal((await t.as('alice').put('/flags/banner_text/delivery', { environment: 'dev', projects: ['web'], before: [] })).status, 200);
   await t.settle();
   assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'banner_text' })).value, 'Hello, Acme');
@@ -90,14 +90,14 @@ test('a value that isn’t one of a flag’s variants is refused for everyone’
   assert.deepEqual([added.problems, added.changes.map((l: { text: string }) => l.text)], [[], ['New variant small: 42', 'Everyone gets 42 (was 100)']]);
 });
 
-test('flagd in: the default and on/off, targeting left with a warning; flagd out: one flag set’s file', async () => {
+test('flagd in: the default and on/off, targeting left with a warning; flagd out: one service’s file', async () => {
   const plan = (await preview({ format: 'flagd', input: { flags: {
     new_checkout: { state: 'DISABLED', variants: { on: true, off: false }, defaultVariant: 'off', targeting: { fractional: [['on', 50], ['off', 50]] } },
   } } })).json.plan;
   assert.deepEqual(plan.changes.map((l: { text: string }) => l.text), ['Switched off']);
   assert.deepEqual(plan.warnings, ['new_checkout: its targeting isn’t brought over, only its default and on/off. Add rules in the console.']);
-  assert.equal((await t.as('alice').post('/migration/export', { environment: 'dev', format: 'flagd' })).status, 422, 'which flag set’s file?');
-  const file = await exportOf('flagd', { flagSet: 'server-ds' });
+  assert.equal((await t.as('alice').post('/migration/export', { environment: 'dev', format: 'flagd' })).status, 422, 'which service’s file?');
+  const file = await exportOf('flagd', { service: 'server-ds' });
   assert.equal(file.$schema, 'https://flagd.dev/schema/v0/flags.json');
   assert.ok(file.flags.max_upload_mb);
 });

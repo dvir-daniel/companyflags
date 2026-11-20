@@ -1,6 +1,6 @@
 # Compared with others
 
-Feature-flag tools mostly differ in two things: **who decides the answer** (a service per request, the SDK with the
+Feature-flag tools mostly differ in two things: **who decides the answer** (a server per request, the SDK with the
 rules, or a file per audience) and **what the model knows about how your product is organized**. Here is where CompanyFlags sits,
 so you can tell quickly whether it fits.
 
@@ -13,8 +13,8 @@ so you can tell quickly whether it fits.
   no SDK of ours to adopt or to leave.
 - **You have very many devices.** Besides OFREP, each entity's values are one file your CDN caches, built once per
   publish, so cost need not grow with devices.
-- **Apps must not see more than they need.** A device gets its own values, never the rules or other entities'
-  values, which matters when the rules themselves name them.
+- **Apps must not see more than they need.** A device gets values, never the rules or lists of entities, which
+  matters when the rules themselves name them. A signed app link keeps each app to its own entity's values.
 - **You want to run it yourself.** One Node.js server and Postgres, your own sign-in (SAML or OIDC), MIT licensed, no
   account to create anywhere.
 - **You're moving from something else.** CompanyFlags runs next to the system you have now and takes over one flag at
@@ -27,13 +27,13 @@ so you can tell quickly whether it fits.
 - **Targeting by each user's own profile** (their plan, their sign-up date). Rules here check entities and what a
   device reports about itself, from a fixed list of [attributes](/reference/attributes); your own per-user attributes
   aren't in it yet.
-- **A hosted service.** CompanyFlags has no hosted version.
+- **Someone else running it.** CompanyFlags has no hosted version.
 
 ## How the answer is decided
 
 | | Where rules run | What a device receives | Cost grows with |
 |---|---|---|---|
-| A service evaluating per request | The service | One answer per request | Requests |
+| A hosted server evaluating per request | That server | One answer per request | Requests |
 | SDKs with the rule set | The device | Every rule, often with the lists in them | Devices × checks (mostly cached) |
 | **CompanyFlags, OFREP** | The server, per request, in memory | Its entity's answers for its context | Requests (small, mostly 304s) |
 | **CompanyFlags, app file** | The server, once per publish; device facts on the device | Its entity's values, plus checks on its own facts | Publishes and cache misses |

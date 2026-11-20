@@ -1,12 +1,13 @@
-// Who may read what.
-// - Apps (android, ios, web) read their entity's file at a secret link (delivery.ts): no keys, no tokens.
-//   The link's secret is an HMAC of the entity and its link version, made with the environment's secret,
-//   so it differs per environment and an entity's link can be replaced on its own (rotateClientLink).
-// - Backend servers use API keys, in the Authorization header, the only header they need. The key's scope says which
-//   entities it may ask about: its own (`entity`), its own and every one under it (`below`), or any (`all`). The
-//   request names the entity by its dimension, in the path (`/sdk/v1/flagd/store/acme-12`), never in a header and
-//   never from what an app says about itself (M2). mayAsk() checks it against the snapshot's paths on every request.
-
+// Who may read what. Every key is for one service in one environment, and reads only that service's flags.
+// - An app service's key (android, ios, web) is public: it goes in the app, and reads values only, over OFREP, for the
+//   context the app sends. It can't download rules (flagd) or hand out app links.
+// - A backend service's key is secret: it reads values over OFREP or the rules as flagd JSON, and hands out app links.
+//   A browser never holds one: a request with an Origin header and a backend's key is refused.
+// - An app link (and its OFREP token) is signed for one entity: an app holding it can't ask as another (delivery.ts).
+//   Its secret is an HMAC of the entity and its link version, made with the environment's secret, so it differs per
+//   environment and an entity's link can be replaced on its own (rotateClientLink).
+// The key's scope says which entities it may ask about: its own (`entity`), its own and every one under it (`below`),
+// or any (`all`). mayAsk() checks it against the snapshot's paths on every request.
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { HttpError, one, type Db } from './db.ts';
 
@@ -43,11 +44,13 @@ export type Principal = {
   keyId: string;
   environment: string;
   project: string;
+  /** the service's kind: 'client' (an app: values only) or 'server' (a backend) */
+  kind: 'client' | 'server';
   scope: KeyScope;
   entity: string | null;             // the key's own entity (null for an `all` key)
 };
 
-type KeyRow = { id: string; env_key: string; project_key: string; scope: KeyScope; entity_key: string | null };
+type KeyRow = { id: string; env_key: string; project_key: string; project_kind: 'client' | 'server'; scope: KeyScope; entity_key: string | null };
 
 /** A map that keeps at most `max` entries, dropping the one used longest ago (a Map keeps insertion order:
  *  a hit is moved to the end, so the first key is the least recently used). */
@@ -89,7 +92,7 @@ async function findKey(db: Db, raw: string, cache: KeyCache): Promise<KeyRow | n
   if (hit && Date.now() - hit.at < KEY_TTL_MS) return hit.row;
   const missed = cache.misses.get(hash);
   if (missed !== undefined && Date.now() - missed < KEY_TTL_MS) return null;
-  const row = await one<KeyRow>(db, `select k.id, e.key as env_key, p.key as project_key, k.scope, c.key as entity_key
+  const row = await one<KeyRow>(db, `select k.id, e.key as env_key, p.key as project_key, p.kind as project_kind, k.scope, c.key as entity_key
     from api_key k join environment e on e.id = k.environment_id join project p on p.id = k.project_id
     left join entity c on c.id = k.entity_id where k.key_hash = $1 and k.revoked_at is null`, [hash]);
   if (row) { cache.keys.set(hash, { row, at: Date.now() }); cache.misses.delete(hash); }
@@ -97,20 +100,24 @@ async function findKey(db: Db, raw: string, cache: KeyCache): Promise<KeyRow | n
   return row ?? null;
 }
 
-export type AuthHeaders = { authorization?: string };
+export type AuthHeaders = { authorization?: string; origin?: string };
 
-// A backend server's request: which environment and server it is for, and which entities it may ask about.
+// A key's request: which environment and service it is for, and which entities it may ask about. A backend's key is
+// secret, so one that comes from a browser (an Origin header) is refused: it was put in a web page by mistake.
 export async function authenticate(db: Db, headers: AuthHeaders, cache: KeyCache): Promise<Principal> {
   const raw = headers.authorization?.replace(/^Bearer\s+/i, '').trim();
   if (!raw) throw new HttpError(401, 'missing API key (Authorization: Bearer <key>)');
   const k = await findKey(db, raw, cache);
   if (!k) throw new HttpError(401, 'unknown or revoked API key');
+  if (k.project_kind === 'server' && headers.origin) {
+    throw new HttpError(403, 'a backend’s key can’t be used from a browser: give the app its app service’s key instead');
+  }
   const now = Date.now();
   if (now - (cache.lastUsedWritten.get(k.id) ?? 0) > 60_000) {
     cache.lastUsedWritten.set(k.id, now);
     db.query(`update api_key set last_used_at = now() where id = $1`, [k.id]).catch(() => {});
   }
-  return { keyId: k.id, environment: k.env_key, project: k.project_key, scope: k.scope, entity: k.entity_key };
+  return { keyId: k.id, environment: k.env_key, project: k.project_key, kind: k.project_kind, scope: k.scope, entity: k.entity_key };
 }
 
 /** May this key ask about this entity? `path`: the entity and those above it (EntityInfo.path), read from the snapshot

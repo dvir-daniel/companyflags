@@ -54,8 +54,8 @@ export type FieldDef = About & (
 
 export const FIELDS: FieldDef[] = [
   // the app (which app is calling comes from the API key: `project`)
-  { name: 'project', valueType: 'string', comesFrom: 'key', canSplitBy: false, group: 'App', label: 'Flag set', knownValues: 'apps',
-    resolve: (who) => who.project, description: 'The flag set of the app or backend asking: from its link or API key' },
+  { name: 'project', valueType: 'string', comesFrom: 'key', canSplitBy: false, group: 'App', label: 'Service', knownValues: 'apps',
+    resolve: (who) => who.project, description: 'The service of the app or backend asking: from its link or API key' },
   { name: 'environment', valueType: 'string', comesFrom: 'key', canSplitBy: false, group: null, label: 'Environment', knownValues: 'environments',
     resolve: (who) => who.environment, description: 'From the link or API key' },
   { name: 'app.version', valueType: 'semver', comesFrom: 'sdk', canSplitBy: false, group: 'App', label: 'App version', description: 'App marketing version, compared as semver' },

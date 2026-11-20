@@ -18,20 +18,25 @@ OFREP is the `ofrep()` plugin. It runs unless your config file lists plugins wit
 
 ## Who is asking
 
-Each request carries a credential in `Authorization: Bearer …` (or OFREP's `X-API-Key` header):
+Each request carries a credential in `Authorization: Bearer …` (or OFREP's `X-API-Key` header). Every key is for one
+[service](/guide/services) in one environment, and reads only that service's flags:
 
-- **An app** sends its **app token**, made from its entity's app link for its flag set:
-  `ffl_<environment>.<flag set>.<entity>.<secret>`. Your backend gets it when someone signs in, with its API key:
-  `GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>` returns `{ environment, flagSet, entity, path, token }` (see
-  [Flag sets](/guide/flag-sets#give-the-app-its-credential-at-sign-in)). The console shows it too, on the entity's page
-  under **App link**. The token reads that entity, in that flag set, only, and replacing the link replaces it at once.
-  Apps never hold an API key.
-- **A backend** sends its **API key** (console: **API keys**). It names the entity in the evaluation context by its
-  dimension, as rules name it: `{ "company": "acme" }`, `{ "brand": "lumen" }`. Its key's scope limits whom it may ask
-  about: its own entity, the ones below it, or any.
+- **An app** sends its **app service's key** (console: **API keys**), such as `ff_prod_web_…`. It is public: it goes
+  in the app. It reads values only, for the context the app sends. The context can name the signed-in entity by its
+  dimension (`{ "company": "acme" }`), within the key's scope. That is targeting, not proof.
+- **A backend** sends its **backend service's key**, such as `ff_prod_api_…`. It is secret: a request with a
+  backend's key and an `Origin` header (a browser) gets `403`. It names the entity in the evaluation context by its
+  dimension, as rules name it: `{ "company": "acme" }`, `{ "brand": "lumen" }`.
+- **An app with a signed app link** (optional) sends an **app token** in place of its key:
+  `ffl_<environment>.<service>.<entity>.<secret>`. Your backend gets it when someone signs in, with its backend
+  service's key: `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` returns
+  `{ environment, service, entity, path, token }` (see [Services](/guide/services#signed-app-links)). The console
+  shows it too, on the entity's page under **App link**. The token reads that entity, in that service, only, so the
+  app can't ask as another. Replacing the link replaces it at once.
 
-The server works out everything else about who is asking: the environment and the flag set come from the credential,
-and the levels above an entity come from its own data. What a request says about them is ignored.
+A key's scope limits whom it may ask about: its own entity, the ones below it, or any. The server works out
+everything else about who is asking: the environment and the service come from the credential, and the levels above
+an entity come from its own data. What a request says about them is ignored.
 
 ## The evaluation context
 
@@ -65,7 +70,7 @@ import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' } });
 await OpenFeature.setProviderAndWait(new OFREPWebProvider({
   baseUrl: 'https://flags.example.com',
-  headers: [['Authorization', `Bearer ${session.flagsToken}`]],   // the token your backend gave the app
+  headers: [['Authorization', 'Bearer ff_prod_web_…']],   // the web service's key: public
   pollInterval: 60_000,
 }));
 
@@ -80,8 +85,10 @@ last answer's `ETag` (a `304` when nothing changed for this app). So changes rea
 If the stream can't stay open, it polls every `pollInterval` instead. Changing the context (`OpenFeature.setContext`)
 asks again. When answers change it emits `ConfigurationChanged`.
 
-Before sign-in, the app has no token: use the code defaults, or have your backend hand out a token for an entity that
-stands for everyone you haven't identified yet.
+Before sign-in, leave the entity out of the context: a key that asks about any entity then gets what everyone gets.
+Once someone signs in, add their entity to the context, and the provider asks again:
+`OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' }, company: 'acme' })`. If the app must
+not be able to claim another entity, use a signed app link's token instead of the key.
 
 ### React
 
@@ -96,7 +103,7 @@ import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' } });
 OpenFeature.setProvider(new OFREPWebProvider({
   baseUrl: 'https://flags.example.com',
-  headers: [['Authorization', `Bearer ${flagsToken}`]],
+  headers: [['Authorization', 'Bearer ff_prod_web_…']],
 }));
 
 export function App() {
@@ -112,7 +119,8 @@ function Checkout() {
 
 Use OpenFeature's Kotlin or Swift SDK with its OFREP provider (find them on the
 [OpenFeature ecosystem page](https://openfeature.dev/ecosystem)). Configure it the same way: the base URL of
-CompanyFlags, and the `Authorization: Bearer <token>` header with the token your backend gave the app.
+CompanyFlags, and the `Authorization: Bearer <key>` header with the `android` or `ios` service's key (or the token
+your backend gave the app).
 
 ## Backends
 
@@ -133,8 +141,8 @@ const client = OpenFeature.getClient();
 const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme', targetingKey: userId });
 ```
 
-Each evaluation is one request. For many evaluations per second, use [flagd](/guide/backends): it downloads the
-entity's rules and answers in memory.
+`FLAGS_API_KEY` is the backend service's key. Keep it on the server. Each evaluation is one request. For many
+evaluations per second, use [flagd](/guide/backends): it downloads the entity's rules and answers in memory.
 
 ## What comes back
 
@@ -145,9 +153,10 @@ entity's rules and answers in memory.
 | The flag's default | `reason: DEFAULT` or `STATIC` |
 | The flag is off | `reason: DISABLED`, no value: the app's own default |
 | The flag uses the code default | no value: the provider returns the default written in your app |
-| The flag isn't in this flag set | `FLAG_NOT_FOUND` (404 for one flag; left out of the bulk answer) |
+| The flag isn't in this service | `FLAG_NOT_FOUND` (404 for one flag; left out of the bulk answer) |
 | A chain that doesn't match, or an entity that doesn't exist (with an `all` key) | `400 INVALID_CONTEXT` |
 | An entity outside the credential's reach, or one that doesn't exist (an app token, or a key for some entities) | `403` |
+| A backend's key sent from a browser (with an `Origin` header) | `403` |
 | No credential, or a wrong or replaced one | `401` |
 
 The answers are the server's own evaluator's, the same as the flag's **Debug** tab in the console and the backends'

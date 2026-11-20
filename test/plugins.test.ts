@@ -42,7 +42,7 @@ test('only the listed plugins run: the others’ addresses are a JSON 404, and l
     assert.match(hook.json.error, /^no such endpoint/);
     // OFREP still answers: an app token from the link endpoint, which has no file path now
     const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
-    const link = await t.call('GET', '/sdk/v1/links/company/acme?flagSet=web', undefined, { authorization: `Bearer ${key}` });
+    const link = await t.call('GET', '/sdk/v1/links/company/acme?service=web', undefined, { authorization: `Bearer ${key}` });
     assert.equal(link.status, 200, JSON.stringify(link.json));
     assert.equal(link.json.path, undefined, 'no app files: no path');
     assert.match(link.json.token, /^ffl_dev\.web\./);
@@ -119,18 +119,18 @@ test('a plugin that reads flags asks the one evaluator, and gets what OFREP give
   const t = await boot({ plugins: [ofrep(), reader] });
   try {
     const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
-    const { token } = (await t.call('GET', '/sdk/v1/links/company/acme?flagSet=web', undefined, { authorization: `Bearer ${key}` })).json;
+    const { token } = (await t.call('GET', '/sdk/v1/links/company/acme?service=web', undefined, { authorization: `Bearer ${key}` })).json;
     const app = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { targetingKey: 'd-1', device: { platform: 'web' } } }, { authorization: `Bearer ${token}` });
     assert.equal(app.status, 200, JSON.stringify(app.json));
     const fromOfrep = app.json.flags.map((f: { key: string; value?: unknown }) => [f.key, f.value ?? null]);
-    const who = { flagSet: 'web', entity: 'acme', attrs: { 'device.id': 'd-1', 'device.platform': 'web' } };
+    const who = { service: 'web', entity: 'acme', attrs: { 'device.id': 'd-1', 'device.platform': 'web' } };
     const every = ask!('dev', who);
     assert.ok(every.length > 0);
     assert.deepEqual(every.map((r) => [r.key, r.errorCode || r.codeDefault ? null : r.value ?? null]), fromOfrep);
     const first = ask!('dev', who, every[0].key);
     assert.deepEqual([first.key, first.value], [every[0].key, every[0].value]);
-    assert.throws(() => ask!('nowhere', { flagSet: 'web' }), (e: Error) => e instanceof HttpError && e.status === 404);
-    assert.throws(() => ask!('dev', { flagSet: 'web', entity: 'nobody' }), (e: Error) => e instanceof HttpError && e.status === 404);
+    assert.throws(() => ask!('nowhere', { service: 'web' }), (e: Error) => e instanceof HttpError && e.status === 404);
+    assert.throws(() => ask!('dev', { service: 'web', entity: 'nobody' }), (e: Error) => e instanceof HttpError && e.status === 404);
   } finally { await t.stop(); }
 });
 

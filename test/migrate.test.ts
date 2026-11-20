@@ -137,7 +137,7 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
 
   // every app file: the same link (same secret), the same values, the same ETag
   for (const c of CUSTOMERS) {
-    const link = (await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}/link?environment=prod`, { as: 'dana' })).json.path.replace(':flagSet', 'web');
+    const link = (await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}/link?environment=prod`, { as: 'dana' })).json.path.replace(':service', 'web');
     assert.equal(link, golden.links[c], `${c}’s link`);
     const file = await call('GET', link);
     assert.equal(file.status, 200, c);
@@ -149,7 +149,7 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
 
   // flagd JSON: Velvet's own key (now scope entity) and the shared one (now all), by path and by the old header
   const flagd = (key: string, path = '', headers: Record<string, string> = {}) => call('GET', `/sdk/v1/flagd${path}`, { headers: { authorization: `Bearer ${key}`, ...headers } });
-  // the same flags and ETags; only flagSetId differs, as it names the flag set since 0.1.0 (<env>/<flag set>/<entity>)
+  // the same flags and ETags; only flagSetId differs, as it names the service since 0.1.0 (<env>/<service>/<entity>)
   const now = (c: string) => { const d = golden.flagd[c].doc; return { ...d, metadata: { ...d.metadata, flagSetId: `prod/backend/${c}` } }; };
   const own = await flagd(KEYS.velvet);
   assert.deepEqual([own.status, own.json, own.headers.get('etag')], [200, now('velvet'), golden.flagd.velvet.etag]);

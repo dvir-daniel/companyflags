@@ -4,6 +4,44 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+## 0.3.0 (2026-11-20)
+
+Flag sets are now services, and every service gets keys: an app reads its flags with its own public key, no backend
+needed first. Changes marked **Breaking** need something from you when you upgrade.
+
+### Services
+
+- **Breaking: flag sets are now services**, of two kinds: **App** (web, iOS, Android: gets values only) and
+  **Backend** (gets the rules). The console's admin routes are `/api/services`. The links endpoint takes
+  `?service=<key>` and answers with a `service` field; `?flagSet=` still works until 0.4.
+- **Breaking:** the flags file's field is `services`, not `flagSets`. Rename it in `flags.json`, or run `flags pull`
+  again: a file that still says `flagSets` leaves each flag's services as they are, and makes new flags in none.
+- **Breaking:** the other JSON fields that said flag set say service too: webhooks in (`services`), imports
+  (`services`), exports (`service`), and a plugin's `evaluate(environment, { service, entity, attrs })`.
+- flagd keeps its own words: `flagSetId` is still `<environment>/<service>/<entity>`.
+
+### Keys
+
+- Every service gets keys: **API keys → + New key** (admins), one service and one environment each.
+- An app service's key is public. It goes in the app, in OpenFeature's OFREP provider, and reads that service's values
+  only, for the context the app sends. flagd JSON and app links answer it with `403`.
+- **Breaking: a backend service's key is refused from a browser.** A request with an `Origin` header and a backend's
+  key gets `403`. A web page that held one uses its app service's key instead.
+- App links and their OFREP tokens (`ffl_…`) stay, as the optional signed way: a backend hands an app a token for
+  one entity, so the app can't ask as another.
+
+### Console
+
+- The setup checklist has four steps: environments, services, your first flag (tick its services), and connecting an
+  app with its service's key.
+- Dimensions are optional, and no longer a setup step: without them, every app gets what everyone gets.
+
+### Docs
+
+- The Quickstart and the README go from a service to a flag, a key and OpenFeature's OFREP provider.
+- Services, OpenFeature, Backends, the Security model and the HTTP API describe app keys, backend keys and signed app
+  links. `GLOSSARY.md` has Service, App, Backend, App key and Backend key; "flag set" is flagd's word only.
+
 ## 0.2.0 (2026-11-20)
 
 A review of the architecture, the console, the docs and security, held to Better Auth's standard. Changes marked **Breaking** need something from you when you upgrade.

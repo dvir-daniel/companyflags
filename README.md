@@ -50,8 +50,8 @@ get the same answer. CompanyFlags covers all of it in one place, and your code r
   inherited down the chain. Locked rules apply to everyone, always. The console traces every answer step by step.
 - **OpenFeature, no SDK of ours.** Apps use OpenFeature's own OFREP providers (web, Android, iOS); backends use OFREP
   or flagd JSON, evaluated in-process. Your flag-reading code stays standard.
-- **Nothing private reaches a device.** An app asks as its own entity, with a token it can't change, and gets its own
-  answers only: no rules, no lists of entities, no one else's values.
+- **Nothing private reaches a device.** An app reads with its service's public key and gets values only: no rules,
+  no lists of entities. A signed app link from your backend keeps it to its own entity's values.
 - **Reviewed changes.** Production can require an approval for every change, with scheduling, break-glass for on
   call, an append-only history, restore, and side-by-side compare.
 - **Releases and version releases.** Give early access to a few, then 1% → 5% → 25% → 50% of devices,
@@ -77,8 +77,8 @@ docker logs companyflags   # the setup link: make the admin account at http://lo
 ```
 
 Open the setup link the server prints and create the admin account: only that link can make it. The console then
-walks you through five steps: environments, flag sets, dimensions and a first entity, your first flag, and connecting
-an app.
+walks you through four steps: environments, services (`web`, an app), your first flag (tick its services), and
+connecting an app (**API keys**: make the `web` service's key). Dimensions are optional.
 
 For production, run it with Postgres:
 
@@ -99,8 +99,8 @@ pnpm serve           # builds the console, serves it with the API on http://loca
 
 ## Read flags with OpenFeature
 
-Each app reads a flag set: the flags you put in it. Your backend gets the app's token when someone signs in
-(`GET /sdk/v1/links/<dimension>/<entity>?flagSet=web`, with an API key). The app uses OpenFeature's own OFREP provider:
+Each app and backend reads a service: the flags you put in it. Make the service's key on the **API keys** page and
+give it to OpenFeature's own OFREP provider. An app service's key is public, and reads values only:
 
 ```ts
 import { OpenFeature } from '@openfeature/web-sdk';
@@ -109,20 +109,24 @@ import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' } });
 await OpenFeature.setProviderAndWait(new OFREPWebProvider({
   baseUrl: 'https://flags.example.com',
-  headers: [['Authorization', `Bearer ${session.flagsToken}`]],
+  headers: [['Authorization', 'Bearer ff_prod_web_…']],   // the web service's key
 }));
 
 OpenFeature.getClient().getBooleanValue('new_checkout', false);
 ```
 
-A backend uses its API key and names the entity by its dimension, as the rules do:
+A backend service's key is secret, and a browser can't use one. A backend names the entity by its dimension, as the
+rules do:
 
 ```ts
 const limit = await client.getNumberValue('max_upload_mb', 100, { company: 'acme', targetingKey: userId });
 ```
 
 Or it runs [flagd](https://flagd.dev) next to it, which downloads the entity's rules as flagd JSON, and evaluates every
-flag in memory. See [OpenFeature](https://dvir-daniel.github.io/companyflags/sdk/openfeature) and
+flag in memory. To pin an app to its own entity, a backend can hand it a signed app link at sign-in
+(`GET /sdk/v1/links/<dimension>/<entity>?service=web`); that is optional. See
+[OpenFeature](https://dvir-daniel.github.io/companyflags/sdk/openfeature),
+[Services](https://dvir-daniel.github.io/companyflags/guide/services) and
 [Backends](https://dvir-daniel.github.io/companyflags/guide/backends).
 
 ## Configure it
@@ -155,7 +159,7 @@ Keep the flags your code reads in a file next to it, and push it from CI:
 
 ```bash
 companyflags flags plan     # what would change
-companyflags flags push     # new flags, details, variants, flag sets; reviewed where production needs it
+companyflags flags push     # new flags, details, variants, services; reviewed where production needs it
 ```
 
 See [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins),
@@ -181,12 +185,12 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 | | |
 |---|---|
 | [Introduction](https://dvir-daniel.github.io/companyflags/guide/introduction) | What it is, who it's for, what it doesn't do yet |
-| [Concepts](https://dvir-daniel.github.io/companyflags/guide/concepts) | Environments, flag sets, dimensions, flags, rules |
+| [Concepts](https://dvir-daniel.github.io/companyflags/guide/concepts) | Environments, services, dimensions, flags, rules |
 | [OpenFeature](https://dvir-daniel.github.io/companyflags/sdk/openfeature) | Web, React, Android, iOS and backends |
 | [Migration](https://dvir-daniel.github.io/companyflags/guide/migration) | Moving from another system, import, export, webhooks |
 | [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
 | [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyflags/reference/cli) | The built-in plugins, writing your own, and the `companyflags` command |
-| [HTTP API](https://dvir-daniel.github.io/companyflags/reference/http-api) | OFREP, app files, flagd JSON, links, health |
+| [HTTP API](https://dvir-daniel.github.io/companyflags/reference/http-api) | Keys, OFREP, app files, flagd JSON, links, health |
 
 The docs are in [`docs/`](docs) and run locally with `pnpm docs:dev`.
 

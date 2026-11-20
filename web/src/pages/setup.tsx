@@ -10,7 +10,7 @@ import { nextStep, setupSteps } from './setupKit.ts';
 /*
  * The first-run checklist, built from /meta (setupKit.ts): each step shows a done mark or the way to do it. It is the
  * whole page until there is an environment (GetStarted), then it sits above the Flags list until apps can read flags
- * (a flag set and an entry exist).
+ * (a service and an entry exist).
  */
 
 /** The steps, each with a done mark or its link. On the Flags list (`flags` known, `onNewFlag`) the flag step opens New flag.
@@ -69,7 +69,7 @@ export function GetStarted() {
           <p className="m-0 text-13 text-ink-3">Moving from another system? Once these are done, the Migration page imports its flags, and both run side by side while you move them one at a time.</p>
         </section>
       ) : (
-        <Callout>An admin needs to add the environments and flag sets first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>
+        <Callout>An admin needs to add the environments and services first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>
       )}
     </div>
   );
@@ -84,19 +84,19 @@ export function FinishSetup({ flags, onNewFlag }: { flags?: number; onNewFlag?: 
       <div className="grid gap-1">
         <h2 id="finish-setup" className="m-0 text-sm font-semibold text-ink">Finish setting up</h2>
         <p className="m-0 text-13 text-ink-2">{admin
-          ? 'Apps can read flags once they have a flag set and an entry with an app link.'
-          : 'Apps can’t read flags yet: an admin still needs to add a flag set and a first entry in Settings.'}</p>
+          ? 'Apps can read flags once they have a service and an entry with an app link.'
+          : 'Apps can’t read flags yet: an admin still needs to add a service and a first entry in Settings.'}</p>
       </div>
       {admin && <SetupChecklist flags={flags} onNewFlag={onNewFlag} />}
     </section>
   );
 }
 
-/** In a new flag's Flag sets group while there are none: a flag in no flag set reaches no app, so say where to add one. */
-export function NoFlagSets({ what = 'this flag' }: { what?: string }) {
+/** In a new flag's Services group while there are none: a flag in no service reaches no app, so say where to add one. */
+export function NoServices({ what = 'this flag' }: { what?: string }) {
   return (
     <p className="m-0 py-1 text-13 text-ink-2">
-      No flag sets yet: apps can’t read {what} until it’s in one. <a href="#/settings">Add one in Settings</a>.
+      No services yet: apps can’t read {what} until it’s in one. <a href="#/settings">Add one in Settings</a>.
     </p>
   );
 }

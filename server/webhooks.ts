@@ -182,7 +182,7 @@ export type WebhookView = {
   lastStatus: number | null; lastError: string | null; lastSentAt: string | null; lastFailedAt: string | null; attempts: number; nextAttemptAt: string | null;
 };
 export type IncomingView = {
-  id: number; name: string; environment: string; format: string; expression: string | null; createFlags: boolean; flagSets: string[]; enabled: boolean;
+  id: number; name: string; environment: string; format: string; expression: string | null; createFlags: boolean; services: string[]; enabled: boolean;
   createdAt: string; createdBy: string; lastReceivedAt: string | null; lastStatus: number | null; lastResult: string | null;
 };
 export type Sent = { ok: boolean; status: number | null; error: string | null; skipped?: boolean };
@@ -200,7 +200,7 @@ const OUT_COLUMNS = `id::text as id, name, url, method, headers, format, express
 const VIEW_COLUMNS = `id::int as id, name, url, method, headers, format, expression, events, environments, enabled, created_at as "createdAt",
   created_by as "createdBy", last_status as "lastStatus", last_error as "lastError", last_sent_at as "lastSentAt", last_failed_at as "lastFailedAt",
   attempts, next_attempt_at as "nextAttemptAt"`;
-const IN_COLUMNS = `w.id::int as id, w.name, e.key as environment, w.format, w.expression, w.create_flags as "createFlags", w.flag_sets as "flagSets", w.enabled,
+const IN_COLUMNS = `w.id::int as id, w.name, e.key as environment, w.format, w.expression, w.create_flags as "createFlags", w.flag_sets as "services", w.enabled,
   w.created_at as "createdAt", w.created_by as "createdBy", w.last_received_at as "lastReceivedAt", w.last_status as "lastStatus", w.last_result as "lastResult"`;
 
 const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
@@ -473,9 +473,9 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
     if (!r) throw new HttpError(404, 'There’s no such webhook.');
     return r;
   }
-  type InInput = { name?: unknown; environment?: unknown; format?: unknown; expression?: unknown; createFlags?: unknown; flagSets?: unknown; enabled?: unknown };
+  type InInput = { name?: unknown; environment?: unknown; format?: unknown; expression?: unknown; createFlags?: unknown; services?: unknown; enabled?: unknown };
   async function checkIn(i: InInput, creating: boolean) {
-    const out: { name?: string; environmentId?: number; format?: string; expression?: string | null; createFlags?: boolean; flagSets?: string[]; enabled?: boolean } = {};
+    const out: { name?: string; environmentId?: number; format?: string; expression?: string | null; createFlags?: boolean; services?: string[]; enabled?: boolean } = {};
     if (creating || i.name !== undefined) {
       const name = typeof i.name === 'string' ? i.name.trim() : '';
       if (!name || name.length > 80) throw new HttpError(422, 'Give it a name, up to 80 characters.');
@@ -492,12 +492,12 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
     }
     if (i.expression !== undefined) out.expression = typeof i.expression === 'string' && i.expression.trim() ? i.expression : null;
     if (i.createFlags !== undefined) out.createFlags = i.createFlags === true;
-    if (i.flagSets !== undefined) {
-      if (!Array.isArray(i.flagSets) || i.flagSets.some((a) => typeof a !== 'string')) throw new HttpError(422, 'Flag sets are a list of flag set keys.');
+    if (i.services !== undefined) {
+      if (!Array.isArray(i.services) || i.services.some((a) => typeof a !== 'string')) throw new HttpError(422, 'Services are a list of service keys.');
       const known = new Set((await all<{ key: string }>(db, `select key from project`)).map((p) => p.key));
-      const unknown = (i.flagSets as string[]).find((a) => !known.has(a));
-      if (unknown) throw new HttpError(422, `There’s no flag set “${unknown}”.`);
-      out.flagSets = [...new Set(i.flagSets as string[])];
+      const unknown = (i.services as string[]).find((a) => !known.has(a));
+      if (unknown) throw new HttpError(422, `There’s no service “${unknown}”.`);
+      out.services = [...new Set(i.services as string[])];
     }
     if (i.enabled !== undefined) out.enabled = i.enabled === true;
     return out;
@@ -597,11 +597,11 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
         const placeholder = sha256(randomBytes(16).toString('hex'));
         const row = await one<{ id: string }>(tx, `insert into webhook_in (name, environment_id, format, expression, create_flags, flag_sets, token_hash, created_by)
           values ($1, $2, $3, $4, $5, $6, $7, $8) returning id::text as id`,
-          [v.name, v.environmentId, v.format, v.expression ?? null, v.createFlags ?? false, v.flagSets ?? [], placeholder, actor.name]);
+          [v.name, v.environmentId, v.format, v.expression ?? null, v.createFlags ?? false, v.services ?? [], placeholder, actor.name]);
         const { secret, token } = newInToken(row!.id);
         await tx.query(`update webhook_in set token_hash = $2 where id = $1`, [row!.id, sha256(secret)]);
         const view = (await one<IncomingView>(tx, `select ${IN_COLUMNS} from webhook_in w join environment e on e.id = w.environment_id where w.id = $1`, [row!.id]))!;
-        await journal.audit(tx, actor, { kind: 'webhook_in.create', after: { name: view.name, environment: view.environment, format: view.format, createFlags: view.createFlags, flagSets: view.flagSets } });
+        await journal.audit(tx, actor, { kind: 'webhook_in.create', after: { name: view.name, environment: view.environment, format: view.format, createFlags: view.createFlags, services: view.services } });
         return { webhook: view, token };
       });
     },
@@ -614,9 +614,9 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
         await tx.query(`update webhook_in set name = coalesce($2, name), environment_id = coalesce($3, environment_id), format = coalesce($4, format),
             expression = case when $5::boolean then $6 else expression end, create_flags = coalesce($7, create_flags), flag_sets = coalesce($8, flag_sets),
             enabled = coalesce($9, enabled) where id = $1`,
-          [id, v.name ?? null, v.environmentId ?? null, v.format ?? null, v.expression !== undefined, v.expression ?? null, v.createFlags ?? null, v.flagSets ?? null, v.enabled ?? null]);
+          [id, v.name ?? null, v.environmentId ?? null, v.format ?? null, v.expression !== undefined, v.expression ?? null, v.createFlags ?? null, v.services ?? null, v.enabled ?? null]);
         const after = (await one<IncomingView>(tx, `select ${IN_COLUMNS} from webhook_in w join environment e on e.id = w.environment_id where w.id = $1`, [id]))!;
-        const pick = (x: IncomingView) => ({ name: x.name, environment: x.environment, format: x.format, createFlags: x.createFlags, flagSets: x.flagSets, enabled: x.enabled });
+        const pick = (x: IncomingView) => ({ name: x.name, environment: x.environment, format: x.format, createFlags: x.createFlags, services: x.services, enabled: x.enabled });
         await journal.audit(tx, actor, { kind: 'webhook_in.update', before: pick(before), after: pick(after) });
       });
       return viewIn(id);
@@ -646,8 +646,8 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
     async receive(token: string, read: () => Promise<string>): Promise<{ status: number; json: Record<string, unknown> }> {
       const t = parseToken(token);
       const row = t ? await one<{ id: number; name: string; environment: string; format: string; expression: string | null; createFlags: boolean;
-        flagSets: string[]; enabled: boolean; tokenHash: string }>(db, `select w.id::int as id, w.name, e.key as environment, w.format, w.expression,
-          w.create_flags as "createFlags", w.flag_sets as "flagSets", w.enabled, w.token_hash as "tokenHash"
+        services: string[]; enabled: boolean; tokenHash: string }>(db, `select w.id::int as id, w.name, e.key as environment, w.format, w.expression,
+          w.create_flags as "createFlags", w.flag_sets as "services", w.enabled, w.token_hash as "tokenHash"
         from webhook_in w join environment e on e.id = w.environment_id where w.id = $1`, [t.id]) : undefined;
       const hash = t ? Buffer.from(sha256(t.secret)) : Buffer.alloc(64);
       if (!t || !row || !timingSafeEqual(hash, Buffer.from(row.tokenHash.padEnd(64).slice(0, 64)))) {
@@ -665,7 +665,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
         const read = await toValues(row.format, input, row.expression);
         if (read.problems.length) return answer(422, { error: 'Nothing was imported: fix these first.', problems: read.problems }, `Refused: ${read.problems[0]}`);
         const actor: Actor = { name: `Webhook: ${row.name}`, type: 'service_token' };
-        const r: Imported = await applyImport(db, read.doc, { environment: row.environment, createFlags: row.createFlags, flagSets: row.flagSets, reason: `From the webhook “${row.name}”` }, actor);
+        const r: Imported = await applyImport(db, read.doc, { environment: row.environment, createFlags: row.createFlags, services: row.services, reason: `From the webhook “${row.name}”` }, actor);
         const warnings = [...read.warnings, ...r.warnings];
         const what = `${r.created ? `${r.created} new, ` : ''}${r.changed} changed`;
         if (!r.applied) return answer(202, { applied: false, request: r.request, created: r.created, changed: r.changed, warnings }, `Request #${r.request}: ${what}`);

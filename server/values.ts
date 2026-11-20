@@ -11,8 +11,8 @@
 // (null: remove that entity's own settings). Rules and % stay as they are: an old system has none to bring. Nothing
 // it leaves out changes. It goes through the same saves as the console (layers.ts applyItems): checked the same way,
 // one new version, and a request for review where the environment needs approval. A flag the document names that
-// doesn't exist is created if asked, as a config flag in the flag sets chosen (none by default: apps keep reading it
-// from the old system until it's in their flag set, the way a flag moves over).
+// doesn't exist is created if asked, as a config flag in the services chosen (none by default: apps keep reading it
+// from the old system until it's in their service, the way a flag moves over).
 //
 // An export gives each flag's default, on/off, variants and entities' own defaults in one environment: the same
 // document, so an export imports back unchanged.
@@ -152,14 +152,14 @@ export function valuesOf(snap: Snapshot, only?: Iterable<string>): ValuesDoc {
   return { flags };
 }
 
-/** An environment in one of the export formats. flagd is one flag set's file (what a backend reading it gets). */
-export async function fromValues(snap: Snapshot, format: unknown, o: { flagSet?: string | null; expression?: string | null } = {}): Promise<unknown> {
+/** An environment in one of the export formats. flagd is one service's file (what a backend reading it gets). */
+export async function fromValues(snap: Snapshot, format: unknown, o: { service?: string | null; expression?: string | null } = {}): Promise<unknown> {
   switch (format) {
     case 'values': return valuesOf(snap);
     case 'kv': return Object.fromEntries(Object.entries(valuesOf(snap).flags).filter(([, f]) => 'value' in f).map(([k, f]) => [k, f.value]));
     case 'flagd': {
-      if (!o.flagSet) throw new HttpError(422, 'A flagd file is one flag set’s: pick the flag set.');
-      return buildFlagdDoc(snap, o.flagSet, null);
+      if (!o.service) throw new HttpError(422, 'A flagd file is one service’s: pick the service.');
+      return buildFlagdDoc(snap, o.service, null);
     }
     case 'jsonata': return runJsonata(o.expression, valuesOf(snap));
     default: throw new HttpError(422, `The format is one of ${FORMATS_OUT.join(', ')}.`);
@@ -171,7 +171,7 @@ export async function fromValues(snap: Snapshot, format: unknown, o: { flagSet?:
 export type ImportOptions = {
   environment: string;
   createFlags?: boolean;                        // create the flags it names that don't exist
-  flagSets?: string[];                          // …in these flag sets, in this environment
+  services?: string[];                          // …in these services, in this environment
   reason?: string | null;                       // the comment in History, and the reviewer's reason
 };
 export type Line = { flag: string; entity: string | null; text: string };
@@ -210,10 +210,10 @@ export async function planImport(db: Db, doc: ValuesDoc, o: ImportOptions): Prom
     from flag where key = any($1::text[])`, [keys])).map((r) => [r.key, r]));
   const entityKeys = [...new Set(keys.flatMap((k) => Object.keys(doc.flags[k].entities ?? {})))];
   const entities = new Set((await all<{ key: string }>(db, `select key from entity where key = any($1::text[]) and archived_at is null`, [entityKeys])).map((e) => e.key));
-  const sets = o.flagSets ?? [];
+  const sets = o.services ?? [];
   if (sets.length) {
     const known = new Set((await all<{ key: string }>(db, `select key from project where key = any($1::text[])`, [sets])).map((p) => p.key));
-    for (const a of sets.filter((x) => !known.has(x))) plan.problems.push(`There’s no flag set “${a}”.`);
+    for (const a of sets.filter((x) => !known.has(x))) plan.problems.push(`There’s no service “${a}”.`);
   }
   const allEnvs = await all<{ key: string }>(db, `select key from environment order by id`);
 
@@ -231,7 +231,7 @@ export async function planImport(db: Db, doc: ValuesDoc, o: ImportOptions): Prom
       const own = Object.keys(want.entities ?? {}).length;
       plan.create.push({ flag: key, entity: null, text: `New flag: everyone gets ${show(want.value)}${want.on === false ? ', switched off' : ''}`
         + `${own ? `, ${own} ${own === 1 ? 'entity gets its' : 'entities get their'} own value` : ''}`
-        + `${sets.length ? `, in ${sets.join(', ')}` : ', in no flag set yet'}` });
+        + `${sets.length ? `, in ${sets.join(', ')}` : ', in no service yet'}` });
       continue;
     }
     if (!f) { problem('it isn’t in this environment’s published flags yet: try again in a moment.'); continue; }

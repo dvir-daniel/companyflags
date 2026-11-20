@@ -85,7 +85,7 @@ export async function createApp(opts: AppOptions = {}) {
   });
   // the plugins (plugin.ts): set up once, with what the core shares
   const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: { fetch: undefined }, webhooks: { fetch: undefined } }), {
-    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, keys, links, flagSets: apps,
+    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, keys, links, services: apps,
   }).catch(async (e) => { await store.close(); throw e; });
   const on = new Set(plugins.map((p) => p.id));
   const publisher = startWorkers(db, plane, hub, log, opts.onPublish ?? publishHooks(plugins), {
@@ -120,7 +120,7 @@ export async function createApp(opts: AppOptions = {}) {
   });
   app.route('/api', identity.routes);                    // sign-in pages and Better Auth: open to everyone
   app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, plugins }));
-  app.route('/', linkRoutes({ db, plane, links, keys, flagSets: apps }, { files: on.has('app-files') }));   // app links, for backends
+  app.route('/', linkRoutes({ db, plane, links, keys, services: apps }, { files: on.has('app-files') }));   // app links, for backends
   for (const p of plugins) if (p.parts.routes) app.route('/', p.parts.routes);
   // An unknown address under the API, the app files or the backend downloads is a 404 with a JSON error,
   // never the console's page (which answers every other address, below). The built-in plugins' prefixes stay JSON

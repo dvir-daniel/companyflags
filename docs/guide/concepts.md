@@ -1,9 +1,9 @@
 # How it fits together
 
-CompanyFlags has a few parts that build on each other. You set up **environments**, **flag sets** and your
-**dimensions** once. Then you create **flags**, give them **values** and **rules**, and let any **entity** (a customer,
-a company and its brands, a store) have settings of its own. Every answer, whether over OFREP, in a backend's flagd
-JSON or in the console's trace, comes from the same evaluator.
+CompanyFlags has a few parts that build on each other. You set up **environments** and **services** once, and
+**dimensions** if config differs per part of your product. Then you create **flags**, give them **values** and
+**rules**, and let any **entity** (a customer, a company and its brands, a store) have settings of its own. Every
+answer, whether over OFREP, in a backend's flagd JSON or in the console's trace, comes from the same evaluator.
 
 This page walks through each part. The pages linked at the end go into detail.
 
@@ -18,7 +18,7 @@ One flag, in one environment, asked by a device of Acme Kids, is decided in this
 An environment is a separate copy of every flag's settings: Development, Staging, Production. You add them in
 **Settings → Environments**. Each one has:
 
-- its own settings on every flag (on or off, rules, defaults), and its own list of the flag sets each flag is in;
+- its own settings on every flag (on or off, rules, defaults), and its own list of the services each flag is in;
 - **Approvals needed**, from 0 to 5. With 1 or more it is a protected environment: every change there is reviewed by
   someone other than its author before it applies. See [Approvals and history](/guide/approvals);
 - numbered **versions**. Every change that alters what the environment serves makes a new one, and you can restore an
@@ -28,28 +28,34 @@ An environment is a separate copy of every flag's settings: Development, Staging
 A flag exists in every environment. A new flag starts off in every protected environment, and every flag starts off in
 an environment you add later: turning it on there is a change like any other.
 
-## Flag sets
+## Services
 
-A **flag set** is a group of flags sent together. In **Settings → Flag sets** you add one for each app that runs on
-your users' devices (`web`, `ios`, `android`: a flag set **for apps**) and each backend (`api`: a flag set **for
-backends**). Its key never changes. On each flag you choose which flag sets it is in, per environment. A flag that
-isn't in a flag set doesn't exist for the app or backend that reads it.
+A **service** is what reads your flags. In **Settings → Services** you add one for each app that runs on your users'
+devices (`web`, `ios`, `android`: the kind **App**, which gets values only) and each backend (`api`: the kind
+**Backend**, which gets the rules). Its key never changes. On each flag you choose which services it is in, per
+environment. A flag that isn't in a service doesn't exist for the app or backend that reads it.
 
-Both get their flags through [OpenFeature](https://openfeature.dev), with OpenFeature's own providers:
+A service's API key picks which flags it reads; the evaluation context picks whose values it gets. So a service is
+one of your apps or backends, never a customer: per-company values are dimensions, below.
+
+Both read their flags through [OpenFeature](https://openfeature.dev), with OpenFeature's own providers and a key
+made for their service on the **API keys** page:
 
 | Who | How |
 |---|---|
-| Apps | OFREP (OpenFeature Remote Evaluation Protocol), with their app token (made from their entity's app link, for their flag set): the server evaluates the flags for that entity and the device's context. |
-| Backends | OFREP with an API key, naming the entity in the evaluation context; or flagd JSON (one entity's flags, evaluated in-process by flagd or OpenFeature's flagd provider). |
+| Apps | OFREP (OpenFeature Remote Evaluation Protocol), with their app service's key, which is public: the server evaluates the flags for the context the app sends. |
+| Backends | OFREP with their backend service's key, which is secret, naming the entity in the evaluation context; or flagd JSON (one entity's flags, evaluated in-process by flagd or OpenFeature's flagd provider). |
 
-The credential decides the environment, the flag set, and which entities a request may be about: an app's token is
-its own entity only; a backend's API key is its entity, the ones below it, or any. Apps never hold an API key. See
-[Flag sets](/guide/flag-sets), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
+The credential decides the environment, the service, and which entities a request may be about: a key's scope is its
+entity, the ones below it, or any. With an app's key, the entity in the context is targeting, not proof. When an app
+must read as its own entity and no other, your backend hands it a signed **app link** at sign-in. See
+[Services](/guide/services), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
 
 ## Dimensions and entities
 
-A **dimension** is one level of what your installation serves config per. You define one chain of up to four in
-**Settings → Dimensions**, in your own words: `customer`, or `company` › `brand`, or `region` › `chain` › `store`.
+A **dimension** is one level of what your installation serves config per. Dimensions are optional: without them,
+every app gets what everyone gets. You define one chain of up to four in **Settings → Dimensions**, in your own
+words: `customer`, or `company` › `brand`, or `region` › `chain` › `store`.
 
 An **entity** is one entry of a dimension: the company `globex`, the brand `lumen`, the store `acme-12`. An entity can
 have a **parent** in the dimension right above it (Lumen's parent is Globex). Every entity, at any level, can have its
@@ -69,8 +75,8 @@ values** you type straight into the rules and defaults. See [Flags and rules](/g
 A rule is a list of checks and what to serve when they all pass: one value, or a % of devices. A check reads an
 **attribute**:
 
-- what the server works out from who is asking: the flag set (from the link or API key), and one attribute per dimension
-  ("Company is Globex" covers Globex, Lumen and Bolt), plus `entity` for exactly the one asking;
+- what the server works out from who is asking: the service (from the key, link or token), and one attribute per
+  dimension ("Company is Globex" covers Globex, Lumen and Bolt), plus `entity` for exactly the one asking;
 - what the app reports about itself: `app.version`, `device.id`, `device.os`, `locale.language`, `geo.country` and so on.
 
 The first rule that matches decides. If none does, a default does. See the full list in
@@ -123,12 +129,12 @@ flagd JSON has no place for group names.
 place the order above is written. It is behind:
 
 - **OFREP answers.** The server evaluates each flag for the entity and the attributes in the request.
-- **flagd JSON for backends.** For one entity, the server settles everything it knows (the flag set, the environment,
+- **flagd JSON for backends.** For one entity, the server settles everything it knows (the service, the environment,
   every dimension) and writes the rest as flagd's JsonLogic, so flagd or OpenFeature's flagd provider gives the same
   answers in your backend. No list of entities and no other entity's value is in it.
-- **App files.** The same settling, as a values-only file per environment, flag set and entity, built on publish and
+- **App files.** The same settling, as a values-only file per environment, service and entity, built on publish and
   cached by a CDN. What only the device knows stays as short `when` lines.
-- **The trace.** The flag page's **Debug** tab runs the evaluator for an entity, a flag set and the attributes you type,
+- **The trace.** The flag page's **Debug** tab runs the evaluator for an entity, a service and the attributes you type,
   and shows each step: which levels were checked, each check with the value it read, the device's bucket, what was
   skipped and why.
 

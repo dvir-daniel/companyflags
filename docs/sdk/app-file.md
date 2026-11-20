@@ -1,7 +1,7 @@
 # The app file
 
 Most apps read flags with [OpenFeature](/sdk/openfeature). The **app file** is the other way: everything one entity's
-app needs from its flag set, as one JSON file your CDN caches, so no request reaches the server. There is no OpenFeature
+app needs from its service, as one JSON file your CDN caches, so no request reaches the server. There is no OpenFeature
 provider for it; this page describes it completely, so you can read it in any language. The server's own reference is
 about 100 lines:
 `readClientFile` in [server/clientFile.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/clientFile.ts),
@@ -15,14 +15,14 @@ The app file is the `appFiles()` plugin. It runs unless your config file lists p
 ## Getting it
 
 ```http
-GET /client/v1/flags/<environment>/<flag set>/<entity>/<secret>
+GET /client/v1/flags/<environment>/<service>/<entity>/<secret>
 If-None-Match: W/"…"            (the ETag of the file you have, if any)
 ```
 
 - `200` with the file and an `ETag` (weak); `304` when your copy is current.
-- `404` with `{ "error": "…" }` for any wrong link, environment or flag set.
-- Before sign-in, read `GET /client/v1/flags/<environment>/<flag set>`: what every device gets. **Settings → Flag
-  sets → Link** on a flag set for apps shows that address for each environment.
+- `404` with `{ "error": "…" }` for any wrong link, environment or service.
+- Before sign-in, read `GET /client/v1/flags/<environment>/<service>`: what every device gets. **Settings →
+  Services → Link** on an app service shows that address for each environment.
 - Ask again every minute or so, and when the app comes to the foreground. Keep the last file on the device and start
   from it next time.
 
@@ -56,7 +56,7 @@ type FileLine = {
 type Condition = { field: string; op: Op; values?: (string | number)[] };
 ```
 
-A flag that isn't in the file isn't in this flag set: use the code default.
+A flag that isn't in the file isn't in this service: use the code default.
 
 ## Reading one flag
 
@@ -139,5 +139,5 @@ with their known values, is in [Attributes](/reference/attributes).
 Your reader is right when it gives the same answer as the server for every device. The server's tests do this for
 the reference reader across thousands of combinations
 ([test/client-file.test.ts](https://github.com/dvir-daniel/companyflags/blob/main/test/client-file.test.ts));
-the flag's **Debug** tab in the console shows the server's answer for any entity, flag set and device, to compare by
+the flag's **Debug** tab in the console shows the server's answer for any entity, service and device, to compare by
 hand.

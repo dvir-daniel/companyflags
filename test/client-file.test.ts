@@ -125,7 +125,7 @@ test('replacing an entity’s link stops the old one at once and is in History',
   const r = await t.as('dana').post('/dimensions/company/globex/link/rotate?environment=dev');
   assert.equal(r.status, 200);
   assert.equal((await t.call('GET', old)).status, 404);
-  assert.equal((await t.call('GET', r.json.path.replace(':flagSet', 'ios'))).status, 200);
+  assert.equal((await t.call('GET', r.json.path.replace(':service', 'ios'))).status, 200);
   const h = (await t.as('alice').get('/history?entity=globex')).json;
   assert.ok(h.some((x: any) => x.changeType === 'entity.link_replaced'));
 });

@@ -20,7 +20,7 @@ import { needsReview, roleInfo, ROLES } from '../../../server/policy.ts';
 
 /*
  * Settings: what an admin sets up once. Environments (each flag has its own settings in each one),
- * flag sets (the groups flags are sent in), dimensions (what config is served per: dimensions.tsx, #/settings/dimensions
+ * services (the groups flags are sent in), dimensions (what config is served per: dimensions.tsx, #/settings/dimensions
  * scrolls to it) and people: who may sign in, and their roles. Everyone can see it; only admins change it.
  * People have a page of their own (People.tsx, #/settings/people): with single sign-on there can be hundreds.
  */
@@ -68,7 +68,7 @@ export function Settings({ section }: { section?: string }) {
           )}
         </section>
 
-        <FlagSetsSection admin={admin} />
+        <ServicesSection admin={admin} />
 
         <DimensionsSection admin={admin} focus={section === 'dimensions'} />
 
@@ -264,21 +264,21 @@ function ReplaceLinks({ env }: { env: Env }) {
 }
 
 type App = Meta['projects'][number];
-const kindName = (k: App['kind']) => (k === 'client' ? 'for apps' : 'for backends');
-/** What has to be true before a flag set changes kind or goes (server/control.ts appUse): said before an admin tries. */
+const kindName = (k: App['kind']) => (k === 'client' ? 'an app' : 'a backend');
+/** What has to be true before a service changes kind or goes (server/control.ts appUse): said before an admin tries. */
 const IN_USE = 'no flag is in it, no API key for it still works, and no request waiting to go out would put a flag in it';
 
 /**
- * The flag sets flags are sent in. An admin adds one, changes its kind or deletes it; the server refuses the last two,
- * saying why, while anything uses the flag set. The key never changes: installed apps ask for their file with it.
+ * The services flags are sent in. An admin adds one, changes its kind or deletes it; the server refuses the last two,
+ * saying why, while anything uses the service. The key never changes: installed apps ask for their file with it.
  */
-function FlagSetsSection({ admin }: { admin: boolean }) {
+function ServicesSection({ admin }: { admin: boolean }) {
   const { meta, toast, ask } = useApp();
   const refresh = useRefresh();
   const [drawer, setDrawer] = useState<{ app: App | null } | null>(null);
   const [fileOf, setFileOf] = useState<string | null>(null);
   const { error, setError, run } = useAsync();
-  // the app-files plugin serves each app flag set's file for everyone (server/delivery.ts), with no entry needed
+  // the app-files plugin serves each app service's file for everyone (server/delivery.ts), with no entry needed
   const files = meta.plugins?.includes('app-files') ?? true;
 
   const remove = async (p: App) => {
@@ -286,35 +286,35 @@ function FlagSetsSection({ admin }: { admin: boolean }) {
     const { action } = await ask({
       title: `Delete ${p.key}?`,
       body: <>
-        <p>A flag set can only go once {IN_USE}. If something still uses it, nothing is deleted and you’ll see what to change first.</p>
+        <p>A service can only go once {IN_USE}. If something still uses it, nothing is deleted and you’ll see what to change first.</p>
         <p>{p.kind === 'client' ? 'An installed app that still asks for its file gets “not found”. ' : ''}Its revoked API keys go with it. History keeps every change to it.</p>
       </>,
-      actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'delete', label: 'Delete flag set', tone: 'danger' }],
+      actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'delete', label: 'Delete service', tone: 'danger' }],
     });
     if (action !== 'delete') return;
-    if (!(await run(() => api('DELETE', `/flag-sets/${encodeURIComponent(p.key)}`)))) return;
+    if (!(await run(() => api('DELETE', `/services/${encodeURIComponent(p.key)}`)))) return;
     toast(`${p.key} deleted`);
     void refresh();
   };
 
   return (
-    <section aria-labelledby="s-flag-sets" className="grid gap-3">
-      <Heading id="s-flag-sets" title="Flag sets" action={admin && <Button onClick={() => setDrawer({ app: null })}>+ Add flag set</Button>}>
-        The groups flags are sent in. Apps (Android, iOS, web) read a flag set’s values at their app link; backends download its rules
-        with an API key.
+    <section aria-labelledby="s-services" className="grid gap-3">
+      <Heading id="s-services" title="Services" action={admin && <Button onClick={() => setDrawer({ app: null })}>+ Add service</Button>}>
+        What reads your flags: each app (Android, iOS, web) and each backend. A service reads only the flags you put in it, with
+        its own key in each environment (API keys): an app’s key reads values only, a backend’s key reads the rules.
       </Heading>
       <ErrorList error={error} />
       {meta.projects.length === 0 ? (
-        <Empty action={admin ? <Button onClick={() => setDrawer({ app: null })}>+ Add flag set</Button> : undefined}>No flag sets yet.</Empty>
+        <Empty action={admin ? <Button onClick={() => setDrawer({ app: null })}>+ Add service</Button> : undefined}>No services yet.</Empty>
       ) : (
-        <div role="table" aria-label="Flag sets">
+        <div role="table" aria-label="Services">
           <div role="row" className={cn(APP_COLS, tableHeadClass)}>
             <span role="columnheader">Key</span><span role="columnheader" className={MD}>Kind</span><span />
           </div>
           {meta.projects.map((p) => (
             <div key={p.key} role="row" className={cn(APP_COLS, tableRowClass)}>
               <code role="cell" className="truncate font-mono text-13 font-medium">{p.key}</code>
-              <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{p.kind === 'client' ? 'For apps: each reads its file at an app link' : 'For backends: each uses an API key'}</span>
+              <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{p.kind === 'client' ? 'App: gets values only' : 'Backend: gets the rules'}</span>
               <span role="cell" className="flex justify-end gap-2">
                 {files && p.kind === 'client' && <Button variant="secondary" aria-label={`Link to ${p.key}’s file for everyone`} onClick={() => setFileOf(p.key)}>Link</Button>}
                 {admin && <>
@@ -326,24 +326,24 @@ function FlagSetsSection({ admin }: { admin: boolean }) {
           ))}
         </div>
       )}
-      {/* mounted only while open (keyed by the flag set), so each opening starts fresh */}
+      {/* mounted only while open (keyed by the service), so each opening starts fresh */}
       {drawer && <AppDrawer key={drawer.app?.key ?? 'new'} app={drawer.app} onClose={() => setDrawer(null)} />}
-      {fileOf && <EveryoneFile flagSet={fileOf} onClose={() => setFileOf(null)} />}
+      {fileOf && <EveryoneFile service={fileOf} onClose={() => setFileOf(null)} />}
     </section>
   );
 }
 
-/** A flag set's file for everyone, in each environment: what an app reads before it knows who is signed in, and the
+/** A service's file for everyone, in each environment: what an app reads before it knows who is signed in, and the
  *  only file there is until the dimensions have an entry. Each entry's own link is on its page. */
-function EveryoneFile({ flagSet, onClose }: { flagSet: string; onClose: () => void }) {
+function EveryoneFile({ service, onClose }: { service: string; onClose: () => void }) {
   const { meta, toast } = useApp();
   return (
-    <Drawer open onClose={onClose} title={`${flagSet}: the file for everyone`} subtitle="The values everyone gets, with no entry’s own settings"
+    <Drawer open onClose={onClose} title={`${service}: the file for everyone`} subtitle="The values everyone gets, with no entry’s own settings"
       footer={<Button variant="secondary" onClick={onClose}>Done</Button>}>
       <div className="grid gap-4 text-13 text-ink-2">
         <p className="m-0">An app reads this before it knows who is signed in. Then it uses its entry’s own link, from the entry’s page (App link). Each environment has its own file.</p>
         {meta.environments.map((e) => {
-          const url = `${location.origin}${everyoneFilePath(e.key, flagSet)}`;
+          const url = `${location.origin}${everyoneFilePath(e.key, service)}`;
           return (
             <Field key={e.key} label={e.name}>
               <span className="flex min-w-0 items-center gap-2">
@@ -358,7 +358,7 @@ function EveryoneFile({ flagSet, onClose }: { flagSet: string; onClose: () => vo
   );
 }
 
-/** A flag set's form, new or to edit (its kind: the key can't change). Mounted only while open, so it starts fresh. */
+/** A service's form, new or to edit (its kind: the key can't change). Mounted only while open, so it starts fresh. */
 function AppDrawer({ app, onClose }: { app: App | null; onClose: () => void }) {
   const { toast } = useApp();
   const refresh = useRefresh();
@@ -370,29 +370,29 @@ function AppDrawer({ app, onClose }: { app: App | null; onClose: () => void }) {
   const save = async () => {
     if (app && kind === app.kind) { onClose(); return; }
     const r = await run(() => app
-      ? api<App>('PUT', `/flag-sets/${encodeURIComponent(app.key)}`, { kind })
-      : api<App>('POST', '/flag-sets', { key, kind }));
+      ? api<App>('PUT', `/services/${encodeURIComponent(app.key)}`, { kind })
+      : api<App>('POST', '/services', { key, kind }));
     if (!r) return;
     toast(app ? `${r.key} is now ${kindName(r.kind)}` : `${r.key} added`);
     onClose();
     void refresh();
   };
   return (
-    <Drawer open onClose={onClose} title={app ? `Edit ${app.key}` : 'New flag set'} initialFocus={app ? kindSelect : first}
+    <Drawer open onClose={onClose} title={app ? `Edit ${app.key}` : 'New service'} initialFocus={app ? kindSelect : first}
       footer={<>
-        <Button disabled={busy || !key} onClick={save}>{busy ? 'Saving…' : app ? 'Save' : 'Add flag set'}</Button>
+        <Button disabled={busy || !key} onClick={save}>{busy ? 'Saving…' : app ? 'Save' : 'Add service'}</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </>}>
       <div className="grid gap-4">
         <Field label="Key" required hint={app
-          ? 'The key can’t change: installed apps ask for their file with it, and API keys are made for it. To use another key, add a new flag set.'
+          ? 'The key can’t change: installed apps ask for their file with it, and API keys are made for it. To use another key, add a new service.'
           : 'Lowercase letters, digits and dashes, e.g. android, ios, web, checkout-api.'}>
           <Input ref={first} className="h-[34px] font-mono text-13" value={key} disabled={!!app} onChange={(e) => setKey(e.target.value.toLowerCase())} placeholder="android" />
         </Field>
         <Field label="Kind" hint={app ? `The kind can change only while ${IN_USE}.` : undefined}>
           <NativeSelect ref={kindSelect} className={selectField} value={kind} onChange={(e) => setKind(e.target.value as App['kind'])}>
-            <option value="client">For apps (Android, iOS, web): each reads its file at an app link</option>
-            <option value="server">For backends: each downloads the rules with an API key</option>
+            <option value="client">App (Android, iOS, web): gets values only</option>
+            <option value="server">Backend: gets the rules</option>
           </NativeSelect>
         </Field>
         <ErrorList error={error} />

@@ -35,8 +35,8 @@ type Picked = Record<Mode, [string, string]>;
 
 // what's compared: two entities (in any dimension, named by the installation's words), two environments or two apps
 const MODE_KEYS: Mode[] = ['entities', 'environments', 'apps'];
-const modeLabels = (dims: Dimensions): Record<Mode, string> => ({ entities: capital(listWords(dims, 'and', true)) || 'Who', environments: 'Environments', apps: 'Flag sets' });
-const sideNouns = (dims: Dimensions): Record<Mode, string> => ({ entities: capital(listWords(dims)) || 'Who', environments: 'Environment', apps: 'Flag set' });
+const modeLabels = (dims: Dimensions): Record<Mode, string> => ({ entities: capital(listWords(dims, 'and', true)) || 'Who', environments: 'Environments', apps: 'Services' });
+const sideNouns = (dims: Dimensions): Record<Mode, string> => ({ entities: capital(listWords(dims)) || 'Who', environments: 'Environment', apps: 'Service' });
 
 /** flag, A, B; on a phone the flag spans both value columns */
 // the main cell's button: the row's way in for the keyboard and screen readers (the row itself takes clicks too)
@@ -172,8 +172,8 @@ export function Compare() {
       <span key="b" className={cn(pickerBox, sideWidth)}><EntityPicker value={ents[1]} onChange={(k) => setEnts([ents[0], k])} /></span>]
     : mode === 'environments'
       ? [envSelect(envs[0], (v) => setEnvs([v, envs[1]]), 'Environment A', sideWidth), envSelect(envs[1], (v) => setEnvs([envs[0], v]), 'Environment B', sideWidth)]
-      : [appSelect(apps[0], (v) => setApps([v, apps[1]]), 'Flag set A', sideWidth), appSelect(apps[1], (v) => setApps([apps[0], v]), 'Flag set B', sideWidth)];
-  const noun = mode === 'entities' ? (listWords(meta.dimensions, 'and', true) || 'entries') : mode === 'environments' ? 'environments' : 'flag sets';
+      : [appSelect(apps[0], (v) => setApps([v, apps[1]]), 'Service A', sideWidth), appSelect(apps[1], (v) => setApps([apps[0], v]), 'Service B', sideWidth)];
+  const noun = mode === 'entities' ? (listWords(meta.dimensions, 'and', true) || 'entries') : mode === 'environments' ? 'environments' : 'services';
   // "Open flag" goes to side A's environment
   const flagEnv = sides[0].environment;
   const fieldWidth = 'max-sm:w-auto max-sm:flex-1';
@@ -207,7 +207,7 @@ export function Compare() {
         <div role="group" aria-label="Same for both" title="Sent the same for A and B"
           className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3">
           {mode !== 'environments' && <StripField label="Environment">{envSelect(env, setEnv, 'Environment', cn('w-32', fieldWidth))}</StripField>}
-          {mode !== 'apps' && <StripField label="Flag set">{appSelect(app, setApp, 'Flag set', cn('w-28', fieldWidth))}</StripField>}
+          {mode !== 'apps' && <StripField label="Service">{appSelect(app, setApp, 'Service', cn('w-28', fieldWidth))}</StripField>}
           {mode !== 'entities' && meta.dimensions.length > 0 && (
             <StripField label={SIDE_NOUN.entities}><span className={cn(pickerBox, 'w-40', fieldWidth)}><EntityPicker value={entity} onChange={setEntity} allowNone /></span></StripField>
           )}
@@ -344,7 +344,7 @@ function AnswerDrawer({ row, open, labels, sides, version, device, onClose, onOp
         </DrawerSection>
         <DrawerSection title="Asked with">
           <Pair label="Environment" a={envName(sides[0].environment)} b={envName(sides[1].environment)} />
-          <Pair label="Flag set" a={<span className="font-mono">{sides[0].project}</span>} b={<span className="font-mono">{sides[1].project}</span>} />
+          <Pair label="Service" a={<span className="font-mono">{sides[0].project}</span>} b={<span className="font-mono">{sides[1].project}</span>} />
           {meta.dimensions.length > 0 && <Pair label={capital(listWords(meta.dimensions)) || 'Who'} a={entName(sides[0].entity) ?? none} b={entName(sides[1].entity) ?? none} />}
           <Pair label="App version" a={version ? <span className="font-mono">{version}</span> : none} b={version ? <span className="font-mono">{version}</span> : none} />
           <Pair label="Device ID" a={device ? <span className="font-mono">{device}</span> : none} b={device ? <span className="font-mono">{device}</span> : none} />

@@ -1,21 +1,21 @@
 # Backends
 
-A backend gets its flags with an API key, for the entity it is serving at the moment. It has two ways to evaluate
-them:
+A backend gets its flags with its backend service's key, for the entity it is serving at the moment. It has two ways
+to evaluate them:
 
 - **flagd.** It downloads one entity's flags as [flagd](https://flagd.dev) JSON and evaluates them itself, in-process,
   with OpenFeature's flagd provider. No request per evaluation.
 - **OFREP.** It asks the server for each evaluation with one of OpenFeature's OFREP providers (OpenFeature Remote
   Evaluation Protocol). No flagd to run, one request per evaluation (or per bulk evaluation).
 
-A backend also hands each signed-in user's app its entity's secret link and token (see
-[below](#hand-links-to-apps)). Apps never get an API key.
+A backend can also hand each signed-in user's app a signed link and token for their entity (see
+[below](#hand-links-to-apps)). Its key is secret: it never goes in an app or a web page.
 
-## Create a flag set and an API key
+## Create a service and an API key
 
-1. **Settings → Flag sets → + Add flag set** (admins): a key such as `api`, and the kind **For backends**. Then put
-   flags in it, on each flag's **Settings** tab (see [Flag sets](/guide/flag-sets)).
-2. **API keys → + New key** (admins): the environment, the flag set, what it **asks about**, and a label.
+1. **Settings → Services → + Add service** (admins): a key such as `api`, and the kind **Backend**. Then put
+   flags in it, on each flag's **Settings** tab (see [Services](/guide/services)).
+2. **API keys → + New key** (admins): the environment, the service, what it **asks about**, and a label.
 
 | Scope | Asks about |
 |---|---|
@@ -23,9 +23,12 @@ A backend also hands each signed-in user's app its entity's secret link and toke
 | `below` | one entity and every entity under it, e.g. Globex and its brands Lumen and Bolt |
 | `all` | any entity, for a backend shared by all of them |
 
-The key is shown once. It looks like `ff_prod_api_…`: one environment, one flag set. Send it as
-`Authorization: Bearer <key>`. A request about an entity outside the key's scope gets `403`. See
-[Security model](/guide/security#api-keys).
+The key is shown once. It looks like `ff_prod_api_…`: one environment, one service. Send it as
+`Authorization: Bearer <key>`. A request about an entity outside the key's scope gets `403`.
+
+A backend service's key is secret. A request that carries one and an `Origin` header, which browsers send, gets
+`403`: a backend's key in a web page doesn't work. Apps use their app service's own key, which is public
+and reads values only. See [Security model](/guide/security#api-keys).
 
 ## flagd JSON
 
@@ -41,8 +44,8 @@ The entity is named in the path by its dimension, as rules name it: `/sdk/v1/fla
 `/sdk/v1/flagd/brand/lumen`. A key scoped to one entity (or `below` one, asking about its own) may leave the path off:
 `GET /sdk/v1/flagd`.
 
-The answer is the key's flag set for that entity, as one flagd flag set, with `flagSetId`
-`<environment>/<flag set>/<entity>`:
+The answer is the key's service for that entity, as one flagd flag set, with `flagSetId`
+`<environment>/<service>/<entity>`:
 
 ```json
 {
@@ -63,15 +66,17 @@ The answer is the key's flag set for that entity, as one flagd flag set, with `f
 }
 ```
 
-The server settles everything it knows for this backend (the environment, the flag set, the entity and the entities
+The server settles everything it knows for this backend (the environment, the service, the entity and the entities
 above it). What depends on the request stays as a flat JsonLogic `if`, one branch per rule, in the order the server
 evaluates them. It holds that entity's values only.
 
 - `ETag` and `If-None-Match` → `304`. `Cache-Control: private, no-cache`.
-- A flag that isn't in the key's flag set isn't in the JSON (`FLAG_NOT_FOUND`). A flag switched off is `DISABLED`, and
+- A flag that isn't in the key's service isn't in the JSON (`FLAG_NOT_FOUND`). A flag switched off is `DISABLED`, and
   "use the code default" is a `null` variant: in both cases the provider returns the default in your code.
 - `401` without a key or with an unknown or revoked one, `403` outside the key's scope, `404` for an entity or
   dimension that doesn't exist, `400` for an `all` key with no entity in the path.
+- `403` for an app service's key: it reads values only, over OFREP. The rules are for a backend's key. A backend's
+  key sent from a browser (with an `Origin` header) gets `403` too.
 
 ## Run flagd as a sidecar
 
@@ -161,11 +166,11 @@ Name the entity in the evaluation context by its dimension key. The server fills
   every device gets before sign-in.
 - **The rest of the context** is what the request knows about itself, nested or dotted (`{"app": {"version":
   "6.0.0"}}` or `{"app.version": "6.0.0"}`). `targetingKey` is the device ID a % of devices is decided by, unless the
-  context has `device.id`. Anything it says about the flag set or the environment is ignored: those come from the key.
+  context has `device.id`. Anything it says about the service or the environment is ignored: those come from the key.
 - **Code defaults.** A flag that uses the code default answers with a reason and no `value`, so the provider returns
   the default in your code.
 - **Group names** of a % rule come back in the answer's `metadata.group`.
-- The bulk evaluation (every flag in the key's flag set) answers with a weak `ETag`; asking again with
+- The bulk evaluation (every flag in the key's service) answers with a weak `ETag`; asking again with
   `If-None-Match` gets `304` while nothing changed.
 
 The endpoints are in the [HTTP API reference](/reference/http-api#openfeature-remote-evaluation-ofrep). OFREP
@@ -173,34 +178,37 @@ requests go to the server on every evaluation: a CDN doesn't cache them.
 
 ## Hand links to apps
 
-Apps read their entity's file at a secret link, or ask with OpenFeature's OFREP provider using a token made from that
-link for one flag set (see [Flag sets](/guide/flag-sets)). Your backend knows which entity a user belongs to, so it
-asks for both when the user signs in, naming the app's flag set, and hands them to the app:
+An app reads with its app service's key, and says in the context who is signed in. That is targeting, not proof. When
+an app must read as its own entity and no other, it uses a signed **app link** instead: its entity's file at a secret
+link, or OpenFeature's OFREP provider with a token made from that link for one service (see
+[Services](/guide/services#signed-app-links)). This is optional. Your backend knows which entity a user belongs to, so
+it asks for both when the user signs in, naming the app's service, and hands them to the app:
 
 ```http
-GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>
+GET /sdk/v1/links/<dimension>/<entity>?service=<key>
 Authorization: Bearer ff_prod_api_…
 ```
 
 ```json
 {
   "environment": "prod",
-  "flagSet": "ios",
+  "service": "ios",
   "entity": "lumen",
   "path": "/client/v1/flags/prod/ios/lumen/k3J9xW2mQ7vR1tY5uP8sLa",
   "token": "ffl_prod.ios.lumen.Hc4nT8bZ1qW6eY0rS3vJ5d"
 }
 ```
 
-- The link is for the key's environment. `flagSet` is the key of a flag set for apps (`web`, `ios`, `android`); a
-  flag set for backends has no file.
+- The link is for the key's environment. `service` is the key of an app service (`web`, `ios`, `android`); a
+  backend service has no file. (`?flagSet=` from 0.2 still works until 0.4.)
 - For the app file, the app reads `path` from the address apps use, usually the CDN in front of your server:
   `https://flags.example.com/client/v1/flags/prod/ios/lumen/…`. `path` is there only when the `appFiles()` plugin
   runs.
 - For OFREP, the app's provider sends `Authorization: Bearer <token>`. The token asks as that entity only.
 - The answer has `Cache-Control: no-store`: both are secrets. See [Security model](/guide/security#app-tokens).
-- `401` without a valid key, `403` for an entity outside the key's scope, `400` without `?flagSet=`, `404` for an
-  entity, dimension or flag set for apps that doesn't exist.
+- `401` without a valid key, `403` for an entity outside the key's scope or for an app service's key (only a
+  backend's key hands out links), `400` without `?service=`, `404` for an entity, dimension or app service that
+  doesn't exist.
 
 When an entity's link is replaced, the old link and token stop working; the backend gets the new ones the next time
 it asks.

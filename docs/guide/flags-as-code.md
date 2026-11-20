@@ -21,7 +21,7 @@ companyflags flags push     # make CompanyFlags match flags.json
       "owner": "payments",
       "tags": ["checkout"],
       "removeBy": "2027-02-17",
-      "flagSets": { "dev": ["web", "ios", "android"], "prod": ["web"] }
+      "services": { "dev": ["web", "ios", "android"], "prod": ["web"] }
     },
     "checkout_layout": {
       "kind": "experiment",
@@ -29,7 +29,7 @@ companyflags flags push     # make CompanyFlags match flags.json
       "removeBy": "2027-03-01",
       "variants": { "one_page": "one-page", "steps": "steps" },
       "default": "steps",
-      "flagSets": { "dev": ["web"], "prod": ["web"] }
+      "services": { "dev": ["web"], "prod": ["web"] }
     }
   }
 }
@@ -42,18 +42,18 @@ companyflags flags push     # make CompanyFlags match flags.json
 | `name`, `description`, `owner`, `tags`, `removeBy` | The flag's details, as in its Settings tab. |
 | `variants` | Variant → value. An on/off flag has `on: true` and `off: false` when you leave it out. |
 | `default` | For a new flag: the variant everyone gets until you add rules. An on/off flag starts on `off`. |
-| `flagSets` | Per environment, the [flag sets](/guide/flag-sets) the flag is in. |
+| `services` | Per environment, the [services](/guide/services) the flag is in. Before 0.3 it was `flagSets`, which a push no longer reads: rename it. |
 | `freeValues` | `true` for a flag whose values are typed into its rules. Such a flag is made in the console. |
 
 ## What a push does
 
 The file says which flags exist and what they are. A push:
 
-- **makes** the flags the file has and CompanyFlags doesn't, with their variants, flag sets and default;
-- **changes** the details, adds variants and changes their values, and changes flag sets;
+- **makes** the flags the file has and CompanyFlags doesn't, with their variants, services and default;
+- **changes** the details, adds variants and changes their values, and changes services;
 - **lists** the flags only CompanyFlags has, and leaves them as they are. Archive a flag in the console.
 
-It goes through the same checks as the console. Where changes need approval, changing a flag's flag sets makes a
+It goes through the same checks as the console. Where changes need approval, changing a flag's services makes a
 request, as the console does, and the push prints its number. A new flag starts switched off there. A value that is
 served where changes need approval can't change: add a new variant and point the rules at it.
 

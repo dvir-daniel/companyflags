@@ -18,35 +18,35 @@ const flag = (key: string, delivery: Record<string, string[]>) => ({
 });
 
 test('only admins change or delete an app', async () => {
-  assert.equal((await admin().post('/flag-sets', { key: 'kiosk', kind: 'client' })).status, 201);
+  assert.equal((await admin().post('/services', { key: 'kiosk', kind: 'client' })).status, 201);
   const editor = t.as('alice');
-  const put = await editor.put('/flag-sets/kiosk', { kind: 'server' });
+  const put = await editor.put('/services/kiosk', { kind: 'server' });
   assert.equal(put.status, 403);
-  assert.equal((await editor.del('/flag-sets/kiosk')).status, 403);
-  assert.equal((await t.as('bob').del('/flag-sets/kiosk')).status, 403, 'nor approvers');
+  assert.equal((await editor.del('/services/kiosk')).status, 403);
+  assert.equal((await t.as('bob').del('/services/kiosk')).status, 403, 'nor approvers');
   assert.ok((await appsNow()).includes('kiosk:client'), 'nothing changed');
 });
 
 test('an unused app changes kind; its key can’t change; both are in History', async () => {
-  const r = await admin().put('/flag-sets/kiosk', { kind: 'server' });
+  const r = await admin().put('/services/kiosk', { kind: 'server' });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual(r.json, { key: 'kiosk', kind: 'server' });
   assert.ok((await appsNow()).includes('kiosk:server'));
   const [h] = await history('app.update');
   assert.deepEqual([h.changedBy, h.before, h.after, h.environment], ['dana', { key: 'kiosk', kind: 'client' }, { key: 'kiosk', kind: 'server' }, null]);
 
-  assert.equal((await admin().put('/flag-sets/kiosk', { kind: 'server' })).status, 200, 'the same kind: nothing to do');
+  assert.equal((await admin().put('/services/kiosk', { kind: 'server' })).status, 200, 'the same kind: nothing to do');
   assert.equal((await history('app.update')).length, 1, 'and nothing in History');
-  const rename = await admin().put('/flag-sets/kiosk', { key: 'kiosk-2', kind: 'server' });
+  const rename = await admin().put('/services/kiosk', { key: 'kiosk-2', kind: 'server' });
   assert.equal(rename.status, 422);
   assert.match(rename.json.error, /key can’t change/);
-  assert.equal((await admin().put('/flag-sets/kiosk', { kind: 'fridge' })).status, 422);
-  assert.equal((await admin().put('/flag-sets/nope', { kind: 'client' })).status, 404);
-  assert.equal((await admin().del('/flag-sets/nope')).status, 404);
+  assert.equal((await admin().put('/services/kiosk', { kind: 'fridge' })).status, 422);
+  assert.equal((await admin().put('/services/nope', { kind: 'client' })).status, 404);
+  assert.equal((await admin().del('/services/nope')).status, 404);
 });
 
 test('an app a flag is sent to can’t change kind or be deleted: the refusal says which flags and what to do', async () => {
-  for (const r of [await admin().del('/flag-sets/android'), await admin().put('/flag-sets/android', { kind: 'server' })]) {
+  for (const r of [await admin().del('/services/android'), await admin().put('/services/android', { kind: 'server' })]) {
     assert.equal(r.status, 409, JSON.stringify(r.json));
     assert.match(r.json.error, /^android can’t (be deleted|change kind) while it’s in use$/);
     assert.match(r.json.errors[0], /flags are still in it: .*android_quick_share \(dev, prod\).*Take each one out of android first/);
@@ -58,14 +58,14 @@ test('an app a flag is sent to can’t change kind or be deleted: the refusal sa
 });
 
 test('a backend with an API key that still works can’t go; once the key is revoked it can, and its keys go with it', async () => {
-  assert.equal((await admin().post('/flag-sets', { key: 'reports', kind: 'server' })).status, 201);
+  assert.equal((await admin().post('/services', { key: 'reports', kind: 'server' })).status, 201);
   assert.equal((await t.as('alice').post('/api-keys', { environment: 'dev', project: 'reports', scope: 'all' })).status, 403, 'only admins make keys');
   const key = await admin().post('/api-keys', { environment: 'dev', project: 'reports', scope: 'all', label: 'nightly' });
   assert.equal(key.status, 201, JSON.stringify(key.json));
   const download = () => t.call('GET', '/sdk/v1/flagd/company/acme', undefined, { authorization: `Bearer ${key.json.key}` });
   assert.equal((await download()).status, 200);
 
-  for (const r of [await admin().del('/flag-sets/reports'), await admin().put('/flag-sets/reports', { kind: 'client' })]) {
+  for (const r of [await admin().del('/services/reports'), await admin().put('/services/reports', { kind: 'client' })]) {
     assert.equal(r.status, 409, JSON.stringify(r.json));
     assert.deepEqual(r.json.errors, ['An API key for it still works: revoke it on the API keys page first.']);
   }
@@ -73,7 +73,7 @@ test('a backend with an API key that still works can’t go; once the key is rev
 
   assert.equal((await t.as('alice').post(`/api-keys/${key.json.id}/revoke`)).status, 403, 'or revoke them');
   assert.equal((await admin().post(`/api-keys/${key.json.id}/revoke`)).status, 200);
-  const gone = await admin().del('/flag-sets/reports');
+  const gone = await admin().del('/services/reports');
   assert.equal(gone.status, 200, JSON.stringify(gone.json));
   assert.ok(!(await appsNow()).some((a) => a.startsWith('reports:')));
   assert.equal((await t.db.query(`select 1 from api_key where id = $1`, [key.json.id])).rows.length, 0, 'its revoked key went with it');
@@ -83,45 +83,45 @@ test('a backend with an API key that still works can’t go; once the key is rev
 });
 
 test('a request still to go out that would send a flag to the app keeps it; cancelled, the app can go', async () => {
-  assert.equal((await admin().post('/flag-sets', { key: 'tv', kind: 'client' })).status, 201);
+  assert.equal((await admin().post('/services', { key: 'tv', kind: 'client' })).status, 201);
   const asked = await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'prod', projects: ['android', 'tv'] });
   assert.equal(asked.status, 202, 'production needs approval: a request');
   const id = asked.json.changeSetId;
 
-  const r = await admin().del('/flag-sets/tv');
+  const r = await admin().del('/services/tv');
   assert.equal(r.status, 409);
   assert.deepEqual(r.json.errors, [`A request waiting to go out would put a flag in it: #${id} in prod. Cancel or reject it in Approvals first.`]);
   assert.deepEqual(r.json.inUse.requests, [{ id, environment: 'prod' }]);
 
   assert.equal((await t.as('alice').post(`/change-sets/${id}/cancel`)).status, 200);
-  assert.equal((await admin().del('/flag-sets/tv')).status, 200);
+  assert.equal((await admin().del('/services/tv')).status, 200);
 });
 
 test('a deleted app’s file stops being served at once, and so does an app made a backend', async () => {
-  for (const key of ['lobby', 'signage']) assert.equal((await admin().post('/flag-sets', { key, kind: 'client' })).status, 201);
+  for (const key of ['lobby', 'signage']) assert.equal((await admin().post('/services', { key, kind: 'client' })).status, 201);
   await t.settle();
   for (const key of ['lobby', 'signage']) {
     const file = await t.appFile('dev', key, null);
     assert.equal(file.status, 200);
     assert.deepEqual(file.json.flags, {}, 'nothing is sent to it');
   }
-  assert.equal((await admin().del('/flag-sets/lobby')).status, 200);
-  assert.equal((await admin().put('/flag-sets/signage', { kind: 'server' })).status, 200);
+  assert.equal((await admin().del('/services/lobby')).status, 200);
+  assert.equal((await admin().put('/services/signage', { kind: 'server' })).status, 200);
   assert.equal((await t.appFile('dev', 'lobby', null)).status, 404);
   assert.equal((await t.appFile('dev', 'signage', null)).status, 404);
   assert.equal((await t.appFile('dev', 'signage', 'acme')).status, 404, 'nor at an entity’s link');
 });
 
 test('archived flags don’t keep an app: it leaves their Sent to, which History keeps', async () => {
-  assert.equal((await admin().post('/flag-sets', { key: 'watch', kind: 'client' })).status, 201);
+  assert.equal((await admin().post('/services', { key: 'watch', kind: 'client' })).status, 201);
   assert.equal((await t.as('alice').post('/flags', flag('watch_faces', { dev: ['watch'] }))).status, 201);
-  const kept = await admin().del('/flag-sets/watch');
+  const kept = await admin().del('/services/watch');
   assert.equal(kept.status, 409);
   assert.match(kept.json.errors[0], /^A flag is still in it: watch_faces \(dev\)\. Take that flag out of watch first \(the flag’s Settings tab\)\.$/);
 
   assert.equal((await t.as('alice').post('/flags/watch_faces/archive')).status, 200);
-  assert.equal((await admin().del('/flag-sets/watch')).status, 200);
+  assert.equal((await admin().del('/services/watch')).status, 200);
   const h = (await history('app.delete')).find((x) => x.before.key === 'watch');
   assert.deepEqual(h.before.archivedFlags, ['watch_faces']);
-  assert.equal((await admin().post('/flag-sets', { key: 'watch', kind: 'client' })).status, 201, 'the key is free again');
+  assert.equal((await admin().post('/services', { key: 'watch', kind: 'client' })).status, 201, 'the key is free again');
 });

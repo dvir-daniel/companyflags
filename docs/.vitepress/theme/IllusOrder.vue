@@ -2,7 +2,7 @@
 // The order one flag is decided in, for one entity, in one environment (server/evaluator.ts entityChain and
 // evaluate). The first step that answers wins.
 const steps: { label: string; title: string; text: string; chip: string; tone?: 'ok' | 'warn' | 'bad' }[] = [
-  { label: 'in set?', title: 'Not in this flag set', text: 'The flag doesn’t exist for it.', chip: 'code default', tone: 'bad' },
+  { label: 'in service?', title: 'Not in this service', text: 'The flag doesn’t exist for it.', chip: 'code default', tone: 'bad' },
   { label: 'on?', title: 'The flag is off', text: 'Nothing is sent.', chip: 'code default', tone: 'bad' },
   { label: 'locked', title: 'Overrides', text: 'For everyone. A missing value counts as a match.', chip: 'value or %', tone: 'warn' },
   { label: 'own', title: 'The entity’s own rules', text: '“Own settings only” stops here, with its own default.', chip: 'value or %', tone: 'ok' },

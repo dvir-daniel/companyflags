@@ -22,10 +22,10 @@ import { contextFor, evaluate, sortedFlagKeys, UnknownEntityError, type EvalResu
 /** What each environment serves now, one snapshot per environment. A snapshot never changes once built. */
 export type Snapshots = { readonly snapshots: ReadonlyMap<string, Snapshot> };
 
-/** Who asks the evaluator: a flag set, the entity (none: what everyone gets before sign-in), and what the device or
+/** Who asks the evaluator: a service, the entity (none: what everyone gets before sign-in), and what the device or
  *  request says about itself, flat ("app.version", "device.id"). Only the attributes an app may report are used. */
-export type Asking = { flagSet: string; entity?: string | null; attrs?: Record<string, unknown> };
-/** One flag's answer, or every flag sent to the flag set, as OFREP answers them. 404 for an unknown environment or
+export type Asking = { service: string; entity?: string | null; attrs?: Record<string, unknown> };
+/** One flag's answer, or every flag sent to the service, as OFREP answers them. 404 for an unknown environment or
  *  entity. */
 export type Evaluate = {
   (environment: string, who: Asking, flagKey: string): EvalResult;
@@ -53,13 +53,13 @@ export type PluginContext = {
   /** The console's address (BETTER_AUTH_URL), for links in what a plugin sends; unknown when it isn't set. */
   baseURL?: string | null;
   log: (m: string) => void;
-  /** @internal, for the built-in plugins: API keys, app-link secrets and flag sets, kept in memory and cleared when
+  /** @internal, for the built-in plugins: API keys, app-link secrets and services, kept in memory and cleared when
    *  they change (journal.ts). */
   keys: KeyCache;
   /** @internal, for the built-in plugins */
   links: LinkCache;
   /** @internal, for the built-in plugins */
-  flagSets: AppCache;
+  services: AppCache;
 };
 
 /** What a plugin's console routes may use: who is asking is c.get('user'), set by the console's sign-in. */
@@ -169,13 +169,13 @@ export function evaluatorFor(plane: Snapshots): Evaluate {
     if (!snap) throw new HttpError(404, `environment "${environment}" not found`);
     let ctx;
     try {
-      ctx = contextFor(snap, { project: who.flagSet, entity: who.entity ?? null }, who.attrs, { trust: 'app' });
+      ctx = contextFor(snap, { project: who.service, entity: who.entity ?? null }, who.attrs, { trust: 'app' });
     } catch (e) {
       if (e instanceof UnknownEntityError) throw new HttpError(404, e.message);
       throw e;
     }
     if (flagKey !== undefined) return evaluate(snap, flagKey, ctx, false);
-    return sortedFlagKeys(snap).filter((k) => snap.flags[k].delivery.includes(who.flagSet)).map((k) => evaluate(snap, k, ctx, false));
+    return sortedFlagKeys(snap).filter((k) => snap.flags[k].delivery.includes(who.service)).map((k) => evaluate(snap, k, ctx, false));
   }
   return run;
 }

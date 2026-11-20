@@ -9,57 +9,47 @@ import { bootProblem } from '../web/src/text.ts';
 
 const blank = { environments: [], projects: [], dimensions: [], entities: [], plugins: ['ofrep', 'flagd', 'app-files'] } as unknown as Meta;
 const dev = { key: 'dev', name: 'Development', minApprovals: 0, revision: 1 };
-const store = { key: 'store', singular: 'store', plural: 'stores', entities: 1, withParent: 0 };
-const acme = { key: 'acme-12', name: 'Acme 12', dimension: 'store', createdAt: '' };
 const at = (meta: Partial<Meta>, flags?: number) => {
   const steps = setupSteps({ ...blank, ...meta } as Meta, flags);
   return { steps, done: steps.filter((s) => s.done).map((s) => s.key), next: nextStep(steps).key, step: (k: string) => steps.find((s) => s.key === k)! };
 };
 
 test('the checklist marks each step done from what the server has, and goes on to the next', () => {
-  // a new server: environments first, then the rest, then connecting an app (five steps)
-  assert.equal(at({}).steps.length, 5);
+  // a new server: environments first, then services, a flag, then connecting an app (four steps: dimensions are optional)
+  assert.equal(at({}).steps.length, 4);
   assert.deepEqual(at({}).done, []);
   assert.equal(at({}).next, 'environments');
-  // an environment alone doesn't finish setting up: flag sets, the dimensions and an entry still come
   assert.deepEqual(at({ environments: [dev] }).done, ['environments']);
-  assert.equal(at({ environments: [dev] }).next, 'flag-sets');
-  const sets = { environments: [dev], projects: [{ key: 'web', kind: 'client' as const }] };
-  assert.equal(at(sets).next, 'entries');
-  // a dimension with no entry isn't enough: an app's link and token are an entry's
-  assert.equal(at({ ...sets, dimensions: [store] }).next, 'entries');
-  const ready = { ...sets, dimensions: [store], entities: [acme] };
-  assert.deepEqual(at(ready).done, ['environments', 'flag-sets', 'entries']);
-  // the flag step is done only when the page knows there are flags
+  assert.equal(at({ environments: [dev] }).next, 'services');
+  const ready = { environments: [dev], projects: [{ key: 'web', kind: 'client' as const }] };
+  assert.deepEqual(at(ready).done, ['environments', 'services']);
+  // no dimension or entry is needed: an app reads with its service's key
   assert.equal(at(ready).next, 'flag');
+  // the flag step is done only when the page knows there are flags
   assert.equal(at(ready, 0).next, 'flag');
   assert.equal(at(ready, 3).next, 'app');
+  assert.equal(at(ready, 3).step('app').href, '#/keys');
   // connecting an app is never marked done: the console can't see it
   assert.equal(at(ready, 3).step('app').done, false);
 });
 
 test('each step links where it is done', () => {
   assert.equal(at({}).step('environments').href, '#/settings');
-  assert.equal(at({}).step('flag-sets').href, '#/settings');
-  // no dimensions yet: to set them up; then to the top dimension's page, to add an entry
-  assert.equal(at({}).step('entries').href, '#/settings/dimensions');
-  assert.equal(at({ dimensions: [store] }).step('entries').href, '#/dimensions/store');
-  assert.equal(at({ dimensions: [store] }).step('entries').action, 'Open Stores');
+  assert.equal(at({}).step('services').href, '#/settings');
   assert.equal(at({}).step('flag').href, '#/flags');
-  // connecting an app: the first entry's page, where App link is; with no entry yet, nowhere to go
-  assert.equal(at({}).step('app').href, undefined);
-  assert.equal(at({ dimensions: [store], entities: [acme] }).step('app').href, '#/dimensions/store/acme-12');
-  assert.equal(at({ dimensions: [store], entities: [acme] }).step('app').action, 'Open Acme 12');
+  // connecting an app: the API keys page, where each service's key is made
+  assert.equal(at({}).step('app').href, '#/keys');
+  assert.equal(at({}).step('app').action, 'API keys');
 });
 
 test('connecting an app says how this server is read', () => {
-  // OFREP: the token; app files only: the link
-  assert.match(at({}).step('app').text, /Copy token.*OpenFeature/);
-  assert.match(at({ plugins: ['app-files'] }).step('app').text, /Copy link/);
-  assert.doesNotMatch(at({ plugins: ['app-files'] }).step('app').text, /token/);
+  // OFREP: the service's key in the provider; app files only: the entry's link
+  assert.match(at({}).step('app').text, /key.*OFREP provider/);
+  assert.match(at({ plugins: ['app-files'] }).step('app').text, /app link/);
+  assert.doesNotMatch(at({ plugins: ['app-files'] }).step('app').text, /OFREP/);
 });
 
-test('a flag set’s file for everyone: its address, one segment per key', () => {
+test('a service’s file for everyone: its address, one segment per key', () => {
   assert.equal(everyoneFilePath('prod', 'web'), '/client/v1/flags/prod/web');
   assert.equal(everyoneFilePath('a/b', 'c?d'), '/client/v1/flags/a%2Fb/c%3Fd');
 });

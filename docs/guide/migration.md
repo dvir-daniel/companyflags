@@ -10,10 +10,10 @@ admins can also export with JSONata).
 ## How it works
 
 1. **Import** the old system's flags, with **Create missing flags** on. They're created as config flags in no
-   [flag set](/guide/flag-sets) yet, so apps still read the old system.
+   [service](/guide/services) yet, so apps still read the old system.
 2. **Put OpenFeature's Multi-Provider in each app**: CompanyFlags first, the old system second. A flag
-   that isn't in the app's flag set is "not found", and the old system answers instead.
-3. **Move a flag** by adding it to the app's flag set (the flag's **Settings** tab, **Flag sets**). From then on the
+   that isn't in the app's service is "not found", and the old system answers instead.
+3. **Move a flag** by adding it to the app's service (the flag's **Settings** tab, **Services**). From then on the
    app reads it here.
 4. **Keep both the same** meanwhile: a [webhook out](/guide/webhooks#out) tells the old system each change made here,
    and a [webhook in](/guide/webhooks#in) takes the old system's changes.
@@ -23,7 +23,7 @@ admins can also export with JSONata).
 
 OpenFeature's [Multi-Provider](https://openfeature.dev/specification/appendix-a#multi-provider) asks several providers
 in turn. With `FirstMatchStrategy`, a provider that answers `FLAG_NOT_FOUND` passes the question to the next one; any
-other answer is the app's. CompanyFlags answers `FLAG_NOT_FOUND` for every flag that isn't in the app's flag set.
+other answer is the app's. CompanyFlags answers `FLAG_NOT_FOUND` for every flag that isn't in the app's service.
 
 ```ts
 import { OpenFeature, MultiProvider, FirstMatchStrategy } from '@openfeature/web-sdk';
@@ -32,9 +32,9 @@ import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 await OpenFeature.setProviderAndWait(new MultiProvider([
   { provider: new OFREPWebProvider({
       baseUrl: 'https://flags.example.com',
-      headers: [['Authorization', `Bearer ${session.flagsToken}`]],   // see OpenFeature (web, mobile, servers)
+      headers: [['Authorization', 'Bearer ff_prod_web_…']],   // the app service's key: see OpenFeature
   }) },
-  { provider: oldSystemProvider },   // every flag not in this app's flag set yet
+  { provider: oldSystemProvider },   // every flag not in this app's service yet
 ], new FirstMatchStrategy()));
 ```
 
@@ -42,9 +42,9 @@ On a server it's the same with `@openfeature/server-sdk` and `OFREPProvider`. If
 provider, write a small one: a provider is one class with a method per value type, reading whatever the old system
 gives.
 
-::: warning A flag that is in the flag set but switched off
-A flag in the app's flag set and switched off answers with the app's own default: the old system isn't asked. Switch a flag
-on before adding it to the flag set, or leave it out until it's ready.
+::: warning A flag that is in the service but switched off
+A flag in the app's service and switched off answers with the app's own default: the old system isn't asked. Switch a flag
+on before adding it to the service, or leave it out until it's ready.
 :::
 
 ::: tip Keys
@@ -110,7 +110,7 @@ most 4 MB of JSON. One that runs over a limit gets `422` and imports nothing.
 ## Export
 
 **Migration → Export** gives one environment in the same formats: CompanyFlags values (which imports back
-unchanged), key-value JSON, one flag set's flagd file, or your JSONata expression's shape. It has each flag's value for
+unchanged), key-value JSON, one service's flagd file, or your JSONata expression's shape. It has each flag's value for
 everyone, on/off, variants and entities' own values. Rules and % aren't in it: the server decides those for each
 device.
 
@@ -123,9 +123,9 @@ The console uses these, with a session or an admin's sign-in:
 
 | | |
 |---|---|
-| `POST /api/migration/preview` | `{ environment, format, text \| input, expression?, createFlags?, flagSets? }` → `{ plan }` |
+| `POST /api/migration/preview` | `{ environment, format, text \| input, expression?, createFlags?, services? }` → `{ plan }` |
 | `POST /api/migration/import` | the same, and `reason` → `{ created, changed, applied, revision?, request?, warnings }` |
-| `POST /api/migration/export` | `{ environment, format, flagSet?, expression? }` → `{ output }` |
+| `POST /api/migration/export` | `{ environment, format, service?, expression? }` → `{ output }` |
 
 An import's body can be up to 4 MB. For another system to post changes on its own, use a
 [webhook in](/guide/webhooks#in).

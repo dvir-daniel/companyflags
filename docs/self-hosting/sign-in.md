@@ -168,7 +168,7 @@ back. You can't remove yourself, and there is always at least one admin.
 | Editor | `editor` | Change flags and entities, see and replace app links. |
 | Approver | `approver` | What an editor does, and review other people's requests. |
 | On call | `oncall` | What an approver does, and break-glass in a protected environment: turn a kill switch or ops flag off, or roll a version release back, without review and with a reason. |
-| Admin | `admin` | Everything, including Settings (environments, flag sets, dimensions, people, single sign-on, the CDN) and API keys. |
+| Admin | `admin` | Everything, including Settings (environments, services, dimensions, people, single sign-on, the CDN) and API keys. |
 
 Nobody approves their own request. The roles are defined in
 [`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts); see

@@ -13,7 +13,7 @@ History, which names only an address's host.
 
 **+ Add webhook out** opens **New webhook out**: a name, the address, and:
 
-- **Sends**: *changes* (what an environment serves: rules, defaults, entities' settings, which flag sets a flag is in) and/or
+- **Sends**: *changes* (what an environment serves: rules, defaults, entities' settings, which services a flag is in) and/or
   *reviews* (a request made, approved, rejected or scheduled).
 - **Environments**: every one, or some.
 - **Format**: signed JSON, a Slack message, or your own JSON made with JSONata.

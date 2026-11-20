@@ -206,7 +206,7 @@ after(async () => { await t.stop(); });
 const flagdFor = (key: string, path = '', headers: Record<string, string> = {}) =>
   t.call('GET', `/sdk/v1/flagd${path}`, undefined, { authorization: `Bearer ${key}`, ...headers });
 
-test('GET /sdk/v1/flagd: an entity’s key gets its flag set; a shared key names the entity in the path, by its dimension', async () => {
+test('GET /sdk/v1/flagd: an entity’s key gets its service; a shared key names the entity in the path, by its dimension', async () => {
   const dana = t.as('dana');
   const own = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'soylent' })).json.key;
   const shared = (await dana.post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;

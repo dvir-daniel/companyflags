@@ -247,7 +247,7 @@ test('archiving: refused while the flag is on, or sent to apps, where approvals 
   assert.deepEqual([made.layers.dev.base.enabled, made.layers.prod.base.enabled], [true, false], 'on where asked, except where approvals are needed');
   const sent = await t.as('alice').post('/flags/sent_to_prod/archive');
   assert.equal(sent.status, 409);
-  assert.match(sent.json.error, /take sent_to_prod out of its flag sets in prod first/);
+  assert.match(sent.json.error, /take sent_to_prod out of its services in prod first/);
 
   assert.equal((await newFlag('dev_only', { dev: ['web'] })).status, 201);
   await t.settle();

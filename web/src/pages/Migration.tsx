@@ -53,9 +53,9 @@ function SideBySide() {
         Move one flag at a time. Apps ask CompanyFlags first and the old system for everything not moved yet, so nothing changes for anyone on the day you start.
       </Heading>
       <ol className="m-0 grid max-w-[760px] list-decimal gap-2 pl-5 text-13 text-ink-2 marker:text-ink-3">
-        <li><b className="font-medium text-ink">Import</b> the old system’s flags below, with “Create missing flags” on. They’re in no flag set yet, so apps still read the old system.</li>
-        <li><b className="font-medium text-ink">Put OpenFeature’s Multi-Provider</b> in each app: CompanyFlags first, the old system second. A flag that isn’t in the app’s flag set is “not found” here, so the old system answers.</li>
-        <li><b className="font-medium text-ink">Move a flag</b> by adding it to the app’s flag set, on the flag’s page. From then on the app reads it here.</li>
+        <li><b className="font-medium text-ink">Import</b> the old system’s flags below, with “Create missing flags” on. They’re in no service yet, so apps still read the old system.</li>
+        <li><b className="font-medium text-ink">Put OpenFeature’s Multi-Provider</b> in each app: CompanyFlags first, the old system second. A flag that isn’t in the app’s service is “not found” here, so the old system answers.</li>
+        <li><b className="font-medium text-ink">Move a flag</b> by adding it to the app’s service, on the flag’s page. From then on the app reads it here.</li>
         <li><b className="font-medium text-ink">Keep both the same</b> meanwhile: a webhook out tells the old system each change made here, and a webhook in takes the old system’s changes.</li>
       </ol>
       <div className="grid gap-2">
@@ -80,7 +80,7 @@ function ImportSection() {
   const [plan, setPlan] = useState<Plan | null>(null);
   const { busy, error, setError, run } = useAsync();
   const file = useRef<HTMLInputElement>(null);
-  const body = () => ({ environment: env, format, text, expression: format === 'jsonata' ? expression : undefined, createFlags, flagSets: sets, reason });
+  const body = () => ({ environment: env, format, text, expression: format === 'jsonata' ? expression : undefined, createFlags, services: sets, reason });
   // anything changed after a preview: preview again before importing
   const edit = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPlan(null); };
 
@@ -140,7 +140,7 @@ function ImportSection() {
           </label>
           {createFlags && (
             <div className="grid gap-1.5 pl-6">
-              <span className="text-13 text-ink-3">New flags go in these flag sets in {envName}. Leave them all off to move each flag later.</span>
+              <span className="text-13 text-ink-3">New flags go in these services in {envName}. Leave them all off to move each flag later.</span>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                 {meta.projects.map((p) => (
                   <label key={p.key} className="inline-flex items-center gap-2 font-mono text-xs">
@@ -197,12 +197,12 @@ function ExportSection({ admin }: { admin: boolean }) {
   const formats = FORMATS_IN.filter(([k]) => admin || k !== 'jsonata');
   const [env, setEnv] = useState(meta.environments[0]?.key ?? '');
   const [format, setFormat] = useState('values');
-  const [flagSet, setFlagSet] = useState(meta.projects.find((p) => p.kind === 'server')?.key ?? meta.projects[0]?.key ?? '');
+  const [service, setService] = useState(meta.projects.find((p) => p.kind === 'server')?.key ?? meta.projects[0]?.key ?? '');
   const [expression, setExpression] = useState('flags.$each(function($v, $k) { { "name": $k, "value": $v.value } })');
   const [shown, setShown] = useState<string | null>(null);
   const { busy, error, run } = useAsync();
   const get = async () => {
-    const r = await run(() => api<{ output: unknown }>('POST', '/migration/export', { environment: env, format, flagSet: format === 'flagd' ? flagSet : null, expression: format === 'jsonata' ? expression : null }));
+    const r = await run(() => api<{ output: unknown }>('POST', '/migration/export', { environment: env, format, service: format === 'flagd' ? service : null, expression: format === 'jsonata' ? expression : null }));
     return r ? (typeof r.output === 'string' ? r.output : JSON.stringify(r.output, null, 2)) : null;
   };
   return (
@@ -219,12 +219,12 @@ function ExportSection({ admin }: { admin: boolean }) {
           </Field>
           <Field label="Format" hint={admin ? undefined : 'Only admins export with a JSONata expression.'}>
             <NativeSelect className={selectField} value={format} onChange={(e) => { setFormat(e.target.value); setShown(null); }}>
-              {formats.map(([k, n]) => <option key={k} value={k}>{k === 'flagd' ? 'flagd (one flag set’s file)' : n}</option>)}
+              {formats.map(([k, n]) => <option key={k} value={k}>{k === 'flagd' ? 'flagd (one service’s file)' : n}</option>)}
             </NativeSelect>
           </Field>
           {format === 'flagd' && (
-            <Field label="Flag set">
-              <NativeSelect className={selectField} value={flagSet} onChange={(e) => { setFlagSet(e.target.value); setShown(null); }}>
+            <Field label="Service">
+              <NativeSelect className={selectField} value={service} onChange={(e) => { setService(e.target.value); setShown(null); }}>
                 {meta.projects.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
               </NativeSelect>
             </Field>
@@ -508,7 +508,7 @@ function InDrawer({ webhook, onClose, onSaved, onDelete, onNewAddress }: {
   const [createFlags, setCreateFlags] = useState(webhook?.createFlags ?? false);
   const { busy, error, run } = useAsync();
   const save = async () => {
-    const body = { name, environment: env, format, expression: format === 'jsonata' ? expression : null, createFlags, flagSets: webhook?.flagSets ?? [] };
+    const body = { name, environment: env, format, expression: format === 'jsonata' ? expression : null, createFlags, services: webhook?.services ?? [] };
     const r = await run(() => webhook
       ? api<WebhookIn>('PUT', `${WEBHOOKS_PATH}/in/${webhook.id}`, body).then((w) => ({ webhook: w }))
       : api<{ webhook: WebhookIn; token: string }>('POST', `${WEBHOOKS_PATH}/in`, body));
@@ -541,7 +541,7 @@ function InDrawer({ webhook, onClose, onSaved, onDelete, onNewAddress }: {
           </Field>
         )}
         <label className="inline-flex items-center gap-2 text-13">
-          <Checkbox checked={createFlags} onCheckedChange={(v) => setCreateFlags(v === true)} /> Create missing flags (in no flag set, so apps keep reading the old system)
+          <Checkbox checked={createFlags} onCheckedChange={(v) => setCreateFlags(v === true)} /> Create missing flags (in no service, so apps keep reading the old system)
         </label>
         <ErrorList error={error} />
       </div>

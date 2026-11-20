@@ -104,7 +104,7 @@ const HELP = {
 
 const statusText = (s: string) => (s === 'in_review' ? 'waiting' : s.replace('_', ' '));
 const StatusBadge = ({ status }: { status: string }) => <Badge kind={`status-${status}`}>{statusText(status)}</Badge>;
-const changeTag = (i: { flag: string; entity: string | null; kind?: ItemKind }) => (isDelivery(i) ? `${i.flag} (flag sets)` : i.entity ? `${i.flag}/${i.entity}` : i.flag);
+const changeTag = (i: { flag: string; entity: string | null; kind?: ItemKind }) => (isDelivery(i) ? `${i.flag} (services)` : i.entity ? `${i.flag}/${i.entity}` : i.flag);
 const firstLine = (s: string | null) => s?.split('\n').find((l) => l.trim()) ?? null;
 /** What a request changes, for a toast: "new_checkout" or "4 flags". */
 const flagsOf = (items: { flag: string }[]) => { const f = [...new Set(items.map((i) => i.flag))]; return f.length === 1 ? f[0] : plural(f.length, 'flag'); };
@@ -316,7 +316,7 @@ function Queue() {
           ) : rows.map((cs, i) => {
             const shown = cs.items.slice(0, 2);
             const tags = <>
-              {shown.map((it, k) => <span key={k} className={tag}>{it.flag}{isDelivery(it) ? <span className="text-ink-3"> · flag sets</span> : it.entity && <span className="text-ink-3">/{it.entity}</span>}</span>)}
+              {shown.map((it, k) => <span key={k} className={tag}>{it.flag}{isDelivery(it) ? <span className="text-ink-3"> · services</span> : it.entity && <span className="text-ink-3">/{it.entity}</span>}</span>)}
               {cs.items.length > shown.length && <span className="shrink-0 font-mono text-11 text-ink-3">+{(cs.items.length - shown.length).toLocaleString()}</span>}
             </>;
             const protectedEnv = isProtected(cs.environment);
@@ -488,7 +488,7 @@ function RequestTitle({ cs }: { cs: CsDetail }) {
       <span className="font-mono">#{cs.id}</span>
       <span className="text-ink-3"> · </span>
       {flags.length === 1 ? <span className="font-mono">{flags[0]}</span> : plural(flags.length, 'flag')}
-      <span className="text-ink-3"> · {one ? (isDelivery(one) ? 'Flag sets' : one.entity ? entityName(one.entity) : 'Defaults') : plural(cs.items.length, 'change')}</span>
+      <span className="text-ink-3"> · {one ? (isDelivery(one) ? 'Services' : one.entity ? entityName(one.entity) : 'Defaults') : plural(cs.items.length, 'change')}</span>
     </>
   );
 }
@@ -534,7 +534,7 @@ function ChangeList({ cs, rowClass }: { cs: CsDetail; rowClass: string }) {
   const entityName = useEntityName();
   const change = (it: CsItem) => {
     const delivery = isDelivery(it);
-    const what = delivery ? 'Flag sets' : it.entity ? entityName(it.entity) : 'Defaults';
+    const what = delivery ? 'Services' : it.entity ? entityName(it.entity) : 'Defaults';
     return (
       <section key={it.seq} aria-label={`${it.flag}, ${it.entity && !delivery ? what : what.toLowerCase()}`} className={cn('border-b border-grid last:border-b-0', rowClass)}>
         <div className="mb-2 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
@@ -817,7 +817,7 @@ function DiffLines({ lines, children }: { lines: { kind: Kind; node: ReactNode }
   );
 }
 
-/** What a delivery change does: "new_checkout in flag sets: android, ios", and each flag set added or removed. */
+/** What a delivery change does: "new_checkout in services: android, ios", and each service added or removed. */
 function DeliveryDiff({ flag, before, after }: { flag: string; before: Delivery | null; after: Delivery | null }) {
   const was = before?.projects ?? [];
   const now = after?.projects ?? [];
@@ -829,7 +829,7 @@ function DeliveryDiff({ flag, before, after }: { flag: string; before: Delivery 
   return (
     <DiffLines lines={lines}>
       <li className="py-[3px] text-ink-2">
-        {now.length ? <><span className="font-mono text-ink">{flag}</span> in flag sets: {list(now)}</> : <><span className="font-mono text-ink">{flag}</span> in no flag set</>}
+        {now.length ? <><span className="font-mono text-ink">{flag}</span> in services: {list(now)}</> : <><span className="font-mono text-ink">{flag}</span> in no service</>}
         {' '}<span className="text-ink-3">(was: </span>{list(was)}<span className="text-ink-3">)</span>
       </li>
       {lines.length === 0 && <li className="py-[3px] text-ink-3">No effective changes.</li>}

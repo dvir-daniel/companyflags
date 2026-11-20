@@ -26,7 +26,7 @@ test('an API key made in one app isn’t accepted by another', async () => {
 });
 
 test('a client app added to one app isn’t known to another', async () => {
-  assert.equal((await a.as('dana').post('/flag-sets', { key: 'tv', kind: 'client' })).status, 201);
+  assert.equal((await a.as('dana').post('/services', { key: 'tv', kind: 'client' })).status, 201);
   assert.equal((await a.call('GET', '/client/v1/flags/dev/tv')).status, 200);
   assert.equal((await b.call('GET', '/client/v1/flags/dev/tv')).status, 404);
 });

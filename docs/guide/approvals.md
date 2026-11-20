@@ -15,9 +15,9 @@ Each person has one role, set by an admin in **Settings → People**:
 | On call | yes | yes | yes | |
 | Admin | yes | yes | yes | yes |
 
-Viewers can look (app links aside), run the Debug tab and Compare, and change nothing. Settings (environments, flag
-sets, dimensions, people, single sign-on, the CDN) are for admins. Beyond that, roles only decide who reviews and who
-may use break-glass. The rules live in one module the server and the console share,
+Viewers can look (app links aside), run the Debug tab and Compare, and change nothing. Settings (environments,
+services, dimensions, people, single sign-on, the CDN) are for admins. Beyond that, roles only decide who reviews and
+who may use break-glass. The rules live in one module the server and the console share,
 [`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts).
 
 ## Protected environments
@@ -28,10 +28,10 @@ by its author. With 0, changes apply at once.
 
 In a protected environment, also:
 
-- putting a flag in a flag set, or taking it out, is a request too;
+- putting a flag in a service, or taking it out, is a request too;
 - a value the environment serves can't be changed in place: add a new value and point the rules at it (reviewed);
 - a new flag starts off;
-- a flag can be archived only once it is off and in no flag set there;
+- a flag can be archived only once it is off and in no service there;
 - only admins can move an entity under another parent, since that changes what it gets in every environment at once.
 
 ## How a change goes through
@@ -61,7 +61,7 @@ Each item of a request records the version of the settings it was made against. 
 the meantime, the request can't apply: it ends as a conflict, and nothing in it changes. The same holds for:
 
 - an entity's own settings, when the flag's defaults changed after the request was made;
-- a change to which flag sets a flag is in, when that list changed after the request was made.
+- a change to which services a flag is in, when that list changed after the request was made.
 
 Two requests made against the same version can both be approved, but only the first one applied goes through.
 
@@ -94,7 +94,7 @@ A kill switch such as `payments_enabled`: on call can turn payments off in Produ
 ## History
 
 **History** lists every change, newest first: who made it, when, what kind it was, the flag and entity, the values before
-and after, the comment, and the request it came from. It covers flags, entities, flag sets, environments, dimensions,
+and after, the comment, and the request it came from. It covers flags, entities, services, environments, dimensions,
 API keys, people, single sign-on and the CDN, and requests made, reviewed and scheduled.
 
 - **Append-only.** The database refuses to update, delete or truncate history entries.
@@ -112,7 +112,7 @@ change in each. **Roll back to this version** puts every flag setting changed si
 
 - **Restore undoes flag settings only**: rules, defaults, the On/Off switch and each entity's own settings. Later
   changes of other kinds stay as they are and are marked "not rolled back by restore": an entity moved or renamed, a
-  replaced app link, which flag sets a flag is in, variants, a flag's details. Entity changes apply to every environment
+  replaced app link, which services a flag is in, variants, a flag's details. Entity changes apply to every environment
   at once, so restoring one environment can't undo them cleanly. Before you confirm, the dialog lists what it leaves
   alone.
 - Archived flags and entities are left alone, and so are the defaults of flags created after that version.
@@ -122,9 +122,9 @@ change in each. **Roll back to this version** puts every flag setting changed si
 
 ## Compare
 
-**Compare**, in the sidebar, puts two sides next to each other, flag by flag: two entities, two environments or two flag
-sets. Each row shows what each side gets and why ("Globex's default", "Rule for everyone"), and you can show only the
-flags that differ, or add attributes such as an app version. It runs the same evaluator as the Debug tab.
+**Compare**, in the sidebar, puts two sides next to each other, flag by flag: two entities, two environments or two
+services. Each row shows what each side gets and why ("Globex's default", "Rule for everyone"), and you can show only
+the flags that differ, or add attributes such as an app version. It runs the same evaluator as the Debug tab.
 
 ## Not built yet
 

@@ -29,7 +29,7 @@ import { pathIn, roleInfo, switchPlan, type SwitchPath } from '../../../server/p
 import { DraftBar, ReviewDraft } from './draftReview.tsx';
 import { useDraft } from '../useDraft.ts';
 import { ConditionsTab, VersionsTab } from './versions.tsx';
-import { FinishSetup, NoFlagSets } from './setup.tsx';
+import { FinishSetup, NoServices } from './setup.tsx';
 
 /*
  * Flags (Google style: drafts and versions). The bar holds the environment and, while a draft exists,
@@ -195,7 +195,7 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
   const archive = async (list = chosen) => {
     const r = await ask({
       title: `Archive ${plural(list.length, 'flag')}?`,
-      body: <p>They leave every flag set in every environment, right away and without a review; apps and backends fall back to the defaults in their code. Their history is kept.</p>,
+      body: <p>They leave every service in every environment, right away and without a review; apps and backends fall back to the defaults in their code. Their history is kept.</p>,
       actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'go', label: 'Archive', tone: 'danger' }],
     });
     if (r.action !== 'go') return;
@@ -242,7 +242,7 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
       {tab === 'conditions' && <ConditionsTab env={env} />}
 
       {tab === 'flags' && <>
-        {/* until apps can read flags (a flag set and an entry with its app link), what's left to set up */}
+        {/* until apps can read flags (a service and an entry with its app link), what's left to set up */}
         {(meta.projects.length === 0 || meta.entities.length === 0) && <FinishSetup flags={paging.data?.all} onNewFlag={mayChange ? () => setCreating(true) : undefined} />}
         <div className="flex flex-wrap items-center gap-2 border-b border-grid px-6 py-2.5 max-sm:px-4">
           <SearchField ref={search} className="w-[260px] max-md:w-auto max-md:flex-1 max-md:basis-full" data-search="flags" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search flags" />
@@ -484,9 +484,9 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
         </Field>
       </>}
 
-      <div className="grid gap-1.5" role="group" aria-label="Flag sets">
-        <span className={monoLabel}>Flag sets</span>
-        {meta.projects.length === 0 ? <NoFlagSets /> : <>
+      <div className="grid gap-1.5" role="group" aria-label="Services">
+        <span className={monoLabel}>Services</span>
+        {meta.projects.length === 0 ? <NoServices /> : <>
           <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
             {meta.projects.map((p) => (
               <Switch key={p.key} label={p.key} checked={delivery.includes(p.key)}
@@ -495,7 +495,7 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
               </Switch>
             ))}
           </div>
-          <span className="text-13 text-ink-3">The flag sets this flag is in, in every environment.</span>
+          <span className="text-13 text-ink-3">The services this flag is in, in every environment.</span>
         </>}
       </div>
       <ErrorList error={error} />

@@ -24,7 +24,7 @@ import { isReleaseVersion } from './semver.ts';
 /** What a committed change can ask of the app's memory. createApp wires each to that app's own parts. */
 export type Effects = {
   forgetClientLinks: () => void;                      // the app-link secrets changed (delivery.ts LinkCache)
-  forgetClientApps: () => void;                       // a flag set was added, changed kind or deleted (delivery.ts AppCache)
+  forgetClientApps: () => void;                       // a service was added, changed kind or deleted (delivery.ts AppCache)
   forgetApiKeys: () => void;                          // a key was revoked (auth.ts KeyCache)
   refresh: (environment: string) => Promise<unknown>; // build an environment's snapshot now, before answering
   wake: () => void;                                   // the publisher: a version is waiting in the outbox
@@ -75,7 +75,7 @@ export const KINDS = {
   // the rest of what's served, in one environment
   'flag.create': { serves: 'environment', restore: false, says: (e) => `Created ${e.flag}` },
   // directly, or applied from a change set (layers.ts applyItems, a 'delivery' item) where the environment needs review
-  'delivery.update': { serves: 'environment', restore: false, says: (e) => `Changed the flag sets ${e.flag} is in` },
+  'delivery.update': { serves: 'environment', restore: false, says: (e) => `Changed the services ${e.flag} is in` },
   'environment.create': { serves: 'environment', restore: false, then: ['forgetClientLinks', 'refresh'], says: () => 'Added this environment' },
   // a new secret for the environment (control.ts rotateEnvironmentLinks): every old app link and token stops working
   'environment.links_replaced': { serves: 'environment', restore: false, then: ['forgetClientLinks'], says: () => 'Replaced every app link in this environment' },

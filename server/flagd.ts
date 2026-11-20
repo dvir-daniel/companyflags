@@ -2,7 +2,7 @@
 // (https://flagd.dev/reference/flag-definitions/), for flagd itself or an OpenFeature flagd provider evaluating in-process.
 //
 // It is built the way an app's file is (clientFile.ts): forEntity settles everything the server knows for every
-// request of this backend (the environment, the flag set, the entity and those above it), and what's left depends on the
+// request of this backend (the environment, the service, the entity and those above it), and what's left depends on the
 // request. Each of those lines becomes one branch of a flat JsonLogic "if"; the entity's answer is the last branch:
 //
 //   { "if": [ <line 1's checks>, "<variant>", <line 2's checks>, "<variant>", …, <the answer when none applies> ] }
@@ -38,10 +38,10 @@ export type FlagdDoc = {
   flags: Record<string, FlagdFlag>;
 };
 
-/** flagd's id for one entity's flags in one environment and flag set: `<environment>/<flag set>/<entity>`, or
- *  `<environment>/<flag set>` with no entity (flagd's `selector` picks it). */
-export const flagSetId = (environment: string, flagSet: string, entity: string | null) =>
-  (entity ? `${environment}/${flagSet}/${entity}` : `${environment}/${flagSet}`);
+/** flagd's id for one entity's flags in one environment and service: `<environment>/<service>/<entity>`, or
+ *  `<environment>/<service>` with no entity (flagd's `selector` picks it). */
+export const flagSetId = (environment: string, service: string, entity: string | null) =>
+  (entity ? `${environment}/${service}/${entity}` : `${environment}/${service}`);
 
 /** One backend's flags for one entity (`entity` null: what it gets with no entity), as flagd JSON. */
 export function buildFlagdDoc(snap: Snapshot, project: string, entity: EntityInfo | null): FlagdDoc {

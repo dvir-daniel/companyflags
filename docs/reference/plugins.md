@@ -30,12 +30,12 @@ settings without `cloudflare()`, for example, the app file's address without `ap
 | Plugin | Id | What it adds |
 |---|---|---|
 | `ofrep()` | `ofrep` | [OpenFeature's Remote Evaluation Protocol](/sdk/openfeature): `POST /ofrep/v1/evaluate/flags`, one flag, and change events. For OpenFeature's OFREP providers on the web, Android, iOS and servers. |
-| `flagd()` | `flagd` | [flagd JSON](/guide/backends) for backends that evaluate in-process: `GET /sdk/v1/flagd/<dimension>/<entity>`, with an API key. |
-| `appFiles()` | `app-files` | [App files](/sdk/app-file): one values-only file per environment, flag set and entity, made to sit behind a CDN. `GET /client/v1/flags/…`. |
+| `flagd()` | `flagd` | [flagd JSON](/guide/backends) for backends that evaluate in-process: `GET /sdk/v1/flagd/<dimension>/<entity>`, with a backend service's key. |
+| `appFiles()` | `app-files` | [App files](/sdk/app-file): one values-only file per environment, service and entity, made to sit behind a CDN. `GET /client/v1/flags/…`. |
 | `cloudflare(options?)` | `cloudflare` | [Purges Cloudflare's cache](/self-hosting/cdn#purge-on-publish) after each publish, and adds **Settings → CDN** to the console. |
 | `webhooks(options?)` | `webhooks` | [Webhooks](/guide/webhooks): out, after each change (signed JSON, Slack, or your own shape), and in, `POST /hooks/v1/<token>`. Adds them to the console's **Migration** page. |
 
-App links stay in the core: `GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>` always answers with the OFREP
+App links stay in the core: `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` always answers with the OFREP
 token, and with the app file's `path` when `appFiles()` runs.
 
 ### `cloudflare(options)`
@@ -99,7 +99,7 @@ shows when), or `'off'` when it had nothing to do.
 | `db` | The server's database. Writing to it doesn't add to History or publish anything, and a plugin has no tables of its own: the migrations are the core's. |
 | `plane` | `plane.snapshots`, read only: what each environment serves now, by environment key. |
 | `hub` | `hub.subscribe((environment, revision) => …)`: every server process hears each publish, for live readers such as an event stream. It returns the way to stop listening. `onPublish` runs once per publish, in one process, for work done once. |
-| `evaluate` | `evaluate(environment, { flagSet, entity, attrs }, flagKey?)`: the one evaluator, answering as OFREP does. Without `flagKey`, every flag sent to the flag set. An unknown environment or entity is a `404`. |
+| `evaluate` | `evaluate(environment, { service, entity, attrs }, flagKey?)`: the one evaluator, answering as OFREP does. Without `flagKey`, every flag sent to the service. An unknown environment or entity is a `404`. |
 | `env` | The server's environment variables. |
 | `baseURL` | The console's address (`BETTER_AUTH_URL`), for links in what the plugin sends; unset when it isn't known. |
 | `log` | Writes a line to the server's log. |
@@ -135,7 +135,7 @@ import { HttpError } from 'companyflags/plugins';
 
 app.get('/audit-feed/check/:entity', (c) => {
   adminOnly(c.get('user'));
-  const r = evaluate('prod', { flagSet: 'web', entity: c.req.param('entity') }, 'new_checkout');
+  const r = evaluate('prod', { service: 'web', entity: c.req.param('entity') }, 'new_checkout');
   if (r.errorCode) throw new HttpError(422, `new_checkout: ${r.errorDetails}`);
   return c.json({ value: r.value, reason: r.reason });
 });

@@ -1,4 +1,4 @@
-// The flagd plugin: one entity's flags in one flag set as flagd JSON (../flagd.ts), for flagd itself or an OpenFeature
+// The flagd plugin: one entity's flags in one service as flagd JSON (../flagd.ts), for flagd itself or an OpenFeature
 // flagd provider evaluating in-process on a backend. With an API key.
 //   GET /sdk/v1/flagd/<dimension>/<entity>, or GET /sdk/v1/flagd with a key for one entity
 

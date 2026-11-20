@@ -5,6 +5,11 @@ serves per `customer`, another per `company` › `brand`, another per `region` �
 no fixed business word of its own. The generic thing is an **entity** of a dimension, and the console always shows
 your words instead ("Brands", "Add store", "Company is Globex").
 
+Dimensions are optional. Without them, every app gets what everyone gets, and rules check what the device sends. Add
+them when values differ per part of your product: Globex gets its own `api_base_url`, and its brands Lumen and Bolt
+follow it. That is one flag, with one set of rules, and each entity's own settings on top. It is not a
+[service](/guide/services) per company: services are your apps and backends.
+
 ## The chain
 
 Your dimensions form **one chain**, top to bottom, of at most 4. Each dimension has:
@@ -48,7 +53,7 @@ Each dimension gets a page in the sidebar, named by its plural. There you add en
 below the top, a parent (**In**), which must be an entity of the dimension right above. The parent is optional.
 
 - Entity keys use lowercase letters, digits and dashes, and start with a letter or digit. They are **unique across the
-  installation**, not per dimension, because they appear in app links, flagd flag set ids and rules. `base`, `trace` and
+  installation**, not per dimension, because they appear in app links, flagd's `flagSetId` and rules. `base`, `trace` and
   `compare` are reserved.
 - **Moving** an entity under another parent changes what it, and every entity under it, gets in every environment at
   once. While any environment is protected, only admins can move one.
@@ -126,10 +131,10 @@ Two dimensions with settings of their own side by side (say `customer` and `regi
 - **Which wins?** A device of Acme in the EU would get both, so one must come first on every flag. That order is a chain.
 - **A file per combination.** Each customer × region pair would need its own file. Files multiply and the CDN's hit
   rate drops, and that cache is why delivery stays cheap with many devices. With one chain, there is **one file per
-  environment, flag set and entity**.
+  environment, service and entity**.
 - **"Why it gets this"** stays a list of levels instead of a grid.
 
-Anything else you target by stays an ordinary rule attribute: flag set, app version, country, language.
+Anything else you target by stays an ordinary rule attribute: service, app version, country, language.
 
 ## Examples
 
@@ -155,8 +160,11 @@ A request names the entity by its dimension, the same key the rules read, and ne
 
 An API key limits which entities a request may name: only its own entity (`entity`), its entity and every one under
 it (`below`), or any (`all`). Anything outside the key's scope is refused. Moving an entity out from under another
-takes it out of that one's `below` keys at once. Every entity also has a secret app link per environment. See
-[Flag sets](/guide/flag-sets), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
+takes it out of that one's `below` keys at once.
+
+An app service's key is public, so the entity an app names is targeting, not proof. Every entity also has a signed
+app link per environment: a backend hands it to the app at sign-in, and the app then asks as that entity only. See
+[Services](/guide/services#signed-app-links), [Backends](/guide/backends) and [OpenFeature](/sdk/openfeature).
 
 ## Not built yet
 

@@ -1,6 +1,6 @@
 # Glossary
 
-The words CompanyFlags uses, and the ones it avoids. CompanyFlags is feature flags and remote config: one set of rules for everyone, optional settings per entity of the installation's own dimensions, reviewed changes in protected environments, and answers read with OpenFeature (OFREP, flagd) or from a values-only file per entity and flag set.
+The words CompanyFlags uses, and the ones it avoids. CompanyFlags is feature flags and remote config: one set of rules for everyone, optional settings per entity of the installation's own dimensions, reviewed changes in protected environments, and answers read with OpenFeature (OFREP, flagd) or from a values-only file per entity and service.
 
 ## Dimensions
 
@@ -9,7 +9,7 @@ One level of what an installation serves config per, such as region, chain or st
 _Avoid_: tenant type, level (a level is a step of the entity chain)
 
 **Entity**:
-One entry of a dimension, such as the store acme-12; it can have its own settings on any flag, its own app link and keys. Console users never read this word: they read the dimension's ("Store").
+One entry of a dimension, such as the store acme-12; it can have its own settings on any flag, its own app link, and keys that ask about it. Console users never read this word: they read the dimension's ("Store").
 _Avoid_: member, tenant, customer (as the general word)
 
 **Parent**:
@@ -55,31 +55,47 @@ The explanation of one decision: each level, what it decided, and why any level 
 _Avoid_: debug log
 
 **App file**:
-The values-only file one entity's devices read for one flag set in one environment.
+The values-only file one entity's devices read for one service in one environment.
 _Avoid_: config file, client snapshot
 
 ## Reading flags
 
-**Flag set**:
-A group of flags sent together, read by an app or a backend, such as `web`, `ios` or `api`; the name is OpenFeature's (flagd and GO Feature Flag use it too). Each has a key that never changes and a kind: for apps (Android, iOS and web, which read it at an app link) or for backends (which read it with an API key). Each flag says which flag sets it is in, per environment. It is `project` in the database, the rule attribute and the console API's JSON; the public addresses say `flagSet`.
-_Avoid_: app (for the flag set itself), project (in the console)
+**Service**:
+What reads your flags: one of your apps or backends, such as `web`, `ios` or `api`. Its API key picks which flags it reads; the evaluation context picks whose values it gets. It has a key that never changes and a kind, **App** or **Backend**. Each flag says which services it is in, per environment. It is `project` in the database, the API's JSON and the rule attribute; the console, the public addresses (`?service=`) and the flags file (`services`) say service.
+_Avoid_: flag set (flagd's word: a flagd flag set is one entity's flags in one service), app (for the service itself), project (in the console), a service per customer (per-entity values are dimensions)
+
+**App** (kind of service):
+A service for apps on your users' devices: web, iOS, Android. It gets values only, never the rules. Its kind is `client` in the API.
+_Avoid_: client (in the console), frontend
+
+**Backend** (kind of service):
+A service for your own servers. It gets values over OFREP or the rules as flagd JSON, and hands out app links. Its kind is `server` in the API.
+_Avoid_: server (in the console), API (as the kind)
+
+**API key**:
+A key for one service in one environment, made by an admin on the API keys page; it may ask about its own entity, those below it, or any. Either an app key or a backend key, by the service's kind. Only its hash is kept.
+_Avoid_: SDK key, token (for a key)
+
+**App key**:
+An app service's API key (`ff_<environment>_<service>_…`). It is public: it goes in the app's OFREP provider, and reads that service's values only, for the context the app sends. It can't download flagd JSON or hand out app links (`403`).
+_Avoid_: client key, publishable key
+
+**Backend key**:
+A backend service's API key. It is secret: it stays on your servers, and reads values over OFREP, the rules as flagd JSON, and app links. A request with a backend key and an `Origin` header (a browser) is refused (`403`).
+_Avoid_: server key, secret key
 
 **App link**:
-An entity's secret in one environment, which lets an app read that entity's flags and nothing else; replacing it stops the old one at once. It comes as an app token or an app file address.
+An entity's signed link in one environment: the optional way to give an app a signed context, so it reads as that entity and no other. A backend hands it to the app at sign-in, as an app token or an app file address; replacing it stops the old one at once. With an app key alone, the entity in the context is targeting, not proof.
 _Avoid_: client key, SDK key
 
 **App token**:
-An app's credential for OFREP, `ffl_<environment>.<flag set>.<entity>.<secret>`, made from its entity's app link for one flag set: replacing the link replaces it.
-
-**API key**:
-A backend's key for one flag set for backends in one environment: it may ask about its own entity, those below it, or any. Apps never hold one.
-_Avoid_: server key, secret
+An app's signed credential for OFREP, `ffl_<environment>.<service>.<entity>.<secret>`, made from its entity's app link for one service, used in place of the app key: replacing the link replaces it.
 
 **OFREP**:
-OpenFeature's remote evaluation protocol: the server answers every flag for a credential and an evaluation context. How apps read flags.
+OpenFeature's remote evaluation protocol: the server answers every flag for a credential and an evaluation context. How apps read flags, with their app key or app token, and how backends can.
 
 **flagd JSON**:
-One entity's rules in one flag set, as a flagd document (`flagSetId` `<environment>/<flag set>/<entity>`), for a backend that evaluates them in-process.
+One entity's rules in one backend service, as a flagd document: a flagd flag set, with `flagSetId` `<environment>/<service>/<entity>`, for a backend that evaluates them in-process. Only a backend key downloads it.
 
 ## Changing flags
 
@@ -122,7 +138,7 @@ The entities a release gives the new feature to on every device, whatever its % 
 _Avoid_: beta, canary, targeted customers
 
 **Clean up**:
-Finishing a release: it is removed from the code, taken out of every flag set, and archived.
+Finishing a release: it is removed from the code, taken out of every service, and archived.
 _Avoid_: delete, retire
 
 ## People and access
@@ -185,13 +201,13 @@ A part of the server an installation turns on in its config file: a way to read 
 _Avoid_: extension, add-on, integration
 
 **Core**:
-What every server runs, plugins or not: the console and its API, sign-in, the evaluator, approvals, the change journal, publishing and app links.
+What every server runs, plugins or not: the console and its API, sign-in, the evaluator, approvals, the change journal, publishing, API keys and app links.
 
 **CLI**:
 The `companyflags` command: `start`, `init`, `secret`, `migrate`, and `flags pull`, `plan` and `push`.
 
 **Migration (moving over)**:
-Moving to CompanyFlags from another config system with both running side by side: its values are imported, apps ask CompanyFlags first and the old system for the rest (OpenFeature's Multi-Provider), and a flag moves when it's added to the app's flag set. Not to be confused with a database migration (`server/migrations/`, `companyflags migrate`).
+Moving to CompanyFlags from another config system with both running side by side: its values are imported, apps ask CompanyFlags first and the old system for the rest (OpenFeature's Multi-Provider), and a flag moves when it's added to the app's service. Not to be confused with a database migration (`server/migrations/`, `companyflags migrate`).
 _Avoid_: cut-over, big-bang switch
 
 **Import / export**:
@@ -202,5 +218,5 @@ Out: a message after each change (signed JSON, a Slack message, or JSONata's sha
 _Avoid_: callback, hook (alone)
 
 **Flags file**:
-The JSON file of flags as code (`flags.json`): each flag's details, variants and flag sets per environment, kept in step by `flags push`. Rules stay in the console.
+The JSON file of flags as code (`flags.json`): each flag's details, variants and services per environment, kept in step by `flags push`. Rules stay in the console.
 _Avoid_: flag manifest, flags.yaml

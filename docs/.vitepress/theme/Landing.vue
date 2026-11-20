@@ -40,7 +40,7 @@ const usage: Record<string, { file: string; lines: string[] }> = {
       '})',
       'await OpenFeature.setProviderAndWait(new OFREPWebProvider({',
       "  baseUrl: 'https://flags.example.com',",
-      "  headers: [['Authorization', `Bearer ${session.flagsToken}`]],",
+      "  headers: [['Authorization', 'Bearer ff_prod_web_…']], // the web service’s key: public",
       '}))',
       '',
       "OpenFeature.getClient().getBooleanValue('new_checkout', false)",
@@ -149,7 +149,7 @@ const runIt = [
             <button class="copy" :aria-label="copied ? 'Copied' : 'Copy'" @click="copyInstall">{{ copied ? 'COPIED' : 'COPY' }}</button>
           </div>
         </div>
-        <p class="note">Then open the setup link the server prints in its log, and create the admin account. The console walks you through five steps to an app reading its first flag.</p>
+        <p class="note">Then open the setup link the server prints in its log, and create the admin account. The console walks you through four steps to an app reading its first flag.</p>
       </section>
 
       <section>
@@ -179,7 +179,7 @@ const runIt = [
             <a :href="withBase('/sdk/openfeature#web-apps')" :class="{ on: usageTab === 'Web app' }">Apps: OFREP</a>
             <a :href="withBase('/sdk/openfeature#backends')" :class="{ on: usageTab === 'Backend' }">Backends: OFREP</a>
             <a :href="withBase('/guide/backends')" :class="{ on: usageTab === 'flagd' }">Backends: flagd</a>
-            <p>No SDK of ours: OpenFeature’s own providers, on the web, Android, iOS and servers. Each app asks as its own entity, with a token it can’t change.</p>
+            <p>No SDK of ours: OpenFeature’s own providers, on the web, Android, iOS and servers. An app reads with its service’s public key; a backend keeps its own key secret.</p>
           </div>
         </div>
       </section>
@@ -188,8 +188,8 @@ const runIt = [
         <h2 class="title"><span>How it works</span></h2>
         <IllusHowItWorks />
         <p class="lead small">
-          One evaluator decides every answer, and the console traces it step by step. A device gets its own answers only:
-          never the rules, a list of entities, or anyone else’s values.
+          One evaluator decides every answer, and the console traces it step by step. A device gets values only: never the
+          rules or a list of entities.
         </p>
       </section>
 

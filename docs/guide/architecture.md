@@ -15,7 +15,8 @@ are read by many apps and backends at once, so they need one place that decides,
 | Evaluator | Decides every answer, the same way for every plugin and the console's trace | `server/evaluator.ts` |
 | Change journal | Every change is recorded in History, and published once it commits | `server/journal.ts` |
 | Publishing | Builds each environment's snapshot after a change; several servers catch up from the database | `server/snapshot.ts`, `server/workers.ts` |
-| App links | Each entity's secret link and OFREP token, for your backend to hand to its apps | `server/delivery.ts` |
+| Keys | Each service's keys: an app's is public and reads values only, a backend's is secret | `server/auth.ts` |
+| App links | Each entity's signed link and OFREP token, for your backend to hand to its apps (optional) | `server/delivery.ts` |
 
 ## Plugins
 

@@ -23,14 +23,15 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 ## How it works
 
 1. **You describe your business.** In **Settings → Dimensions** you say what config is served per: `customer`, or
-   `company` › `brand`, or `region` › `chain` › `store`. Each customer, brand or store is an **entity**.
+   `company` › `brand`, or `region` › `chain` › `store`. Each customer, brand or store is an **entity**. This is
+   optional: without dimensions, everyone gets the same settings.
 2. **You set flags.** Each flag has rules for everyone ("10% of devices", "app version below 5.0"), and any entity can
    have settings of its own. An entity follows its parent's settings until it has its own. Locked rules apply to
    everyone, always.
-3. **Apps and backends ask with OpenFeature.** Each reads a **flag set**: the flags you put in it. Apps use
-   OpenFeature's own OFREP providers (web, Android, iOS) with their entity's token; backends use an API key, or
-   download their entity's rules as [flagd](https://flagd.dev) JSON and evaluate them in-process. For very large
-   fleets, each entity's values are also one file your CDN caches.
+3. **Apps and backends ask with OpenFeature.** Each reads a **service**: the flags you put in it. Apps use
+   OpenFeature's own OFREP providers (web, Android, iOS) with their service's public key; backends use their
+   service's secret key, or download their entity's rules as [flagd](https://flagd.dev) JSON and evaluate them
+   in-process. For very large fleets, each entity's values are also one file your CDN caches.
 
 <IllusHowItWorks />
 
@@ -43,9 +44,9 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
   the rules for everyone. Each answer can be traced step by step in the console.
 - **OpenFeature, no SDK of ours.** Apps and backends use OpenFeature's own providers (OFREP, flagd), so you can switch
   to or from CompanyFlags without touching the code that reads flags.
-- **Privacy by construction.** A device asks as its own entity, with a token it can't change. Checks on dimensions, flag
-  sets and environments are settled on the server, so a device never receives a list of entities, another entity's
-  value, or a rule.
+- **Privacy by construction.** A device gets values, never rules. Checks on dimensions, services and environments
+  are settled on the server, so a device never receives a list of entities or a rule. A signed app link pins an app
+  to its own entity, so it can't read another's values.
 - **Change control built in.** Protected environments, approvals by someone other than the author, scheduled
   changes, break-glass for on call, an append-only history, and restore.
 - **No big switch.** Import the old system's values, and apps keep reading it, through OpenFeature's Multi-Provider,
@@ -65,5 +66,5 @@ CompanyFlags is before 1.0. It is tested (hundreds of tests, on embedded and rea
 
 - [Quickstart](/guide/quickstart): run it and read your first flag.
 - [Moving from another system](/guide/migration): bring your flags over, one at a time.
-- [How it fits together](/guide/concepts): environments, flag sets, dimensions, flags and rules.
+- [How it fits together](/guide/concepts): environments, services, dimensions, flags and rules.
 - [Compared with others](/guide/comparison): when CompanyFlags fits, and when it doesn't.

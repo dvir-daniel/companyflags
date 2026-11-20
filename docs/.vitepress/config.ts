@@ -44,7 +44,7 @@ export default defineConfig({
           { text: 'Architecture', link: '/guide/architecture' },
           { text: 'Dimensions', link: '/guide/dimensions' },
           { text: 'Flags and rules', link: '/guide/flags-and-rules' },
-          { text: 'Flag sets', link: '/guide/flag-sets' },
+          { text: 'Services', link: '/guide/services' },
         ],
       },
       {

@@ -53,7 +53,7 @@ test('labels and entity names come from the entries and the dimensions', () => {
   assert.equal(conditionText({ field: 'company', op: 'in', values: ['tyrell'] }, vocab), 'Company is Tyrell');
   assert.equal(conditionText({ field: 'entity', op: 'not_in', values: ['velvet'] }, vocab), 'Company or brand is not Velvet');
   assert.equal(conditionText({ field: 'customer.id', op: 'in', values: ['velvet', 'nobody'] }, vocab), 'Company or brand is Velvet or nobody', 'old rules read the same way');
-  assert.equal(conditionText({ field: 'project', op: 'in', values: ['velvet'] }, vocab), 'Flag set is velvet', 'only entity attributes name entities');
+  assert.equal(conditionText({ field: 'project', op: 'in', values: ['velvet'] }, vocab), 'Service is velvet', 'only entity attributes name entities');
   assert.deepEqual(['company', 'brand', 'entity', 'customer.id', 'customer.company', 'project', 'store'].filter((f) => namesEntities(f, ['company', 'brand'])),
     ['company', 'brand', 'entity', 'customer.id', 'customer.company']);
 });

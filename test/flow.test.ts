@@ -128,9 +128,10 @@ describe('data plane', () => {
     assert.ok(!('dark_mode_v2' in file.flags));                                          // not delivered to android
   });
 
-  test('API keys are for backend servers; apps don’t get keys', async () => {
+  test('every service gets keys; an app’s key gets no rules, a backend’s gets its own flags only', async () => {
     const app = await t.as('dana').post('/api-keys', { environment: 'dev', project: 'web', scope: 'entity', entity: 'acme' });
-    assert.equal(app.status, 422);
+    assert.equal(app.status, 201);
+    assert.equal((await t.call('GET', '/sdk/v1/flagd/company/acme', undefined, { authorization: `Bearer ${app.json.key}` })).status, 403);
     const server = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
     const doc = await t.call('GET', '/sdk/v1/flagd/company/soylent', undefined, { authorization: `Bearer ${server}` });
     assert.equal(doc.status, 200);

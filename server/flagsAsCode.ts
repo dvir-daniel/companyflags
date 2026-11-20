@@ -6,15 +6,15 @@
 //       "new_checkout": {
 //         "name": "New checkout", "kind": "release", "type": "bool", "removeBy": "2027-02-17",
 //         "variants": { "on": true, "off": false }, "default": "off",
-//         "flagSets": { "dev": ["web", "ios"], "prod": ["web"] }
+//         "services": { "dev": ["web", "ios"], "prod": ["web"] }
 //       }
 //     }
 //   }
 //
-// The file says what flags exist and what they are: their details, their variants and the flag sets they are in.
+// The file says what flags exist and what they are: their details, their variants and the services they are in.
 // Their rules stay in the console, where each change is reviewed where it must be. A push goes through the same
 // functions the console does (control.ts), so every check holds; in an environment that needs approval, a change of
-// flag sets becomes a request there, as in the console. A flag that is only in CompanyFlags is listed and left as
+// services becomes a request there, as in the console. A flag that is only in CompanyFlags is listed and left as
 // it is: archiving one is done in the console.
 
 import { all, type Db } from './db.ts';
@@ -42,8 +42,8 @@ export type FlagSpec = {
   freeValues?: boolean;
   /** the variant everyone gets when the flag is made (later, the console's rules decide) */
   default?: string;
-  /** environment → the flag sets it is in */
-  flagSets?: Record<string, string[]>;
+  /** environment → the services it is in */
+  services?: Record<string, string[]>;
 };
 export type FlagsFile = { $schema?: string; flags: Record<string, FlagSpec> };
 
@@ -51,7 +51,7 @@ export type Step =
   | { do: 'create'; flag: string; spec: FlagSpec }
   | { do: 'details'; flag: string; fields: string[]; spec: FlagSpec }
   | { do: 'variants'; flag: string; variants: { key: string; value: unknown }[]; added: string[]; changed: string[] }
-  | { do: 'flagSets'; flag: string; environment: string; before: string[]; after: string[]; reviewed: boolean };
+  | { do: 'services'; flag: string; environment: string; before: string[]; after: string[]; reviewed: boolean };
 export type Plan = {
   steps: Step[];
   unchanged: string[];
@@ -63,7 +63,7 @@ export type Plan = {
 
 type Here = {
   key: string; name: string | null; description: string | null; owner: string | null; kind: string; type: ValueType;
-  tags: string[]; removeBy: string | null; freeValues: boolean; variants: Record<string, unknown>; flagSets: Record<string, string[]>;
+  tags: string[]; removeBy: string | null; freeValues: boolean; variants: Record<string, unknown>; services: Record<string, string[]>;
 };
 
 /** Every flag that isn't archived, as the file writes it. */
@@ -82,7 +82,7 @@ export async function readFlags(db: Db): Promise<Here[]> {
     key: f.key, name: f.name, description: f.description, owner: f.owner, kind: f.kind, type: f.value_type,
     tags: f.tags ?? [], removeBy: f.remove_by, freeValues: f.free_values,
     variants: Object.fromEntries(variants.filter((v) => v.flag_id === f.id && !v.key.startsWith(HIDDEN_PREFIX)).map((v) => [v.key, v.value])),
-    flagSets: Object.fromEntries(envs.map((e) => [e, delivery.filter((d) => d.flag_id === f.id && d.env === e).map((d) => d.set)])),
+    services: Object.fromEntries(envs.map((e) => [e, delivery.filter((d) => d.flag_id === f.id && d.env === e).map((d) => d.set)])),
   }));
 }
 
@@ -100,7 +100,7 @@ export async function pullFlags(db: Db): Promise<FlagsFile> {
       ...(f.removeBy ? { removeBy: f.removeBy } : {}),
       ...(f.freeValues ? { freeValues: true } : {}),
       ...(Object.keys(f.variants).length && !(f.type === 'bool' && isOnOff(f.variants)) ? { variants: f.variants } : {}),
-      flagSets: f.flagSets,
+      services: f.services,
     };
   }
   return { flags };
@@ -121,9 +121,9 @@ export async function planFlags(db: Db, file: unknown): Promise<Plan> {
   const unchanged: string[] = [];
 
   for (const [key, s] of Object.entries(spec)) {
-    for (const [env, list] of Object.entries(s.flagSets ?? {})) {
-      if (!envs.some((e) => e.key === env)) problems.push(`${key}: no environment "${env}" (flagSets)`);
-      for (const k of list) if (!sets.has(k)) problems.push(`${key}: no flag set "${k}" (flagSets.${env})`);
+    for (const [env, list] of Object.entries(s.services ?? {})) {
+      if (!envs.some((e) => e.key === env)) problems.push(`${key}: no environment "${env}" (services)`);
+      for (const k of list) if (!sets.has(k)) problems.push(`${key}: no service "${k}" (services.${env})`);
     }
     const h = here.get(key);
     if (!h) {
@@ -146,10 +146,10 @@ export async function planFlags(db: Db, file: unknown): Promise<Plan> {
     if (added.length || changed.length) {
       steps.push({ do: 'variants', flag: key, variants: [...added, ...changed].map((v) => ({ key: v, value: want[v] })), added, changed });
     }
-    for (const [env, list] of Object.entries(s.flagSets ?? {})) {
-      const was = h.flagSets[env] ?? [];
+    for (const [env, list] of Object.entries(s.services ?? {})) {
+      const was = h.services[env] ?? [];
       if (canonical([...was].sort()) !== canonical([...list].sort())) {
-        steps.push({ do: 'flagSets', flag: key, environment: env, before: was, after: list, reviewed: reviewed.has(env) });
+        steps.push({ do: 'services', flag: key, environment: env, before: was, after: list, reviewed: reviewed.has(env) });
       }
     }
     if (steps.length === before) unchanged.push(key);
@@ -168,12 +168,13 @@ function readFile(file: unknown, problems: string[]): Record<string, FlagSpec> {
   for (const [key, s] of Object.entries(flags)) {
     if (!/^[a-z][a-z0-9_]*$/.test(key)) problems.push(`${key}: flag keys use lowercase letters, digits and _, starting with a letter`);
     if (!s || typeof s !== 'object') { problems.push(`${key}: not an object`); continue; }
+    if ('flagSets' in s) problems.push(`${key}: flagSets is called services since 0.3: rename it in the file`);
     if (!FLAG_KINDS.includes(s.kind as never)) problems.push(`${key}: kind is one of ${FLAG_KINDS.join(', ')}`);
     if (!TYPES.includes(s.type)) problems.push(`${key}: type is one of ${TYPES.join(', ')}`);
     if (s.variants !== undefined && (typeof s.variants !== 'object' || Array.isArray(s.variants) || s.variants === null)) problems.push(`${key}: variants is an object, variant → value`);
-    if (s.flagSets !== undefined && (typeof s.flagSets !== 'object' || Array.isArray(s.flagSets)
-      || Object.values(s.flagSets).some((l) => !Array.isArray(l) || l.some((x) => typeof x !== 'string')))) {
-      problems.push(`${key}: flagSets is an object, environment → a list of flag set keys`);
+    if (s.services !== undefined && (typeof s.services !== 'object' || Array.isArray(s.services)
+      || Object.values(s.services).some((l) => !Array.isArray(l) || l.some((x) => typeof x !== 'string')))) {
+      problems.push(`${key}: services is an object, environment → a list of service keys`);
     }
     if (s.default !== undefined && !(s.default in variantsOf(s))) problems.push(`${key}: default "${s.default}" isn’t one of its variants`);
   }
@@ -210,7 +211,7 @@ async function apply(db: Db, step: Step, envs: string[], actor: Actor): Promise<
         key: step.flag, name: s.name ?? null, description: s.description ?? undefined, owner: s.owner ?? undefined, kind: s.kind,
         valueType: s.type, tags: s.tags ?? [], removeBy: s.removeBy ?? null,
         variations: Object.entries(variants).map(([key, value]) => ({ key, value })),
-        delivery: Object.fromEntries(envs.map((e) => [e, s.flagSets?.[e] ?? []])),
+        delivery: Object.fromEntries(envs.map((e) => [e, s.services?.[e] ?? []])),
         // everyone gets the default until the console's rules say otherwise (off where changes need approval: createFlag)
         base: { enabled: true, defaultVariation: first, rules: [] },
       };
@@ -230,7 +231,7 @@ async function apply(db: Db, step: Step, envs: string[], actor: Actor): Promise<
     case 'variants':
       await upsertVariations(db, step.flag, step.variants, actor);
       return { step, result: 'done' };
-    case 'flagSets': {
+    case 'services': {
       const r = await setDelivery(db, step.flag, step.environment, step.after, actor, { before: step.before, reason: `flags push: ${describe(step)}` });
       return r.applied ? { step, result: 'done' } : { step, result: 'request', request: Number(r.changeSetId) };
     }
@@ -244,6 +245,6 @@ export function describe(step: Step): string {
     case 'create': return `create ${step.flag} (${step.spec.kind}, ${step.spec.type})`;
     case 'details': return `change ${step.flag}: ${step.fields.join(', ')}`;
     case 'variants': return `variants of ${step.flag}: ${[...step.added.map((v) => `+${v}`), ...step.changed.map((v) => `~${v}`)].join(', ')}`;
-    case 'flagSets': return `flag sets of ${step.flag} in ${step.environment}: ${list(step.before)} → ${list(step.after)}${step.reviewed ? ' (a request: it needs approval there)' : ''}`;
+    case 'services': return `services of ${step.flag} in ${step.environment}: ${list(step.before)} → ${list(step.after)}${step.reviewed ? ' (a request: it needs approval there)' : ''}`;
   }
 }

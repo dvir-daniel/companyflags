@@ -316,7 +316,7 @@ function RulesTab({ flag, env, draft, dirty, setDraft, setLines, actions, onFlag
               <EntityPicker value={check.entity} onChange={(c) => checkEntity({ ...check, entity: c })} allowNone placeholder="Check who gets what…" />
             </span>
             {meta.projects.length > 1 && (
-              <NativeSelect size="sm" aria-label="Flag set" value={project} onChange={(e) => checkEntity({ ...check, project: e.target.value })}>
+              <NativeSelect size="sm" aria-label="Service" value={project} onChange={(e) => checkEntity({ ...check, project: e.target.value })}>
                 {meta.projects.map((p) => <option key={p.key} value={p.key}>{p.key}</option>)}
               </NativeSelect>
             )}
@@ -688,7 +688,7 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
     if (saved) { setEdits({}); toast(`Saved the settings of ${f.name.trim() || flag.key}`); }
   };
   const archive = async () => {
-    const r = await ask({ title: `Archive ${flag.key}?`, body: <><p>The flag leaves every flag set in every environment, right away and without a review. Apps and backends fall back to the default in their code.</p><p className="text-ink-3">Its history is kept.</p></>,
+    const r = await ask({ title: `Archive ${flag.key}?`, body: <><p>The flag leaves every service in every environment, right away and without a review. Apps and backends fall back to the default in their code.</p><p className="text-ink-3">Its history is kept.</p></>,
       actions: [{ id: 'c', label: 'Cancel' }, { id: 'a', label: 'Archive flag', tone: 'danger' }] });
     if (r.action !== 'a') return;
     try {
@@ -747,11 +747,11 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
         </Actions>
       </div>
 
-      <SectionLabel className={cn('mb-2', label)}>Flag sets</SectionLabel>
+      <SectionLabel className={cn('mb-2', label)}>Services</SectionLabel>
       <DeliveryPanel flag={flag} onSaved={() => void onSaved()} />
 
       <SectionLabel className={cn('mb-1', label)}>Archive</SectionLabel>
-      <SettingRow name="Archive this flag" desc="Takes it out of every flag set in every environment.">
+      <SettingRow name="Archive this flag" desc="Takes it out of every service in every environment.">
         <Button variant="stop" onClick={archive}>Archive flag</Button>
       </SettingRow>
     </div>
@@ -1113,7 +1113,7 @@ function DebugTab({ flag, env, draft, dirty, initialEntity, initialProject }: {
         </div>
         {meta.dimensions.length > 0 && <Field label={listWords(meta.dimensions) ? capital(listWords(meta.dimensions)) : 'Who'}><EntityPicker value={entity} onChange={setEntity} allowNone /></Field>}
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Flag set">
+          <Field label="Service">
             <NativeSelect size="sm" className="w-full" value={project} onChange={(e) => setProject(e.target.value)}>{meta.projects.map((p) => <option key={p.key}>{p.key}</option>)}</NativeSelect>
           </Field>
           <Field label="App version"><input value={version} placeholder="not sent" onChange={(e) => setVersion(e.target.value)} spellCheck={false} className={cn(dense, 'font-mono')} /></Field>

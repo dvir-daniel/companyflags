@@ -27,9 +27,9 @@ export const childrenGridPath = (dimension: string, key: string, env: string, on
 export const dimensionHref = (dimension: string) => `#/dimensions/${seg(dimension)}`;
 export const entityHref = (dimension: string, key: string, env?: string, view?: string) =>
   `#/dimensions/${seg(dimension)}/${seg(key)}${env ? `/${seg(env)}${view ? `/${seg(view)}` : ''}` : ''}`;
-/** A flag set's app file for everyone in one environment (the app-files plugin, server/delivery.ts): the values with no
+/** A service's app file for everyone in one environment (the app-files plugin, server/delivery.ts): the values with no
  *  entry's own settings, what an app reads before it knows who is signed in. Each entry's own link is on its page. */
-export const everyoneFilePath = (env: string, flagSet: string) => `/client/v1/flags/${seg(env)}/${seg(flagSet)}`;
+export const everyoneFilePath = (env: string, service: string) => `/client/v1/flags/${seg(env)}/${seg(service)}`;
 /** The History page's filters (server/history.ts). `when`: '' (any time), 'today', a number of days ('7', '30', '90',
  *  '365'), or 'custom' with `from`/`to` dates (YYYY-MM-DD, both days included). `entity`: one entity's history
  *  (`customer`, the name from before dimensions, means the same). */

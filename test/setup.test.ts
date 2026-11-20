@@ -161,12 +161,12 @@ describe('a new install, start to finish (in order)', () => {
     const lee = await as('lee@corp.com');
     assert.equal((await lee.post('/environments', { key: 'dev', name: 'Development', minApprovals: 0 })).status, 201);
     assert.equal((await lee.post('/environments', { key: 'prod', name: 'Production', minApprovals: 1 })).status, 201);
-    assert.equal((await lee.post('/flag-sets', { key: 'web', kind: 'client' })).status, 201);
-    assert.equal((await lee.post('/flag-sets', { key: 'checkout-api', kind: 'server' })).status, 201);
+    assert.equal((await lee.post('/services', { key: 'web', kind: 'client' })).status, 201);
+    assert.equal((await lee.post('/services', { key: 'checkout-api', kind: 'server' })).status, 201);
     assert.equal((await lee.post('/environments', { key: 'dev' })).status, 409, 'already there');
     assert.equal((await lee.post('/environments', { key: 'Has Spaces' })).status, 422);
     assert.equal((await lee.post('/environments', { key: 'qa', minApprovals: 9 })).status, 422);
-    assert.equal((await lee.post('/flag-sets', { key: 'tv', kind: 'fridge' })).status, 422);
+    assert.equal((await lee.post('/services', { key: 'tv', kind: 'fridge' })).status, 422);
     const meta = (await lee.get('/meta')).json;
     assert.deepEqual(meta.environments.map((e: any) => [e.key, e.name, e.minApprovals]), [['dev', 'Development', 0], ['prod', 'Production', 1]]);
     assert.deepEqual(meta.projects.map((p: any) => p.key), ['web', 'checkout-api']);

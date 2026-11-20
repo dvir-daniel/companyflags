@@ -10,9 +10,9 @@
 //
 // Who is asking (docs/design/dimensions.md "Naming the entity"):
 //   - the credential (Authorization: Bearer <credential>, or OFREP's X-API-Key) says the environment, the app, and which
-//     entities it may ask about. A backend uses its API key. An app uses its app token (delivery.ts appToken), which its
-//     backend hands it at sign-in with the app link: it asks as that entity, for that app, only, and replacing the
-//     entity's link replaces it at once. Apps never hold an API key;
+//     entities it may ask about. A backend uses its service's secret key. An app uses its service's public key (values
+//     only, for the context it sends), or an app token (delivery.ts appToken) its backend hands it at sign-in with the
+//     app link: then it asks as that entity, for that service, only, and replacing the entity's link replaces it at once;
 //   - the entity is named in the evaluation context by its dimension, as the rules name it: {"company": "acme"}. When
 //     several dimensions are named, the lowest asks and the others must be the ones above it. The server fills in the
 //     levels above from its own data, and ignores anything else the context says about who is asking (the app, the
@@ -118,7 +118,7 @@ export function ofrepApi({ db, plane, keys, links, apps, hub }: {
   async function credential(c: Context): Promise<Asker> {
     const raw = c.req.header('authorization')?.replace(/^Bearer\s+/i, '').trim() || c.req.header('x-api-key')?.trim();
     const t = raw ? readAppToken(raw) : null;
-    if (!t) return authenticate(db, { authorization: raw ? `Bearer ${raw}` : undefined }, keys);
+    if (!t) return authenticate(db, { authorization: raw ? `Bearer ${raw}` : undefined, origin: c.req.header('origin') }, keys);
     const wrong = () => new HttpError(401, 'unknown or replaced app link');
     const snap = plane.snapshots.get(t.environment);
     if (!snap || !Object.hasOwn(snap.entities, t.entity)) throw wrong();

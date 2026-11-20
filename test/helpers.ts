@@ -100,7 +100,7 @@ export async function boot(opts: AppOptions = {}) {
   };
   // What an app reads: its entity's file at the entity's link (or, with no entity, the before-login file)
   const link = async (environment: string, app: string, entity: string) =>
-    (await as('dana').get(`${await entityPath(entity)}/link?environment=${environment}`)).json.path.replace(':flagSet', app) as string;
+    (await as('dana').get(`${await entityPath(entity)}/link?environment=${environment}`)).json.path.replace(':service', app) as string;
   const appFile = async (environment: string, app: string, entity: string | null, headers: Record<string, string> = {}) =>
     call('GET', entity ? await link(environment, app, entity) : `/client/v1/flags/${environment}/${app}`, undefined, headers);
   /** A flag's defaults in an environment as a layer to save: without version, updatedAt and updatedBy. */

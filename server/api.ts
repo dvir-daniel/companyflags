@@ -1,6 +1,6 @@
 // Console (control-plane) API. The sign-in (identity.ts: a Better Auth session cookie) says which email is asking;
 // the access module (access.ts) says who that person is and what their role lets them do: viewers can look but not
-// change anything, and settings (environments, flag sets, people, single sign-on) are for admins.
+// change anything, and settings (environments, services, people, single sign-on) are for admins.
 // Every change (any method but GET) must carry X-Requested-With: companyflags, which a page on another site can't
 // send without the server's permission (CORS), and isn't accepted from a cross-site request at all (CSRF).
 
@@ -709,16 +709,16 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json({ entity, children, environment: env, revision: snap.revision, differing, ...page });
   });
 
-  // The entity's app link in an environment: its backend gives it to the app at login (":flagSet" = android / ios / web).
+  // The entity's app link in an environment: its backend gives it to the app at login (":service" = android / ios / web).
   // The link is a secret (anyone with it reads the entity's file): editors and above, not viewers.
   app.get('/dimensions/:dimension/:key/link', async (c) => {
     notViewer(c.get('user'), 'app links');
     const env = c.req.query('environment') ?? await firstEnv();
     entityIn(snapshot(env), c.req.param('dimension'), c.req.param('key'));
-    // with ?flagSet=: the link for that flag set, and the same link as a token for OpenFeature's OFREP providers (ofrep.ts)
-    const appKey = c.req.query('flagSet');
+    // with ?service=: the link for that service, and the same link as a token for OpenFeature's OFREP providers (ofrep.ts)
+    const appKey = c.req.query('service') ?? c.req.query('flagSet');   // ?flagSet= from 0.2, until 0.4
     if (appKey && (await one<{ kind: string }>(db, `select kind from project where key = $1`, [appKey]))?.kind !== 'client') {
-      throw new HttpError(404, `no flag set for apps "${appKey}"`);
+      throw new HttpError(404, `no app service "${appKey}"`);
     }
     const path = await clientLink(db, env, c.req.param('key'), appKey);
     return c.json({ path, ...(appKey ? { token: await appToken(db, env, c.req.param('key'), appKey) } : {}) });
@@ -752,7 +752,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json({ ok: true });
   });
 
-  // ------------------------------------------------------------ settings (admins): environments, flag sets
+  // ------------------------------------------------------------ settings (admins): environments, services
   app.post('/environments', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await createEnvironment(db, await c.req.json(), actor(c.get('user'))), 201);   // its app files are served at once
@@ -769,19 +769,19 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json(await rotateEnvironmentLinks(db, c.req.param('env'), actor(c.get('user'))));
   });
 
-  app.post('/flag-sets', async (c) => {
+  app.post('/services', async (c) => {
     adminOnly(c.get('user'));
-    // a flag set's key asked for before it existed is answered again once this commits (journal.ts)
+    // a service's key asked for before it existed is answered again once this commits (journal.ts)
     return c.json(await createProject(db, await c.req.json(), actor(c.get('user'))), 201);
   });
 
-  // a flag set's kind; its key can't change. Both this and a delete are refused (409, saying what) while anything uses it
-  app.put('/flag-sets/:key', async (c) => {
+  // a service's kind; its key can't change. Both this and a delete are refused (409, saying what) while anything uses it
+  app.put('/services/:key', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await updateProject(db, c.req.param('key'), await c.req.json(), actor(c.get('user'))));
   });
 
-  app.delete('/flag-sets/:key', async (c) => {
+  app.delete('/services/:key', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await deleteProject(db, c.req.param('key'), actor(c.get('user'))));
   });
@@ -845,7 +845,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
   // system's formats (webhooks out and in are a plugin: plugins/webhooks.ts). Everyone who changes things can export;
   // only admins import, and only admins export with a JSONata expression (it runs on the server, as an import's does).
   // An import goes through the same saves as the console: a request for review where approval is needed.
-  type ImportBody = { environment?: string; format?: unknown; text?: unknown; input?: unknown; expression?: unknown; createFlags?: unknown; flagSets?: unknown; reason?: unknown };
+  type ImportBody = { environment?: string; format?: unknown; text?: unknown; input?: unknown; expression?: unknown; createFlags?: unknown; services?: unknown; reason?: unknown };
   const readImport = async (b: ImportBody) => {
     let input = b.input;
     if (typeof b.text === 'string') {
@@ -853,7 +853,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     }
     const read = await toValues(b.format, input, typeof b.expression === 'string' ? b.expression : null);
     const o = { environment: String(b.environment ?? ''), createFlags: b.createFlags === true,
-      flagSets: Array.isArray(b.flagSets) ? b.flagSets.filter((a): a is string => typeof a === 'string') : [], reason: typeof b.reason === 'string' ? b.reason : null };
+      services: Array.isArray(b.services) ? b.services.filter((a): a is string => typeof a === 'string') : [], reason: typeof b.reason === 'string' ? b.reason : null };
     return { read, o };
   };
   app.post('/migration/preview', async (c) => {
@@ -871,9 +871,9 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json({ ...r, warnings: [...read.warnings, ...r.warnings] });
   });
   app.post('/migration/export', async (c) => {
-    const b = await c.req.json<{ environment?: string; format?: unknown; flagSet?: string | null; expression?: string | null }>();
+    const b = await c.req.json<{ environment?: string; format?: unknown; service?: string | null; expression?: string | null }>();
     if (b.format === 'jsonata' && !may(c.get('user'), 'changesSettings')) throw new HttpError(403, 'only admins can export with a JSONata expression');
-    return c.json({ output: await fromValues(snapshot(String(b.environment ?? '')), b.format, { flagSet: b.flagSet, expression: b.expression }) });
+    return c.json({ output: await fromValues(snapshot(String(b.environment ?? '')), b.format, { service: b.service, expression: b.expression }) });
   });
 
   // ------------------------------------------------------------ trace / playground (runs the real evaluator)
@@ -890,7 +890,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json({ revision: snap.revision, results });
   });
 
-  // Compare two sides (two entities, two environments or two flag sets) flag by flag: what each one gets and why.
+  // Compare two sides (two entities, two environments or two services) flag by flag: what each one gets and why.
   type Side = { environment: string; project: string; entity: string | null };
   app.post('/compare', async (c) => {
     const body = await c.req.json<{ a: Side; b: Side; attrs?: Record<string, unknown>; q?: string; onlyDiff?: boolean; page?: number; size?: number }>();

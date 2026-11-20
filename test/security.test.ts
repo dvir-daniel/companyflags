@@ -183,10 +183,10 @@ test('every wrong app link gets the same answer, so links can’t be used to fin
   assert.equal(wrong, JSON.stringify([404, { error: 'no file at this link' }]));
   for (const path of [
     `/client/v1/flags/dev/web/vandelay/${fake}`,                          // an entity that exists, a wrong secret
-    `/client/v1/flags/dev/zz-not-a-flag-set/vandelay/${fake}`,            // and a flag set that doesn't
+    `/client/v1/flags/dev/zz-not-a-flag-set/vandelay/${fake}`,            // and a service that doesn't
     `/client/v1/flags/dev/zz-not-a-flag-set/no-such-entity/${fake}`,
     `/client/v1/flags/zz-not-an-env/web/vandelay/${fake}`,
-    (await t.link('dev', 'web', 'wonka')).replace('/web/', '/zz-not-a-flag-set/'),   // the right secret, a flag set that doesn't exist
+    (await t.link('dev', 'web', 'wonka')).replace('/web/', '/zz-not-a-flag-set/'),   // the right secret, a service that doesn't exist
   ]) assert.equal(await answer(path), wrong, path);
 });
 
@@ -271,7 +271,7 @@ test('the API key cache keeps the keys used most recently, so a spray of made-up
 test('a client app that doesn’t exist is answered from memory; adding it makes its file appear at once', async () => {
   assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 404);
   assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 404);
-  assert.equal((await t.as('dana').post('/flag-sets', { key: 'tvos', kind: 'client' })).status, 201);
+  assert.equal((await t.as('dana').post('/services', { key: 'tvos', kind: 'client' })).status, 201);
   assert.equal((await t.call('GET', '/client/v1/flags/dev/tvos')).status, 200);
 });
 

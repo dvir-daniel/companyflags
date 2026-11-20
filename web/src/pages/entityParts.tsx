@@ -342,7 +342,7 @@ function FlagDrawer({ open, flag, entity, who, env, onClose, onUseParent }: {
           <DrawerRow label="Status"><span className="inline-flex items-center gap-1.5"><OnOff on={flag.enabled} /><span className="text-ink-3">in {where}</span></span></DrawerRow>
           <DrawerRow label="Own settings">{flag.hasOwn ? `${entity.name} has its own settings here`
             : <span className="text-ink-3">None: it {getsWithoutOwn(who)}</span>}</DrawerRow>
-          <DrawerRow label="Flag sets">{flag.delivery.join(', ') || <span className="text-ink-3">none in {where}</span>}</DrawerRow>
+          <DrawerRow label="Services">{flag.delivery.join(', ') || <span className="text-ink-3">none in {where}</span>}</DrawerRow>
           <DrawerRow label="Variants">
             <span className="flex flex-wrap gap-1.5">
               {flag.variations.map((v) => <FlagValue key={v.key} flag={flag} k={v.key} />)}
@@ -365,7 +365,7 @@ function WhyChain({ flag, who, env }: { flag: EntityFlag; who: EntityWords; env:
   // overrides for everyone are a level only where the flag has some
   const levels = flag.levels.filter((l) => l.who !== 'override' || l.set);
   if (g.section === 'off' || g.section === 'not_sent') {
-    return <p className="m-0 py-2 text-13 text-ink-3">{g.section === 'off' ? 'The flag is off, so nothing decides: every app uses the default in its own code.' : 'This flag isn’t in any flag set here.'}</p>;
+    return <p className="m-0 py-2 text-13 text-ink-3">{g.section === 'off' ? 'The flag is off, so nothing decides: every app uses the default in its own code.' : 'This flag isn’t in any service here.'}</p>;
   }
   const decider = levelOf(g.section);
   const decides = (l: Level) => l.who === decider && (l.who !== 'entity' || l.key === g.owner);
@@ -413,7 +413,7 @@ function WhyChain({ flag, who, env }: { flag: EntityFlag; who: EntityWords; env:
 
 /* ---------------------------------------------------------------- the answer */
 
-/** On, Off, or Not sent (in no flag set), as this entity sees the flag. */
+/** On, Off, or Not sent (in no service), as this entity sees the flag. */
 function Status({ flag }: { flag: EntityFlag }) {
   if (flag.answer.gets.section === 'not_sent') {
     return <span className="inline-flex items-center gap-1.5 text-13 font-medium text-ink-3"><span aria-hidden className="size-[7px] border-[1.5px] border-ink-3" />Not sent</span>;
@@ -441,7 +441,7 @@ function answerLines(flag: EntityFlag, who: EntityWords, vocab: ReturnType<typeo
   const source = (p: AnswerPick, text = sourceText(p, { entity: who, nameOf: vocab.nameOf })) => (
     <span className={cn('text-13', isMine(p, who) ? 'font-medium text-ink' : 'text-ink-3')}>{text}</span>
   );
-  if (gets.section === 'not_sent') return [{ what: <span className="text-ink-3">Nothing</span>, source: <span className="text-13 text-ink-3">In no flag set</span> }];
+  if (gets.section === 'not_sent') return [{ what: <span className="text-ink-3">Nothing</span>, source: <span className="text-13 text-ink-3">In no service</span> }];
   if (gets.section === 'off') return [{ what: <InAppDefault />, source: source(gets, 'The flag is off') }];
   return [
     { what: <FlagValue flag={flag} k={gets.variant} main />, source: source(gets) },
@@ -546,7 +546,7 @@ export function EntityHeader({ entity, dimension, above, under, childDimension, 
 }
 
 /** Where this entity's apps read their flags: one secret link per environment, given to the app at login, as the app
- *  file's address and as a token for OpenFeature's OFREP providers (one per flag set for apps). */
+ *  file's address and as a token for OpenFeature's OFREP providers (one per app service). */
 function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () => void; entity: Who; env: string }) {
   const { ask, toast, meta } = useApp();
   const { envName } = useEnvs();
@@ -564,7 +564,7 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
   const link = got?.asked === asked ? got.link : null;
   const error = got?.asked === asked ? got.error : null;
   const [busy, setBusy] = useState(false);
-  const linkPath = `${entityPath(entity.dimension, entity.key)}/link?environment=${seg(env)}${app ? `&flagSet=${seg(app)}` : ''}`;
+  const linkPath = `${entityPath(entity.dimension, entity.key)}/link?environment=${seg(env)}${app ? `&service=${seg(app)}` : ''}`;
   useEffect(() => {
     if (!open || !app) return;
     let live = true;
@@ -594,9 +594,9 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
       </>}>
       <div className="grid gap-4 text-13 text-ink-2">
         <p className="m-0">Your backend gives this to the app when someone from {entity.name} logs in (or asks for it with an API key: <span className="font-mono text-ink-2">GET /sdk/v1/links</span>). It is the only key the app needs.</p>
-        {!app ? <Callout>Add a flag set for apps in Settings → Flag sets first: each one has its own link.</Callout> : <>
-          <Field label="Flag set">
-            <NativeSelect className="h-[34px]" value={app} onChange={(e) => setApp(e.target.value)} aria-label="Flag set">
+        {!app ? <Callout>Add a app service in Settings → Services first: each one has its own link.</Callout> : <>
+          <Field label="Service">
+            <NativeSelect className="h-[34px]" value={app} onChange={(e) => setApp(e.target.value)} aria-label="Service">
               {clientApps.map((k) => <option key={k} value={k}>{k}</option>)}
             </NativeSelect>
           </Field>
