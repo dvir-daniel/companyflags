@@ -93,11 +93,14 @@ const features = [
   { title: 'Settings per entity.', text: 'Any region, store or team can have settings of its own, inherited down the chain, under rules for everyone.', chips: ['inherit', 'own settings'] },
   { title: 'Locked rules.', text: 'Overrides apply to everyone, always, and fail closed when a value is missing. No entity can change them.', chips: ['override', 'fail closed'] },
   { title: 'OpenFeature, no SDK of ours.', text: 'OFREP for OpenFeature’s web, Android, iOS and server providers; flagd JSON for in-process backends.', chips: ['OFREP', 'flagd', 'React'] },
+  { title: 'Move over one flag at a time.', text: 'Run it next to the system you have now. Import its values; apps read the old one for every flag not moved yet.', chips: ['import', 'side by side', 'JSONata'] },
   { title: 'Releases.', text: 'Early access for some customers, then 1% → 5% → 25% → 50% of devices, then everyone, then clean up.', chips: ['1%', '5%', '25%', '50%'] },
   { title: 'Version releases.', text: 'Move devices from 1.0.0 to 1.0.1 step by step. On call rolls back without waiting for a review.', chips: ['1.0.0', '→', '1.0.1'] },
   { title: 'Reviewed changes.', text: 'Production can require an approval for every change, with scheduling and break-glass for on call.', chips: ['approve', 'schedule', 'break-glass'] },
   { title: 'History and restore.', text: 'An append-only history, versions of every environment, restore, and two entities compared flag by flag.', chips: ['history', 'restore', 'compare'] },
   { title: 'Your sign-in.', text: 'Email and password, Google, GitHub, Microsoft, and single sign-on with SAML or OIDC, through Better Auth.', chips: ['SAML', 'OIDC', 'invites'] },
+  { title: 'Webhooks out and in.', text: 'Each change to Slack, CI or the old system, signed; and the old system’s changes in, while both run.', chips: ['Slack', 'signed', 'JSONata'] },
+  { title: 'Flags as code, and plugins.', text: 'Keep flags in a file reviewed with your code, and run only the plugins you need, from one typed config file.', chips: ['pull', 'plan', 'push'] },
 ];
 
 const runIt = [
@@ -133,7 +136,8 @@ const runIt = [
         <h2 class="label"><span>README</span></h2>
         <p class="lead">
           Everything feature flags need in <b>one server</b>: rules and releases, reviewed changes and history, settings
-          per any dimension you define, read with <b>OpenFeature</b>, and run on <b>your own servers</b>.
+          per any dimension you define, read with <b>OpenFeature</b>, and run on <b>your own servers</b>. Move over from the
+          system you have now <b>one flag at a time</b>.
         </p>
         <div class="code">
           <div class="tabs" role="tablist">

@@ -17,6 +17,8 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
   append-only history and restore.
 - **Products with many devices** that don't want rules or lists of entities sent to every phone, or a bill that
   grows with every request.
+- **Teams moving from another system**, a flag tool or one built in-house, that can't switch everything on one day:
+  both run side by side, and flags move one at a time.
 
 ## How it works
 
@@ -46,6 +48,9 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
   value, or a rule.
 - **Change control built in.** Protected environments, approvals by someone other than the author, scheduled
   changes, break-glass for on call, an append-only history, and restore.
+- **No big switch.** Import the old system's values, and apps keep reading it, through OpenFeature's Multi-Provider,
+  for every flag not moved yet. Webhooks out and in keep both the same until the last one is here. See
+  [Moving from another system](/guide/migration).
 
 ## What it doesn't do (yet)
 
@@ -58,5 +63,6 @@ CompanyFlags is before 1.0. It is tested (about 370 tests, on embedded and real 
 ## Next
 
 - [Quickstart](/guide/quickstart): run it and read your first flag.
+- [Moving from another system](/guide/migration): bring your flags over, one at a time.
 - [How it fits together](/guide/concepts): environments, flag sets, dimensions, flags and rules.
 - [Compared with others](/guide/comparison): when CompanyFlags fits, and when it doesn't.

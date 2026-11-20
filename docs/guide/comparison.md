@@ -17,6 +17,8 @@ so you can tell quickly whether it fits.
   values, which matters when the rules themselves name your customers.
 - **You want to run it yourself.** One Node.js server and Postgres, your own sign-in (SAML or OIDC), MIT licensed, no
   account to create anywhere.
+- **You're moving from something else.** CompanyFlags runs next to the system you have now and takes over one flag at
+  a time, so there is no day when everything switches.
 
 ## When something else fits better
 
@@ -45,6 +47,11 @@ so you can tell quickly whether it fits.
 
 ## Moving from another tool
 
-There is no importer yet. A flag maps to a CompanyFlags flag with variants; a segment of customers usually maps to
-a rule on a dimension ("Company is one of …") or to settings on each entity; a percentage rollout maps to a % of
-devices.
+You don't switch on one day. [Moving from another system](/guide/migration) runs CompanyFlags next to the tool you
+have now: import its values (key-value JSON, flagd, or any shape through a JSONata expression), and apps read the old
+tool, through OpenFeature's Multi-Provider, for every flag not moved yet. Webhooks out and in keep both the same until
+the last flag is here.
+
+What comes over as it is: each flag's value for everyone, on/off, variants and entities' own values. What you set
+again here: a segment of customers usually becomes a rule on a dimension ("Company is one of …") or settings on each
+entity, and a percentage rollout becomes a % of devices.

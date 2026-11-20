@@ -186,6 +186,17 @@ What every server runs, plugins or not: the console and its API, sign-in, the ev
 **CLI**:
 The `companyflags` command: `start`, `init`, `secret`, `migrate`, and `flags pull`, `plan` and `push`.
 
+**Migration (moving over)**:
+Moving to CompanyFlags from another config system with both running side by side: its values are imported, apps ask CompanyFlags first and the old system for the rest (OpenFeature's Multi-Provider), and a flag moves when it's added to the app's flag set. Not to be confused with a database migration (`server/migrations/`, `companyflags migrate`).
+_Avoid_: cut-over, big-bang switch
+
+**Import / export**:
+One environment's values in or out of CompanyFlags: CompanyFlags values, key-value JSON, flagd, or any JSON through a JSONata expression. An import shows every change first and goes through the console's checks and approvals.
+
+**Webhook**:
+Out: a message after each change (signed JSON, a Slack message, or JSONata's shape), in order, once each. In: an address another system posts its values to, which are imported. Both are the `webhooks()` plugin's.
+_Avoid_: callback, hook (alone)
+
 **Flags file**:
 The JSON file of flags as code (`flags.json`): each flag's details, variants and flag sets per environment, kept in step by `flags push`. Rules stay in the console.
 _Avoid_: flag manifest, flags.yaml

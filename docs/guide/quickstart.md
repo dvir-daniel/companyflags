@@ -85,5 +85,7 @@ Change the flag in the console and the provider hears about it at once, through 
 
 - [How it fits together](/guide/concepts): environments, flag sets, dimensions, flags and rules.
 - [Flag sets](/guide/flag-sets): how your backend hands each app its token at sign-in.
+- [Moving from another system](/guide/migration): already have flags somewhere else? Bring them over one at a time,
+  with both running meanwhile.
 - [Docker](/self-hosting/docker) and the [production checklist](/self-hosting/production) when you're ready to run it
   for real.

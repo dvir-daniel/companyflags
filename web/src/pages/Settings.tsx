@@ -369,6 +369,7 @@ export function GetStarted() {
             ))}
           </ol>
           <div><Button onClick={() => go('settings')}>Open settings</Button></div>
+          <p className="m-0 text-13 text-ink-3">Moving from another system? Once these are done, the Migration page imports its flags, and both run side by side while you move them one at a time.</p>
         </section>
       </> : (
         <Callout>An admin needs to add the environments and flag sets first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>

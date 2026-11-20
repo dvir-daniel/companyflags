@@ -32,7 +32,7 @@
 
 CompanyFlags is everything feature flags and remote config need, in one server you run yourself: rules and %
 rollouts, releases, reviewed changes and a full history, settings for any part of your product, and OpenFeature for
-every app and backend.
+every app and backend. Coming from another system? Run both side by side and move over one flag at a time.
 
 <p align="center">
   <img src=".github/assets/console.png" alt="The console: a release flag with an override, settings for one company, and a rule for 10% of devices">
