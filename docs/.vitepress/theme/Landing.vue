@@ -213,9 +213,9 @@ const runIt = [
       </section>
 
       <section>
-        <h2 v-reveal class="title"><span>Features</span></h2>
+        <h2 class="title"><span>Features</span></h2>
         <div class="grid">
-          <article v-for="(f, i) in features" :key="f.title" v-reveal="i % 3" class="cell">
+          <article v-for="(f, i) in features" :key="f.title" class="cell">
             <i class="corner tl" /><i class="corner br" />
             <p class="num">{{ String(i + 1).padStart(2, '0') }}</p>
             <h3>{{ f.title }}</h3>
@@ -226,8 +226,8 @@ const runIt = [
       </section>
 
       <section>
-        <h2 v-reveal class="title"><span>Read flags with OpenFeature</span></h2>
-        <div v-reveal class="code split">
+        <h2 class="title"><span>Read flags with OpenFeature</span></h2>
+        <div class="code split">
           <div class="editor">
             <div :ref="(el) => { rowEls.usage = el as HTMLElement }" class="tabs" role="tablist">
               <button v-for="t in Object.keys(usage)" :key="t" role="tab" :aria-selected="usageTab === t" :class="{ on: usageTab === t }" @click="usageTab = t">{{ t }}</button>
@@ -249,8 +249,8 @@ const runIt = [
       </section>
 
       <section>
-        <h2 v-reveal class="title"><span>How it works</span></h2>
-        <IllusHowItWorks v-reveal />
+        <h2 class="title"><span>How it works</span></h2>
+        <IllusHowItWorks />
         <p class="lead small">
           One evaluator decides every answer, and the console traces it step by step. A device gets values only: never the
           rules or a list of entities.
@@ -258,9 +258,9 @@ const runIt = [
       </section>
 
       <section>
-        <h2 v-reveal class="title"><span>Run it yourself</span></h2>
+        <h2 class="title"><span>Run it yourself</span></h2>
         <div class="grid three">
-          <article v-for="(r, i) in runIt" :key="r.label" v-reveal="i" class="cell">
+          <article v-for="(r, i) in runIt" :key="r.label" class="cell">
             <i class="corner tl" /><i class="corner br" />
             <p class="num">{{ r.label }}</p>
             <p>{{ r.text }}</p>
@@ -273,7 +273,7 @@ const runIt = [
         </div>
       </section>
 
-      <section v-reveal class="cta">
+      <section class="cta">
         <h2>From one command to your first flag in minutes.</h2>
         <div class="actions">
           <a class="btn primary" :href="withBase('/guide/quickstart')"><span>Quickstart</span></a>
@@ -420,9 +420,6 @@ section { padding: 40px 40px 8px; max-width: 980px; }
   display: flex; align-items: center; gap: 16px; margin: 0 0 22px; border: 0; padding: 0;
 }
 .label::after, .title::after { content: ''; flex: 1; height: 1px; background: var(--cf-rule); transform-origin: left; }
-/* a section's rule draws itself as the section rises in */
-.title:global(.cf-reveal)::after { transform: scaleX(0); }
-.title:global(.cf-reveal.cf-in)::after { transform: scaleX(1); transition: transform 900ms var(--cf-ease) 150ms; }
 .label span { font-family: var(--vp-font-family-mono); font-size: 14px; font-weight: 400; letter-spacing: 0.4px; }
 .title span { font-size: 22px; font-weight: 500; letter-spacing: -0.01em; }
 .lead { margin: 0 0 22px; font-size: 16px; line-height: 1.75; color: var(--cf-ink-2); max-width: 46em; }

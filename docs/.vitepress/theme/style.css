@@ -258,9 +258,6 @@ html { -webkit-font-smoothing: antialiased; }
 .cf-theme-switch::view-transition-new(root) { z-index: 2; }
 .VPSwitchAppearance .check { transition: transform 300ms var(--cf-ease) !important; }
 
-/* a section that rises the first time it's seen (v-reveal) */
-.cf-reveal { opacity: 0; transform: translateY(10px); }
-.cf-reveal.cf-in { opacity: 1; transform: none; transition: opacity 500ms var(--cf-ease) var(--cf-delay, 0ms), transform 600ms var(--cf-ease) var(--cf-delay, 0ms); }
 
 /* the bar: a line grows under a link as it's pointed at */
 .VPNavBarMenuLink, .VPNavBarMenuGroup .button { position: relative; transition: color 160ms, background-color 160ms !important; }
@@ -314,7 +311,6 @@ html { -webkit-font-smoothing: antialiased; }
   *, *::before, *::after, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
     animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;
   }
-  .cf-reveal { opacity: 1; transform: none; }
 }
 
 /* ---- the bar's buttons, as better-auth.com draws them: on a phone, borderless 32px icons (search, light or dark,
