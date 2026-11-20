@@ -64,3 +64,8 @@ other.
 CompanyFlags decides values; it doesn't watch your metrics. Stepping a rollout forward or back is done by a person (or
 by your own automation with the CLI), and it doesn't call models itself: your code does, with the config the flag
 gives it.
+
+## For your agents
+
+[AI resources](/guide/ai-resources): the docs as `llms.txt` and Markdown, a skill with these rules, a note for your
+`AGENTS.md`, and OpenFeature's MCP server pointed at your flags.

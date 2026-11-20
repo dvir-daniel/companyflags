@@ -4,6 +4,9 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- Docs for agents: `/llms.txt`, `/llms-full.txt` and a Markdown copy of every page; a skill
+  (`skills/companyflags/SKILL.md`); [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources) with
+  an `AGENTS.md` note and OpenFeature's MCP server set up for CompanyFlags.
 - Docs: [Flags in the age of AI](https://dvir-daniel.github.io/companyflags/guide/ai): AI-written code behind a
   flag, models and prompts as config, agents with flags as code. Settings shows Dimensions above Services.
 

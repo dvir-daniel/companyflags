@@ -1,8 +1,12 @@
 import { defineConfig } from 'vitepress';
+import llmstxt from 'vitepress-plugin-llms';
 
 const repo = 'https://github.com/dvir-daniel/companyflags';
 
 export default defineConfig({
+  // for agents: /llms.txt (an index), /llms-full.txt (every page) and a .md copy of each page (guide/ai-resources.md)
+  // DOCS_SITE: where the site is published (CI sets it with DOCS_BASE), so its links are full addresses
+  vite: { plugins: [llmstxt({ ignoreFiles: ['design/**', 'README.md'], ...(process.env.DOCS_SITE ? { domain: process.env.DOCS_SITE } : {}) })] },
   title: 'CompanyFlags',
   description: 'The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.',
   base: process.env.DOCS_BASE || '/',
@@ -62,6 +66,7 @@ export default defineConfig({
           { text: 'Approvals and history', link: '/guide/approvals' },
           { text: 'Flags as code', link: '/guide/flags-as-code' },
           { text: 'Flags in the age of AI', link: '/guide/ai' },
+          { text: 'AI resources', link: '/guide/ai-resources' },
         ],
       },
       {
