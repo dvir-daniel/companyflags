@@ -19,9 +19,9 @@ import { DimensionsSection } from './dimensions.tsx';
 import { needsReview, roleInfo, ROLES } from '../../../server/policy.ts';
 
 /*
- * Settings: what an admin sets up once. Environments (each flag has its own settings in each one),
- * services (the groups flags are sent in), dimensions (what config is served per: dimensions.tsx, #/settings/dimensions
- * scrolls to it) and people: who may sign in, and their roles. Everyone can see it; only admins change it.
+ * Settings: what an admin sets up once. Environments (each flag has its own settings in each one), dimensions (what
+ * config is served per: dimensions.tsx, #/settings/dimensions scrolls to it), services (what reads flags, each with its
+ * own keys) and people: who may sign in, and their roles. Everyone can see it; only admins change it.
  * People have a page of their own (People.tsx, #/settings/people): with single sign-on there can be hundreds.
  */
 
@@ -68,9 +68,9 @@ export function Settings({ section }: { section?: string }) {
           )}
         </section>
 
-        <ServicesSection admin={admin} />
-
         <DimensionsSection admin={admin} focus={section === 'dimensions'} />
+
+        <ServicesSection admin={admin} />
 
         <section aria-labelledby="s-people" className="grid gap-3">
           <Heading id="s-people" title="People" action={<Button variant="secondary" onClick={() => go('settings/people')}>{admin ? 'Manage people' : 'See everyone'}</Button>}>
