@@ -28,7 +28,7 @@ export function Migration() {
   const admin = roleInfo(meta.me.role).changesSettings;
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar title="Migration" count={admin ? undefined : 'Only admins import'} />
+      <PageBar title="Migration" count={admin ? undefined : 'Only admins can import'} />
       <div className="grid gap-10 px-6 py-6 max-sm:px-4">
         <SideBySide />
         {admin && <ImportSection />}

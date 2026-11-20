@@ -41,7 +41,7 @@ export function AppearanceSection() {
   const changed = saved && JSON.stringify({ ...saved, source: undefined, updatedAt: undefined, updatedBy: undefined }) !== JSON.stringify({ ...EMPTY, source: undefined, updatedAt: undefined, updatedBy: undefined });
   return (
     <section aria-labelledby="s-look" className="grid gap-3">
-      <Heading id="s-look" title="Appearance" action={admin && saved && !fromServer && <Button onClick={() => setEditing(true)}>Change</Button>}>
+      <Heading id="s-look" title="Appearance" quiet action={admin && saved && !fromServer && <Button onClick={() => setEditing(true)}>Change</Button>}>
         Your name, logo and colors in the console and on the sign-in page, a notice for everyone, and your own links.
       </Heading>
       <ErrorList error={error} />

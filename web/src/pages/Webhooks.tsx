@@ -31,7 +31,7 @@ export function Webhooks() {
   const admin = roleInfo(meta.me.role).changesSettings;
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar title="Webhooks" count={admin ? undefined : 'Only admins add and change webhooks'} />
+      <PageBar title="Webhooks" count={admin ? undefined : 'Only admins can change these'} />
       <div className="grid gap-10 px-6 py-6 max-sm:px-4">
         {meta.plugins.includes('webhooks')
           ? <WebhooksSection admin={admin} />

@@ -33,12 +33,12 @@ export function setupSteps(meta: SetupFacts, flags?: number): SetupStep[] {
       text: 'What reads your flags: each of your apps (web, iOS, Android) and each backend. Each one reads only the flags you put in it.' },
     { key: 'flag', title: 'Your first flag', done: (flags ?? 0) > 0, href: '#/flags', action: 'New flag',
       text: `An on/off switch, a value that differs per ${top ?? 'user or device'}, or a release that reaches a % of devices step by step. Tick the services that read it.` },
-    { key: 'app', title: 'Connect an app', done: !!meta.keyLastUsedAt, href: '#/keys', action: 'API keys',
+    { key: 'app', title: 'Connect an app', done: !!meta.keyLastUsedAt, href: '#/keys', action: 'API Keys',
       text: ofrep
         ? 'Make a key for the app’s service and environment, and give it to OpenFeature’s OFREP provider. An app’s key reads values only; a backend’s key stays secret. This is done once an app reads with it.'
         : top
           ? `Make a key for each backend. Apps read their file at a ${top}’s app link, or their service’s file for everyone.`
-          : 'Make a key for each backend. Apps read their service’s file for everyone (Settings → Services).' },
+          : 'Make a key for each backend. Apps read their service’s file for everyone (Developers → Services).' },
   ];
 }
 

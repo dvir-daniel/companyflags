@@ -84,7 +84,7 @@ signs in once, for a lost phone. **New recovery codes** replaces them.
 Then signing in with a password asks for the code next. Ten wrong codes in a row lock the second step for 15 minutes.
 The secret and the recovery codes are kept encrypted with `BETTER_AUTH_SECRET`.
 
-To require it of admins, turn on **Settings → Single sign-on → Admins with a password use two-factor sign-in**. An
+To require it of admins, turn on **Settings → Single Sign-On → Admins with a password use two-factor sign-in**. An
 admin with a password and no second factor then sees only the setup page until they set it up; the API refuses them
 everything else. Turn it on after you set up your own. Admins who sign in only with single sign-on or a provider have
 no password here: your identity provider asks for its own second factor.
@@ -110,7 +110,7 @@ Someone with a password account who later signs in with a provider for the same 
 
 ## Single sign-on (OIDC and SAML)
 
-An admin adds a connection in **Settings → Single sign-on**: a connection ID (lowercase letters, digits and dashes,
+An admin adds a connection in **Settings → Single Sign-On**: a connection ID (lowercase letters, digits and dashes,
 e.g. `okta`), the email domains it signs in, and the identity provider's details. The drawer shows what to enter on
 the identity provider's side before you save.
 
@@ -174,7 +174,7 @@ the connection, so a connection that doesn't work can't lock people out, and it 
 at its domains (and their subdomains) signs in with a password, Google, GitHub or Microsoft, or makes a password
 account.
 
-One admin keeps their password there: the **break-glass admin**, chosen in **Settings → Single sign-on → Break-glass
+One admin keeps their password there: the **break-glass admin**, chosen in **Settings → Single Sign-On → Break-glass
 admin**, in case the identity provider is down. Every other admin uses single sign-on too. With nobody chosen, nobody
 keeps a password. The break-glass admin counts only while they are an admin; choosing another one signs the old one
 out where single sign-on is required.

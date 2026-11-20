@@ -98,7 +98,7 @@ export function SingleSignOn() {
   const addButton = admin && state?.available && <Button onClick={() => setDrawer({ editing: null })}>+ Add connection</Button>;
   return (
     <section aria-labelledby="s-sso" className="grid gap-3">
-      <Heading id="s-sso" title="Single sign-on" action={addButton}>
+      <Heading id="s-sso" title="Single Sign-On" quiet action={addButton}>
         People sign in with your organization’s identity provider (Okta, Entra ID, Google Workspace, JumpCloud…) over OIDC or SAML.
         Everyone at the connection’s email domains can sign in, and joins with the role below.
         Where single sign-on is required, someone you remove from your identity provider is signed out within 12 hours.
@@ -181,7 +181,7 @@ function Rules({ rules, admin, onSaved }: { rules: SignInRules; admin: boolean; 
         onChange={(v) => void save({ adminsNeedTwoFactor: v }, v ? 'Admins with a password set up two-factor sign-in first' : 'Two-factor sign-in is up to each admin')}>
         <span className="text-ink-1">Admins with a password use two-factor sign-in</span>
       </Switch>
-      <p className="-mt-2 m-0 text-13 text-ink-3">They set it up before anything else in the console. Set yours up first: your account menu → Access tokens and two-factor sign-in. Admins who sign in with single sign-on use your identity provider’s.</p>
+      <p className="-mt-2 m-0 text-13 text-ink-3">They set it up before anything else in the console. Set yours up first: your account menu → Account. Admins who sign in with single sign-on use your identity provider’s.</p>
       <ErrorList error={error} />
     </div>
   );

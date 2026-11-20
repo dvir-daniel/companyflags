@@ -24,7 +24,7 @@ JSON. The examples use `https://flags.example.com`.
 ## Credentials
 
 Every key is for one service in one environment, and reads only that service's flags. Admins make keys on the
-console's **API keys** page. Send a credential as `Authorization: Bearer <credential>` (OFREP also takes
+console's **API Keys** page. Send a credential as `Authorization: Bearer <credential>` (OFREP also takes
 `X-API-Key: <credential>`).
 
 | Credential | Looks like | Kept | What it may do |

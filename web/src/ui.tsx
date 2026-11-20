@@ -223,11 +223,13 @@ export function Field({ label, children, hint, required, className, htmlFor }: {
 }
 
 /** A section's heading: its title (with the id its section is labelled by), what it's for, and its action. */
-export function Heading({ id, title, action, children }: { id: string; title: string; action?: ReactNode; children: ReactNode }) {
+/** A section's heading: its label, a line about it and its action. `quiet`: the page's bar already says the same words
+ *  (Settings → Environments, a page of one section), so the label is only for screen readers. */
+export function Heading({ id, title, action, quiet, children }: { id: string; title: string; action?: ReactNode; quiet?: boolean; children: ReactNode }) {
   return (
     <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
       <div className="grid min-w-0 flex-1 gap-1">
-        <SectionLabel className="m-0"><span id={id}>{title}</span></SectionLabel>
+        {quiet ? <span id={id} className="sr-only">{title}</span> : <SectionLabel className="m-0"><span id={id}>{title}</span></SectionLabel>}
         <p className="m-0 max-w-[720px] text-13 text-ink-2">{children}</p>
       </div>
       {action}

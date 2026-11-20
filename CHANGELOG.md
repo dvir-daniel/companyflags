@@ -4,6 +4,13 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **The console's sidebar works like better-auth.com's.** Every item is a short noun in Title Case, and it is the
+  page's title and its tab's title, word for word. The groups: Flags, Releases, Approvals, History and Compare; then
+  **Audience** (your dimensions); then **Developers** (Services, API Keys, Webhooks); then Settings. Migration is in
+  Settings (`#/migration` opens it there). Two-factor sign-in and access tokens are on **Account**, from the menu under
+  your name. "Set up dimensions" is gone: Settings → Dimensions. Pages no longer repeat their title as a heading, a
+  release opened from Releases leads back there, and the sidebar doesn't move while the console loads.
+
 ## 0.9.0 (2026-11-20)
 
 What a panel of 10 UX and 10 developer-experience reviewers found, fixed.

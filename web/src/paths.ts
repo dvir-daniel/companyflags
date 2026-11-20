@@ -115,12 +115,14 @@ export function historyHref(view: HistoryView, f: HistoryFilters & { status?: st
   return `#/history${q ? `?${q}` : ''}`;
 }
 
-/** Addresses that moved: each environment's revisions are in History, and services are in Connect. Null: it didn't. */
+/** Addresses that moved: each environment's revisions are in History, services are under Developers, and Migration is in Settings. Null: it didn't. */
 export function movedAddress(hash: string): string | null {
   const parts = routeParts(hash);
   if (!parts) return null;
   if (parts[0] === 'flags' && (parts[2] === 'versions' || parts[2] === 'revisions')) return historyHref('revisions', { env: parts[1] });
   if (parts[0] === 'settings' && parts[1] === 'services') return '#/services';
+  if (parts[0] === 'migration') return '#/settings/migration';
+  if (parts[0] === 'settings' && !parts[1]) return '#/settings/environments';
   return null;
 }
 

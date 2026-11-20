@@ -7,7 +7,7 @@ You don't switch on one day. CompanyFlags runs next to the config system you hav
 a time. Apps ask CompanyFlags first and the old system for everything not moved yet, so nothing changes for anyone
 on the day you start, and any flag can stay behind as long as it needs to.
 
-Import and export are on the console's **Migration** page (admins import; everyone can export, and admins can also
+Import and export are on the console's **Settings → Migration** page (admins import; everyone can export, and admins can also
 export with JSONata). The webhooks that keep both systems the same are on the **Webhooks** page.
 
 ## How it works

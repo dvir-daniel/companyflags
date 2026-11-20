@@ -25,7 +25,7 @@ function useAccount() {
   return { account, load };
 }
 
-/** On the Access tokens page: whether two-factor sign-in is on, and the buttons to set it up or turn it off. */
+/** On the Account page: whether two-factor sign-in is on, and the buttons to set it up or turn it off. */
 export function TwoFactorSection() {
   const { meta, toast } = useApp();
   const { account, load } = useAccount();

@@ -50,7 +50,7 @@ function useGet<T>(path: string, refresh: unknown) {
 
 /** #/release/<key>/<env>: the flag's own page, on its Rollout tab. */
 export function ReleasePage({ flagKey, envKey }: { flagKey: string; envKey?: string }) {
-  return <FlagPage flagKey={flagKey} envKey={envKey} tabKey="rollout" />;
+  return <FlagPage flagKey={flagKey} envKey={envKey} tabKey="rollout" from="releases" />;
 }
 
 /** The Rollout tab of a release's page. `flag`: the flag as it is now (not as a draft has it). */

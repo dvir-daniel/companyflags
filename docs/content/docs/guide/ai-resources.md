@@ -71,13 +71,13 @@ claude mcp add --transport http companyflags https://flags.example.com/mcp
 
 The sign-in is OAuth 2.1 with PKCE. The client finds it by itself (`/.well-known/oauth-protected-resource`) and
 registers itself. Its token lasts an hour, and the client renews it for as long as it's used. It shows on your
-**Access tokens** page as "*client* (OAuth)": revoke it there to sign the client out.
+**Account** page, under access tokens, as "*client* (OAuth)": revoke it there to sign the client out.
 
 ### With an access token
 
 For a client without OAuth sign-in, make a token yourself and send it in a header:
 
-1. **Make a token for the agent:** in the console, your name → **Access tokens** → **+ New token**, with *For an
+1. **Make a token for the agent:** in the console, your name → **Account** → **+ New token**, with *For an
    agent* ticked. It is Viewer or Editor, and History shows its changes as an agent's.
 2. **Add the server to your client**, with the token in a header:
 

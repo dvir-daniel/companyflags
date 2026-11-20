@@ -18,7 +18,7 @@ A seed script makes what the examples read, through the console's API: the envir
 `company` with `acme` and `globex`, the services `web` and `api`, the flags, and a key for each service.
 
 1. Start CompanyFlags and make the admin account with its setup link (see the [Quickstart](/guide/quickstart)).
-2. Make an access token: your name at the foot of the sidebar → **Access tokens** → **+ New token**, with the role
+2. Make an access token: your name at the foot of the sidebar → **Account** → **+ New token**, with the role
    **Admin**.
 3. From the repo:
 

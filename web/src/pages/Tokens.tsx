@@ -97,7 +97,7 @@ export function Tokens() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar title="Access tokens" count={loadError ? undefined : <CountSlot text={tokens ? `${live} in use` : undefined} />}
+      <PageBar title="Account" count={loadError ? undefined : <CountSlot text={tokens ? `${live} ${live === 1 ? 'token' : 'tokens'} in use` : undefined} />}
         actions={<Button onClick={() => setCreating(true)}>+ New token</Button>}>
         <FilterSelect<Show> label="State" value={show} onChange={setShow} options={[['active', 'Active'], ['ended', 'Revoked or expired'], ['all', 'All']]} />
         {admin && <Switch checked={everyone} onChange={setEveryone} label="Show everyone’s tokens">Everyone’s</Switch>}

@@ -25,16 +25,15 @@ function pagesOf(meta: Meta): Page[] {
     { label: 'Flags', href: '#/flags' },
     { label: 'Releases', href: '#/releases' },
     { label: 'Approvals', href: '#/approvals', words: 'requests review' },
-    { label: 'History: changes', href: historyHref('changes'), words: 'audit log' },
-    { label: 'History: revisions', href: historyHref('revisions'), words: 'versions roll back publish' },
-    { label: 'History: requests', href: historyHref('requests'), words: 'approvals' },
+    { label: 'History: Changes', href: historyHref('changes'), words: 'audit log' },
+    { label: 'History: Revisions', href: historyHref('revisions'), words: 'versions roll back publish' },
+    { label: 'History: Requests', href: historyHref('requests'), words: 'approvals' },
     ...meta.dimensions.map((d) => ({ label: title(d), href: `#/dimensions/${encodeURIComponent(d.key)}`, words: 'dimension' })),
     { label: 'Compare', href: '#/compare' },
-    { label: 'Services', href: '#/services', words: 'connect apps' },
-    { label: 'API keys', href: '#/keys', words: 'connect' },
-    { label: 'Access tokens', href: '#/tokens', words: 'connect cli mcp' },
-    ...(meta.plugins.includes('webhooks') ? [{ label: 'Webhooks', href: '#/webhooks', words: 'connect' }] : []),
-    { label: 'Migration', href: '#/migration', words: 'import' },
+    { label: 'Services', href: '#/services', words: 'developers apps connect' },
+    { label: 'API Keys', href: '#/keys', words: 'developers connect' },
+    { label: 'Account', href: '#/tokens', words: 'access tokens two-factor 2fa cli mcp' },
+    ...(meta.plugins.includes('webhooks') ? [{ label: 'Webhooks', href: '#/webhooks', words: 'developers connect' }] : []),
   ];
 }
 
@@ -103,7 +102,7 @@ export function CommandPalette({ meta, open, onOpenChange, onSearchFlags }: {
           </CommandGroup>
           <CommandGroup heading="Settings">
             {settingsPages(meta.plugins).map((s) => (
-              <CommandItem key={s.key} value={`settings ${s.label}`} onSelect={() => to(`#/settings/${s.key}`)}>Settings: {s.label}</CommandItem>
+              <CommandItem key={s.key} value={`settings ${s.label}${s.key === 'migration' ? ' import export' : ''}`} onSelect={() => to(`#/settings/${s.key}`)}>Settings: {s.label}</CommandItem>
             ))}
           </CommandGroup>
           <CommandGroup heading="Actions">

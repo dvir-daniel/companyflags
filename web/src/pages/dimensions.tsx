@@ -86,7 +86,7 @@ export function DimensionsSection({ admin, focus }: { admin: boolean; focus?: bo
 
   return (
     <section ref={ref} aria-labelledby="s-dims" className="grid scroll-mt-16 gap-3">
-      <Heading id="s-dims" title="Dimensions" action={admin && rows.length > 0 && rows.length < MAX_DIMENSIONS && <Button variant="secondary" onClick={() => add('bottom')}>+ Add below</Button>}>
+      <Heading id="s-dims" title="Dimensions" quiet action={admin && rows.length > 0 && rows.length < MAX_DIMENSIONS && <Button variant="secondary" onClick={() => add('bottom')}>+ Add below</Button>}>
         What config is served per, such as region › store: one chain from the top down, at most {MAX_DIMENSIONS}. Each store (say) gets its
         own settings on every flag, its own app link and page, and follows its region until it has settings of its own. Rules check each
         dimension by its key.

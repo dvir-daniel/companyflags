@@ -26,7 +26,7 @@ settings on that one flag. A service per company would copy every flag, and ever
 
 ## Add a service
 
-**Settings → Services → + Add service** (admins): a key (`web`, `ios`, `android`, `api`) and the kind, **App** or
+**Developers → Services → + Add service** (admins): a key (`web`, `ios`, `android`, `api`) and the kind, **App** or
 **Backend**. The key never changes. The kind can change only while no flag is in the service, no key for it still
 works, and no request waiting to go out would put a flag in it.
 

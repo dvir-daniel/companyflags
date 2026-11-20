@@ -71,7 +71,7 @@ Change any of it before you create the flag. The schema keeps a config whole: a 
 ## An alert turns a kill switch off
 
 When an alert fires, it can turn a kill switch off at once: `POST /api/alerts/kill`, with an **alerts token**.
-An *On call* or *Admin* person makes one: your name → Access tokens → **+ New token**, and tick **For alerts only**
+An *On call* or *Admin* person makes one: your name → **Account** → **+ New token**, and tick **For alerts only**
 ([Access tokens](/guide/security#access-tokens)).
 
 An alerts token is On call, since turning a flag off without a review is break-glass, but it does nothing else: it
@@ -130,7 +130,7 @@ Then mention it in the monitor's message, only for the alert (not the recovery):
 {{#is_alert}}@webhook-companyflags-kill{{/is_alert}}
 ```
 
-Make an alerts token for each alert tool (your name → Access tokens → **For alerts only**), and keep it in the alert
+Make an alerts token for each alert tool (your name → **Account** → **For alerts only**), and keep it in the alert
 tool's secrets. It expires like any token (90 days by default, a year at most): make the next one before it does.
 
 ## Agents can manage flags too

@@ -33,7 +33,7 @@ an environment you add later: turning it on there is a change like any other.
 
 ## Services
 
-A **service** is what reads your flags. In **Settings → Services** you add one for each app that runs on your users'
+A **service** is what reads your flags. In **Developers → Services** you add one for each app that runs on your users'
 devices (`web`, `ios`, `android`: the kind **App**, which gets values only) and each backend (`api`: the kind
 **Backend**, which gets the rules). Its key never changes. On each flag you choose which services it is in, per
 environment. A flag that isn't in a service doesn't exist for the app or backend that reads it.
@@ -42,7 +42,7 @@ A service's API key picks which flags it reads; the evaluation context picks who
 one of your apps or backends, never a customer: per-company values are dimensions, below.
 
 Both read their flags through [OpenFeature](https://openfeature.dev), with OpenFeature's own providers and a key
-made for their service on the **API keys** page:
+made for their service on the **API Keys** page:
 
 | Who | How |
 |---|---|

@@ -60,7 +60,7 @@ test('each step links where it is done', () => {
   assert.equal(at({}).step('flag').href, '#/flags');
   // connecting an app: the API keys page, where each service's key is made
   assert.equal(at({}).step('app').href, '#/keys');
-  assert.equal(at({}).step('app').action, 'API keys');
+  assert.equal(at({}).step('app').action, 'API Keys');
 });
 
 test('connecting an app says how this server is read', () => {

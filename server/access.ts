@@ -457,7 +457,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
           if (typeof input.adminsNeedTwoFactor !== 'boolean') throw new HttpError(422, 'adminsNeedTwoFactor: true or false');
           if (input.adminsNeedTwoFactor && !before.adminsNeedTwoFactor
             && await accounts.hasPassword(tx, actor.name) && !(await accounts.twoFactorOn(tx, actor.name))) {
-            throw new HttpError(409, 'set up two-factor sign-in for yourself first: Access tokens → Two-factor sign-in');
+            throw new HttpError(409, 'set up two-factor sign-in for yourself first: your account menu → Account');
           }
           next.adminsNeedTwoFactor = input.adminsNeedTwoFactor;
         }

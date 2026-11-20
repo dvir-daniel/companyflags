@@ -5,7 +5,7 @@ description: "Backends ask the server for each evaluation with OpenFeature’s O
 
 ## Create a service and an API key
 
-1. **Settings → Services → + Add service** (admins): a key such as `api`, and the kind **Backend**. Then put
+1. **Developers → Services → + Add service** (admins): a key such as `api`, and the kind **Backend**. Then put
    flags in it, on each flag's **Settings** tab (see [Services](/guide/services)).
 2. **API keys → + New key** (admins): the environment, the service, what it **asks about**, and a label.
 

@@ -262,7 +262,7 @@ export function oauthRoutes({ db, identity, access, baseURL }: Deps) {
 <form method="post" action="/oauth/authorize">${hidden}
 ${option('editor', 'Reads and changes flags. Where an environment needs approval, its changes are requests a person approves.')}
 ${option('viewer', 'Reads flags only.')}
-<p>It goes back to <b>${esc(whereTo(ask.redirectUri))}</b>. It shows on your Access tokens page as “${esc(ask.client.name)} (OAuth)”, where you can revoke it.</p>
+<p>It goes back to <b>${esc(whereTo(ask.redirectUri))}</b>. It shows on your Account page, under access tokens, as “${esc(ask.client.name)} (OAuth)”, where you can revoke it.</p>
 <div class="row"><button name="answer" value="deny">Deny</button><button class="go" name="answer" value="allow">Allow</button></div>
 </form>`);
   });

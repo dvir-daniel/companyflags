@@ -68,7 +68,7 @@ export function Cdn() {
   const setUp = admin && state?.source === null && <Button onClick={() => setEditing(true)}>Set up</Button>;
   return (
     <section aria-labelledby="s-cdn" className="grid gap-3">
-      <Heading id="s-cdn" title="CDN (Cloudflare)" action={setUp}>
+      <Heading id="s-cdn" title="CDN (Cloudflare)" quiet action={setUp}>
         Apps download their files through Cloudflare, which keeps each one for a minute. After a publish this server can tell Cloudflare to drop
         that environment’s files, so apps get the change in seconds.
       </Heading>

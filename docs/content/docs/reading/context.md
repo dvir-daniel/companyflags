@@ -8,7 +8,7 @@ description: "Who is asking, what the request knows about itself, and what comes
 Each request carries a credential in `Authorization: Bearer …` (or OFREP's `X-API-Key` header). Every key is for one
 [service](/guide/services) in one environment, and reads only that service's flags:
 
-- **An app** sends its **app service's key** (console: **API keys**), such as `ff_prod_web_…`. It is public: it goes
+- **An app** sends its **app service's key** (console: **Developers → API Keys**), such as `ff_prod_web_…`. It is public: it goes
   in the app. It reads values only, for the context the app sends. The context can name the signed-in entity by its
   dimension (`{ "company": "acme" }`), within the key's scope. That is targeting, not proof.
 - **A backend** sends its **backend service's key**, such as `ff_prod_api_…`. It is secret: a request with a

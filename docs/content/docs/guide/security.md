@@ -116,7 +116,7 @@ entity can get. Another entity's own values and keys aren't in it.
 An access token is for the console's API (`/api`): scripts, the CLI and MCP clients. It acts as you, with a role up
 to yours, and **On call at most**: a token never changes settings.
 
-- **Make one** in the console: your name at the foot of the sidebar → **Access tokens** → **+ New token**. Give it a
+- **Make one** in the console: your name at the foot of the sidebar → **Account** → **+ New token**. Give it a
   name, a role (Viewer, Editor or your own; an admin's is On call at most) and how long it works: 30, 90 or 365 days.
   It is shown once; the server keeps only its hash and a prefix (`cfp_` and 6 characters). A token made as an admin
   before acts as On call.
@@ -192,7 +192,7 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
   sign-on is required, 12 hours at most (`FF_SSO_SESSION_HOURS`), so the identity provider is asked again;
 - passwords are kept as hashes, and have at least 10 characters;
 - **two-factor sign-in**: anyone with a password can add an authenticator app's code and recovery codes, kept
-  encrypted. An admin can require it of admins with a password (**Settings → Single sign-on**): until they set it up,
+  encrypted. An admin can require it of admins with a password (**Settings → Single Sign-On**): until they set it up,
   the API refuses them everything but the setup. A password reset link turns it off for that person;
 - each sign-in and each failed one (a wrong password or code, a refusal) is in History, with how; People shows when
   each person last signed in. Security events can go to a SIEM through a webhook

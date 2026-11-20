@@ -217,7 +217,7 @@ export function EntityHeaderSkeleton({ back }: { back?: { href: string; label: s
 
 const TITLES: Record<string, string> = {
   flags: 'Flags', releases: 'Releases', approvals: 'Approvals', compare: 'Compare',
-  history: 'History', keys: 'API keys', tokens: 'Access tokens', settings: 'Settings', services: 'Services',
+  history: 'History', keys: 'API Keys', tokens: 'Account', settings: 'Settings', services: 'Services',
 };
 /** the pages whose bar has a button (+ New flag, + Add …, Export…) */
 const WITH_ACTIONS = new Set(['flags', 'releases', 'dimensions', 'keys', 'tokens', 'history']);

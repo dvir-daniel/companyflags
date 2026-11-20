@@ -70,7 +70,7 @@ export function GetStarted() {
           <p className="m-0 text-13 text-ink-3">Moving from another system? Once these are done, the Migration page imports its flags, and both run side by side while you move them one at a time.</p>
         </section>
       ) : (
-        <Callout>An admin needs to add the environments and services first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>
+        <Callout>An admin needs to add the environments and services first. You’re signed in as {meta.me.key} ({roleName(meta.me.role)}).</Callout>
       )}
     </div>
   );
@@ -86,7 +86,7 @@ export function FinishSetup({ flags, onNewFlag }: { flags?: number; onNewFlag?: 
         <h2 id="finish-setup" className="m-0 text-sm font-semibold text-ink">Finish setting up</h2>
         <p className="m-0 text-13 text-ink-2">{admin
           ? 'Apps read flags with a key for their service. Dimensions are optional: add them in Settings → Dimensions when some of your users need settings of their own.'
-          : meta.services.length ? 'An app hasn’t read flags yet: an admin makes its key on the API keys page.' : 'Apps can’t read flags yet: an admin still needs to add a service (Connect → Services).'}</p>
+          : meta.services.length ? 'An app hasn’t read flags yet: an admin makes its key on the API Keys page.' : 'Apps can’t read flags yet: an admin still needs to add a service (Developers → Services).'}</p>
       </div>
       {admin && <SetupChecklist flags={flags} onNewFlag={onNewFlag} />}
     </section>

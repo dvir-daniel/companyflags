@@ -178,8 +178,8 @@ export function Keys() {
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar title="API keys" count={loadError ? undefined : <CountSlot text={keys ? `${live} in use` : undefined} />}
-        actions={admin ? <Button onClick={() => setCreating(true)}>+ New key</Button> : <span className="text-13 text-ink-3">Only admins make and revoke keys</span>}>
+      <PageBar title="API Keys" count={loadError ? undefined : <CountSlot text={keys ? `${live} in use` : undefined} />}
+        actions={admin ? <Button onClick={() => setCreating(true)}>+ New key</Button> : <span className="text-13 text-ink-3">Only admins can change these</span>}>
         <SearchField ref={search} className="w-[240px] max-md:w-auto max-md:flex-1 max-md:basis-full" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search keys by prefix or label" />
         <FilterSelect label="Environment" value={env} onChange={setEnv} options={[['', 'All'], ...meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])]} />
         <FilterSelect label="Service" value={app} onChange={setApp} options={[['', 'All'], ...meta.services.map((p) => [p.key, p.key] as [string, string])]} />
@@ -356,7 +356,7 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
         </div>
       ) : none ? (
         <Empty action={<a href="#/services" data-slot="button" className={cn(buttonVariants({ variant: 'secondary' }), 'no-underline hover:no-underline')}>Open services</a>}>
-          No service yet. Add one in Settings → Services.
+          No service yet. Add one in Developers → Services.
         </Empty>
       ) : (
         <div className="grid gap-4">

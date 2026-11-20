@@ -591,7 +591,7 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
       </>}>
       <div className="grid gap-4 text-13 text-ink-2">
         <p className="m-0">Your backend gives this to the app when someone from {entity.name} logs in (or asks for it with an API key: <span className="font-mono text-ink-2">GET /sdk/v1/links</span>). It is the only key the app needs.</p>
-        {!app ? <Callout>Add a app service in Settings → Services first: each one has its own link.</Callout> : <>
+        {!app ? <Callout>Add an app service first (Developers → Services): each one has its own link.</Callout> : <>
           <Field label="Service">
             <NativeSelect className="h-[34px]" value={app} onChange={(e) => setApp(e.target.value)} aria-label="Service">
               {clientApps.map((k) => <option key={k} value={k}>{k}</option>)}

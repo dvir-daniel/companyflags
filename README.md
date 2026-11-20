@@ -85,7 +85,7 @@ docker logs companyflags   # the setup link: make the admin account at http://lo
 
 Open the setup link the server prints and create the admin account: only that link can make it. The console then
 walks you through four steps: environments, services (`web`, an app), your first flag (tick its services), and
-connecting an app (**API keys**: make the `web` service's key). Dimensions are optional.
+connecting an app (**API Keys**: make the `web` service's key). Dimensions are optional.
 
 For production, run it with Postgres:
 
@@ -118,7 +118,7 @@ or a backend, and does the server decide (OFREP) or your code (flagd JSON)?
 | **App** | OpenFeature's OFREP web, Android and iOS providers | The CDN file: the entity's flagd JSON, cached by your CDN |
 | **Backend** | OpenFeature's OFREP server providers | flagd: the entity's rules, in memory |
 
-Most apps start with OFREP. Make the service's key on the **API keys** page and give it to OpenFeature's own OFREP
+Most apps start with OFREP. Make the service's key on the **API Keys** page and give it to OpenFeature's own OFREP
 provider. An app service's key is public, and over OFREP it reads values only:
 
 ```ts

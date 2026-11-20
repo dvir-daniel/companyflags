@@ -38,7 +38,7 @@ settings without `cloudflare()`, for example, the CDN file's address without `cd
 | `flagd()` | `flagd` | [flagd JSON](/reading/overview) for backends that evaluate in-process: `GET /sdk/v1/flagd/<dimension>/<entity>`, with a backend service's key. |
 | `cdnFiles()` | `cdn-files` | [CDN files](/reading/local-apps): flagd JSON per environment, app service and entity, for a CDN to cache. `GET /cdn/v1/flags/…`. |
 | `cloudflare(options?)` | `cloudflare` | [Purges Cloudflare's cache](/self-hosting/cdn#purge-on-publish) after each publish, and adds **Settings → CDN** to the console. |
-| `webhooks(options?)` | `webhooks` | [Webhooks](/guide/webhooks): out, after each change (signed JSON, Slack, or your own shape), and in, `POST /hooks/v1/<token>`. Adds them to the console's **Migration** page. |
+| `webhooks(options?)` | `webhooks` | [Webhooks](/guide/webhooks): out, after each change (signed JSON, Slack, or your own shape), and in, `POST /hooks/v1/<token>`. Adds them to the console's **Settings → Migration** page. |
 | `mcp()` | `mcp` | An MCP server for AI agents at `POST /mcp` (Streamable HTTP, stateless), with an access token (`Authorization: Bearer cfp_…`). Its tools read, explain and compare flags, and change them through the console's API (flags, services, defaults, rules, an entity's own default, release steps), so roles and approvals hold: where an environment needs approval, a change is a request, and `request_status` follows it. For clients that only start local servers: `companyflags mcp`. |
 
 | `metrics(options?)` | `metrics` | Prometheus's text format at `GET /metrics`: requests by route, apps' and backends' reads, publish lag, open event streams ([Production](/self-hosting/production#metrics)). Not in `defaultPlugins()`. |

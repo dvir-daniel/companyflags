@@ -8,7 +8,7 @@ import { NativeSelect } from '@companyflags/ui/components/native-select';
 import { PageBar } from '@companyflags/ui/components/page-bar';
 import { cn } from '@companyflags/ui/lib/utils';
 import { api, type Meta, type User } from '../api.ts';
-import { go, useApp } from '../app.ts';
+import { useApp } from '../app.ts';
 import { plural } from '../text.ts';
 import { Actions, Badge, Empty, ErrorList, Field, Heading, Modal } from '../ui.tsx';
 import { copyText, useAsync } from '../uiKit.ts';
@@ -46,7 +46,7 @@ export function Settings({ section }: { section?: string }) {
       <PageBar title={label}
         count={admin ? undefined : 'Only admins can change these'} />
       <div className="grid gap-10 px-6 py-6 max-sm:px-4">
-        {at === 'environments' && <><EnvironmentsSection admin={admin} /><TokensNote admin={admin} /></>}
+        {at === 'environments' && <EnvironmentsSection admin={admin} />}
         {at === 'dimensions' && <DimensionsSection admin={admin} />}
         {at === 'services' && <ServicesSection admin={admin} />}
         {at === 'sso' && <SingleSignOn />}
@@ -63,7 +63,7 @@ function EnvironmentsSection({ admin }: { admin: boolean }) {
   const [envDrawer, setEnvDrawer] = useState<{ env: Env | null } | null>(null);
   return (
     <section aria-labelledby="s-env" className="grid gap-3">
-      <Heading id="s-env" title="Environments" action={admin && <Button onClick={() => setEnvDrawer({ env: null })}>+ Add environment</Button>}>
+      <Heading id="s-env" title="Environments" quiet action={admin && <Button onClick={() => setEnvDrawer({ env: null })}>+ Add environment</Button>}>
         Each flag has its own settings in each environment. Where approvals are needed, changes are reviewed and confirmed before they go out.
       </Heading>
       {meta.environments.length === 0 ? (
@@ -92,16 +92,6 @@ function EnvironmentsSection({ admin }: { admin: boolean }) {
   );
 }
 
-/** Where access tokens are: each person's own, from their account menu. */
-function TokensNote({ admin }: { admin: boolean }) {
-  return (
-    <section aria-labelledby="s-tokens" className="grid gap-3">
-      <Heading id="s-tokens" title="Access tokens" action={<Button variant="secondary" onClick={() => go('tokens')}>{admin ? 'Manage tokens' : 'Your tokens'}</Button>}>
-        A token acts as you, with a role up to yours, for scripts, the CLI and MCP clients. Everyone makes their own from their account menu{admin ? '; you can see and revoke everyone’s' : ''}.
-      </Heading>
-    </section>
-  );
-}
 
 export function PersonDrawer({ onClose, onAdded }: { onClose: () => void; onAdded: (u: User, invite: string) => void }) {
   const refresh = useRefresh();
@@ -305,7 +295,7 @@ function ServicesSection({ admin }: { admin: boolean }) {
 
   return (
     <section aria-labelledby="s-services" className="grid gap-3">
-      <Heading id="s-services" title="Services" action={admin && <Button onClick={() => setDrawer({ app: null })}>+ Add service</Button>}>
+      <Heading id="s-services" title="Services" quiet action={admin && <Button onClick={() => setDrawer({ app: null })}>+ Add service</Button>}>
         What reads your flags: each app (Android, iOS, web) and each backend. A service reads only the flags you put in it, with
         its own key in each environment (API keys): an app’s key reads values only, a backend’s key reads the rules.
       </Heading>

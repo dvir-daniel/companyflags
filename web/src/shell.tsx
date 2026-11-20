@@ -5,7 +5,7 @@ import { dimensionHref, historyHref, preload } from './paths.ts';
 import { readPersistent } from './persist.ts';
 import { signOut } from './session.ts';
 import {
-  Avatar, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, SidebarLabel, SidebarSearch,
+  Avatar, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, sidebarItemClass, SidebarLabel, SidebarSearch,
   TitleBar as Top, TitleBarBrand, TitleBarStatus,
 } from '@companyflags/ui/components/app-frame';
 import { ThemeToggle } from '@companyflags/ui/components/theme-toggle';
@@ -57,35 +57,39 @@ export function Icon({ name, size = 15 }: { name: IconName; size?: number }) {
 type NavItem = { key: string; label: string; icon: IconName; href?: string; current: (page: string, sub?: string) => boolean };
 const plainPage = (key: string, also?: string): Pick<NavItem, 'key' | 'current'> => ({ key, current: (p) => p === key || p === also });
 
-// Grouped by what people come for: the flags and what happened to them (daily, with no title: they're what the
-// console is), who gets what (the dimensions' pages, top to bottom: "Regions", "Stores"; with none yet, the way to set
-// them up), what talks to the server (Connect: services, keys, tokens, webhooks), and Settings on its own at the end.
-function navOf(meta: Meta | null): { group?: string; items: NavItem[] }[] {
+// The sidebar as better-auth.com draws its own: each item a short noun in Title Case, the same words as the page's title
+// and the tab's, an icon on each, and a small caption over each group that holds one kind of thing.
+//   (no caption)  what the console is for, every day: the flags, their releases, what waits for review, what happened,
+//                 and Compare (who gets what, side by side)
+//   Audience      the installation's own dimensions, top to bottom ("Regions", "Stores"); none until there is one
+//   Developers    what apps and backends connect with: their services, their API keys, and webhooks
+//   Settings      on its own at the end, with its own menu (environments, dimensions, people, sign-in, migration…)
+// Each person's own access tokens and two-factor sign-in are in the account menu (Account), not here.
+// Before /meta answers, the parts that depend on it (how many dimensions, whether webhooks run) draw as they did last
+// time (shell.dims, shell.webhooks), so nothing moves when it answers.
+type NavGroup = { group?: string; items: NavItem[]; bones?: number };
+function navOf(meta: Meta | null): NavGroup[] {
   const dims = meta?.dimensions ?? [];
-  const noDims = !!meta && dims.length === 0;
+  const webhooks = meta ? meta.plugins.includes('webhooks') : readPersistent('shell.webhooks', true);
   return [
     { items: [
       { ...plainPage('flags', 'flag'), label: 'Flags', icon: 'flags' },
       { ...plainPage('releases', 'release'), label: 'Releases', icon: 'releases' },
       { ...plainPage('approvals'), label: 'Approvals', icon: 'approvals' },
       { ...plainPage('history'), label: 'History', icon: 'history' },
-    ] },
-    { group: 'Targeting', items: [
-      ...(noDims ? [{ key: 'settings/dimensions', label: 'Set up dimensions', icon: 'entities' as const, href: '#/settings/dimensions',
-        current: (p: string, sub?: string) => p === 'settings' && sub === 'dimensions' }] : []),
-      ...dims.map((d): NavItem => ({ key: `dimensions/${d.key}`, label: title(d), icon: 'entities', href: dimensionHref(d.key),
-        current: (p, sub) => p === 'dimensions' && sub === d.key })),
       { ...plainPage('compare'), label: 'Compare', icon: 'compare' },
     ] },
-    { group: 'Connect', items: [
+    ...(meta ? (dims.length ? [{ group: 'Audience', items: dims.map((d): NavItem => ({
+      key: `dimensions/${d.key}`, label: title(d), icon: 'entities', href: dimensionHref(d.key),
+      current: (p, sub) => p === 'dimensions' && sub === d.key,
+    })) }] : []) : readPersistent('shell.dims', 0) > 0 ? [{ group: 'Audience', items: [], bones: readPersistent('shell.dims', 0) }] : []),
+    { group: 'Developers', items: [
       { ...plainPage('services'), label: 'Services', icon: 'services' },
-      { ...plainPage('keys'), label: 'API keys', icon: 'keys' },
-      { ...plainPage('tokens'), label: 'Access tokens', icon: 'tokens' },
-      ...(!meta || meta.plugins.includes('webhooks') ? [{ ...plainPage('webhooks'), label: 'Webhooks', icon: 'webhooks' as const }] : []),
-      { ...plainPage('migration'), label: 'Migration', icon: 'migration' },
+      { ...plainPage('keys'), label: 'API Keys', icon: 'keys' },
+      ...(webhooks ? [{ ...plainPage('webhooks'), label: 'Webhooks', icon: 'webhooks' as const }] : []),
     ] },
     { items: [
-      { key: 'settings', label: 'Settings', icon: 'settings', current: (p, sub) => p === 'settings' && !(noDims && sub === 'dimensions') },
+      { key: 'settings', label: 'Settings', icon: 'settings', current: (p) => p === 'settings' },
     ] },
   ];
 }
@@ -129,6 +133,9 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
       <SidebarSearch onClick={onSearch} icon={<Icon name="search" />} shortcut={isMac ? '⌘K' : 'Ctrl K'} aria-keyshortcuts={isMac ? 'Meta+K' : 'Control+K'}>Search</SidebarSearch>
       {navOf(meta).map((g, i) => (
         <SidebarGroup key={g.group ?? i} label={g.group}>
+          {Array.from({ length: g.bones ?? 0 }, (_, b) => (
+            <div key={`bone-${b}`} aria-hidden className={cn(sidebarItemClass, 'pointer-events-none')}><Icon name="entities" /><Bone className="w-20" /></div>
+          ))}
           {g.items.map((n) => (
             <SidebarItem key={n.key} href={n.href ?? `#/${n.key}`} aria-current={n.current(page, sub) ? 'page' : undefined}
               onPointerEnter={() => ahead(n.href ?? `#/${n.key}`)} onFocus={() => ahead(n.href ?? `#/${n.key}`)}>
@@ -212,7 +219,7 @@ function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
           <span className="truncate text-ink-2">{me.key}</span>
           <span className="text-ink-3">{roleInfo(me.role).label}</span>
         </div>
-        <a href="#/tokens" onClick={() => setOpen(false)} className="border-t border-rule pt-3 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Access tokens and two-factor sign-in</a>
+        <a href="#/tokens" onClick={() => setOpen(false)} className="border-t border-rule pt-3 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Account: two-factor and access tokens</a>
         <HelpLink />
         <ShortcutsChoice />
         {meta.signIn === 'better-auth' ? (

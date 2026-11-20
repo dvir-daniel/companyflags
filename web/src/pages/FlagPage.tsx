@@ -75,7 +75,8 @@ const rowButton = 'cursor-default rounded-none border-0 bg-transparent p-0 text-
 const TYPE_NAME: Record<string, string> = { bool: 'Boolean', string: 'String', number: 'Number', json: 'JSON' };
 const typeName = (t: string) => TYPE_NAME[t] ?? t;
 
-export function FlagPage({ flagKey, envKey, tabKey }: { flagKey: string; envKey?: string; tabKey?: string }) {
+// `from`: the list it was opened from, which its crumb leads back to (a release opened from Releases: #/release/…)
+export function FlagPage({ flagKey, envKey, tabKey, from = 'flags' }: { flagKey: string; envKey?: string; tabKey?: string; from?: 'flags' | 'releases' }) {
   const { meta } = useApp();
   // memory: the environment you last worked in, shared with the flag list and the entity pages
   const [lastEnv, setLastEnv] = usePersistentState('env', '');
@@ -89,7 +90,7 @@ export function FlagPage({ flagKey, envKey, tabKey }: { flagKey: string; envKey?
   // keyed by flag and environment, so another one opens fresh (useDraft.ts useDraftFlag).
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <FlagEditor key={`${flagKey}:${env}`} flagKey={flagKey} env={env} tabKey={tabKey} check={check} setCheck={setCheck} />
+      <FlagEditor key={`${flagKey}:${env}`} flagKey={flagKey} env={env} tabKey={tabKey} from={from} check={check} setCheck={setCheck} />
     </div>
   );
 }
@@ -101,8 +102,8 @@ const tabsOf = (flag: Pick<FlagDetail, 'kind' | 'valueType' | 'archivedAt'>): Fl
   ...(flag.valueType === 'bool' ? [] : ['variants' as const]), 'history', 'settings', 'debug',
 ];
 
-function FlagEditor({ flagKey, env, tabKey, check, setCheck }: {
-  flagKey: string; env: string; tabKey?: string; check: Check; setCheck: (c: Check) => void;
+function FlagEditor({ flagKey, env, tabKey, from, check, setCheck }: {
+  flagKey: string; env: string; tabKey?: string; from: 'flags' | 'releases'; check: Check; setCheck: (c: Check) => void;
 }) {
   const { meta, toast } = useApp();
   const { envName } = useEnvs();
@@ -133,7 +134,7 @@ function FlagEditor({ flagKey, env, tabKey, check, setCheck }: {
   // the page's own shape while the flag loads (loading.tsx): its bar, its tabs and the rules' layers, with bones
   if (!view.flag || !view.draft) {
     return <>
-      <DetailBarSkeleton back={`#/flags/${env}`} backLabel="Back to flags" crumb="Flags" copy env={<EnvChip meta={meta} env={env} to={(v) => `flag/${flagKey}/${v}${tabKey ? `/${tabKey}` : ''}`} />} />
+      <DetailBarSkeleton back={`#/${from}/${env}`} backLabel={`Back to ${from}`} crumb={from === 'releases' ? 'Releases' : 'Flags'} copy env={<EnvChip meta={meta} env={env} to={(v) => `flag/${flagKey}/${v}${tabKey ? `/${tabKey}` : ''}`} />} />
       <TabsSkeleton widths={FLAG_TABS} />
       {tabKey === 'rollout' ? <RolloutSkeleton /> : !tabKey || tabKey === 'rules' || tabKey === 'variants' ? <FlagRulesSkeleton /> : null}
     </>;
@@ -167,7 +168,7 @@ function FlagEditor({ flagKey, env, tabKey, check, setCheck }: {
     <>
       {/* the one bar: which flag, which environment, whether it's on, and the switch */}
       <PageBar
-        crumbs={<a href={`#/flags/${encodeURIComponent(env)}`} className={crumbLink}>Flags</a>}
+        crumbs={<a href={`#/${from}/${encodeURIComponent(env)}`} className={crumbLink}>{from === 'releases' ? 'Releases' : 'Flags'}</a>}
         title={<span className="flex min-w-0 items-center gap-1.5">
           {flag.name ? <span className="truncate">{flag.name}</span> : <span className="truncate font-mono">{flag.key}</span>}
         </span>}

@@ -20,15 +20,17 @@ export function useRefresh() {
 }
 
 /** Settings' pages, in the order of its menu (#/settings/<key>; #/settings is the first). CDN shows when the server runs
- *  the Cloudflare plugin. Services are drawn by Settings too, but they're in Connect (#/services), not in its menu. */
+ *  the Cloudflare plugin. Services are drawn by Settings too, but they're under Developers (#/services), not in its
+ *  menu. Each label is the page's title and its tab's title, in Title Case like every page in the sidebar. */
 export const SETTINGS = [
   { key: 'environments', label: 'Environments' },
   { key: 'dimensions', label: 'Dimensions' },
   { key: 'services', label: 'Services', connect: true },
   { key: 'people', label: 'People' },
-  { key: 'sso', label: 'Single sign-on' },
+  { key: 'sso', label: 'Single Sign-On' },
   { key: 'appearance', label: 'Appearance' },
   { key: 'cdn', label: 'CDN', plugin: 'cloudflare' },
+  { key: 'migration', label: 'Migration' },
 ] as const;
 export type SettingsKey = (typeof SETTINGS)[number]['key'];
 /** The pages in Settings' menu on this server. */

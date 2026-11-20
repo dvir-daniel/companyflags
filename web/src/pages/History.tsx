@@ -72,7 +72,7 @@ const options = (values: string[], current: string, name: (v: string) => string 
 const subjects = (dims: Dimensions): [string, string][] => [
   ['layer', 'Rules and defaults'], ['flag', 'Flag details'], ['variations', 'Variants'], ['delivery', 'Services of a flag'],
   ['entity', capital(listWords(dims, 'and', true)) || 'Entries'], ['dimensions', 'Dimensions'], ['change_set', 'Requests and reviews'],
-  ['environment', 'Environments'], ['app', 'Services'], ['api_key', 'API keys'], ['person', 'People'], ['sso', 'Single sign-on'], ['cdn', 'CDN'], ['appearance', 'Appearance'], ['webhook,webhook_in', 'Webhooks'],
+  ['environment', 'Environments'], ['app', 'Services'], ['api_key', 'API Keys'], ['person', 'People'], ['sso', 'Single Sign-On'], ['cdn', 'CDN'], ['appearance', 'Appearance'], ['webhook,webhook_in', 'Webhooks'],
 ];
 const WHEN: [string, string][] = [['', 'Any time'], ['today', 'Today'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'],
   ['365', 'Last 12 months'], ['custom', 'Between dates']];

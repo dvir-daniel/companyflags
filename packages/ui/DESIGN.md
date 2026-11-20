@@ -67,10 +67,18 @@ Components use tokens only (`bg-background`, `text-ink`, `border-rule`), never a
 | 34px mono footer with slashes | `Footer`, `FooterSlash` |
 | Phone (under 768px): a bottom tab bar with the four most-used pages and More, which opens the sidebar in a `Drawer` | the console's `MobileNav` (web/src/shell.tsx), `useBottomReserve` |
 
-**The sidebar's groups** say what people come for. The first group has no title: Flags, Releases, Approvals,
-History. **Targeting**: each dimension's page, and Compare. **Connect**: what talks to the server (Services, API keys,
-Access tokens, Webhooks, Migration). **Settings** sits on its own at the end. A group with one item gets no title,
-and no group is named after its only item.
+**The sidebar works like better-auth.com's.** Each item is a short noun in Title Case with an icon, and it is the
+page's title and the start of its tab's title, word for word (API Keys → "API Keys" → "API Keys · CompanyFlags"). A
+small caption sits over each group, and a group holds one kind of thing:
+- no caption: Flags, Releases, Approvals, History, Compare: what the console is for, every day;
+- **Audience**: the installation's dimensions, top to bottom ("Regions", "Stores"); no group until there is one;
+- **Developers**: what apps and backends connect with: Services, API Keys, Webhooks;
+- **Settings** on its own at the end, with its own menu: Environments, Dimensions, People, Single Sign-On, Appearance,
+  CDN, Migration.
+
+Each person's own things (two-factor sign-in and access tokens) are on **Account**, from the account menu at the foot,
+not in the sidebar. Before the server answers, the sidebar draws as many dimension rows as last time, so nothing
+moves. No verbs ("Set up …"), no group named after its only item, and no page with two homes.
 
 **One home for each question.** What changed, and how to undo it, is **History**, in three views with their own
 addresses: Changes (`#/history`), Revisions (`#/history?view=revisions&env=…`, each environment's numbered

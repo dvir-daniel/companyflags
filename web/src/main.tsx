@@ -80,7 +80,7 @@ const NAV_WAIT_MS = 300;
 
 // the address in the window; no page (or just "#/") opens the flag list
 const currentHash = () => (location.hash.length > 2 ? location.hash : '#/flags');
-// an address that moved (each environment's revisions are in History, Settings → Services in Connect) opens where it went, in place
+// an address that moved (each environment's revisions are in History, Services under Developers, Migration in Settings) opens where it went, in place
 // of the old entry in the browser's history
 const moved = movedAddress(location.hash);
 if (moved) history.replaceState(history.state, '', moved);
@@ -96,7 +96,7 @@ function knownRoute([page, a]: string[]): boolean {
     case 'flag': case 'release': case 'dimensions': return !!a;
     case 'approvals': return !a || /^\d+$/.test(a);
     case 'settings': return !a || isSettingsKey(a);
-    case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'migration': case 'webhooks': case 'services': return true;
+    case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'webhooks': case 'services': return true;
     default: return false;
   }
 }
@@ -114,7 +114,7 @@ function NotFound() {
 /** The tab's title for each page, so tabs and history entries can be told apart. */
 function titleFor([page, a, b]: string[], meta: Meta | null): string {
   const name: Record<string, string> = {
-    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', tokens: 'Access tokens', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', webhooks: 'Webhooks', services: 'Services', join: 'Join',
+    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API Keys', tokens: 'Account', history: 'History', settings: 'Environments · Settings', approvals: 'Approvals', webhooks: 'Webhooks', services: 'Services', join: 'Join',
   };
   const dim = page === 'dimensions' && a ? meta?.dimensions.find((d) => d.key === a) : undefined;
   const dimName = dim ? dimTitle(dim) : a;
@@ -240,6 +240,8 @@ function App() {
     const m = await fetchMeta();
     rememberSignedIn(true);
     writePersistent('shell.envs', m.environments.length);
+    writePersistent('shell.dims', m.dimensions.length);
+    writePersistent('shell.webhooks', m.plugins.includes('webhooks'));
     if (!opened.current) {
       opened.current = true;
       const hash = currentHash();
@@ -440,7 +442,7 @@ function App() {
                 <Suspense fallback={skeleton}>
                   {/* a crash in a page shows in its place; another address starts that page fresh */}
                   <ErrorBoundary key={routeKey} where={page}>
-                    {meta.me.needsTwoFactor ? <TwoFactorGate /> : !knownRoute(route) ? <NotFound /> : page === 'settings' ? <SettingsFrame sub={route[1]}>{route[1] === 'people' ? <People /> : <Settings section={route[1]} />}</SettingsFrame>
+                    {meta.me.needsTwoFactor ? <TwoFactorGate /> : !knownRoute(route) ? <NotFound /> : page === 'settings' ? <SettingsFrame sub={route[1]}>{route[1] === 'people' ? <People /> : route[1] === 'migration' ? <Migration /> : <Settings section={route[1]} />}</SettingsFrame>
                       : page === 'tokens' ? <Tokens />
                       : page === 'webhooks' ? <Webhooks />
                       : page === 'services' ? <Settings section="services" />
@@ -455,7 +457,6 @@ function App() {
                       {page === 'compare' && <Compare />}
                       {page === 'keys' && <Keys />}
                       {page === 'history' && <History />}
-                      {page === 'migration' && <Migration />}
                     </>}
                   </ErrorBoundary>
                 </Suspense>
