@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { DocsLayout } from 'fumadocs-ui/layouts/docs';
+import { AskAI } from '@/components/ask-ai';
 import { Logo } from '@/components/logo';
 import { SiteTabs } from '@/components/site-tabs';
 import { Version } from '@/components/version';
@@ -12,6 +13,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       sidebar={{ banner: <Version /> }}>
       <SiteTabs />
       {children}
+      <AskAI />
     </DocsLayout>
   );
 }

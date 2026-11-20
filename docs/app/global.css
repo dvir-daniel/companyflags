@@ -162,3 +162,19 @@ code, kbd, pre { font-family: var(--font-mono); }
 }
 .cf-page-actions > button:hover { color: var(--color-fd-foreground); background: var(--cf-wash) !important; }
 .cf-page-actions > button svg { width: 13px; height: 13px; }
+/* "On this page": the open section shaded, as better-auth.com's, with no line beside the list */
+#nd-toc .relative.flex.flex-col > div.absolute { display: none; }
+#nd-toc .relative.flex.flex-col > a { padding: 5px 10px !important; margin: 0; transition: color 150ms, background-color 150ms; }
+#nd-toc .relative.flex.flex-col > a:hover { background: var(--cf-wash); }
+#nd-toc .relative.flex.flex-col > a[data-active='true'] { background: var(--cf-wash); color: var(--color-fd-foreground); }
+/* "Ask AI", in the corner */
+.cf-ask {
+  position: fixed; right: 20px; bottom: 20px; z-index: 40; display: inline-flex; align-items: center; gap: 10px; height: 34px;
+  padding: 0 12px; border: 1px solid var(--color-fd-border); background: var(--color-fd-background); cursor: pointer;
+  font-size: 13px; color: var(--color-fd-muted-foreground); box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.5);
+  transition: color 150ms, border-color 150ms;
+}
+.cf-ask:hover { color: var(--color-fd-foreground); border-color: var(--cf-rule-2); }
+.cf-ask-rule { width: 1px; height: 16px; background: var(--color-fd-border); }
+.cf-ask kbd { font-family: var(--font-mono); font-size: 10px; }
+@media (max-width: 767px) { .cf-ask { display: none; } }
