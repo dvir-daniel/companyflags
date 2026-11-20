@@ -17,13 +17,13 @@ One file says how the server runs, the way Better Auth has its `auth.ts`. `compa
 ```ts
 // companyfeatures.config.ts
 import { defineConfig } from 'companyfeatures/config';
-import { appFiles, cloudflare, flagd, ofrep } from 'companyfeatures/plugins';
+import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
 
 export default defineConfig({
   database: { url: process.env.DATABASE_URL },          // or { dataDir: './data' }
   server: { port: 8787 },
   auth: { baseURL: 'https://flags.example.com' },      // Better Auth: secret, baseURL, providers, …
-  plugins: [ofrep(), flagd(), appFiles(), cloudflare()],
+  plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()],
 });
 ```
 

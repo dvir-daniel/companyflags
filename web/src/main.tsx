@@ -33,6 +33,7 @@ const PAGE_CODE = {
   history: () => import('./pages/History.tsx'),
   settings: () => import('./pages/Settings.tsx'),
   people: () => import('./pages/People.tsx'),
+  migration: () => import('./pages/Migration.tsx'),
 } as const;
 const Flags = lazy(() => PAGE_CODE.flags().then((m) => ({ default: m.Flags })));
 const FlagPage = lazy(() => PAGE_CODE.flag().then((m) => ({ default: m.FlagPage })));
@@ -47,6 +48,7 @@ const History = lazy(() => PAGE_CODE.history().then((m) => ({ default: m.History
 const Settings = lazy(() => PAGE_CODE.settings().then((m) => ({ default: m.Settings })));
 const GetStarted = lazy(() => PAGE_CODE.settings().then((m) => ({ default: m.GetStarted })));
 const People = lazy(() => PAGE_CODE.people().then((m) => ({ default: m.People })));
+const Migration = lazy(() => PAGE_CODE.migration().then((m) => ({ default: m.Migration })));
 // signing in needs Better Auth's client; people who are signed in never download it
 const SIGN_IN_CODE = () => import('./signin.tsx');
 const SignInPage = lazy(() => SIGN_IN_CODE().then((m) => ({ default: m.SignInPage })));
@@ -78,7 +80,7 @@ function knownRoute([page, a]: string[]): boolean {
     case 'settings': return !a || a === 'people' || a === 'dimensions';
     // from before dimensions: they open the same pages under #/dimensions (OldAddress)
     case 'customers': case 'customer': return true;
-    case 'flags': case 'releases': case 'compare': case 'keys': case 'history': return true;
+    case 'flags': case 'releases': case 'compare': case 'keys': case 'history': case 'migration': return true;
     default: return false;
   }
 }
@@ -96,7 +98,7 @@ function NotFound() {
 /** The tab's title for each page, so tabs and history entries can be told apart. */
 function titleFor([page, a, b]: string[], meta: Meta | null): string {
   const name: Record<string, string> = {
-    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', history: 'History', settings: 'Settings', approvals: 'Approvals',
+    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration',
   };
   const dim = page === 'dimensions' && a ? meta?.dimensions.find((d) => d.key === a) : undefined;
   const dimName = dim ? dimTitle(dim) : a;
@@ -398,6 +400,7 @@ function App() {
                       {page === 'compare' && <Compare />}
                       {page === 'keys' && <Keys />}
                       {page === 'history' && <History />}
+                      {page === 'migration' && <Migration />}
                     </>}
                   </ErrorBoundary>
                 </Suspense>

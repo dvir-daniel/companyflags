@@ -58,6 +58,13 @@ export default defineConfig({
         ],
       },
       {
+        text: 'Migration',
+        items: [
+          { text: 'Moving from another system', link: '/guide/migration' },
+          { text: 'Webhooks', link: '/guide/webhooks' },
+        ],
+      },
+      {
         text: 'Self-hosting',
         items: [
           { text: 'Docker', link: '/self-hosting/docker' },

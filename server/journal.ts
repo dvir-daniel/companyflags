@@ -124,6 +124,16 @@ export const KINDS = {
   // the dimensions (dimensions.ts): their words, one added at the top or the bottom, an empty one removed. Nothing served
   // changes: an entity added in a new dimension, or moved, is an entity change of its own.
   'dimensions.update': { serves: null, restore: false },
+  // webhooks (webhooks.ts): out (sent after each change) and in (another system's values, imported). History names
+  // their address's host only, never the address, the headers or the secrets.
+  'webhook.create': { serves: null, restore: false },
+  'webhook.update': { serves: null, restore: false },
+  'webhook.delete': { serves: null, restore: false },
+  'webhook.secret': { serves: null, restore: false },
+  'webhook_in.create': { serves: null, restore: false },
+  'webhook_in.update': { serves: null, restore: false },
+  'webhook_in.delete': { serves: null, restore: false },
+  'webhook_in.token': { serves: null, restore: false },
 } satisfies Record<string, Kind>;
 
 export type ChangeKind = keyof typeof KINDS;

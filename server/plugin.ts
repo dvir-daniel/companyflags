@@ -3,7 +3,7 @@
 // links. A plugin adds a way to read flags (OFREP, flagd JSON, app files) or something to do after a publish (a CDN
 // purge). The built-in ones are in plugins/; each is a function that takes its options and returns a Plugin.
 //
-//   export default defineConfig({ plugins: [ofrep(), flagd(), appFiles(), cloudflare()] });
+//   export default defineConfig({ plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()] });
 //
 // A plugin's setup runs once, when the server starts, with what the core shares (PluginContext). What it returns is
 // mounted by createApp (index.ts): its routes at the root, its console routes under /api behind the console's sign-in,
@@ -31,6 +31,8 @@ export type PluginContext = {
   keys: KeyCache;
   links: LinkCache;
   flagSets: AppCache;
+  /** The console's address (BETTER_AUTH_URL), for links in what a plugin sends; unknown when it isn't set. */
+  baseURL?: string | null;
   log: (m: string) => void;
 };
 
@@ -54,6 +56,9 @@ export type PluginParts = {
   /** After an environment publishes, once per publish: 'off' when it had nothing to do. A failure is logged and kept
    *  on the publish (Settings shows it); it never undoes the publish. */
   onPublish?: Purger;
+  /** Work it does on its own, in the background (sending webhooks): running from setup, stopped before the database
+   *  closes. `wake`: something changed, look now; `drain`: let the round under way, and one more, finish (tests). */
+  worker?: { wake: () => void; stop: () => Promise<void>; drain: () => Promise<void> };
 };
 
 export type Plugin = {

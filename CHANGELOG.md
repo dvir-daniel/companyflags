@@ -34,3 +34,12 @@ The first public release.
 - **Running it.** A Docker image and a Compose file with Postgres; several instances on one database; `/healthz` and
   `/readyz`; security headers and a strict Content-Security-Policy on the console; a first screen that walks an admin
   through setting up.
+- **Migration.** Run CompanyFeatures next to the config system you have now and move flags one at a time: import its
+  values (key-value JSON, flagd, CompanyFeatures values, or any JSON through a JSONata expression), with a preview of
+  every change first; export in the same formats. Apps ask CompanyFeatures first and the old system for the rest,
+  with OpenFeature's Multi-Provider; a flag moves when it's added to their flag set.
+- **Webhooks out** (the `webhooks()` plugin). After each change, a signed message (Standard Webhooks), a Slack
+  message, or your own JSON made with JSONata, with what the changed flags are set to now. In order, once each,
+  retried for two hours.
+- **Webhooks in.** Another system posts its values to an address of its own, and they're imported: at once, or as a
+  request where the environment needs approval.

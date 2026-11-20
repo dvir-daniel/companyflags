@@ -21,7 +21,7 @@ import { KeyCache } from './auth.ts';
 import { journaled } from './journal.ts';
 import type { Purger } from './purge.ts';
 import { PluginError, publishHooks, setUpPlugins, type Plugin } from './plugin.ts';
-import { defaultPlugins, type CloudflareOptions } from './plugins/index.ts';
+import { defaultPlugins, type CloudflareOptions, type WebhooksOptions } from './plugins/index.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
 import { startWorkers } from './workers.ts';
@@ -41,6 +41,8 @@ export type AppOptions = {
   cdn?: CloudflareOptions;
   /** tests: a purger of their own instead of the plugins' onPublish (publish.test.ts) */
   purge?: Purger;
+  /** tests: the built-in webhooks plugin's options, when `plugins` isn't given: without a `fetch` it sends nothing */
+  webhooks?: WebhooksOptions;
 };
 
 export async function createApp(opts: AppOptions = {}) {
@@ -81,12 +83,19 @@ export async function createApp(opts: AppOptions = {}) {
     access, plugin: auth, discover: opts.discover ?? discoverOverHttp(settings?.trustedOrigins ?? []), baseURL: settings?.baseURL, production: settings?.production,
   });
   // the plugins (plugin.ts): set up once, with what the core shares
-  const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: opts.cdn ?? { fetch: undefined } }),
-    { db, plane, hub, keys, links, flagSets: apps, log }).catch(async (e) => { await store.close(); throw e; });
+  const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: opts.cdn ?? { fetch: undefined }, webhooks: opts.webhooks ?? { fetch: undefined } }),
+    { db, plane, hub, keys, links, flagSets: apps, baseURL: settings?.baseURL, log }).catch(async (e) => { await store.close(); throw e; });
   const on = new Set(plugins.map((p) => p.id));
-  const workers = startWorkers(db, plane, hub, log, opts.purge ?? publishHooks(plugins), {
+  const publisher = startWorkers(db, plane, hub, log, opts.purge ?? publishHooks(plugins), {
     onRemoteChange: () => { links.forget(); keys.forget(); apps.forget(); },
   });
+  // The plugins' own background work (sending webhooks) runs beside the publisher: a slow address never holds it up.
+  const background = plugins.map((p) => p.parts.worker).filter((w): w is NonNullable<typeof w> => !!w);
+  const workers = {
+    wake: () => { publisher.wake(); for (const w of background) w.wake(); },
+    stop: async () => { await Promise.all([publisher.stop(), ...background.map((w) => w.stop())]); },
+    drain: async () => { await publisher.drain(); for (const w of background) await w.drain(); },
+  };
 
   const app = new Hono();
   app.onError(errorHandler(log));
@@ -114,7 +123,7 @@ export async function createApp(opts: AppOptions = {}) {
   // never the console's page (which answers every other address, below). The built-in plugins' prefixes stay JSON
   // even when the plugin is off.
   const noSuchEndpoint = (c: Context) => c.json({ error: `no such endpoint: ${c.req.method} ${c.req.path}` }, 404);
-  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
+  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', '/hooks', ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
   for (const prefix of prefixes) {
     app.all(prefix, noSuchEndpoint);
     app.all(`${prefix}/*`, noSuchEndpoint);

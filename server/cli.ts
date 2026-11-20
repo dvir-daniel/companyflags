@@ -40,7 +40,7 @@ const CONFIG_TEMPLATE = `// How this CompanyFeatures server runs. Every setting 
 // variables (DATABASE_URL, BETTER_AUTH_SECRET, …), then the defaults.
 // Docs: https://dvir-daniel.github.io/companyfeatures/self-hosting/configuration
 import { defineConfig } from 'companyfeatures/config';
-import { appFiles, cloudflare, flagd, ofrep } from 'companyfeatures/plugins';
+import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
 
 export default defineConfig({
   database: {
@@ -55,6 +55,7 @@ export default defineConfig({
     flagd(),                                   // flagd JSON, for backends that evaluate in-process
     appFiles(),                                // values-only files per entity, behind a CDN
     cloudflare(),                              // purge Cloudflare's cache after each publish (CF_ZONE_ID, CF_API_TOKEN)
+    webhooks(),                                // webhooks out (Slack, CI, another system) and in (Migration page)
   ],
 });
 `;
