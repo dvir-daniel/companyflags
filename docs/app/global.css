@@ -215,3 +215,21 @@ code, kbd, pre { font-family: var(--font-mono); }
   color: var(--cf-ink-nav); background: transparent; transition: color 150ms, background-color 150ms;
 }
 #nd-home-layout #nd-nav ul.flex > li > button:hover, #nd-home-layout #nd-nav ul.flex > li > button[data-state='open'] { color: var(--cf-ink); background: var(--cf-wash); }
+
+/* ---- moving between the landing page and the docs (a view transition, app/layout.tsx): the bar stays, the left
+   column narrows from the hero to the sidebar, the logo and the bar's links glide to their new places, and the
+   rest crossfades, as on better-auth.com (300ms, easing out) */
+.cf-landing .hero, #nd-sidebar { view-transition-name: cf-left; }
+#nd-home-layout #nd-nav nav > a:first-child, #nd-sidebar a[href$='/']:first-of-type { view-transition-name: cf-logo; }
+#nd-home-layout #nd-nav nav > ul.flex, .cf-tabs { view-transition-name: cf-tabs; }
+::view-transition-group(*) { animation-duration: 300ms; animation-timing-function: cubic-bezier(0, 0, 0.2, 1); }
+::view-transition-old(root) { animation: 150ms ease-in both cf-vt-out; }
+::view-transition-new(root) { animation: 280ms ease-out both cf-vt-in; }
+::view-transition-old(cf-left), ::view-transition-new(cf-left) { height: 100%; object-fit: none; object-position: left top; }
+::view-transition-new(cf-left) { animation: 280ms ease-out both cf-vt-in; }
+::view-transition-old(cf-left) { animation: 150ms ease-in both cf-vt-out; }
+@keyframes cf-vt-out { to { opacity: 0; } }
+@keyframes cf-vt-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}

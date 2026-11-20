@@ -1,6 +1,6 @@
 import './global.css';
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
+import { ViewTransition, type ReactNode } from 'react';
 import { GeistMono } from 'geist/font/mono';
 import { GeistSans } from 'geist/font/sans';
 import { RootProvider } from 'fumadocs-ui/provider/next';
@@ -16,7 +16,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
       <body className="flex min-h-screen flex-col">
-        <RootProvider search={{ options: { type: 'static', api: `${BASE}/api/search` } }}>{children}</RootProvider>
+        <RootProvider search={{ options: { type: 'static', api: `${BASE}/api/search` } }}>
+          {/* moving between pages is a view transition: the logo, the left column and the bar's links glide to their new
+              places, as on better-auth.com (global.css names them) */}
+          <ViewTransition>{children}</ViewTransition>
+        </RootProvider>
       </body>
     </html>
   );
