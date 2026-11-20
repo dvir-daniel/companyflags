@@ -4,7 +4,7 @@
 // request where approval is needed, and the same values again change nothing (no loop). The receiving end is a fake.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot } from './helpers.ts';
+import { boot, builtIns } from './helpers.ts';
 import { nextMessage, sign, type HistoryRow } from '../server/webhooks.ts';
 
 // ---------------------------------------------------------------- which rows make a message (pure)
@@ -49,7 +49,7 @@ const receiver = (async (url: string, init: RequestInit) => {
 }) as unknown as typeof fetch;
 
 let t: Awaited<ReturnType<typeof boot>>;
-before(async () => { t = await boot({ webhooks: { fetch: receiver, gapWaitMs: 20, everyMs: 60_000 } }); });
+before(async () => { t = await boot({ plugins: builtIns({ webhooks: { fetch: receiver, gapWaitMs: 20, everyMs: 60_000 } }) }); });
 after(async () => { await t.stop(); });
 
 const flush = async () => { await t.settle(); await t.settle(); };
@@ -157,6 +157,20 @@ test('a failed send is tried again later, in order, and the console says why', a
   await removeAll();
 });
 
+test('an expression that runs over its limits switches its webhook off, instead of running again and again', async () => {
+  const { webhook } = (await t.as('dana').post('/webhooks', { name: 'Greedy', url: 'https://greedy.example.com', format: 'jsonata',
+    expression: 'type = "changes" ? $count($sort([1..3000000]))' })).json;
+  calls.length = 0;
+  await bump(8);
+  await flush();
+  assert.equal(calls.length, 0, 'nothing sent');
+  const w = (await t.as('dana').get('/webhooks')).json.webhooks.find((x: { id: number }) => x.id === webhook.id);
+  assert.equal(w.enabled, false, 'switched off');
+  assert.match(w.lastError, /more memory than an expression may use.*switched off: fix the expression/);
+  assert.equal(w.nextAttemptAt, null, 'not tried again');
+  await removeAll();
+});
+
 test('switched off, it sends nothing; back on, it goes on from now', async () => {
   const { webhook } = (await t.as('dana').post('/webhooks', { name: 'Paused', url: 'https://p.example.com' })).json;
   await t.as('dana').put(`/webhooks/${webhook.id}`, { enabled: false });
@@ -211,6 +225,24 @@ test('incoming: a wrong address, bad JSON, unknown flags and wrong types are ref
     'no_such_flag: there’s no such flag. Turn on “Create missing flags”, or create it first.',
     'max_upload_mb: its values are a number, not "big".',
   ]);
+});
+
+test('incoming: a body over 1 MB is refused as it arrives, even sent in chunks (no Content-Length), before the address is checked', async () => {
+  let sent = 0;
+  const chunk = new Uint8Array(64 * 1024).fill(32);
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (sent >= 3_000_000) { controller.close(); return; }
+      sent += chunk.length;
+      controller.enqueue(chunk);
+    },
+  });
+  const res = await t.app.request('/hooks/v1/ffh_1_aaaaaaaaaaaaaaaaaaaaaaaa', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body, duplex: 'half',
+  } as RequestInit);
+  assert.equal(res.status, 413, 'not 401: the size comes first, so a body with no address is never read whole');
+  assert.deepEqual(await res.json(), { error: 'the request body is larger than 1 MB' });
+  assert.ok(sent < 2_000_000, `stopped reading at ${sent} bytes`);
 });
 
 test('incoming into an environment that needs approval: a request for review', async () => {

@@ -4,9 +4,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { main } from '../server/cli.ts';
 import { createApp } from '../server/index.ts';
 import { sampleInstallation } from './sample.ts';
@@ -28,13 +30,49 @@ test('help, secret and init', async (t) => {
   const secret = (await run(['secret'], dir, {})).text.trim();
   assert.ok(secret.length >= 32 && /^[A-Za-z0-9_-]+$/.test(secret), secret);
   assert.notEqual((await run(['secret'], dir, {})).text.trim(), secret);
-  assert.equal((await run(['init'], dir, {})).code, 0);
+  const init = await run(['init'], dir, {});
+  assert.equal(init.code, 0);
+  assert.match(init.text, /warning: this folder isn’t inside the server’s folder/, 'a file here can’t import companyflags/config');
   assert.match(readFileSync(join(dir, 'companyflags.config.ts'), 'utf8'), /defineConfig\(\{[\s\S]*ofrep\(\)/);
   const again = await run(['init'], dir, {});
   assert.deepEqual([again.code, /already here/.test(again.text)], [1, true]);
   assert.equal((await run(['init', '--force'], dir, {})).code, 0);
   const unknown = await run(['deploy'], dir, {});
   assert.deepEqual([unknown.code, /unknown command "deploy"/.test(unknown.text)], [1, true]);
+});
+
+test('an option or argument it doesn’t know is refused, never ignored: migrate --chek changes nothing', async (t) => {
+  const tdb = await testDatabase();
+  const dir = mkdtempSync(join(tmpdir(), 'ff-cli-'));
+  t.after(async () => { rmSync(dir, { recursive: true, force: true }); await tdb.drop(); });
+  const env = tdb.url ? { DATABASE_URL: tdb.url } : { FF_DATA_DIR: join(dir, 'data') };
+  const typo = await run(['migrate', '--chek'], dir, env);
+  assert.deepEqual(typo, { code: 1, text: 'companyflags: migrate: unknown option "--chek" (see companyflags help)\n' });
+  assert.match((await run(['migrate', '--check'], dir, env)).text, /pending: 0001_init/, 'nothing was applied');
+  for (const [args, said] of [
+    [['start', '--port', '9000'], /start: unknown option "--port"/],
+    [['secret', 'more'], /secret: unknown argument "more"/],
+    [['init', '--forse'], /init: unknown option "--forse"/],
+    [['flags', 'push', 'a.json', 'b.json'], /flags push: unknown argument "b.json"/],
+    [['flags', 'push', '--as'], /--as needs a value/],
+    [['flags', 'push', '--as', '--force'], /--as needs a value/],
+  ] as const) {
+    const r = await run([...args], dir, env);
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.text, said);
+  }
+  assert.ok(!existsSync(join(dir, 'companyflags.config.ts')), 'init with a wrong option writes nothing');
+});
+
+test('node server/index.ts starts the server from a path with a space in it, reached through a link', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff cli '));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const linked = join(dir, 'the server');
+  symlinkSync(fileURLToPath(new URL('../server', import.meta.url)), linked);
+  // a config file named but missing: the start stops at once, saying so, before it opens any data
+  const r = spawnSync(process.execPath, [join(linked, 'index.ts')], { cwd: dir, env: { ...process.env, FF_CONFIG: 'missing.config.ts' }, encoding: 'utf8', timeout: 60_000 });
+  assert.equal(r.status, 1, `it ran nothing: ${r.stdout}${r.stderr}`);
+  assert.match(r.stderr, /^\[companyflags\] no config file at .*missing\.config\.ts \(FF_CONFIG\)/);
 });
 
 test('migrate: --check lists what’s pending, then migrate applies it', async (t) => {

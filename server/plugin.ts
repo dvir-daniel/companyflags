@@ -1,39 +1,65 @@
 // Plugins: the parts of CompanyFlags an installation turns on in companyflags.config.ts, the way Better Auth's
 // plugins are. The core is the console and its API, sign-in, the evaluator, the change journal, publishing and app
-// links. A plugin adds a way to read flags (OFREP, flagd JSON, app files) or something to do after a publish (a CDN
-// purge). The built-in ones are in plugins/; each is a function that takes its options and returns a Plugin.
+// links. A plugin adds a way to read flags (OFREP, flagd JSON, app files), work to do after a publish (a CDN purge),
+// or work of its own in the background (sending webhooks). The built-in ones are in plugins/; each is a function that
+// takes its options and returns a Plugin.
 //
 //   export default defineConfig({ plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()] });
 //
 // A plugin's setup runs once, when the server starts, with what the core shares (PluginContext). What it returns is
-// mounted by createApp (index.ts): its routes at the root, its console routes under /api behind the console's sign-in,
-// and its onPublish after each environment publishes (workers.ts).
+// mounted by createApp (index.ts): its routes at the root, its console routes under /api behind the console's sign-in
+// (after the core's own, so a core route always wins), and its onPublish after each environment publishes (workers.ts).
 
 import { Hono } from 'hono';
-import type { Db } from './db.ts';
-import type { DataPlane } from './snapshot.ts';
+import { HttpError, type Db } from './db.ts';
 import type { EventHub } from './events.ts';
 import type { KeyCache } from './auth.ts';
 import type { AppCache, LinkCache } from './delivery.ts';
 import type { Person } from './access.ts';
 import type { Actor } from './layers.ts';
-import type { Purger } from './purge.ts';
+import { contextFor, evaluate, sortedFlagKeys, UnknownEntityError, type EvalResult, type Snapshot } from './evaluator.ts';
+
+/** What each environment serves now, one snapshot per environment. A snapshot never changes once built. */
+export type Snapshots = { readonly snapshots: ReadonlyMap<string, Snapshot> };
+
+/** Who asks the evaluator: a flag set, the entity (none: what everyone gets before sign-in), and what the device or
+ *  request says about itself, flat ("app.version", "device.id"). Only the attributes an app may report are used. */
+export type Asking = { flagSet: string; entity?: string | null; attrs?: Record<string, unknown> };
+/** One flag's answer, or every flag sent to the flag set, as OFREP answers them. 404 for an unknown environment or
+ *  entity. */
+export type Evaluate = {
+  (environment: string, who: Asking, flagKey: string): EvalResult;
+  (environment: string, who: Asking): EvalResult[];
+};
+
+/** After an environment publishes: 'purged' when it purged a cache (Settings → CDN shows when), 'off' when it had
+ *  nothing to do, and nothing for any other work it did. */
+export type OnPublish = (environment: string) => Promise<void | 'off' | 'purged'>;
 
 /** What the core shares with plugins. */
 export type PluginContext = {
-  /** The journaled database (journal.ts): a change made through it is recorded, and published once it commits. */
+  /** The server's database. Writing to it doesn't add to History or publish anything, and a plugin has no tables of
+   *  its own: the migrations are the core's. */
   db: Db;
-  /** What each environment serves now, one snapshot per environment. */
-  plane: Pick<DataPlane, 'snapshots'>;
-  /** Live updates: a plugin can tell its readers when an environment publishes (events.ts). */
-  hub: EventHub;
-  /** API keys, app-link secrets and flag sets, kept in memory and cleared when they change (journal.ts). */
-  keys: KeyCache;
-  links: LinkCache;
-  flagSets: AppCache;
+  /** What each environment serves now. */
+  plane: Snapshots;
+  /** hub.subscribe: every server process hears each publish (its own, or one it caught up with), for live readers
+   *  such as an event stream. onPublish runs once per publish, in one process, for work done once. */
+  hub: Pick<EventHub, 'subscribe'>;
+  /** The one evaluator (evaluator.ts), for a plugin that reads flags: it answers as OFREP does. */
+  evaluate: Evaluate;
+  /** The server's environment variables (a test passes its own). */
+  env: Readonly<Record<string, string | undefined>>;
   /** The console's address (BETTER_AUTH_URL), for links in what a plugin sends; unknown when it isn't set. */
   baseURL?: string | null;
   log: (m: string) => void;
+  /** @internal, for the built-in plugins: API keys, app-link secrets and flag sets, kept in memory and cleared when
+   *  they change (journal.ts). */
+  keys: KeyCache;
+  /** @internal, for the built-in plugins */
+  links: LinkCache;
+  /** @internal, for the built-in plugins */
+  flagSets: AppCache;
 };
 
 /** What a plugin's console routes may use: who is asking is c.get('user'), set by the console's sign-in. */
@@ -49,13 +75,15 @@ export const consoleRoutes = (): ConsoleRoutes => new Hono<{ Variables: { user: 
 export type PluginParts = {
   /** Served at the root, for apps and backends (e.g. /ofrep/v1/…). */
   routes?: Hono;
-  /** Its own address prefixes: an unknown address under one is a JSON 404, never the console's page. */
+  /** Its own address prefixes, such as '/ofrep': an unknown address under one is a JSON 404, never the console's
+   *  page. Each starts with '/', and none is the core's (/api, /sdk) or another plugin's. */
   prefixes?: string[];
-  /** Served under /api for the console, signed in, as its other routes are (e.g. a settings page's). */
+  /** Served under /api for the console, signed in, as its other routes are (e.g. a settings page's). The core's own
+   *  routes come first: a plugin can't answer in their place. */
   console?: (h: ConsoleHelpers) => ConsoleRoutes;
-  /** After an environment publishes, once per publish: 'off' when it had nothing to do. A failure is logged and kept
-   *  on the publish (Settings shows it); it never undoes the publish. */
-  onPublish?: Purger;
+  /** After an environment publishes, once per publish. A failure is logged with the plugin's name and kept on the
+   *  publish; it never undoes the publish, and the other plugins' onPublish still run. */
+  onPublish?: OnPublish;
   /** Work it does on its own, in the background (sending webhooks): running from setup, stopped before the database
    *  closes. `wake`: something changed, look now; `drain`: let the round under way, and one more, finish (tests). */
   worker?: { wake: () => void; stop: () => Promise<void>; drain: () => Promise<void> };
@@ -70,30 +98,84 @@ export type Plugin = {
 /** Types a plugin: `export const myPlugin = (o: Options) => definePlugin({ id: 'my-plugin', setup: (ctx) => ({ … }) })`. */
 export const definePlugin = (p: Plugin): Plugin => p;
 
-/** Each plugin's setup, in order; a name used twice is a mistake in the config. */
+export class PluginError extends Error {}
+
+/** The address prefixes of the core: the console's API, and the app links for backends. */
+const CORE_PREFIXES = ['/api', '/sdk'];
+const within = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+
+/** Each plugin's setup, in order, once every entry is known to be a plugin with a name of its own. If one setup
+ *  fails, the background work of those before it is stopped, and the error is passed on. */
 export async function setUpPlugins(plugins: readonly Plugin[], ctx: PluginContext): Promise<{ id: string; parts: PluginParts }[]> {
   const seen = new Set<string>();
-  const out: { id: string; parts: PluginParts }[] = [];
   for (const p of plugins) {
     if (!p || typeof p.setup !== 'function' || !/^[a-z][a-z0-9-]*$/.test(p.id ?? '')) {
       throw new PluginError(`not a plugin: ${JSON.stringify(p?.id ?? p)} (a plugin has an id in lowercase and a setup function)`);
     }
     if (seen.has(p.id)) throw new PluginError(`the plugin "${p.id}" is listed twice in plugins`);
     seen.add(p.id);
-    out.push({ id: p.id, parts: await p.setup(ctx) });
+  }
+  const out: { id: string; parts: PluginParts }[] = [];
+  const claimed: { prefix: string; id: string }[] = [];
+  try {
+    for (const p of plugins) {
+      const parts = (await p.setup(ctx)) ?? {};
+      out.push({ id: p.id, parts });
+      for (const prefix of parts.prefixes ?? []) {
+        if (typeof prefix !== 'string' || !/^\/[^/]/.test(prefix) || prefix.endsWith('/')) {
+          throw new PluginError(`the plugin "${p.id}": a prefix starts with / and doesn't end with one, like '/${p.id}' (not ${JSON.stringify(prefix)})`);
+        }
+        const core = CORE_PREFIXES.find((c) => within(prefix, c));
+        if (core) throw new PluginError(`the plugin "${p.id}": the prefix ${prefix} is taken by the core (${core})`);
+        const other = claimed.find((c) => within(prefix, c.prefix));
+        if (other) throw new PluginError(`the plugin "${p.id}": the prefix ${prefix} is taken by the plugin "${other.id}" (${other.prefix})`);
+        claimed.push({ prefix, id: p.id });
+      }
+    }
+  } catch (e) {
+    await Promise.all(out.map((s) => s.parts.worker?.stop().catch(() => {})));
+    throw e;
   }
   return out;
 }
 
-export class PluginError extends Error {}
+/** The plugins' onPublish failed after a publish: which ones and why, and whether a cache was purged all the same. */
+export class PublishHookError extends Error {
+  purged: boolean;
+  constructor(message: string, purged: boolean) { super(message); this.purged = purged; }
+}
 
-/** The plugins' onPublish, one after the other, as the publisher's one purger: 'off' when none had anything to do. */
-export function publishHooks(set: { parts: PluginParts }[]): Purger | undefined {
-  const hooks = set.map((s) => s.parts.onPublish).filter((h): h is Purger => !!h);
+/** The plugins' onPublish as the publisher's one hook. Each one runs, whatever the others do. 'purged' when one of
+ *  them purged a cache; the failures are thrown together, each with its plugin's name, once all have finished. */
+export function publishHooks(set: readonly { id: string; parts: PluginParts }[]): OnPublish | undefined {
+  const hooks = set.flatMap((s) => (s.parts.onPublish ? [{ id: s.id, run: s.parts.onPublish }] : []));
   if (!hooks.length) return undefined;
   return async (environment) => {
-    let any = false;
-    for (const h of hooks) if ((await h(environment)) !== 'off') any = true;
-    return any ? 'purged' : 'off';
+    const results = await Promise.allSettled(hooks.map(async (h) => h.run(environment)));
+    const purged = results.some((r) => r.status === 'fulfilled' && r.value === 'purged');
+    const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [`${hooks[i].id}: ${(r.reason as Error)?.message ?? String(r.reason)}`] : []));
+    if (failed.length) throw new PublishHookError(failed.join('; '), purged);
+    if (purged) return 'purged';
   };
+}
+
+/** The evaluator for plugins (PluginContext.evaluate): the context made as for an app (contextFor, trust 'app'), then
+ *  the same evaluate OFREP answers with. */
+export function evaluatorFor(plane: Snapshots): Evaluate {
+  function run(environment: string, who: Asking, flagKey: string): EvalResult;
+  function run(environment: string, who: Asking): EvalResult[];
+  function run(environment: string, who: Asking, flagKey?: string): EvalResult | EvalResult[] {
+    const snap = plane.snapshots.get(environment);
+    if (!snap) throw new HttpError(404, `environment "${environment}" not found`);
+    let ctx;
+    try {
+      ctx = contextFor(snap, { project: who.flagSet, entity: who.entity ?? null }, who.attrs, { trust: 'app' });
+    } catch (e) {
+      if (e instanceof UnknownEntityError) throw new HttpError(404, e.message);
+      throw e;
+    }
+    if (flagKey !== undefined) return evaluate(snap, flagKey, ctx, false);
+    return sortedFlagKeys(snap).filter((k) => snap.flags[k].delivery.includes(who.flagSet)).map((k) => evaluate(snap, k, ctx, false));
+  }
+  return run;
 }

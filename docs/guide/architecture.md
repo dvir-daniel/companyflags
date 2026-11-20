@@ -19,16 +19,18 @@ are read by many apps and backends at once, so they need one place that decides,
 
 ## Plugins
 
-Everything that reads flags besides the console is a plugin, and so is anything that runs after a publish. The four
-built-in ones are on unless the config lists others: see [Plugins](/reference/plugins), and how to write your own.
-Each one is answered by the same evaluator, so an app reading OFREP, a backend reading flagd JSON and a device
-reading its app file all get the same answer for the same entity and context.
+Everything that reads flags besides the console is a plugin, and so is anything that runs after a publish. The five
+built-in ones (`ofrep()`, `flagd()`, `appFiles()`, `cloudflare()`, `webhooks()`) run unless the config lists
+others: see [Plugins](/reference/plugins), and how to write your own. Each one is answered by the same evaluator, so
+an app reading OFREP, a backend reading flagd JSON and a device reading its app file all get the same answer for the
+same entity and context.
 
 ## One config file
 
 [`companyflags.config.ts`](/self-hosting/configuration#the-config-file) says which database, which sign-in and
 which plugins. It's TypeScript, typed by `defineConfig`, and optional: without it, environment variables decide, as
-in the Docker image.
+in the Docker image. `server/config.ts` is its type (what `companyflags/config` gives the file), and
+`server/configFile.ts` reads it for the server and the CLI.
 
 ## The CLI
 

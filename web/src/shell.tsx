@@ -5,13 +5,14 @@ import { dimensionHref, preload } from './paths.ts';
 import { readPersistent } from './persist.ts';
 import { signOut } from './session.ts';
 import {
-  Avatar, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, SidebarLabel, SidebarSearch,
+  Avatar, BrandMark, Footer as Bar, FooterSlash, Sidebar as Nav, SidebarCount, SidebarFoot, SidebarGroup, SidebarItem, SidebarLabel, SidebarSearch,
   TitleBar as Top, TitleBarBrand, TitleBarStatus, WindowLights, Wordmark,
 } from '@companyflags/ui/components/app-frame';
 import { ThemeToggle } from '@companyflags/ui/components/theme-toggle';
 import { Button } from '@companyflags/ui/components/button';
 import { Drawer } from '@companyflags/ui/components/drawer';
 import { Popover, PopoverContent, PopoverTrigger } from '@companyflags/ui/components/popover';
+import { useBottomReserve } from '@companyflags/ui/components/toast';
 import { cn } from '@companyflags/ui/lib/utils';
 import { roleInfo } from '../../server/policy.ts';
 
@@ -20,15 +21,6 @@ import { roleInfo } from '../../server/policy.ts';
    give way to a tab bar at the bottom (MobileNav), whose More opens the whole sidebar as a panel.
    Before the console knows who is signed in (`meta` null, the first load), they draw in the same shape with
    placeholders, so the window is there at once and nothing in it moves when /meta answers. */
-
-export function BrandMark() {
-  // three stepped bars: layers, from the defaults down to one entity
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" className="shrink-0">
-      <path d="M0 0h16v4H0zM0 6h11v4H0zM0 12h6v4H0z" fill="currentColor" />
-    </svg>
-  );
-}
 
 /** Sidebar icons, drawn on an 18px grid with a 1.25 stroke, as in CompanyMemory. */
 const PATHS = {
@@ -93,6 +85,12 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 export function TitleBar({ synced }: { synced: boolean }) {
   return (
     <Top>
+      {/* the first stop for the keyboard: past the title bar and the sidebar, to the page (MainPane, id "main"). The
+          address doesn't change: it's the console's router */}
+      <a href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}
+        className="sr-only focus:not-sr-only focus:absolute focus:top-1.5 focus:left-1.5 focus:z-[80] focus:bg-background focus:px-3 focus:py-2 focus:text-13 focus:text-ink focus:outline-1 focus:outline-ink">
+        Skip to content
+      </a>
       <TitleBarBrand>
         <WindowLights className="max-sm:hidden" />
         <a href="#/flags" className="flex items-center gap-2.5 text-ink hover:no-underline" aria-label="CompanyFlags, go to flags">
@@ -130,12 +128,17 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
       ))}
       <SidebarFoot>
         <SidebarLabel className="px-0">Published</SidebarLabel>
-        {meta ? meta.environments.map((e) => (
-          <div key={e.key} className="flex justify-between py-px text-13 text-ink-2">
-            <span>{e.name}</span>
-            <span className="font-mono text-xs text-ink-3">rev {meta.dataPlane[e.key]?.revision ?? '—'}</span>
-          </div>
-        )) : Array.from({ length: readPersistent('shell.envs', 2) }, (_, i) => (
+        {meta ? meta.environments.map((e) => {
+          // the version each environment is on, leading to the list it counts (Flags → Versions)
+          const v = meta.dataPlane[e.key]?.revision;
+          return (
+            <a key={e.key} href={`#/flags/${encodeURIComponent(e.key)}/versions`} title={`${e.name}’s versions`}
+              className="flex justify-between py-px text-13 text-ink-2 no-underline hover:text-ink hover:no-underline">
+              <span>{e.name}</span>
+              <span className="font-mono text-xs text-ink-3">{v == null ? '—' : `v${v}`}</span>
+            </a>
+          );
+        }) : Array.from({ length: readPersistent('shell.envs', 2) }, (_, i) => (
           // as many environments as last time, so the block doesn't grow when they arrive
           <div key={i} className="flex items-center justify-between py-px text-13"><span className="flex h-[19.5px] items-center"><Bone className="w-20" /></span><Bone className="w-10" /></div>
         ))}
@@ -159,7 +162,7 @@ function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
   return (
     <Popover>
       <PopoverTrigger className="mt-3 -mx-2 flex w-[calc(100%+16px)] cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2 py-1.5 text-left leading-[1.35] text-ink hover:bg-wash aria-expanded:bg-wash"
-        aria-label={`Account: ${me.key}`}>
+        aria-label={`${shortName(me)}, ${roleInfo(me.role).label}: account menu`}>
         <Avatar initials={shortName(me).slice(0, 2).toUpperCase()} color={personColor(meta, me)} />
         <div className="min-w-0 flex-1">
           <b className="block truncate font-medium" title={me.key}>{shortName(me)}</b>
@@ -216,6 +219,8 @@ const tabClass = cn('relative flex h-14 min-w-0 cursor-default flex-col items-ce
 /** Shown only on a phone (narrower than 768px), at the bottom of the window. */
 export function MobileNav({ meta, page, sub, pending, onSearch }: { meta: Meta | null; page: string; sub?: string; pending: number; onSearch: () => void }) {
   const [open, setOpen] = useState(false);
+  // toasts stay above the tab bar, as above other bars pinned to the bottom (on a computer it's hidden: 0px)
+  const reserve = useBottomReserve();
   // going anywhere closes the menu
   useEffect(() => {
     const close = () => setOpen(false);
@@ -227,7 +232,7 @@ export function MobileNav({ meta, page, sub, pending, onSearch }: { meta: Meta |
   const marker = <span aria-hidden className="absolute inset-x-4 top-0 h-0.5 bg-ink" />;
   return (
     <>
-      <nav aria-label="CompanyFlags" className="hidden shrink-0 grid-cols-5 border-t border-rule bg-sidebar pb-[env(safe-area-inset-bottom)] max-md:grid">
+      <nav ref={reserve} aria-label="CompanyFlags" className="hidden shrink-0 grid-cols-5 border-t border-rule bg-sidebar pb-[env(safe-area-inset-bottom)] max-md:grid">
         {tabs.map((t) => {
           const current = t.current(page, sub);
           const href = t.href ?? `#/${t.key}`;

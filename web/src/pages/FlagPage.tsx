@@ -233,7 +233,7 @@ function FlagEditor({ flagKey, env, tab, setTab, check, setCheck, embedded = fal
           </span>
           <span className="flex items-center gap-2">
             <Button variant="secondary" onClick={discard}>Discard</Button>
-            <Button onClick={tryPublish}>{needsApproval ? 'Request review' : 'Review and publish'}{drafts.changes > changeCount ? ` (${drafts.changes})` : ''}</Button>
+            <Button onClick={tryPublish}>{needsApproval ? 'Request review' : 'Publish changes'} ({drafts.changes})</Button>
           </span>
         </div>
       )}

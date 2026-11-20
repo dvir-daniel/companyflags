@@ -29,6 +29,7 @@ import { pathIn, roleInfo, switchPlan, type SwitchPath } from '../../../server/p
 import { DraftBar, ReviewDraft } from './draftReview.tsx';
 import { useDraft } from '../useDraft.ts';
 import { ConditionsTab, VersionsTab } from './versions.tsx';
+import { FinishSetup, NoFlagSets } from './setup.tsx';
 
 /*
  * Flags (Google style: drafts and versions). The bar holds the environment and, while a draft exists,
@@ -222,7 +223,8 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
         actions={<>
           {draft.flags.length > 0 && <Button onClick={() => setReviewing(true)}>{needsReview ? 'Request review' : 'Publish changes'} ({draft.changes})</Button>}
           <HowItWorks />
-          <Button variant={draft.flags.length > 0 ? 'secondary' : 'default'} onClick={() => setCreating(true)}>+ New flag</Button>
+          {mayChange ? <Button variant={draft.flags.length > 0 ? 'secondary' : 'default'} onClick={() => setCreating(true)}>+ New flag</Button>
+            : <span className="text-13 text-ink-3">Viewers can look but not change anything</span>}
         </>}>
         <FilterSelect label="Environment" value={env} onChange={(v) => go(`flags/${v}${tab === 'flags' ? '' : `/${tab}`}`)} options={meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])} />
       </PageBar>
@@ -240,6 +242,8 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
       {tab === 'conditions' && <ConditionsTab env={env} />}
 
       {tab === 'flags' && <>
+        {/* until apps can read flags (a flag set and an entry with its app link), what's left to set up */}
+        {(meta.projects.length === 0 || meta.entities.length === 0) && <FinishSetup flags={paging.data?.all} onNewFlag={mayChange ? () => setCreating(true) : undefined} />}
         <div className="flex flex-wrap items-center gap-2 border-b border-grid px-6 py-2.5 max-sm:px-4">
           <SearchField ref={search} className="w-[260px] max-md:w-auto max-md:flex-1 max-md:basis-full" data-search="flags" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search flags" />
           <FilterSelect label="Status" value={status} onChange={setStatus} options={[['', 'All'], ['on', `On in ${envName(env).toLowerCase()}`], ['off', `Off in ${envName(env).toLowerCase()}`]]} />
@@ -253,7 +257,7 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
 
         <div role="table" aria-label="Flags" aria-busy={paging.loading} className={cn('flex-1', paging.loading && 'opacity-70')}>
           <div role="row" className={cn(COLS, tableHeadClass)}>
-            <RowCheck checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all on this page" />
+            <RowCheck head checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all on this page" />
             <SortHeader label="Flag" sortKey="key" sort={sort} dir={dir} onSort={onSort} />
             <SortHeader label={envName(env)} sortKey="status" sort={sort} dir={dir} onSort={onSort} help={HELP.envs} />
             <ColumnHead className={MD} label="Rules" help={HELP.rules} />
@@ -266,7 +270,7 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
             : !paging.data ? <SkeletonRows cols={COLS} cells={['', '', '', MD, XL, XL, XL, MD]} rowClass={ROW} />
             : rows.length === 0 ? (
               <div className="px-6 py-10">
-                <Empty action={filtered ? <Button variant="secondary" onClick={reset}>{status || kind || owner || tag ? 'Clear filters' : 'Clear search'}</Button> : <Button onClick={() => setCreating(true)}>+ New flag</Button>}>
+                <Empty action={filtered ? <Button variant="secondary" onClick={reset}>{status || kind || owner || tag ? 'Clear filters' : 'Clear search'}</Button> : mayChange ? <Button onClick={() => setCreating(true)}>+ New flag</Button> : undefined}>
                   {filtered
                     ? `No flags match ${[q.trim() && `“${q.trim()}”`, status && `${status} in ${envName(env).toLowerCase()}`, kind && `purpose ${kindName(kind).toLowerCase()}`, owner && `owner ${owner}`, tag && `tag ${tag}`].filter(Boolean).join(', ')}.`
                     : 'No flags yet. A flag lets you turn a feature on or off, or change a value, without shipping a new build.'}
@@ -327,7 +331,7 @@ export function Flags({ envKey, tab: tabKey }: { envKey?: string; tab?: string }
             <Button variant="outline" disabled={!mayChange} onClick={() => setEnabled(false)}>Turn off in {envName(env).toLowerCase()}</Button>
             <Button variant="outline" disabled={!mayChange} onClick={() => setEnabled(true)}>Turn on in {envName(env).toLowerCase()}</Button>
             <Button variant="outline" onClick={exportCsv}>Export CSV</Button>
-            <Button variant="stop" onClick={() => archive()}>Archive</Button>
+            <Button variant="stop" disabled={!mayChange} onClick={() => archive()}>Archive</Button>
           </>}
         </BulkBar>
       </>}
@@ -482,15 +486,17 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
 
       <div className="grid gap-1.5" role="group" aria-label="Flag sets">
         <span className={monoLabel}>Flag sets</span>
-        <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
-          {meta.projects.map((p) => (
-            <Switch key={p.key} label={p.key} checked={delivery.includes(p.key)}
-              onChange={(on) => setDelivery(on ? [...delivery, p.key] : delivery.filter((x) => x !== p.key))}>
-              <span className="font-mono text-13 text-ink">{p.key}</span>
-            </Switch>
-          ))}
-        </div>
-        <span className="text-13 text-ink-3">The flag sets this flag is in, in every environment.</span>
+        {meta.projects.length === 0 ? <NoFlagSets /> : <>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
+            {meta.projects.map((p) => (
+              <Switch key={p.key} label={p.key} checked={delivery.includes(p.key)}
+                onChange={(on) => setDelivery(on ? [...delivery, p.key] : delivery.filter((x) => x !== p.key))}>
+                <span className="font-mono text-13 text-ink">{p.key}</span>
+              </Switch>
+            ))}
+          </div>
+          <span className="text-13 text-ink-3">The flag sets this flag is in, in every environment.</span>
+        </>}
       </div>
       <ErrorList error={error} />
     </Modal>

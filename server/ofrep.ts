@@ -22,16 +22,16 @@
 // The rest of the context is what the device or request knows about itself, nested or dotted ({"app": {"version":
 // "6.0.0"}} is app.version). `targetingKey` is the device ID that a % of devices is by, unless `device.id` is given.
 
-import { createHash, createHmac } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import { HttpError, type Db } from './db.ts';
 import { appTokenSecret, authenticate, mayAsk, sameSecret, type KeyCache, type Principal } from './auth.ts';
-import { ensureClientApp, readAppToken, type AppCache, type LinkCache } from './delivery.ts';
+import { ensureClientApp, readAppToken, shortHash, type AppCache, type LinkCache } from './delivery.ts';
 import { contextFor, evaluate, HIDDEN_PREFIX, sortedFlagKeys, type EvalResult, type Snapshot } from './evaluator.ts';
-import type { DataPlane } from './snapshot.ts';
 import type { EventHub } from './events.ts';
+import type { Snapshots } from './plugin.ts';
 
 /** The events stream's address for an environment carries a signature made with the environment's secret, so only
  *  someone given it in an answer (a valid credential for that environment) can listen. It says only that the
@@ -75,11 +75,14 @@ export function askingEntity(snap: Snapshot, p: Pick<Principal, 'scope' | 'entit
   const lowest = named[named.length - 1];
   const key = String(ctx[lowest]);
   const info = Object.hasOwn(snap.entities, key) ? snap.entities[key] : null;
-  if (!info || info.dimension !== lowest) throw new OfrepError(400, 'INVALID_CONTEXT', `no ${lowest} "${key}"`);
+  // A credential for some entities only (every app's token is one) gets the same answer for an entity that doesn't
+  // exist as for one it can't ask about, so it can't be used to find out which entities exist.
+  const cantAsk = () => new OfrepError(403, 'GENERAL', `this key can’t ask about "${key}"`);
+  if (!info || info.dimension !== lowest) throw p.scope === 'all' ? new OfrepError(400, 'INVALID_CONTEXT', `no ${lowest} "${key}"`) : cantAsk();
+  if (!mayAsk(p, key, info.path)) throw cantAsk();
   for (const d of named) {
     if (info.at[d] !== String(ctx[d])) throw new OfrepError(400, 'INVALID_CONTEXT', `${lowest} "${key}" isn’t under ${d} "${String(ctx[d])}"`);
   }
-  if (!mayAsk(p, key, info.path)) throw new OfrepError(403, 'GENERAL', `this key can’t ask about "${key}"`);
   return key;
 }
 
@@ -93,7 +96,6 @@ function answer(r: EvalResult): Json {
   return { key: r.key, reason: r.reason, ...variant, ...(r.codeDefault ? {} : { value: r.value }), ...metadata };
 }
 
-const hash = (s: string) => createHash('sha256').update(s).digest('base64url').slice(0, 22);
 /** If-None-Match matches this ETag: weakly, any of a list, or `*`. */
 const matches = (header: string | undefined, etag: string) => !!header && header.split(',').some((t) => {
   const v = t.trim();
@@ -103,7 +105,7 @@ const matches = (header: string | undefined, etag: string) => !!header && header
 type Asker = Pick<Principal, 'environment' | 'project' | 'scope' | 'entity'>;
 
 export function ofrepApi({ db, plane, keys, links, apps, hub }: {
-  db: Db; plane: Pick<DataPlane, 'snapshots'>; keys: KeyCache; links: LinkCache; apps: AppCache; hub: EventHub;
+  db: Db; plane: Snapshots; keys: KeyCache; links: LinkCache; apps: AppCache; hub: Pick<EventHub, 'subscribe'>;
 }) {
   const app = new Hono();
   // Browsers call it from the app's own origin, with the key in a header and no cookies.
@@ -156,7 +158,7 @@ export function ofrepApi({ db, plane, keys, links, apps, hub }: {
       .filter((k) => r.snap.flags[k].delivery.includes(r.p.project))
       .map((k) => answer(evaluate(r.snap, k, r.ctx, false)));
     const content = JSON.stringify(flags);
-    const etag = `W/"${hash(content)}"`;
+    const etag = `W/"${shortHash(content)}"`;
     c.header('ETag', etag);
     c.header('Cache-Control', 'private, no-cache');
     if (matches(c.req.header('if-none-match'), etag)) return c.body(null, 304);
@@ -178,7 +180,7 @@ export function ofrepApi({ db, plane, keys, links, apps, hub }: {
     return streamSSE(c, async (stream) => {
       let open = true;
       let wake = () => {};
-      const off = hub.subscribeOfrep((environment, revision) => {
+      const off = hub.subscribe((environment, revision) => {
         if (environment === env) stream.writeSSE({ data: JSON.stringify({ type: 'refetchEvaluation', etag: String(revision) }) }).catch(() => {});
       });
       stream.onAbort(() => { open = false; wake(); });

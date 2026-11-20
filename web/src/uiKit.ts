@@ -8,9 +8,9 @@ import { PAGE_SIZE, readPersistent, writePersistent } from './persist.ts';
 /* ---------------------------------------------------------------- class recipes for native controls */
 
 /** A native <input> or the shared Input in a dense row (32px). */
-export const denseField = 'h-8 min-w-0 rounded-none border border-rule-2 bg-background px-2.5 text-13 text-ink outline-none select-text placeholder:text-ink-4 hover:border-ink-3 focus:border-ink disabled:opacity-50 aria-invalid:border-live';
+export const denseField = 'h-8 min-w-0 rounded-none border border-rule-2 bg-background px-2.5 text-13 text-ink outline-none select-text placeholder:text-ink-3 hover:border-ink-3 focus:border-ink disabled:opacity-50 aria-invalid:border-live';
 /** A native <textarea>. */
-export const textareaField = 'min-h-16 w-full min-w-0 resize-y rounded-none border border-rule-2 bg-background px-3 py-2 text-sm text-ink outline-none select-text placeholder:text-ink-4 hover:border-ink-3 focus:border-ink aria-invalid:border-live';
+export const textareaField = 'min-h-16 w-full min-w-0 resize-y rounded-none border border-rule-2 bg-background px-3 py-2 text-sm text-ink outline-none select-text placeholder:text-ink-3 hover:border-ink-3 focus:border-ink aria-invalid:border-live';
 /** Mono caps label above a field, or a column head. */
 export const monoLabel = 'font-mono text-11 font-normal tracking-[0.55px] text-ink-3 uppercase';
 

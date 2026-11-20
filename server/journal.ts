@@ -77,6 +77,8 @@ export const KINDS = {
   // directly, or applied from a change set (layers.ts applyItems, a 'delivery' item) where the environment needs review
   'delivery.update': { serves: 'environment', restore: false, says: (e) => `Changed the flag sets ${e.flag} is in` },
   'environment.create': { serves: 'environment', restore: false, then: ['forgetClientLinks', 'refresh'], says: () => 'Added this environment' },
+  // a new secret for the environment (control.ts rotateEnvironmentLinks): every old app link and token stops working
+  'environment.links_replaced': { serves: 'environment', restore: false, then: ['forgetClientLinks'], says: () => 'Replaced every app link in this environment' },
 
   // in every environment: a restore of one environment can't undo these cleanly
   'flag.update': { serves: 'everywhere', restore: false, says: (e) => `Changed the details of ${e.flag}` },

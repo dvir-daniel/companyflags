@@ -137,19 +137,19 @@ export function canonical(v: unknown): string {
 
 const stripVersion = (l: Layer | null) => (l ? { ...l, version: undefined, updatedAt: undefined, updatedBy: undefined } : null);
 
-// The apps a flag is sent to in an environment, A to Z.
+// The flag sets a flag is sent to in an environment, A to Z.
 export async function deliveredTo(q: Queryable, flagId: string, envId: number): Promise<string[]> {
   return (await all<{ key: string }>(q, `select p.key from flag_delivery d join project p on p.id = d.project_id
     where d.flag_id = $1 and d.environment_id = $2 order by p.key`, [flagId, envId])).map((r) => r.key);
 }
 
-/** The ids of these apps (each once, A to Z); 422 for one that doesn't exist. */
+/** The ids of these flag sets (each once, A to Z); 422 for one that doesn't exist. */
 export async function projectIds(q: Queryable, keys: string[]): Promise<{ id: number; key: string }[]> {
   if (!Array.isArray(keys) || keys.some((k) => typeof k !== 'string')) throw new HttpError(422, 'projects: a list of flag set keys');
   const wanted = [...new Set(keys)].sort();
   const found = await all<{ id: number; key: string }>(q, `select id, key from project where key = any($1::text[]) order by key`, [wanted]);
   const missing = wanted.find((k) => !found.some((p) => p.key === k));
-  if (missing) throw new HttpError(422, `unknown project ${missing}`);
+  if (missing) throw new HttpError(422, `no flag set "${missing}"`);
   return found;
 }
 
@@ -227,7 +227,7 @@ async function applyDelivery(tx: Tx, env: { id: number; key: string }, flag: Fla
   return { kind: 'delivery.update', flag: it.flag, before, after: projects.map((p) => p.key) };
 }
 
-// ---------------------------------------------------------------- change sets (S1)
+// ---------------------------------------------------------------- change sets (requests for review)
 
 const hashItems = (items: unknown[]) => createHash('sha256').update(canonical(items)).digest('hex').slice(0, 16);
 

@@ -93,6 +93,9 @@ function FilterSelect<T extends string>({
       data-slot="filter-select"
       className={cn(
         "relative inline-flex h-8 shrink-0 cursor-default items-center gap-1.5 border pr-7 pl-2.5 text-13 transition-colors duration-150 hover:border-ink-3 focus-within:border-ink",
+        // the select is invisible, so its focus shows on the chip: a ring outside it, as on a Button (an active chip's
+        // border is already dark, so the border alone wouldn't change)
+        "has-[select:focus-visible]:outline-1 has-[select:focus-visible]:outline-offset-2 has-[select:focus-visible]:outline-ink",
         active ? "border-ink" : "border-rule-2",
         className
       )}
@@ -157,7 +160,7 @@ function ViewMenu<V>({
       <PopoverTrigger
         data-slot="view-menu"
         className={cn(
-          "relative inline-flex h-8 shrink-0 cursor-default items-center gap-1.5 border bg-transparent pr-7 pl-2.5 text-13 transition-colors duration-150 hover:border-ink-3 focus-visible:border-ink focus-visible:outline-none",
+          "relative inline-flex h-8 shrink-0 cursor-default items-center gap-1.5 border bg-transparent pr-7 pl-2.5 text-13 transition-colors duration-150 hover:border-ink-3 focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-ink",
           match ? "border-ink" : "border-rule-2",
           className
         )}
@@ -193,7 +196,7 @@ function ViewMenu<V>({
                   type="button"
                   aria-label={`Delete view ${v.name}`}
                   onClick={() => onChange(views.filter((x) => x.name !== v.name))}
-                  className="inline-grid size-7 shrink-0 cursor-default place-items-center border-0 bg-transparent text-ink-4 opacity-0 group-hover:opacity-100 hover:text-ink focus-visible:opacity-100"
+                  className="inline-grid size-7 shrink-0 cursor-default place-items-center border-0 bg-transparent text-ink-3 opacity-0 group-hover:opacity-100 hover:text-ink focus-visible:opacity-100"
                 >
                   <XIcon aria-hidden className="size-3.5" />
                 </button>
@@ -216,7 +219,7 @@ function ViewMenu<V>({
             placeholder={match ? `Rename "${match.name}"…` : "Name this view"}
             aria-label="View name"
             maxLength={40}
-            className="h-8 min-w-0 flex-1 border border-rule-2 bg-background px-2 text-13 text-ink outline-none placeholder:text-ink-4 focus:border-ink"
+            className="h-8 min-w-0 flex-1 border border-rule-2 bg-background px-2 text-13 text-ink outline-none placeholder:text-ink-3 focus:border-ink"
           />
           <button
             type="submit"

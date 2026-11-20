@@ -83,7 +83,8 @@ async function appWithAdmin(opts: Pick<AppOptions, 'discover'> = {}) {
   // the fake provider is on this machine: Better Auth only talks to private addresses it is told to trust
   const ctx = await startApp({ signIn: { kind: 'better-auth', settings: { trustedOrigins: [IDP, DEAD] } }, ...opts });
   const call = browser(ctx, ORIGIN);
-  const first = await call('POST', '/api/auth/sign-up/email', { body: { email: 'ann@corp.example', name: 'Ann', password: PASSWORD } });
+  const first = await call('POST', '/api/auth/sign-up/email', { body: { email: 'ann@corp.example', name: 'Ann', password: PASSWORD },
+    headers: { 'x-setup': ctx.setupToken! } });
   assert.equal(first.status, 200);
   const admin = async () => {
     const r = await call('POST', '/api/auth/sign-in/email', { body: { email: 'ann@corp.example', password: PASSWORD } });
@@ -221,7 +222,13 @@ describe('OIDC, start to finish (in order)', () => {
     const kim = (await call('POST', '/api/people', { cookie: admin, body: { email: 'kim@corp.example' } })).json.invite;
     const made = await call('POST', '/api/auth/sign-up/email', { headers: { 'x-invite': kim }, body: { email: 'kim@corp.example', name: 'Kim', password: PASSWORD } });
     assert.equal(made.status, 200);
-    await call('PUT', '/api/sso/okta', { cookie: admin, body: { requireSso: true } });
+    const patAgain = await signInWithSso('pat@corp.example', { sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz' });
+    const stillAdmin = await app.admin();
+    for (const s of [made.cookie, patAgain.cookie, stillAdmin]) assert.equal((await meta(s)).status, 200);
+    await call('PUT', '/api/sso/okta', { cookie: stillAdmin, body: { requireSso: true } });
+    assert.equal((await meta(made.cookie)).status, 401, 'required from now: a password session from before ends');
+    assert.equal((await meta(patAgain.cookie)).status, 401, 'everyone at its domains signs in again, with single sign-on');
+    assert.equal((await meta(stillAdmin)).status, 200, 'except the admins');
     const refused = await call('POST', '/api/auth/sign-in/email', { body: { email: 'kim@corp.example', password: PASSWORD } });
     assert.equal(refused.status, 403);
     assert.match(refused.json.message, /single sign-on/);

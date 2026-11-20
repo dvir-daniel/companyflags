@@ -14,18 +14,19 @@ import { Actions, Badge, Empty, ErrorList, Field, Heading, Modal, Switch, When }
 import { copyText, textareaField, useAsync } from '../uiKit.ts';
 import { roleInfo } from '../../../server/policy.ts';
 import {
-  download, EVENT_NAMES, FORMAT_HINT, FORMATS_IN, incomingUrl, lastDelivery, OUT_FORMAT_HINT, OUT_FORMATS, SAMPLE_IN, SAMPLE_OUT, SIDE_BY_SIDE,
+  download, EVENT_NAMES, FORMAT_HINT, FORMATS_IN, incomingUrl, lastDelivery, offBecause, OUT_FORMAT_HINT, OUT_FORMATS, SAMPLE_IN, SAMPLE_OUT, SIDE_BY_SIDE,
   WEBHOOKS_PATH, type Imported, type Plan, type WebhookIn, type WebhookList, type WebhookOut,
 } from './migrationKit.ts';
 
 /*
  * Migration: moving to CompanyFlags from another config system, with both running side by side until the last flag
  * has moved (docs/guide/migration.md). Import the old system's values (server/values.ts), export these, and keep
- * both the same with webhooks out and in (server/webhooks.ts). Everyone can see it and export; admins do the rest.
+ * both the same with webhooks out and in (server/webhooks.ts). Everyone can see it and export (with JSONata: admins
+ * only); admins do the rest.
  */
 
 const selectField = 'w-full [&_select]:h-[34px] [&_select]:text-13';
-const code = 'm-0 max-h-[320px] overflow-auto border border-grid bg-subtle p-3 font-mono text-12 leading-relaxed text-ink-1 whitespace-pre';
+const code = 'm-0 max-h-[320px] overflow-auto border border-grid bg-panel p-3 font-mono text-xs leading-relaxed text-ink-1 whitespace-pre';
 
 export function Migration() {
   const { meta } = useApp();
@@ -36,7 +37,7 @@ export function Migration() {
       <div className="grid gap-10 px-6 py-6 max-sm:px-4">
         <SideBySide />
         {admin && <ImportSection />}
-        <ExportSection />
+        <ExportSection admin={admin} />
         {/* the webhooks plugin's (server/plugins/webhooks.ts), when this server runs it */}
         {meta.plugins?.includes('webhooks') && <WebhooksSection admin={admin} />}
       </div>
@@ -125,12 +126,12 @@ function ImportSection() {
         </div>
         <Field label="The old system’s JSON" hint={<>Paste it, or <button type="button" className="underline" onClick={() => file.current?.click()}>choose a file</button>.</>}>
           <textarea rows={8} value={text} onChange={(e) => edit(setText)(e.target.value)} spellCheck={false} placeholder='{ "max_upload_mb": 100 }'
-            className={cn(textareaField, 'font-mono text-12')} />
+            className={cn(textareaField, 'font-mono text-xs')} />
         </Field>
         <input ref={file} type="file" accept=".json,application/json" className="hidden" onChange={(e) => void readFile(e.target.files?.[0])} />
         {format === 'jsonata' && (
           <Field label="JSONata expression" hint={<>It gets the JSON above and makes {'{ "flags": { "<key>": { "value": … } } }'}. <a href="https://docs.jsonata.org" target="_blank" rel="noreferrer">JSONata’s docs</a></>}>
-            <textarea rows={4} value={expression} onChange={(e) => edit(setExpression)(e.target.value)} spellCheck={false} className={cn(textareaField, 'font-mono text-12')} />
+            <textarea rows={4} value={expression} onChange={(e) => edit(setExpression)(e.target.value)} spellCheck={false} className={cn(textareaField, 'font-mono text-xs')} />
           </Field>
         )}
         <div className="grid gap-2">
@@ -142,7 +143,7 @@ function ImportSection() {
               <span className="text-13 text-ink-3">New flags go in these flag sets in {envName}. Leave them all off to move each flag later.</span>
               <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                 {meta.projects.map((p) => (
-                  <label key={p.key} className="inline-flex items-center gap-2 font-mono text-12">
+                  <label key={p.key} className="inline-flex items-center gap-2 font-mono text-xs">
                     <Checkbox checked={sets.includes(p.key)} onCheckedChange={(v) => edit(setSets)(v === true ? [...sets, p.key] : sets.filter((a) => a !== p.key))} /> {p.key}
                   </label>
                 ))}
@@ -167,7 +168,7 @@ function ImportSection() {
 function PlanView({ plan, envName }: { plan: Plan; envName: string }) {
   const list = (lines: { flag: string; text: string }[]) => (
     <ul className="m-0 grid gap-1 p-0">
-      {lines.map((l, i) => <li key={`${l.flag}-${i}`} className="flex gap-3 text-13"><code className="shrink-0 font-mono text-12 text-ink">{l.flag}</code><span className="text-ink-2">{l.text}</span></li>)}
+      {lines.map((l, i) => <li key={`${l.flag}-${i}`} className="flex gap-3 text-13"><code className="shrink-0 font-mono text-xs text-ink">{l.flag}</code><span className="text-ink-2">{l.text}</span></li>)}
     </ul>
   );
   const nothing = !plan.problems.length && !plan.changes.length && !plan.create.length;
@@ -190,8 +191,10 @@ function PlanView({ plan, envName }: { plan: Plan; envName: string }) {
 
 // ---------------------------------------------------------------- export
 
-function ExportSection() {
+// JSONata runs only for admins (server/api.ts): others export the fixed formats
+function ExportSection({ admin }: { admin: boolean }) {
   const { meta } = useApp();
+  const formats = FORMATS_IN.filter(([k]) => admin || k !== 'jsonata');
   const [env, setEnv] = useState(meta.environments[0]?.key ?? '');
   const [format, setFormat] = useState('values');
   const [flagSet, setFlagSet] = useState(meta.projects.find((p) => p.kind === 'server')?.key ?? meta.projects[0]?.key ?? '');
@@ -214,9 +217,9 @@ function ExportSection() {
               {meta.environments.map((e) => <option key={e.key} value={e.key}>{e.name}</option>)}
             </NativeSelect>
           </Field>
-          <Field label="Format">
+          <Field label="Format" hint={admin ? undefined : 'Only admins export with a JSONata expression.'}>
             <NativeSelect className={selectField} value={format} onChange={(e) => { setFormat(e.target.value); setShown(null); }}>
-              {FORMATS_IN.map(([k, n]) => <option key={k} value={k}>{k === 'flagd' ? 'flagd (one flag set’s file)' : n}</option>)}
+              {formats.map(([k, n]) => <option key={k} value={k}>{k === 'flagd' ? 'flagd (one flag set’s file)' : n}</option>)}
             </NativeSelect>
           </Field>
           {format === 'flagd' && (
@@ -229,7 +232,7 @@ function ExportSection() {
         </div>
         {format === 'jsonata' && (
           <Field label="JSONata expression" hint="It gets the values document and makes whatever the other system reads.">
-            <textarea rows={3} value={expression} onChange={(e) => { setExpression(e.target.value); setShown(null); }} spellCheck={false} className={cn(textareaField, 'font-mono text-12')} />
+            <textarea rows={3} value={expression} onChange={(e) => { setExpression(e.target.value); setShown(null); }} spellCheck={false} className={cn(textareaField, 'font-mono text-xs')} />
           </Field>
         )}
         <ErrorList error={error} />
@@ -280,8 +283,8 @@ function WebhooksSection({ admin }: { admin: boolean }) {
   return (
     <section aria-labelledby="m-hooks" className="grid gap-3">
       <Heading id="m-hooks" title="Webhooks" action={admin && <div className="flex gap-2">
-        <Button variant="secondary" onClick={() => setDrawer({ in: null })}>+ Webhook in</Button>
-        <Button onClick={() => setDrawer({ out: null })}>+ Webhook out</Button>
+        <Button variant="secondary" onClick={() => setDrawer({ in: null })}>+ Add webhook in</Button>
+        <Button onClick={() => setDrawer({ out: null })}>+ Add webhook out</Button>
       </div>}>
         Out: after each change, this server tells an address what changed (signed JSON, a Slack message, or your own shape). In: another system posts its values here, and they’re imported.
       </Heading>
@@ -297,18 +300,20 @@ function WebhooksSection({ admin }: { admin: boolean }) {
               </div>
               {list.webhooks.map((w) => {
                 const last = lastDelivery(w);
+                const off = offBecause(w);
                 return (
                   <div key={w.id} role="row" className={cn(OUT_COLS, tableRowClass)}>
                     <span role="cell" className="grid min-w-0">
                       <span className="truncate font-medium">{w.name}</span>
-                      <span className="truncate font-mono text-12 text-ink-3">{w.method} {w.host}</span>
+                      <span className="truncate font-mono text-xs text-ink-3">{w.method} {w.host}</span>
                     </span>
                     <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>
                       {w.events.map((e) => EVENT_NAMES[e] ?? e).join(' and ')} · {w.environments ? w.environments.map(envName).join(', ') : 'every environment'}
                       {' · '}{OUT_FORMATS.find(([k]) => k === w.format)?.[1] ?? w.format}
                     </span>
                     <span role="cell" className={cn(MD, 'min-w-0 truncate text-13')} title={w.lastError ?? undefined}>
-                      {last.tone === 'bad' ? <Badge kind="danger" title={last.text}>{w.nextAttemptAt ? 'Failed: tries again' : 'Failed'}</Badge>
+                      {off ? <Badge kind="danger">Switched off</Badge>
+                        : last.tone === 'bad' ? <Badge kind="danger" title={last.text}>{w.nextAttemptAt ? 'Failed: tries again' : 'Failed'}</Badge>
                         : <span className={last.tone === 'ok' ? 'text-ink-2' : 'text-ink-3'}>{last.text}{last.tone === 'ok' && w.lastSentAt && <> · <When iso={w.lastSentAt} /></>}</span>}
                     </span>
                     <span role="cell" className="flex items-center justify-end gap-2">
@@ -318,6 +323,8 @@ function WebhooksSection({ admin }: { admin: boolean }) {
                         <Button variant="secondary" onClick={() => setDrawer({ out: w })}>Edit</Button>
                       </>}
                     </span>
+                    {/* why it's off, said in full on every screen (a runaway expression switches a webhook off) */}
+                    {off && <Callout role="cell" tone="error" className="col-span-full mb-1">{off}</Callout>}
                   </div>
                 );
               })}
@@ -430,7 +437,7 @@ function OutDrawer({ webhook, onClose, onSaved, onDelete, onNewSecret }: {
   const toggle = (list: string[], k: string, on: boolean) => (on ? [...new Set([...list, k])] : list.filter((x) => x !== k));
   const ready = name.trim() && (webhook || url.trim()) && events.length && (envs === null || envs.length);
   return (
-    <Drawer open onClose={onClose} title={webhook ? `Edit ${webhook.name}` : 'Webhook out'} initialFocus={first}
+    <Drawer open onClose={onClose} title={webhook ? `Edit ${webhook.name}` : 'New webhook out'} initialFocus={first}
       subtitle="After each change, this server posts what changed to this address. One that’s down is tried again later, and holds up only itself."
       footer={<>
         <Button disabled={busy || !ready} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</Button>
@@ -439,6 +446,7 @@ function OutDrawer({ webhook, onClose, onSaved, onDelete, onNewSecret }: {
         {onDelete && <Button variant="secondary" onClick={onDelete}>Delete</Button>}
       </>}>
       <div className="grid gap-4">
+        {webhook && offBecause(webhook) && <Callout tone="error">{offBecause(webhook)}</Callout>}
         <Field label="Name" required><Input ref={first} className="h-[34px] text-13" value={name} onChange={(e) => setName(e.target.value)} placeholder="Old config service" /></Field>
         <div className="grid grid-cols-[1fr_110px] gap-3">
           <Field label="Address" required={!webhook} hint={webhook ? `Now ${webhook.host}. Leave empty to keep it.` : 'Kept on the server: only its host is shown again.'}>
@@ -457,7 +465,7 @@ function OutDrawer({ webhook, onClose, onSaved, onDelete, onNewSecret }: {
         </Field>
         {format === 'jsonata' && (
           <Field label="JSONata expression" hint="It gets the JSON message (type, timestamp, data: changes and values) and makes the body. Nothing: that message isn’t sent.">
-            <textarea rows={4} value={expression} onChange={(e) => setExpression(e.target.value)} spellCheck={false} className={cn(textareaField, 'font-mono text-12')} />
+            <textarea rows={4} value={expression} onChange={(e) => setExpression(e.target.value)} spellCheck={false} className={cn(textareaField, 'font-mono text-xs')} />
           </Field>
         )}
         <Field label="Sends">
@@ -507,7 +515,7 @@ function InDrawer({ webhook, onClose, onSaved, onDelete, onNewAddress }: {
     if (r) onSaved(r);
   };
   return (
-    <Drawer open onClose={onClose} title={webhook ? `Edit ${webhook.name}` : 'Webhook in'} initialFocus={first}
+    <Drawer open onClose={onClose} title={webhook ? `Edit ${webhook.name}` : 'New webhook in'} initialFocus={first}
       subtitle="Another system posts its values to this webhook’s address, and they’re imported like an import: at once, or as a request where approval is needed."
       footer={<>
         <Button disabled={busy || !name.trim() || !env} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</Button>
@@ -529,7 +537,7 @@ function InDrawer({ webhook, onClose, onSaved, onDelete, onNewAddress }: {
         </Field>
         {format === 'jsonata' && (
           <Field label="JSONata expression" hint="It gets each post’s JSON and makes a values document of it.">
-            <textarea rows={4} value={expression} onChange={(e) => setExpression(e.target.value)} spellCheck={false} className={cn(textareaField, 'font-mono text-12')} />
+            <textarea rows={4} value={expression} onChange={(e) => setExpression(e.target.value)} spellCheck={false} className={cn(textareaField, 'font-mono text-xs')} />
           </Field>
         )}
         <label className="inline-flex items-center gap-2 text-13">

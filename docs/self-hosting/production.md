@@ -11,7 +11,8 @@ details.
 - The first start creates the `btree_gist` extension: the database user needs the right to create it, or create it
   beforehand.
 - Back up the database, and test a restore. Everything is in it: flags, history, people, password hashes, and the
-  secrets the server keeps (each environment's link secret, single sign-on client secrets, the Cloudflare token).
+  secrets the server keeps (each environment's link secret, single sign-on client secrets, the Cloudflare token,
+  webhooks' addresses, headers and signing secrets).
   Protect the backups like those secrets.
 - `FF_DB_POOL` (default 10) is per instance. Make sure the server allows that many connections for every instance.
 
@@ -28,9 +29,12 @@ BETTER_AUTH_SECRET=<openssl rand -base64 32>
 BETTER_AUTH_URL=https://flags.example.com
 ```
 
-With `NODE_ENV=production` the server refuses to start without the secret or the address, turns on rate limits on
-sign-in, and accepts only `https` issuers for single sign-on. Keep the secret the same across restarts and instances:
-a new one signs everyone out. See [Configuration](/self-hosting/configuration).
+With `NODE_ENV=production` the server refuses to start without the secret or the address, or with a secret shorter
+than 32 characters, and accepts only `https` issuers for single sign-on. Keep the secret the same across restarts and
+instances: a new one signs everyone out. See [Configuration](/self-hosting/configuration).
+
+Sign-in has rate limits unless `NODE_ENV` is `development` or `test`. When they're off and the server listens on more
+than this machine (`HOST` isn't a loopback address), it says so at start.
 
 ## 3. HTTPS in front
 
@@ -39,11 +43,16 @@ console only over `https`.
 
 - The server sends no `Strict-Transport-Security` header. Add HSTS at the proxy.
 - Rate limits on sign-in count each client's address. By default that is the address of the connection, which a
-  client can't fake, so behind a proxy every sign-in would look like the proxy's. Tell the server where the real one
-  is: `FF_CLIENT_IP_HEADER` for a header your proxy or CDN sets itself (`cf-connecting-ip` behind Cloudflare,
-  `x-real-ip` behind many nginx setups), or `FF_TRUSTED_PROXIES` with your proxies' addresses, to read
-  `X-Forwarded-For` past them. Only use a header the proxy always replaces, never one a client can send.
+  client can't fake, so behind a proxy every sign-in would look like the proxy's. Tell the server which connections
+  are your proxies: `FF_TRUSTED_PROXIES`, their addresses or ranges (`10.0.0.0/8`; behind Cloudflare, its published
+  ranges). From those connections only, the server reads `X-Forwarded-For`, from the right, past the proxies. Add
+  `FF_CLIENT_IP_HEADER` to read a header your proxy or CDN sets itself instead (`cf-connecting-ip` behind
+  Cloudflare, `x-real-ip` behind many nginx setups).
+- A connection from any other address counts as its own address, whatever its headers say. The server refuses to
+  start with `FF_CLIENT_IP_HEADER` but no `FF_TRUSTED_PROXIES`, or with a proxy entry that isn't an address or range.
 - `BETTER_AUTH_URL` must be the address people type. Sign-in from another address is refused.
+- Each request body has a size limit: 64 KB for OFREP, 256 KB for sign-in, 1 MB for webhooks in and the console's
+  API, 4 MB for imports. A larger one gets `413`, also when it's sent in chunks. Let your proxy pass bodies that big.
 
 ## 4. A CDN for the app files
 
@@ -83,11 +92,22 @@ back means restoring the backup from step 1. With several instances, upgrade the
 migrates, under a lock, and an old instance that restarts afterwards refuses to start. See
 [Configuration → Migrations](/self-hosting/configuration#migrations).
 
-## 8. The admin account, right after deploying
+## 8. The admin account, with the setup link
 
-The first account made on the sign-in page becomes the admin. Until it exists, whoever reaches the console first can
-claim it. Open the console and make it as soon as the server is up, then invite everyone else from
-**Settings → People**. See [Sign-in and single sign-on](/self-hosting/sign-in).
+Only a setup link makes the first account, the admin's. While nobody has an account, the server prints it at every
+start:
+
+```text
+[companyflags] nobody has an account yet: make the admin account at https://flags.example.com/api/setup/<secret>
+```
+
+Open it, create the admin account, then invite everyone else from **Settings → People**. Until then nobody can
+join, `FF_SIGNUP_DOMAINS` and single sign-on included. The secret comes from `BETTER_AUTH_SECRET`, so every instance
+prints the same link, and it stops working once the first account exists. Until it does, keep the link as you keep
+the secret.
+
+Upgrading a database from before accounts? An existing admin opens the link and makes the first account with their
+own email. See [Sign-in → The first account](/self-hosting/sign-in#the-first-account).
 
 ## 9. The console's security headers
 
@@ -119,9 +139,11 @@ When you run several:
 
 ## 11. Logs
 
-The server logs to standard output; its own lines start with `[ff]`: migrations applied, publishes, CDN purges and
-their failures, scheduled changes. An unexpected error is logged with its stack, and the request gets
-`500 {"error":"internal error"}`, which says nothing more.
+The server logs to standard output; its own lines start with `[companyflags]`. At start: the config file it read,
+the plugins and ways to sign in it runs, then `CompanyFlags on http://…` once it listens, and the setup link while
+nobody has an account. After that: migrations applied, publishes, CDN purges and what failed after a publish,
+scheduled changes, and webhooks switched off. An unexpected error is logged with its stack and its route (never an
+address with a secret in it), and the request gets `500 {"error":"internal error"}`, which says nothing more.
 
 ## Also read
 

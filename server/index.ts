@@ -1,27 +1,28 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { serveStatic } from '@hono/node-server/serve-static';
-import { Hono, type Context, type ErrorHandler } from 'hono';
+import { Hono, type Context, type ErrorHandler, type MiddlewareHandler } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
+import { routePath } from 'hono/route';
 import { secureHeaders } from 'hono/secure-headers';
 import { consoleApi } from './api.ts';
 import { FolderInUseError, HttpError, openDb, type Db } from './db.ts';
 import { MigrationError } from './migrate.ts';
 import { createIdentity, signInFromEnv, type SignIn } from './identity.ts';
-import { loadConfig, resolveConfig, type Resolved } from './config.ts';
+import { loadConfig, resolveConfig, type Resolved } from './configFile.ts';
 import { createAccess } from './access.ts';
-import { betterAuthAccounts, createAuth, SetupError } from './betterAuth.ts';
+import { authSecret, betterAuthAccounts, createAuth, rateLimitsOn, SetupError, setupTokenFor } from './betterAuth.ts';
 import { discoverOverHttp, singleSignOn, vouchingConnections, type Discover } from './sso.ts';
 import { EventHub } from './events.ts';
 import { AppCache, LinkCache, linkRoutes } from './delivery.ts';
 import { KeyCache } from './auth.ts';
 import { journaled } from './journal.ts';
-import type { Purger } from './purge.ts';
-import { PluginError, publishHooks, setUpPlugins, type Plugin } from './plugin.ts';
-import { defaultPlugins, type CloudflareOptions, type WebhooksOptions } from './plugins/index.ts';
+import { evaluatorFor, PluginError, publishHooks, setUpPlugins, type OnPublish, type Plugin } from './plugin.ts';
+import { defaultPlugins } from './plugins/index.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
 import { startWorkers } from './workers.ts';
@@ -34,15 +35,13 @@ export type AppOptions = {
   setup?: (db: Db) => Promise<void>;     // tests: fill a new, empty database
   log?: (m: string) => void;
   /** The plugins (plugin.ts, plugins/): what reads flags besides the console, and what runs after a publish. Without
-   *  a list, every built-in one, with a Cloudflare purge that has no `fetch` unless `cdn` gives one, so an app made in
-   *  a test never purges a real Cloudflare zone (the server's own start passes the config's list, config.ts). */
+   *  a list, every built-in one, with no `fetch` for Cloudflare or webhooks, so an app made in a test never reaches
+   *  them (the server's own start passes the config's list, configFile.ts). A test gives its own, with fakes. */
   plugins?: Plugin[];
-  /** tests: the built-in Cloudflare plugin's options, when `plugins` isn't given */
-  cdn?: CloudflareOptions;
-  /** tests: a purger of their own instead of the plugins' onPublish (publish.test.ts) */
-  purge?: Purger;
-  /** tests: the built-in webhooks plugin's options, when `plugins` isn't given: without a `fetch` it sends nothing */
-  webhooks?: WebhooksOptions;
+  /** The environment variables the plugins read (CF_ZONE_ID, …): process.env unless a test gives its own. */
+  env?: NodeJS.ProcessEnv;
+  /** tests: their own hook after each publish instead of the plugins' onPublish (publish.test.ts) */
+  onPublish?: OnPublish;
 };
 
 export async function createApp(opts: AppOptions = {}) {
@@ -59,7 +58,7 @@ export async function createApp(opts: AppOptions = {}) {
   if (fresh) await store.query(`update publish_queue set published_at = now() where published_at is null`);
 
   const hub = new EventHub();
-  // What this app keeps in memory is its own: two apps in one process share nothing. The change journal
+  // What this server keeps in memory is its own: two servers in one process share nothing. The change journal
   // (journal.ts) tells these parts about each change once it commits.
   const links = new LinkCache();
   const keys = new KeyCache();
@@ -76,17 +75,20 @@ export async function createApp(opts: AppOptions = {}) {
   // Better Auth (betterAuth.ts), which keeps the accounts and asks the access module whenever someone joins.
   const signIn = opts.signIn ?? signInFromEnv();
   const settings = signIn.kind === 'better-auth' ? signIn.settings : undefined;
-  const access = createAccess(db, { accounts: betterAuthAccounts, connections: vouchingConnections, signupDomains: settings?.signupDomains });
+  // the setup link's secret: the first account (the admin's) is made only with it (access.ts)
+  const setupToken = settings ? setupTokenFor(await authSecret(store, settings).catch(async (e) => { await store.close(); throw e; })) : undefined;
+  const access = createAccess(db, { accounts: betterAuthAccounts, connections: vouchingConnections, signupDomains: settings?.signupDomains, setupToken });
   const auth = settings ? await createAuth(store, settings, access).catch(async (e) => { await store.close(); throw e; }) : undefined;
   const identity = createIdentity(signIn, access, auth);
   const sso = singleSignOn(db, {
     access, plugin: auth, discover: opts.discover ?? discoverOverHttp(settings?.trustedOrigins ?? []), baseURL: settings?.baseURL, production: settings?.production,
   });
   // the plugins (plugin.ts): set up once, with what the core shares
-  const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: opts.cdn ?? { fetch: undefined }, webhooks: opts.webhooks ?? { fetch: undefined } }),
-    { db, plane, hub, keys, links, flagSets: apps, baseURL: settings?.baseURL, log }).catch(async (e) => { await store.close(); throw e; });
+  const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: { fetch: undefined }, webhooks: { fetch: undefined } }), {
+    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, keys, links, flagSets: apps,
+  }).catch(async (e) => { await store.close(); throw e; });
   const on = new Set(plugins.map((p) => p.id));
-  const publisher = startWorkers(db, plane, hub, log, opts.purge ?? publishHooks(plugins), {
+  const publisher = startWorkers(db, plane, hub, log, opts.onPublish ?? publishHooks(plugins), {
     onRemoteChange: () => { links.forget(); keys.forget(); apps.forget(); },
   });
   // The plugins' own background work (sending webhooks) runs beside the publisher: a slow address never holds it up.
@@ -105,6 +107,7 @@ export async function createApp(opts: AppOptions = {}) {
     strictTransportSecurity: false, crossOriginResourcePolicy: false, crossOriginEmbedderPolicy: false,
     xFrameOptions: 'DENY', referrerPolicy: 'strict-origin-when-cross-origin',
   }));
+  app.use('*', bodyLimits());
   // For load balancers and orchestrators: /healthz answers while the process runs, /readyz once the database answers.
   app.get('/healthz', (c) => c.json({ ok: true }));
   app.get('/readyz', async (c) => {
@@ -145,7 +148,27 @@ export async function createApp(opts: AppOptions = {}) {
     app.use('/*', serveStatic({ root: './web/dist' }));
     app.get('*', page);
   }
-  return { app, db, plane, hub, workers, identity, plugins: [...on] };
+  return { app, db, plane, hub, workers, identity, plugins: [...on], setupToken, needsSetup: () => access.needsSetup() };
+}
+
+const KB = 1024;
+/** The most a request may send, by where it goes (the first prefix that matches), and everywhere else. */
+export const BODY_LIMITS: readonly (readonly [prefix: string, bytes: number])[] = [
+  ['/api/auth/', 256 * KB],          // sign-in forms, and providers' and single sign-on's answers (a SAML answer)
+  ['/ofrep/', 64 * KB],              // an evaluation context
+  ['/hooks/', 1000 * KB],            // a webhook in (webhooks.ts BODY_MAX)
+  ['/api/migration/', 4096 * KB],    // a file to import
+];
+export const BODY_MAX = 1024 * KB;
+
+/** Refuses (413) a body larger than its address allows. It counts the bytes as they come, so a body sent in chunks
+ *  (with no Content-Length) is cut off too, before it is all in memory. */
+function bodyLimits(): MiddlewareHandler {
+  const size = (bytes: number) => (bytes >= 1000 * KB ? `${Math.round(bytes / (1024 * KB))} MB` : `${Math.round(bytes / KB)} KB`);
+  const limit = (bytes: number) => bodyLimit({ maxSize: bytes, onError: (c) => c.json({ error: `the request body is larger than ${size(bytes)}` }, 413) });
+  const byPrefix = BODY_LIMITS.map(([prefix, bytes]) => [prefix, limit(bytes)] as const);
+  const rest = limit(BODY_MAX);
+  return (c, next) => (byPrefix.find(([prefix]) => c.req.path.startsWith(prefix))?.[1] ?? rest)(c, next);
 }
 
 /** The console page's Content-Security-Policy: scripts only from this server, plus the page's own inline scripts by
@@ -176,7 +199,8 @@ const BAD_VALUE = new Set(['22P02', '22003', '22007', '22008']);
  *  - a Postgres constraint violation (class 23) or an exception raised by a trigger (P0001): 422 with the
  *    database's message, the schema doing its job;
  *  - a value of the wrong form (BAD_VALUE): 400, said plainly;
- *  - anything else is a bug: logged with its stack, and a 500 that gives nothing away. */
+ *  - anything else is a bug: logged with its stack, and a 500 that gives nothing away. The log names the route, not the
+ *    address: an app link's or a webhook's address is its secret. */
 export function errorHandler(log: (m: string) => void): ErrorHandler {
   return (err, c) => {
     if (err instanceof HttpError) return c.json({ error: err.message, ...err.body, ...(err.code ? { code: err.code } : {}) }, err.status as 400);
@@ -186,9 +210,21 @@ export function errorHandler(log: (m: string) => void): ErrorHandler {
       if (BAD_VALUE.has(code)) return c.json({ error: 'a number, date or ID in the request isn’t valid' }, 400);
       if (code.startsWith('23') || code === 'P0001') return c.json({ error: err.message }, 422);
     }
-    log(`error: ${c.req.method} ${c.req.path}: ${err.stack ?? err.message ?? String(err)}`);
+    log(`error: ${c.req.method} ${loggedPath(c)}: ${err.stack ?? err.message ?? String(err)}`);
     return c.json({ error: 'internal error' }, 500);
   };
+}
+
+/** Where an error happened, for the log. The console's API as it is (its addresses hold no secrets); anything else by
+ *  its route as written (/client/v1/flags/:env/:app/:entity/:secret), never the address, which can be a secret (an
+ *  app link, a webhook's address, an invite); with no such route, only the address's first two parts. */
+function loggedPath(c: Context): string {
+  const path = c.req.path;
+  if (/^\/api\/(?!auth\/|setup\/|invites\/)/.test(path)) return path;
+  let route = '';
+  try { route = routePath(c); } catch { route = ''; }
+  if (route && !route.includes('*')) return route;
+  return path.replace(/^(\/[^/]+\/[^/]+)\/.+/, '$1/…');
 }
 
 /** Whether nothing is listening on this port yet. */
@@ -199,33 +235,47 @@ function portFree(port: number, host: string) {
   });
 }
 
-/** Starts the server as configured (config.ts): the port first, then the database, then the requests. Used when this
+/** Addresses only this machine can reach. */
+const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
+
+/** Starts the server as configured (configFile.ts): the port first, then the database, then the requests. Used when this
  *  file is run (node server/index.ts) and by the CLI's start (cli.ts). */
 export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
-  const fail = (m: string): never => { console.error(`[ff] ${m}`); process.exit(1); };
-  const log = (m: string) => console.log(`[ff] ${m}`);
+  const fail = (m: string): never => { console.error(`[companyflags] ${m}`); process.exit(1); };
+  const log = (m: string) => console.log(`[companyflags] ${m}`);
+  const env = o.env ?? process.env;
   let resolved: Resolved;
   let file: string | null;
   try {
     const loaded = await loadConfig(o);
     file = loaded.file;
-    resolved = resolveConfig(loaded.config, o.env ?? process.env);
+    resolved = resolveConfig(loaded.config, env);
   } catch (e) { return fail((e as Error).message); }
   const { port, host, signIn } = resolved;
   // the port first: a second copy started by mistake stops here, before it opens any data
   if (!(await portFree(port, host))) {
-    fail(`port ${port} is already in use: CompanyFlags may already be running (open http://localhost:${port}), or start this one with PORT=<another port>`);
+    fail(`port ${port} is already in use: CompanyFlags may already be running (open http://localhost:${port}), or choose another port with server.port in companyflags.config.ts or PORT`);
   }
   if (file) log(`config: ${file}`);
-  const ctx = await createApp({ databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, log })
+  const ctx = await createApp({ databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, env, log })
     .catch((e: Error) => (e instanceof FolderInUseError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError ? fail(e.message) : Promise.reject(e)));
   log(`plugins: ${ctx.plugins.join(', ') || 'none'}`);
+  const local = `http://${host === '0.0.0.0' || host === '::' ? 'localhost' : host}:${port}`;
   if (signIn.kind === 'better-auth') {
     const settings = signIn.settings;
     const ways = ['email and password', ...(['google', 'github', 'microsoft'] as const).filter((p) => settings[p])];
     log(`sign-in with Better Auth: ${ways.join(', ')}`);
+    if (!rateLimitsOn(settings) && !LOOPBACK.has(host)) {
+      log(`warning: sign-in has no rate limits (NODE_ENV is ${process.env.NODE_ENV ?? 'not set'}), and others can reach this server: set NODE_ENV=production`);
+    }
   }
-  const server = serve({ fetch: ctx.app.fetch, port, hostname: host }, () => log(`console and app files on http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`));
+  const server = serve({ fetch: ctx.app.fetch, port, hostname: host }, () => {
+    log(`CompanyFlags on ${local}`);
+    // a new server: the admin account is made with this link, so whoever reaches the server first can't make it
+    void ctx.needsSetup().then((needed) => {
+      if (needed && ctx.setupToken) log(`nobody has an account yet: make the admin account at ${(signIn.kind === 'better-auth' && signIn.settings.baseURL?.replace(/\/+$/, '')) || local}/api/setup/${ctx.setupToken}`);
+    }).catch(() => {});
+  });
   server.on('error', (e: NodeJS.ErrnoException) => fail(e.code === 'EADDRINUSE' ? `port ${port} was taken while starting` : e.message));
 
   // Ctrl-C or a platform stop: stop taking requests and let the open ones finish, let the worker finish its round
@@ -244,11 +294,13 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
     await closed;
     clearTimeout(force);
     await ctx.workers.stop();
-    await ctx.db.close().catch((e) => console.error(`[ff] closing the database: ${e.message}`));
+    await ctx.db.close().catch((e) => console.error(`[companyflags] closing the database: ${e.message}`));
     process.exit(0);
   };
   process.on('SIGINT', () => { void shutdown('SIGINT'); });
   process.on('SIGTERM', () => { void shutdown('SIGTERM'); });
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) await start();
+// run as a file (node server/index.ts), from any folder: one with a space in its path, or reached through a link
+const runAsFile = () => { try { return !!process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } };
+if (runAsFile()) await start();

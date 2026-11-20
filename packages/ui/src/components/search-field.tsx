@@ -30,7 +30,7 @@ function SearchField({
         type="search"
         data-slot="search-field-input"
         className={cn(
-          "min-w-0 flex-1 border-0 bg-transparent p-0 text-ink outline-none select-text placeholder:text-ink-4 [&::-webkit-search-cancel-button]:hidden",
+          "min-w-0 flex-1 border-0 bg-transparent p-0 text-ink outline-none select-text placeholder:text-ink-3 [&::-webkit-search-cancel-button]:hidden",
           size === "lg" ? "h-12 text-base" : "h-[30px] text-13",
           inputClassName
         )}

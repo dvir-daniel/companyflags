@@ -9,7 +9,7 @@ const repo = 'https://github.com/dvir-daniel/companyflags';
 
 const install: Record<string, string[]> = {
   Docker: [
-    'docker run -d -p 8787:8787 -v companyflags:/data \\',
+    'docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \\',
     '  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \\',
     '  -e BETTER_AUTH_URL=http://localhost:8787 \\',
     '  ghcr.io/dvir-daniel/companyflags',
@@ -94,7 +94,7 @@ const features = [
   { title: 'Locked rules.', text: 'Overrides apply to everyone, always, and fail closed when a value is missing. No entity can change them.', chips: ['override', 'fail closed'] },
   { title: 'OpenFeature, no SDK of ours.', text: 'OFREP for OpenFeature’s web, Android, iOS and server providers; flagd JSON for in-process backends.', chips: ['OFREP', 'flagd', 'React'] },
   { title: 'Move over one flag at a time.', text: 'Run it next to the system you have now. Import its values; apps read the old one for every flag not moved yet.', chips: ['import', 'side by side', 'JSONata'] },
-  { title: 'Releases.', text: 'Early access for some customers, then 1% → 5% → 25% → 50% of devices, then everyone, then clean up.', chips: ['1%', '5%', '25%', '50%'] },
+  { title: 'Releases.', text: 'Early access for some entities, then 1% → 5% → 25% → 50% of devices, then everyone, then clean up.', chips: ['1%', '5%', '25%', '50%'] },
   { title: 'Version releases.', text: 'Move devices from 1.0.0 to 1.0.1 step by step. On call rolls back without waiting for a review.', chips: ['1.0.0', '→', '1.0.1'] },
   { title: 'Reviewed changes.', text: 'Production can require an approval for every change, with scheduling and break-glass for on call.', chips: ['approve', 'schedule', 'break-glass'] },
   { title: 'History and restore.', text: 'An append-only history, versions of every environment, restore, and two entities compared flag by flag.', chips: ['history', 'restore', 'compare'] },
@@ -149,7 +149,7 @@ const runIt = [
             <button class="copy" :aria-label="copied ? 'Copied' : 'Copy'" @click="copyInstall">{{ copied ? 'COPIED' : 'COPY' }}</button>
           </div>
         </div>
-        <p class="note">Then open <code>http://localhost:8787</code> and create the admin account. The console walks you through four steps to your first flag.</p>
+        <p class="note">Then open the setup link the server prints in its log, and create the admin account. The console walks you through five steps to an app reading its first flag.</p>
       </section>
 
       <section>

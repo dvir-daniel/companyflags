@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button } from '@companyflags/ui/components/button';
+import { Button, buttonVariants } from '@companyflags/ui/components/button';
 import { Callout } from '@companyflags/ui/components/callout';
 import { BulkBar, ColumnHead, KeyHints, RowCheck, SortHeader, tableHeadClass, tableRowClass, useListKeys, useSelection } from '@companyflags/ui/components/data-table';
 import { Drawer, DrawerRow, DrawerSection } from '@companyflags/ui/components/drawer';
@@ -20,7 +20,7 @@ import { useEnvs } from './envs.ts';
 import { roleInfo } from '../../../server/policy.ts';
 
 /*
- * API keys: the dense console list. A sticky page bar (search, filters, Create key), a sortable
+ * API keys: the dense console list. A sticky page bar (search, filters, New key), a sortable
  * full-width table with checkboxes, bulk Revoke and Export CSV, a drawer for one key, and a drawer
  * with the new-key form that then shows the key once. Keyboard: / search, j/k move, x select,
  * Enter open, Esc clear.
@@ -176,7 +176,7 @@ export function Keys() {
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <PageBar title="API keys" count={loadError ? undefined : <CountSlot text={keys ? `${live} in use` : undefined} />}
-        actions={admin ? <Button onClick={() => setCreating(true)}>+ Create key</Button> : <span className="text-13 text-ink-3">Only admins make and revoke keys</span>}>
+        actions={admin ? <Button onClick={() => setCreating(true)}>+ New key</Button> : <span className="text-13 text-ink-3">Only admins make and revoke keys</span>}>
         <SearchField ref={search} className="w-[240px] max-md:w-auto max-md:flex-1 max-md:basis-full" placeholder="Search  /" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search keys by prefix or label" />
         <FilterSelect label="Environment" value={env} onChange={setEnv} options={[['', 'All'], ...meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])]} />
         <FilterSelect label="Flag set" value={app} onChange={setApp} options={[['', 'All'], ...meta.projects.map((p) => [p.key, p.key] as [string, string])]} />
@@ -186,10 +186,10 @@ export function Keys() {
 
       <div role="table" aria-label="API keys" className="flex-1">
         <div role="row" className={cn(COLS, tableHeadClass)}>
-          <RowCheck checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all keys" />
+          <RowCheck head checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all keys" />
           <SortHeader label="Key" sortKey="key" {...sortProps} />
           <span className={MD}><SortHeader label="Environment" sortKey="env" {...sortProps} /></span>
-          <span className={MD}>Flag set</span>
+          <span role="columnheader" className={MD}>Flag set</span>
           <ColumnHead className={XL} label="Asks about" help="Which entries of your dimensions the key may ask about. A backend names the one it wants in the address, by its dimension: /sdk/v1/flagd/<dimension>/<key>." />
           <SortHeader label="Last used" sortKey="used" {...sortProps} />
           <span className={MD}><SortHeader label="Created" sortKey="created" {...sortProps} /></span>
@@ -203,7 +203,7 @@ export function Keys() {
           : !keys ? <SkeletonRows cols={COLS} cells={['', '', MD, MD, XL, '', MD]} />
           : rows.length === 0 ? (
             <div className="px-6 py-10 max-sm:px-4">
-              <Empty action={filtered ? <Button variant="secondary" onClick={clearFilters}>Clear filters</Button> : <Button onClick={() => setCreating(true)}>+ Create key</Button>}>
+              <Empty action={filtered ? <Button variant="secondary" onClick={clearFilters}>Clear filters</Button> : admin ? <Button onClick={() => setCreating(true)}>+ New key</Button> : undefined}>
                 {filtered ? 'No keys match these filters.' : 'No keys yet. Each backend server needs a key for an environment before it can download its rules. Apps don’t need one.'}
               </Empty>
             </div>
@@ -297,6 +297,8 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
   const { meta, toast } = useApp();
   const { envName } = useEnvs();
   const servers = meta.projects.filter((p) => p.kind === 'server');
+  // a key is for one flag set for backends: with none, there's nothing to make one for yet
+  const none = servers.length === 0;
   // the first environment and server until one is picked (and again if the picked one goes away)
   const [envPick, setEnv] = useState('');
   const env = meta.environments.some((e) => e.key === envPick) ? envPick : meta.environments[0]?.key ?? '';
@@ -328,7 +330,7 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
         <Button onClick={() => copy(created)}>Copy key</Button>
         <Button variant="secondary" onClick={onClose}>Done</Button>
       </> : <>
-        <Button disabled={busy || (scope !== 'all' && !entity)} onClick={create}>{busy ? 'Creating…' : 'Create key'}</Button>
+        <Button disabled={busy || none || (scope !== 'all' && !entity)} onClick={create}>{busy ? 'Creating…' : 'Create key'}</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
         <span className="text-13 text-ink-3">It’s shown once; only its hash is stored.</span>
       </>}>
@@ -337,6 +339,10 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
           <Callout tone="warn"><b className="font-medium">Copy this key now.</b> Only its hash is stored, so it can’t be shown again.</Callout>
           <Input ref={keyField} readOnly value={created} onFocus={(e) => e.target.select()} className="h-[34px] font-mono text-13" aria-label="New API key" />
         </div>
+      ) : none ? (
+        <Empty action={<a href="#/settings" data-slot="button" className={cn(buttonVariants({ variant: 'secondary' }), 'no-underline hover:no-underline')}>Open settings</a>}>
+          No flag set for backends yet. Add one in Settings → Flag sets.
+        </Empty>
       ) : (
         <div className="grid gap-4">
           <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">

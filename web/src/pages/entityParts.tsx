@@ -242,11 +242,11 @@ export function EntityFlags({ entity, env, keysEnabled, onChanged }: { entity: W
       {stale && <LoadError line className="mx-6 mt-3 max-sm:mx-4" busy={paging.loading} onRetry={retry}><span title={stale}>{stale}</span></LoadError>}
       <div role="table" aria-label={`Flags for ${entity.name}`} aria-busy={paging.loading} className={cn('flex-1', paging.loading && 'opacity-70')}>
         <div role="row" className={cn(FLAG_COLS, tableHeadClass)}>
-          <span role="columnheader"><RowCheck checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all flags on this page" /></span>
+          <RowCheck head checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all flags on this page" />
           <span role="columnheader">Flag</span>
           <span role="columnheader">Status</span>
           <span role="columnheader" className={cn(MD, 'truncate')}>What {entity.name} gets</span>
-          <span role="columnheader" className={MD}><ColumnHead label="Source" help={`Where the answer comes from: ${entity.name}’s own settings, those of one above it, a rule for everyone, the default, or the code’s own default when the flag is off.`} /></span>
+          <ColumnHead className={MD} label="Source" help={`Where the answer comes from: ${entity.name}’s own settings, those of one above it, a rule for everyone, the default, or the code’s own default when the flag is off.`} />
         </div>
         {!data ? (paging.error
             ? <LoadError className="m-6 max-sm:m-4" busy={paging.loading} onRetry={retry}>Couldn’t load the flags for {entity.name}: {paging.error}</LoadError>
@@ -263,7 +263,7 @@ export function EntityFlags({ entity, env, keysEnabled, onChanged }: { entity: W
               // a click anywhere on the row opens it; the flag's key is the button keyboard and screen-reader users open it with
               <div key={f.key} role="row" data-row-index={i} data-active={keys.active === i} data-selected={sel.isSelected(f.key)}
                 onClick={() => openRow(i, f.key)} className={cn(FLAG_COLS, tableRowClass, selectedRow, 'cursor-default gap-y-1.5')}>
-                <span role="cell"><RowCheck checked={sel.isSelected(f.key)} onChange={() => sel.toggle(f.key)} label={`Select ${f.key}`} /></span>
+                <RowCheck checked={sel.isSelected(f.key)} onChange={() => sel.toggle(f.key)} label={`Select ${f.key}`} />
                 <span role="cell" className="min-w-0">
                   <button type="button" onClick={(e) => { e.stopPropagation(); openRow(i, f.key); }} className={cn(cellButton, 'font-mono text-13 font-medium')}>{f.key}</button>
                   {f.description && <span className="block truncate text-ink-3">{f.description}</span>}

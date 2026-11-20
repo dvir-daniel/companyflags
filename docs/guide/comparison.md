@@ -13,8 +13,8 @@ so you can tell quickly whether it fits.
   no SDK of ours to adopt or to leave.
 - **You have very many devices.** Besides OFREP, each entity's values are one file your CDN caches, built once per
   publish, so cost need not grow with devices.
-- **Apps must not see more than they need.** A device gets its own values, never the rules or other customers'
-  values, which matters when the rules themselves name your customers.
+- **Apps must not see more than they need.** A device gets its own values, never the rules or other entities'
+  values, which matters when the rules themselves name them.
 - **You want to run it yourself.** One Node.js server and Postgres, your own sign-in (SAML or OIDC), MIT licensed, no
   account to create anywhere.
 - **You're moving from something else.** CompanyFlags runs next to the system you have now and takes over one flag at

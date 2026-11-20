@@ -138,6 +138,16 @@ describe('the protocol', () => {
     assert.equal((await bulk(bearer(token.replace('.web.', '.ios.')), {})).status, 401, 'a token is bound to its app');
     assert.equal((await bulk(bearer(await tokenFor('dev', 'ios', 'lumen')), {})).status, 200, 'the app’s own token');
     assert.equal((await bulk(bearer(token.slice(0, -2) + 'xx'), {})).status, 401);
+
+    // every app carries its token: asking about an entity that doesn't exist gets the same answer, byte for byte, as
+    // asking about one it can't ask about, so the token can't be used to list the entities (an API key's neither)
+    const answer = async (auth: Record<string, string>, context: unknown) => { const r = await bulk(auth, context); return [r.status, await r.text()] as const; };
+    for (const credential of [token, own]) {
+      const [status, text] = await answer(bearer(credential), { company: 'acme-not-an-entity' });
+      assert.equal(status, 403);
+      assert.equal(text.replace('acme-not-an-entity', 'X'), (await answer(bearer(credential), { company: 'initech' }))[1].replace('initech', 'X'), 'an entity that exists');
+      assert.equal(text.replace('acme-not-an-entity', 'X'), (await answer(bearer(credential), { brand: 'acme-not-an-entity' }))[1].replace('acme-not-an-entity', 'X'), 'in another dimension');
+    }
     await rotateClientLink(t.db, 'lumen', system);
     assert.equal((await bulk(bearer(token), {})).status, 401, 'the replaced link’s token');
     assert.equal((await bulk(bearer(await tokenFor('dev', 'web', 'lumen')), {})).status, 200, 'the new one');

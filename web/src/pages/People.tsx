@@ -123,6 +123,16 @@ export function People() {
     setRoleChange(null);
   };
 
+  // a person's role: a select for admins (in its column, and under the name on a phone, with the roles' short names), the
+  // role's name for others
+  const roleOf = (u: User, s: Status, short = false) => (admin && s !== 'removed' ? (
+    <NativeSelect className={selectField} value={roleChange?.person === u.key ? roleChange.role : u.role} aria-label={`Role for ${u.name}`}
+      disabled={!!roleChange} aria-busy={roleChange?.person === u.key || undefined}
+      onChange={(e) => void changeRole(u, e.target.value)}>
+      {ROLE_OPTIONS.map(([k, label]) => <option key={k} value={k}>{short ? roleName(k) : label}</option>)}
+    </NativeSelect>
+  ) : <span className="text-13 text-ink-2">{roleName(u.role)}</span>);
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <PageBar crumbs={<a href="#/settings" className="text-ink-3 no-underline hover:text-ink hover:no-underline">Settings</a>} title="People"
@@ -157,16 +167,10 @@ export function People() {
               <span role="cell" className="min-w-0">
                 <span className="block truncate text-13 font-medium">{u.name}{u.key === meta.me.key && <span className="font-normal text-ink-3"> (you)</span>}</span>
                 <span className="block truncate font-mono text-11 text-ink-3">{u.key}</span>
+                {/* on a phone the role column is hidden: the role goes here, under the name */}
+                <span className="mt-1.5 block md:hidden">{roleOf(u, s, true)}</span>
               </span>
-              <span role="cell" className={MD}>
-                {admin && s !== 'removed' ? (
-                  <NativeSelect className={selectField} value={roleChange?.person === u.key ? roleChange.role : u.role} aria-label={`Role for ${u.name}`}
-                    disabled={!!roleChange} aria-busy={roleChange?.person === u.key || undefined}
-                    onChange={(e) => void changeRole(u, e.target.value)}>
-                    {ROLE_OPTIONS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
-                  </NativeSelect>
-                ) : <span className="text-13 text-ink-2">{roleName(u.role)}</span>}
-              </span>
+              <span role="cell" className={MD}>{roleOf(u, s)}</span>
               <span role="cell" className={MD} title={STATUS_HELP[s]}>
                 {s === 'active' ? <span className="text-13 text-ink-2">Active</span> : <Badge kind={s === 'removed' ? undefined : 'warn'}>{STATUS_TEXT[s]}</Badge>}
               </span>

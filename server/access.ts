@@ -15,14 +15,15 @@
 //
 // Who may join (`admit`):
 //   - nobody whose access an admin removed;
-//   - the first account: anyone on a new install (they become the admin), an existing admin on a database from before
-//     accounts (people with roles, nobody with an account yet);
+//   - the first account: on a new install, whoever opens the setup link the server prints when it starts (they become
+//     the admin); on a database from before accounts (people with roles, nobody with an account yet), an existing admin
+//     with that link. Until the first account is made, nobody else joins at all;
 //   - a password account: with the invite link an admin made for that email, while it works (once, for 7 days);
 //   - single sign-on: people at the connection's email domains (and subdomains), and people an admin added;
 //   - Google, GitHub or Microsoft, when they confirm the email: people an admin added, or anyone at a signup domain
 //     (FF_SIGNUP_DOMAINS);
-//   - where a connection requires single sign-on, no password sign-ins or password accounts at its domains, except for
-//     admins (a broken identity provider must not lock everyone out).
+//   - where a connection requires single sign-on, no password or Google, GitHub or Microsoft sign-ins or accounts at its
+//     domains, except for admins (a broken identity provider must not lock everyone out).
 // People who join without an invite start as viewers; an admin gives them a role.
 
 import { randomBytes } from 'node:crypto';
@@ -43,13 +44,17 @@ export type Who = { email: string; name?: string };
 
 /** Someone signing in, or making an account (`account: 'new'`). `existing`: a returning sign-in, or a new way in to
  *  the account they have (a provider or single sign-on added to it). */
-export type Attempt =
+export type Attempt = (
   /** a password; for a new account, the invite link's secret */
   | { email: string; with: 'password'; account: 'new' | 'existing'; invite?: string }
   /** Google, GitHub or Microsoft; whether it confirms the email */
   | { email: string; with: 'provider'; account: 'new' | 'existing'; emailVerified: boolean }
   /** single sign-on, with this connection (its id) */
-  | { email: string; with: 'sso'; account: 'new' | 'existing'; connection: string };
+  | { email: string; with: 'sso'; account: 'new' | 'existing'; connection: string }
+) & {
+  /** the setup link's secret, when the request carries it: the first account needs it */
+  setup?: string;
+};
 
 export type Refusal = { code: 'access_removed' | 'invite_required' | 'sso_required'; message: string };
 
@@ -65,6 +70,8 @@ export type Accounts = {
   hasPassword(q: Queryable, email: string): Promise<boolean>;
   /** deletes the sign-ins made with this single sign-on connection */
   removeSignInsWith(q: Queryable, connection: string): Promise<void>;
+  /** ends the sessions of everyone at these email domains (and their subdomains), except these emails */
+  endSessionsAt(q: Queryable, domains: string[], except: string[]): Promise<void>;
 };
 
 /** A single sign-on connection an admin added (sso.ts): it vouches for the people at its domains. */
@@ -76,6 +83,9 @@ export type AccessOptions = {
   connections: (q: Queryable) => Promise<Vouching[]>;
   /** provider sign-ins with a confirmed email at these domains may join without an invite (FF_SIGNUP_DOMAINS) */
   signupDomains?: string[];
+  /** The setup link's secret (betterAuth.ts setupTokenFor): the first account is made only with it, so whoever reaches
+   *  a new server first can't make themselves its admin. Without one, no first account can be made. */
+  setupToken?: string;
   /** the time, for invites (tests set it) */
   now?: () => Date;
 };
@@ -140,9 +150,13 @@ export function createAccess(db: Db, opts: AccessOptions) {
     `select count(*)::int as n from app_user where role = any($1::text[]) and removed_at is null and ($2::text is null or key = $2)`,
     [ADMINS, email]))!.n);
 
-  /** The first account: nobody has one yet, and this is a new install (no people) or they are an existing admin. */
-  const mayMakeFirstAccount = async (q: Queryable, email: string) => {
-    if (await accounts.any(q)) return false;
+  /** The setup link's secret, from the request: right, and nobody has an account yet. */
+  const setupOpen = async (q: Queryable, setup: string | undefined) =>
+    !!opts.setupToken && !!setup && sameSecret(sha256(setup), sha256(opts.setupToken)) && !(await accounts.any(q));
+
+  /** The first account: made with the setup link, on a new install (no people) or by an existing admin. */
+  const mayMakeFirstAccount = async (q: Queryable, email: string, setup: string | undefined) => {
+    if (!(await setupOpen(q, setup))) return false;
     return !(await one(q, `select 1 from app_user limit 1`)) || await activeAdmins(q, email) > 0;
   };
 
@@ -192,8 +206,12 @@ export function createAccess(db: Db, opts: AccessOptions) {
         `select removed_at is not null as removed, invite_hash, coalesce(invite_expires_at > $2::timestamptz, false) as invite_ok
          from app_user where key = $1`, [email, now().toISOString()]) : undefined;
       if (p?.removed) return REMOVED;
+      // Google, GitHub or Microsoft, new or returning: where single sign-on is required, only the identity provider
+      // says who still works there (a provider keeps confirming an email after its owner has left)
+      if (a.with === 'provider' && await ssoRequired(db, email)) return SSO_REQUIRED;
       if (a.account === 'existing') return null;                       // a provider sign-in again, or one added to their account
-      if (await mayMakeFirstAccount(db, email)) return null;
+      // nobody has an account yet: only the first one, made with the setup link
+      if (!(await accounts.any(db))) return await mayMakeFirstAccount(db, email, a.setup) ? null : INVITE_REQUIRED;
       switch (a.with) {
         case 'password': {
           if (await ssoRequired(db, email)) return SSO_REQUIRED;
@@ -322,16 +340,32 @@ export function createAccess(db: Db, opts: AccessOptions) {
         [sha256(token), now().toISOString()]);
     },
 
-    /** What the sign-in page offers: making the first account (nobody has one yet: on a new install the next person
-     *  to make one becomes the admin), and single sign-on (an admin added a connection). */
-    async signInOptions() {
-      return { firstPerson: !(await accounts.any(db)), sso: (await connections(db)).length > 0 };
+    /** What the sign-in page offers: making the first account (to whoever opened the setup link, while nobody has
+     *  an account: they become the admin), and single sign-on (an admin added a connection). Without the setup link,
+     *  the page doesn't say whether anyone has an account. */
+    async signInOptions(setup?: string) {
+      return { firstPerson: await setupOpen(db, setup), sso: (await connections(db)).length > 0 };
+    },
+
+    /** Whether this setup link's secret works now: it is right, and nobody has an account yet. */
+    setupOpen: (setup: string | undefined) => setupOpen(db, setup),
+
+    /** Whether nobody has an account yet: the server then prints the setup link when it starts (index.ts). */
+    async needsSetup() {
+      return !(await accounts.any(db));
     },
 
     /** A single sign-on connection is being removed (sso.ts): the sign-ins made with it go too. People keep their role
      *  and any other way in, and can be invited to make a password account. */
     async connectionRemoved(q: Queryable, id: string) {
       await accounts.removeSignInsWith(q, id);
+    },
+
+    /** A connection requires single sign-on from now (sso.ts): everyone at its domains but the admins is signed out,
+     *  so a session made with a password or a provider before doesn't go on, and signs in again with single sign-on. */
+    async ssoNowRequired(q: Queryable, domains: string[]) {
+      const admins = await all<{ key: string }>(q, `select key from app_user where role = any($1::text[]) and removed_at is null`, [ADMINS]);
+      await accounts.endSessionsAt(q, domains, admins.map((a) => a.key));
     },
   };
 }

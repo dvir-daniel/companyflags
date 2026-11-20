@@ -1,7 +1,7 @@
 # CompanyFlags with Postgres.
 #   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 #   docker compose up -d
-# then open http://localhost:8787 and create the admin account. Settings: .env.example.
+# then docker compose logs companyflags shows a setup link: open it to make the admin account. Settings: .env.example.
 services:
   companyflags:
     image: ghcr.io/dvir-daniel/companyflags:latest

@@ -29,24 +29,41 @@ CompanyFlags is before 1.0: only the **latest release** gets security fixes.
 
 ## What's in scope
 
-- the server (`server/`): the console's API, sign-in and single sign-on, roles and approvals, API keys and app links,
-  the app files, OpenFeature remote evaluation (OFREP) and backend downloads;
+- the server (`server/`): the console's API, sign-in and single sign-on, the first account and its setup link, roles
+  and approvals, API keys and app links, the app files, OpenFeature remote evaluation (OFREP) with its event stream,
+  flagd downloads and app links for backends;
+- the built-in plugins (`server/plugins/`): OFREP, flagd JSON, app files, webhooks out and in, the Cloudflare purge;
+- JSONata expressions in imports, exports and webhooks;
+- the `companyflags` command (`server/cli.ts`) and flags as code;
 - the console (`web/`, `packages/ui`);
 - the Docker image and the files we publish to deploy it.
 
-Out of scope: problems that need a server admin's own credentials or host access, denial of service by sheer volume
-(put a CDN or rate limiter in front, as the docs describe), and reports from automated scanners with no shown impact.
+Console admins are trusted with flags, people and settings, but not with the server's host or its network. A way
+for an admin to reach addresses on the server's network, run code on the host, read its files, or crash or freeze
+the server is in scope. So is anything an editor, viewer, app, backend or someone with no account can do beyond
+their role.
+
+Out of scope: problems that need the server's own secrets (`BETTER_AUTH_SECRET`, the database) or access to its
+host, denial of service by sheer volume (put a CDN or rate limiter in front, as the docs describe), and reports from
+automated scanners with no shown impact.
 
 ## How CompanyFlags protects an installation
 
 The [security model](docs/guide/security.md) describes it in full. In short:
 
-- **Apps never see rules or other customers' values.** Each app file holds one entity's values only; checks on
+- **The first account is the admin's, made with a setup link.** A new server prints the link when it starts, and makes
+  no account without it, so whoever reaches a new server first can't make themselves its admin. It works until the
+  first account is made.
+- **Apps never see rules or other entities' values.** Each app file holds one entity's values only; checks on
   dimensions, apps and environments are settled on the server.
 - **App links and API keys** identify an entity or a backend. An app's link (as an address or as its OpenFeature token)
-  reads that entity only; replacing it stops the old one at once. Apps never hold an API key.
+  reads that entity only; replacing it stops the old one at once. An admin can replace every link in an environment
+  at once. Apps never hold an API key.
 - **Sign-in** uses [Better Auth](https://www.better-auth.com): cookie sessions, password hashes, OAuth tokens stored
-  encrypted, rate limits in production, single sign-on with SAML (signed answers only) or OIDC.
+  encrypted, rate limits unless `NODE_ENV` is `development` or `test`, single sign-on with SAML (signed answers only)
+  or OIDC. Where single sign-on is required, only admins sign in another way, and turning it on signs the others out.
+- **What admins set up stays inside its limits.** Webhooks reach public addresses only, unless an operator allows an
+  origin. JSONata runs in a worker with a time and memory limit. Every request body has a size limit.
 - **Changes from the console** need a header another site can't send, so a page elsewhere can't act with your cookie.
 - **Protected environments** require approval from someone other than the author, and every change is kept in an
   append-only history.

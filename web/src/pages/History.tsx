@@ -36,7 +36,8 @@ const CHANGE_LABEL: Record<string, string> = {
   'dimensions.update': 'changed the dimensions',
   'api_key.create': 'created an API key', 'api_key.revoke': 'revoked an API key', 'change_set.create': 'requested approval',
   'change_set.approve': 'approved', 'change_set.reject': 'rejected', 'change_set.schedule': 'scheduled a request',
-  'environment.create': 'added an environment', 'environment.update': 'changed an environment', 'app.create': 'added a flag set',
+  'environment.create': 'added an environment', 'environment.update': 'changed an environment',
+  'environment.links_replaced': 'replaced every app link in this environment', 'app.create': 'added a flag set',
   'app.update': 'changed a flag set’s kind', 'app.delete': 'deleted a flag set',
   'person.role': 'changed someone’s role', 'person.add': 'added someone', 'person.invite': 'made an invite link', 'person.password_reset': 'made a password reset link',
   'person.remove': 'removed someone’s access', 'sso.add': 'added single sign-on', 'sso.update': 'changed single sign-on',
@@ -278,13 +279,13 @@ function ChangeTable({ rows, busy, onRetry, hideFlag, store, csvName, filtered, 
     {/* while the filters reload, the old rows stay in place, dimmed */}
     <div role="table" aria-label="Changes" aria-busy={busy} className={cn('flex-1', busy && Array.isArray(rows) && 'opacity-70')}>
       <div role="row" className={cn(cols, tableHeadClass)}>
-        <RowCheck checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all changes" />
+        <RowCheck head checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all changes" />
         <span className="max-md:order-last max-md:text-right"><SortHeader label="When" sortKey="when" {...sortProps} /></span>
         <span className={MD}><SortHeader label="Who" sortKey="who" {...sortProps} /></span>
-        <span>What changed</span>
-        {!hideFlag && <span className={MD}>Flag</span>}
-        <span className={custCol}>{whoWords}</span>
-        <span className={MD}>Environment</span>
+        <span role="columnheader">What changed</span>
+        {!hideFlag && <span role="columnheader" className={MD}>Flag</span>}
+        <span role="columnheader" className={custCol}>{whoWords}</span>
+        <span role="columnheader" className={MD}>Environment</span>
       </div>
       {rows instanceof Error ? (
         <Callout tone="error" role="alert" className="m-6 flex flex-wrap items-center gap-x-4 gap-y-2 max-sm:m-4">

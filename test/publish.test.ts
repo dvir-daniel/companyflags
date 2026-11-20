@@ -13,11 +13,11 @@ const fakePurger = (env: string) => {
   purged.push(env);
   if (mode === 'fail') return Promise.reject(new Error('the CDN said no'));
   if (mode === 'hang') return new Promise<void>(() => {});
-  return Promise.resolve();
+  return Promise.resolve('purged' as const);
 };
 
 let t: Awaited<ReturnType<typeof boot>>;
-before(async () => { t = await boot({ purge: fakePurger }); });
+before(async () => { t = await boot({ onPublish: fakePurger }); });
 after(async () => { await t.stop(); });
 
 const change = (n: number) => t.editBase('max_upload_mb', 'dev', (layer) => ({ ...layer, defaultVariation: n % 2 ? 'enterprise' : 'standard' }));
@@ -102,7 +102,7 @@ test('GET /api/events: a stream of revision events; when the console goes away, 
 });
 
 test('stopping the workers waits for the round in progress, then starts no more', async (c) => {
-  const own = await boot({ purge: fakePurger });
+  const own = await boot({ onPublish: fakePurger });
   c.after(() => own.db.close().catch(() => {}));
   const { version, layer } = await own.baseOf('payments_enabled', 'dev');
   assert.equal((await own.as('alice').put('/flags/payments_enabled/layers/dev/base', { layer: { ...layer, enabled: false }, expectedVersion: version })).status, 200);

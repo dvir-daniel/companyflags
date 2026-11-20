@@ -12,8 +12,9 @@ import { signOut } from './session.ts';
 import { ErrorBoundary } from './errorBoundary.tsx';
 import { EnvChip, RouteSkeleton } from './loading.tsx';
 import { writePersistent } from './persist.ts';
-import { JoinSkeleton, SignInSkeleton } from './signinFrame.tsx';
+import { JoinSkeleton, ResetSkeleton, SignInSkeleton } from './signinFrame.tsx';
 import { lastSignedIn, rememberSignedIn, signInInfo } from './signinKit.ts';
+import { bootProblem } from './text.ts';
 import { Button } from '@companyflags/ui/components/button';
 import { AppFrame, MainPane } from '@companyflags/ui/components/app-frame';
 import { Toaster, notify } from '@companyflags/ui/components/toast';
@@ -46,7 +47,8 @@ const Compare = lazy(() => PAGE_CODE.compare().then((m) => ({ default: m.Compare
 const Keys = lazy(() => PAGE_CODE.keys().then((m) => ({ default: m.Keys })));
 const History = lazy(() => PAGE_CODE.history().then((m) => ({ default: m.History })));
 const Settings = lazy(() => PAGE_CODE.settings().then((m) => ({ default: m.Settings })));
-const GetStarted = lazy(() => PAGE_CODE.settings().then((m) => ({ default: m.GetStarted })));
+// the first-run steps (pages/setup.tsx), which the Flags list also shows until apps can read flags
+const GetStarted = lazy(() => import('./pages/setup.tsx').then((m) => ({ default: m.GetStarted })));
 const People = lazy(() => PAGE_CODE.people().then((m) => ({ default: m.People })));
 const Migration = lazy(() => PAGE_CODE.migration().then((m) => ({ default: m.Migration })));
 // signing in needs Better Auth's client; people who are signed in never download it
@@ -98,7 +100,7 @@ function NotFound() {
 /** The tab's title for each page, so tabs and history entries can be told apart. */
 function titleFor([page, a, b]: string[], meta: Meta | null): string {
   const name: Record<string, string> = {
-    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration',
+    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', join: 'Join',
   };
   const dim = page === 'dimensions' && a ? meta?.dimensions.find((d) => d.key === a) : undefined;
   const dimName = dim ? dimTitle(dim) : a;
@@ -150,7 +152,7 @@ function useGuardedRoute(isDirty: () => boolean, confirmLeave: () => Promise<boo
 }
 
 // pages built as dense console pages (full width, sticky page bar); the rest sit in a centred column
-const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'customers', 'customer', 'compare', 'approvals', 'keys', 'history', 'settings']);
+const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'customers', 'customer', 'compare', 'approvals', 'keys', 'history', 'settings', 'migration']);
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 type Answer = { action: string | null; reason: string };
@@ -349,15 +351,19 @@ function App() {
   // an invite link opens its own page, signed in or not; while their code downloads, the sign-in pages show their shape
   if (page === 'join' && route[1]) return <Suspense fallback={<JoinSkeleton />}>{title}<JoinPage token={route[1]} /></Suspense>;
   // a password reset link too: it works signed in or not
-  if (page === 'reset' && route[1]) return <Suspense fallback={<JoinSkeleton />}><title>New password · CompanyFlags</title><ResetPage token={route[1]} /></Suspense>;
+  if (page === 'reset' && route[1]) return <Suspense fallback={<ResetSkeleton />}><title>New password · CompanyFlags</title><ResetPage token={route[1]} /></Suspense>;
   if (!meta && bootError?.status === 401) return <Suspense fallback={<SignInSkeleton />}><title>Sign in · CompanyFlags</title><SignInPage /></Suspense>;
-  if (!meta && bootError) return (
-    <div role="alert" className="grid max-w-[560px] gap-3 p-12 text-sm text-ink-1">
-      <p className="m-0 text-base font-medium text-ink">{bootError.status === 403 ? 'You don’t have access.' : 'Can’t reach the CompanyFlags server.'}</p>
-      <p className="m-0 text-ink-2">{bootError.status === 403 ? `${bootError.message.charAt(0).toUpperCase()}${bootError.message.slice(1)}.` : `Check that it’s running, then reload. (${bootError.message})`}</p>
-      <div>{bootError.status === 403 ? <Button variant="secondary" onClick={() => void signOut()}>Sign out</Button> : <Button onClick={() => location.reload()}>Reload</Button>}</div>
-    </div>
-  );
+  if (!meta && bootError) {
+    // which it is comes from the status: nothing answered (0), no access (403), or an answer that is an error
+    const problem = bootProblem(bootError.status, bootError.message);
+    return (
+      <div role="alert" className="grid max-w-[560px] gap-3 p-12 text-sm text-ink-1">
+        <p className="m-0 text-base font-medium text-ink">{problem.title}</p>
+        <p className="m-0 text-ink-2">{problem.text}</p>
+        <div>{bootError.status === 403 ? <Button variant="secondary" onClick={() => void signOut()}>Sign out</Button> : <Button onClick={() => location.reload()}>Reload</Button>}</div>
+      </div>
+    );
+  }
   // While /meta answers (the first load): someone who was signed out last time most likely signs in now, so the
   // sign-in page's shape; someone who was signed in gets the console's frame with the page's shape in it (loading.tsx).
   // A browser that hasn't opened the console yet shows nothing until the server says which.
@@ -378,7 +384,7 @@ function App() {
         sidebar={<Sidebar meta={meta} page={page} sub={route[1]} pending={pending} onSearch={searchFlags} className="max-md:hidden" />}
         footer={<><Footer meta={meta} /><MobileNav meta={meta} page={page} sub={route[1]} pending={pending} onSearch={searchFlags} /></>}>
           {/* on a phone the sidebar is hidden, so the page takes the frame's second row (the first stays empty) */}
-          <MainPane wide fluid={DENSE.has(page)} key={meta?.me.key} ref={pane} aria-busy={waiting || !meta || undefined} className="max-md:row-start-2">
+          <MainPane id="main" wide fluid={DENSE.has(page)} key={meta?.me.key} ref={pane} aria-busy={waiting || !meta || undefined} className="max-md:row-start-2">
               {waiting && <div data-nav-progress aria-hidden
                 className="sticky top-0 z-30 -mb-0.5 h-0.5 origin-left bg-ink [animation:nav-progress_.3s_ease-out_.12s_both]" />}
               {!meta ? skeleton : (

@@ -19,6 +19,7 @@ function memoryAccounts(): Accounts & { made: (email: string) => void } {
     remove: async (_q, email) => { emails.delete(email); },
     hasPassword: async (_q, email) => emails.has(email),
     removeSignInsWith: async () => {},
+    endSessionsAt: async () => {},
   };
 }
 
@@ -27,13 +28,16 @@ let clock = new Date('2026-11-02T09:00:00Z');
 const opened: { db: Db; drop: () => Promise<void> }[] = [];
 after(async () => { for (const o of opened) { await o.db.close(); await o.drop(); } });
 
+/** The setup link's secret on these installs (the server makes it from its secret: betterAuth.ts setupTokenFor). */
+const SETUP = 'the-setup-link-secret';
+
 /** A new, empty database's people. FF_SIGNUP_DOMAINS is corp.com. */
 async function install(connections: Vouching[] = []) {
   const t = await testDatabase();
   const { db } = await openDb({ url: t.url });
   opened.push({ db, drop: t.drop });
   const accounts = memoryAccounts();
-  const access = createAccess(db, { accounts, connections: async () => connections, signupDomains: ['corp.com'], now: () => clock });
+  const access = createAccess(db, { accounts, connections: async () => connections, signupDomains: ['corp.com'], now: () => clock, setupToken: SETUP });
   /** someone makes an account, as the sign-in tells the access module */
   const joins = async (email: string) => { await access.joined(email, email.split('@')[0]); accounts.made(email); };
   return { access, joins };
@@ -45,6 +49,8 @@ const password = (email: string, invite?: string): Attempt => ({ email, with: 'p
 const passwordSignIn = (email: string): Attempt => ({ email, with: 'password', account: 'existing' });
 const provider = (email: string, emailVerified = true, account: Attempt['account'] = 'new'): Attempt => ({ email, with: 'provider', account, emailVerified });
 const sso = (email: string, connection = 'okta'): Attempt => ({ email, with: 'sso', account: 'new', connection });
+/** the same attempt, from a browser that opened the setup link (or a request with its secret) */
+const withSetup = (a: Attempt, setup = SETUP): Attempt => ({ ...a, setup });
 
 /** [what, the attempt, null when admitted or the refusal's code] */
 type Row = [string, Attempt, string | null];
@@ -52,24 +58,45 @@ async function admits(access: Access, rows: Row[]) {
   for (const [what, attempt, refused] of rows) assert.equal((await access.admit(attempt))?.code ?? null, refused, what);
 }
 
-test('a new install: whoever makes the first account is the admin; after that an account needs an invite', async () => {
+test('a new install: whoever opens the setup link makes the first account, the admin; after that an account needs an invite', async () => {
   const { access, joins } = await install();
-  await admits(access, [['the first account, without an invite', password('lee@corp.com'), null]]);
+  await admits(access, [
+    ['the first account, without the setup link', password('eve@elsewhere.example'), 'invite_required'],
+    ['the first account, with a made-up setup link', withSetup(password('eve@elsewhere.example'), 'not-the-secret'), 'invite_required'],
+    ['a provider at a signup domain, before anyone has an account', provider('pat@corp.com'), 'invite_required'],
+    ['the first account, with the setup link', withSetup(password('lee@corp.com')), null],
+    ['the first account, with a provider and the setup link', withSetup(provider('lee@corp.com')), null],
+  ]);
+  assert.equal((await access.signInOptions()).firstPerson, false, 'the sign-in page doesn’t say nobody has an account');
+  assert.equal((await access.signInOptions(SETUP)).firstPerson, true, 'unless it was opened with the setup link');
   await joins('lee@corp.com');
   assert.equal((await access.signedIn({ email: 'lee@corp.com' })).role, 'admin');
-  await admits(access, [['the next one, without an invite', password('sam@corp.com'), 'invite_required']]);
+  await admits(access, [
+    ['the next one, without an invite', password('sam@corp.com'), 'invite_required'],
+    ['the next one, with the setup link: it works once', withSetup(password('sam@corp.com')), 'invite_required'],
+  ]);
+  assert.equal((await access.signInOptions(SETUP)).firstPerson, false);
 });
 
-test('a database from before accounts: an existing admin makes the first account without an invite, nobody else does', async () => {
+test('without a setup link, a new install makes no first account at all', async () => {
+  const t = await testDatabase();
+  const { db } = await openDb({ url: t.url });
+  opened.push({ db, drop: t.drop });
+  const access = createAccess(db, { accounts: memoryAccounts(), connections: async () => [] });
+  await admits(access, [['the first account', withSetup(password('lee@corp.com'), ''), 'invite_required']]);
+});
+
+test('a database from before accounts: an existing admin makes the first account with the setup link, nobody else does', async () => {
   const { access, joins } = await install();
   // people from the sign-in before accounts: the first to sign in is the admin, the next a viewer the admin promotes
   await access.signedIn({ email: 'ann@corp.com', name: 'Ann' });
   await access.signedIn({ email: 'bo@corp.com', name: 'Bo' });
   await access.setRole('bo@corp.com', 'editor', by('ann@corp.com'));
   await admits(access, [
-    ['an existing admin', password('ann@corp.com'), null],
-    ['an existing person who isn’t an admin', password('bo@corp.com'), 'invite_required'],
-    ['anyone else', password('new@corp.com'), 'invite_required'],
+    ['an existing admin', withSetup(password('ann@corp.com')), null],
+    ['an existing admin, without the setup link', password('ann@corp.com'), 'invite_required'],
+    ['an existing person who isn’t an admin', withSetup(password('bo@corp.com')), 'invite_required'],
+    ['anyone else', withSetup(password('new@corp.com')), 'invite_required'],
   ]);
   await joins('ann@corp.com');
   assert.equal((await access.signedIn({ email: 'ann@corp.com' })).role, 'admin', 'the role she had');
@@ -119,7 +146,7 @@ test('who may join an install in use: invites, signup domains, single sign-on, r
   assert.equal(await access.invitedBy(old), undefined, 'the sign-in page doesn’t greet an expired invite either');
 });
 
-test('a connection that requires single sign-on: no password sign-ins or password accounts at its domains, except admins', async () => {
+test('a connection that requires single sign-on: no password or provider sign-ins or accounts at its domains, except admins', async () => {
   const { access, joins } = await install([{ id: 'okta', domains: ['corp.example'], requireSso: true }]);
   await joins('lee@corp.com');
   const lee = by('lee@corp.com');
@@ -131,7 +158,12 @@ test('a connection that requires single sign-on: no password sign-ins or passwor
     ['an invite, for an admin', password('ann@corp.example', ann), null],
     ['an invite, not for an admin', password('pat@corp.example', pat), 'sso_required'],
     ['a provider, an admin', provider('ann@corp.example'), null],
-    ['a provider, not an admin', provider('pat@corp.example'), null],
+    ['a provider, an admin signing in again', provider('ann@corp.example', true, 'existing'), null],
+    // a provider keeps confirming an email after its owner left: only the identity provider says who still works there
+    ['a provider, not an admin', provider('pat@corp.example'), 'sso_required'],
+    ['a provider, not an admin signing in again (GitHub, to the account they have)', provider('pat@corp.example', true, 'existing'), 'sso_required'],
+    ['a provider at a subdomain, not an admin', provider('lou@eu.corp.example', true, 'existing'), 'sso_required'],
+    ['a provider at another domain', provider('pal@partner.example', true, 'existing'), null],
     ['single sign-on, an admin', sso('ann@corp.example'), null],
     ['single sign-on, not an admin', sso('pat@corp.example'), null],
     ['a password sign-in at another domain', passwordSignIn('lee@corp.com'), null],

@@ -12,7 +12,8 @@ lists the ones you are most likely to need.
 
 ## The config file
 
-One file says how the server runs, the way Better Auth has its `auth.ts`. `companyflags init` writes one:
+One file says how the server runs, the way Better Auth has its `auth.ts`. A config file looks like this
+(`companyflags init` writes a commented one):
 
 ```ts
 // companyflags.config.ts
@@ -23,16 +24,26 @@ export default defineConfig({
   database: { url: process.env.DATABASE_URL },          // or { dataDir: './data' }
   server: { port: 8787 },
   auth: { baseURL: 'https://flags.example.com' },      // Better Auth: secret, baseURL, providers, …
-  plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()],
+  plugins: [
+    ofrep(),
+    flagd(),
+    appFiles(),
+    cloudflare(),                                       // CF_ZONE_ID and CF_API_TOKEN, unless given here
+    webhooks(),
+  ],
 });
 ```
+
+The file goes in the server's own folder: the clone's root, or `/app` in the Docker image. companyflags isn't an npm
+package; the file's imports (`companyflags/config`, `companyflags/plugins`) only resolve inside the server's folder.
+A file anywhere else, `FF_CONFIG` naming one included, stops the start with a message that says where it must be.
 
 | Setting | Instead of | What it does |
 |---|---|---|
 | `database.url` | `DATABASE_URL` | A Postgres 15+ server. |
 | `database.dataDir` | `FF_DATA_DIR` | Without a server: where embedded Postgres keeps its files. |
 | `server.port`, `server.host` | `PORT`, `HOST` | Where the server listens. |
-| `auth` | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, the providers' variables, … | Sign-in with Better Auth: `secret`, `baseURL`, `google`, `github`, `microsoft`, `signupDomains`, `trustedOrigins`, `clientIp`. Each one left out comes from its variable. |
+| `auth` | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, the providers' variables, … | Sign-in with Better Auth: `secret`, `baseURL`, `google`, `github`, `microsoft`, `signupDomains`, `trustedOrigins`, `clientIp`, `rateLimit` ([below](#auth)). Each one left out comes from its variable. |
 | `plugins` | — | What reads flags besides the console, and what runs after a publish. Left out: all of them. See [Plugins](/reference/plugins). |
 
 - The file is TypeScript, run by Node as the server is: no build step. It can read `process.env`, so secrets stay in
@@ -43,23 +54,41 @@ export default defineConfig({
   It imports `companyflags/config` and `companyflags/plugins` from the server itself, so it stays in `/app`.
 - The server says which file it read, and which plugins run, when it starts.
 
-::: warning Docker Compose passes only what it names
-The repository's `docker-compose.yml` hands the container only the variables in its `environment:` block
-(`DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `FF_SIGNUP_DOMAINS`, `CF_ZONE_ID`, `CF_API_TOKEN`). To use
-another one, such as a provider's keys or `BETTER_AUTH_TRUSTED_ORIGINS`, add it to that block as well as to `.env`.
-:::
+With the repository's `docker-compose.yml`, every variable in `.env` reaches the server. `DATABASE_URL` is set by the
+Compose file itself and points at its Postgres.
+
+### `auth`
+
+Each field left out comes from its environment variable.
+
+| Field | Type | Instead of | Example |
+|---|---|---|---|
+| `secret` | string | `BETTER_AUTH_SECRET` | Leave it to the variable, so the secret stays out of the file. |
+| `baseURL` | string | `BETTER_AUTH_URL` | `baseURL: 'https://flags.example.com'` |
+| `google` | `{ clientId, clientSecret }` | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `google: { clientId: process.env.GOOGLE_CLIENT_ID!, clientSecret: process.env.GOOGLE_CLIENT_SECRET! }` |
+| `github` | `{ clientId, clientSecret }` | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` | as `google` |
+| `microsoft` | `{ clientId, clientSecret, tenantId? }` | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` | as `google`, plus `tenantId: process.env.MICROSOFT_TENANT_ID` |
+| `signupDomains` | string[] | `FF_SIGNUP_DOMAINS` | `signupDomains: ['acme.example']` |
+| `trustedOrigins` | string[] | `BETTER_AUTH_TRUSTED_ORIGINS` | `trustedOrigins: ['https://idp.internal.example.com']` |
+| `clientIp` | `{ header?, trustedProxies? }` | `FF_CLIENT_IP_HEADER`, `FF_TRUSTED_PROXIES` | `clientIp: { trustedProxies: ['10.0.0.0/8'], header: 'x-real-ip' }` |
+| `rateLimit` | boolean | `NODE_ENV` | Sign-in rate limits. From the environment: on unless `NODE_ENV` is `development` or `test`. |
+
+A field set in the file replaces its variables as a whole: `clientIp: { header: 'x-real-ip' }` also drops
+`FF_TRUSTED_PROXIES`, and the server then refuses to start (a header needs the proxies). Give both.
+
+Whether the server runs as production comes from `NODE_ENV` only: `auth` has no `production`.
 
 ## What production needs
 
 | Variable | Why |
 |---|---|
-| `NODE_ENV=production` | Turns on rate limits on sign-in, requires the two settings below, and allows only `https` issuers for single sign-on. The Docker image sets it. |
-| `BETTER_AUTH_SECRET` | Signs the session cookies and encrypts stored provider tokens. |
+| `NODE_ENV=production` | Requires `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`, and allows only `https` issuers for single sign-on. The Docker image sets it. |
+| `BETTER_AUTH_SECRET` | Signs the session cookies, encrypts stored provider tokens and makes the [setup link](/self-hosting/sign-in#the-first-account). |
 | `BETTER_AUTH_URL` | The address people open the console at. |
 | `DATABASE_URL` | A Postgres 15+ server. Without it the data lives in an embedded database (see below). |
 
-With `NODE_ENV=production`, the server refuses to start without `BETTER_AUTH_SECRET` or `BETTER_AUTH_URL`, and says
-which one is missing.
+With `NODE_ENV=production`, the server refuses to start without `BETTER_AUTH_SECRET` or `BETTER_AUTH_URL`, or with a
+secret shorter than 32 characters, and says which one is wrong.
 
 ## Database
 
@@ -99,16 +128,22 @@ apply, and exits with 1 when something is pending.
 |---|---|---|
 | `PORT` | `8787` | The port the server listens on. If something already listens there, the server stops with a message. |
 | `HOST` | `0.0.0.0` | The address it listens on. `127.0.0.1` keeps it to this machine, e.g. behind a proxy on the same host. |
-| `NODE_ENV` | none | `production` for real use (see above). Anything else is development mode. |
-| `FF_CLIENT_IP_HEADER` | none | A header your proxy or CDN sets to the client's address (`cf-connecting-ip`, `x-real-ip`), for sign-in rate limits. Without it and `FF_TRUSTED_PROXIES`, the connection's own address is used. |
-| `FF_TRUSTED_PROXIES` | none | Your proxies' addresses or ranges, comma-separated (`10.0.0.0/8`): rate limits then read `X-Forwarded-For` past them. |
+| `NODE_ENV` | none | `production` for real use (see above). Anything else is development mode. `development` and `test` also turn off sign-in rate limits. |
+| `FF_TRUSTED_PROXIES` | none | Your proxies' addresses or ranges, comma-separated (`10.0.0.0/8`). For sign-in rate limits, a connection from one of them is believed about the client's address: `X-Forwarded-For`, read from the right past the proxies, or `FF_CLIENT_IP_HEADER`. Any other connection counts as its own address. |
+| `FF_CLIENT_IP_HEADER` | none | A header your proxy or CDN sets to the client's address (`cf-connecting-ip`, `x-real-ip`), read instead of `X-Forwarded-For`. Needs `FF_TRUSTED_PROXIES`: without it the server refuses to start. |
+
+Without either, rate limits count the connection's own address. The server refuses to start when an entry in
+`FF_TRUSTED_PROXIES` isn't an address or a range.
 
 In development mode (no `NODE_ENV=production`):
 
-- without `BETTER_AUTH_SECRET`, a secret is made on the first start and kept in the database, so sessions survive
-  restarts;
+- without `BETTER_AUTH_SECRET`, a secret is made on the first start and kept in the database, so sessions and the
+  setup link survive restarts;
 - without `BETTER_AUTH_URL`, sign-in works on any `localhost` or `127.0.0.1` address and port, and nowhere else;
-- sign-in has no rate limits, and single sign-on issuers may be `http`.
+- single sign-on issuers may be `http`.
+
+Sign-in rate limits are on unless `NODE_ENV` is `development` or `test`. When they're off and `HOST` isn't a
+loopback address, the server warns at start.
 
 ## Sign-in
 
@@ -143,12 +178,22 @@ At start the server logs the ways to sign in it has, e.g.
 | `CF_API_TOKEN` | none | A Cloudflare API token with only **Zone → Cache Purge → Purge** on that zone. |
 
 Both are needed. When they are set they win over what an admin saved in **Settings → CDN**, which then shows them
-read-only. Without them an admin can set the zone and token in the console instead. See [CDN](/self-hosting/cdn).
+read-only. Without them an admin can set the zone and token in the console instead. `cloudflare({ zoneId, token })`
+in the config file wins over the variables. See [CDN](/self-hosting/cdn).
+
+## Webhooks
+
+| Variable | Default | What it does |
+|---|---|---|
+| `FF_WEBHOOK_ALLOWED_ORIGINS` | none | Comma-separated origins on your own network that webhooks out may reach, e.g. `http://ci.internal:8080`. Without it, webhooks go to public addresses only. `webhooks({ allowedOrigins })` in the config file wins over it. |
+
+See [Webhooks](/guide/webhooks#where-they-can-go).
 
 ## Other
 
 | Variable | Default | What it does |
 |---|---|---|
+| `FF_CONFIG` | `./companyflags.config.ts` | Another config file to read, inside the server's folder. A named file that is missing, or outside that folder, stops the start. |
 
 For contributors: `FF_TEST_PG` points `pnpm test:pg` at a Postgres server for the test suite; the server itself
 never reads it.

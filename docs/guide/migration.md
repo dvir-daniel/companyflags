@@ -4,7 +4,8 @@ You don't switch on one day. CompanyFlags runs next to the config system you hav
 a time. Apps ask CompanyFlags first and the old system for everything not moved yet, so nothing changes for anyone
 on the day you start, and any flag can stay behind as long as it needs to.
 
-Everything here is on the console's **Migration** page (admins import and set up webhooks; everyone can export).
+Everything here is on the console's **Migration** page (admins import and set up webhooks; everyone can export, and
+admins can also export with JSONata).
 
 ## How it works
 
@@ -12,8 +13,8 @@ Everything here is on the console's **Migration** page (admins import and set up
    [flag set](/guide/flag-sets) yet, so apps still read the old system.
 2. **Put OpenFeature's Multi-Provider in each app**: CompanyFlags first, the old system second. A flag
    that isn't in the app's flag set is "not found", and the old system answers instead.
-3. **Move a flag** by adding it to the app's flag set (the flag's page, **Flag sets**). From then on the app reads it
-   here.
+3. **Move a flag** by adding it to the app's flag set (the flag's **Settings** tab, **Flag sets**). From then on the
+   app reads it here.
 4. **Keep both the same** meanwhile: a [webhook out](/guide/webhooks#out) tells the old system each change made here,
    and a [webhook in](/guide/webhooks#in) takes the old system's changes.
 5. When the last flag has moved, take the old system out of the Multi-Provider.
@@ -102,7 +103,9 @@ that gives `{ "settings": [{ "name": "max_upload_mb", "value": 100 }] }`:
 { "flags": settings{ name: { "value": value } } }
 ```
 
-An expression can't read files or the network. It stops after a second, or 500 levels deep.
+An expression can't read files or the network. It runs in a worker apart from the server, so it can't slow down
+or stop anything else: it stops after a second, 500 levels deep, or at its memory limit, and reads and makes at
+most 4 MB of JSON. One that runs over a limit gets `422` and imports nothing.
 
 ## Export
 
@@ -110,6 +113,9 @@ An expression can't read files or the network. It stops after a second, or 500 l
 unchanged), key-value JSON, one flag set's flagd file, or your JSONata expression's shape. It has each flag's value for
 everyone, on/off, variants and entities' own values. Rules and % aren't in it: the server decides those for each
 device.
+
+Only admins export with a JSONata expression, since it runs on the server as an import's does. Editors and viewers
+get `403` for it, and use the other formats.
 
 ## From the API
 
@@ -121,4 +127,5 @@ The console uses these, with a session or an admin's sign-in:
 | `POST /api/migration/import` | the same, and `reason` → `{ created, changed, applied, revision?, request?, warnings }` |
 | `POST /api/migration/export` | `{ environment, format, flagSet?, expression? }` → `{ output }` |
 
-For another system to post changes on its own, use a [webhook in](/guide/webhooks#in).
+An import's body can be up to 4 MB. For another system to post changes on its own, use a
+[webhook in](/guide/webhooks#in).

@@ -1,5 +1,5 @@
-// Builds one immutable compiled snapshot per environment revision (S4). The data plane holds it in
-// memory; evaluation never touches Postgres, so it keeps working if the control plane is down.
+// Builds one immutable compiled snapshot per environment revision (published from the outbox, workers.ts). The data
+// plane holds it in memory; evaluation never touches Postgres, so it keeps working if the control plane is down.
 
 import { all, one, type Db, type Queryable } from './db.ts';
 import { entitiesFrom, type EntityInfo, type FlagDef, type Layer, type Rule, type Snapshot, type Split } from './evaluator.ts';

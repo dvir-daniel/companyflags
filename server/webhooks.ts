@@ -23,8 +23,8 @@ import { all, HttpError, one, type Db } from './db.ts';
 import * as journal from './journal.ts';
 import { KINDS } from './journal.ts';
 import type { Actor } from './layers.ts';
-import type { DataPlane } from './snapshot.ts';
-import { expressionProblem, runJsonata } from './transform.ts';
+import type { Snapshots } from './plugin.ts';
+import { ExpressionLimitError, expressionProblem, runJsonata } from './transform.ts';
 import { applyImport, FORMATS_IN, toValues, valuesOf, type Imported, type ValuesDoc } from './values.ts';
 
 export const EVENTS = ['changes', 'reviews'] as const;
@@ -38,8 +38,12 @@ export const RETRY_AFTER_S = [5, 30, 120, 600, 1800, 3600, 7200];
 export const MAX_TRIES = RETRY_AFTER_S.length + 1;
 export const GAP_WAIT_MS = 10_000;
 const READ_ROWS = 500;
-const BODY_MAX = 1_000_000;
+/** The most a webhook in may post, and what it's told when it posts more (plugins/webhooks.ts checks it first). */
+export const BODY_MAX = 1_000_000;
+export const BODY_TOO_LARGE = `The body is larger than ${BODY_MAX / 1_000_000} MB.`;
 const RESERVED_HEADERS = new Set(['content-type', 'content-length', 'host', 'user-agent', 'webhook-id', 'webhook-timestamp', 'webhook-signature']);
+/** What a send that reached nothing says, whatever the reason. */
+export const UNREACHABLE = 'It couldn’t be reached. Webhooks go to public addresses only, or to origins in FF_WEBHOOK_ALLOWED_ORIGINS.';
 
 // ---------------------------------------------------------------- which history rows make a message
 
@@ -203,7 +207,7 @@ const hostOf = (url: string) => { try { return new URL(url).host; } catch { retu
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: WebhookOptions = {}) {
+export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {}) {
   const log = o.log ?? (() => {});
   const gapWaitMs = o.gapWaitMs ?? GAP_WAIT_MS;
 
@@ -267,8 +271,11 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
       const redirect = res.status >= 300 && res.status < 400 ? ': webhooks don’t follow redirects, so use the address it points to' : '';
       return { ok: false, status: res.status, error: `It answered ${res.status}${redirect}.` };
     } catch (e) {
-      const err = e as Error;
-      return { ok: false, status: null, error: err.name === 'TimeoutError' ? `No answer within ${TIMEOUT_MS / 1000} seconds.` : `It couldn’t be reached: ${err.message}.` };
+      // One answer for every address that can't be reached, a private one refused (publicFetch.ts) included, so a
+      // webhook's test can't be used to find out what listens on this server's network.
+      const err = e as Error & { cause?: { name?: string } };
+      const late = err.name === 'TimeoutError' || err.cause?.name === 'TimeoutError';
+      return { ok: false, status: null, error: late ? `No answer within ${TIMEOUT_MS / 1000} seconds.` : UNREACHABLE };
     }
   }
 
@@ -309,6 +316,14 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
           const out = await render(h, m, n);
           sent = out ? await send(h, `msg_${next.message[0].id}`, out) : { ok: true, status: null, error: null, skipped: true };
         } catch (e) {
+          // an expression that runs over its limits would only do so again: the webhook is switched off until an admin
+          // fixes it (switched on again, it goes on from then)
+          if (e instanceof ExpressionLimitError) {
+            log(`webhook ${h.name}: switched off: ${e.message}`);
+            await db.query(`update webhook set enabled = false, last_status = null, last_error = $2, last_failed_at = now(), next_attempt_at = null where id = $1`,
+              [h.id, `${e.message.replace(/\.?\s*$/, '.')} The webhook was switched off: fix the expression, then switch it on.`]);
+            break;
+          }
           sent = { ok: false, status: null, error: (e as Error).message };
         }
         if (sent.ok) {
@@ -626,8 +641,9 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
       return { token };
     },
 
-    /** A post to an incoming webhook's address: its values, imported. The status and JSON to answer with. */
-    async receive(token: string, body: string): Promise<{ status: number; json: Record<string, unknown> }> {
+    /** A post to an incoming webhook's address: its values, imported. The status and JSON to answer with. The body is
+     *  read (`read`) only once the address is known to be a webhook's, switched on. */
+    async receive(token: string, read: () => Promise<string>): Promise<{ status: number; json: Record<string, unknown> }> {
       const t = parseToken(token);
       const row = t ? await one<{ id: number; name: string; environment: string; format: string; expression: string | null; createFlags: boolean;
         flagSets: string[]; enabled: boolean; tokenHash: string }>(db, `select w.id::int as id, w.name, e.key as environment, w.format, w.expression,
@@ -641,7 +657,8 @@ export function createWebhooks(db: Db, plane: Pick<DataPlane, 'snapshots'>, o: W
         [row.id, status, result.slice(0, 500)]).catch(() => {});
       const answer = async (status: number, json: Record<string, unknown>, result: string) => { await record(status, result); return { status, json }; };
       if (!row.enabled) return answer(409, { error: 'This webhook is switched off in CompanyFlags.' }, 'Refused: switched off');
-      if (body.length > BODY_MAX) return answer(413, { error: `The body is larger than ${BODY_MAX / 1_000_000} MB.` }, 'Refused: too large');
+      const body = await read();
+      if (body.length > BODY_MAX) return answer(413, { error: BODY_TOO_LARGE }, 'Refused: too large');
       let input: unknown;
       try { input = JSON.parse(body); } catch { return answer(400, { error: 'The body isn’t JSON.' }, 'Refused: not JSON'); }
       try {

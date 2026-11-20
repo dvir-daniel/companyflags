@@ -13,6 +13,7 @@ import { useApp } from '../app.ts';
 import { Badge, Empty, ErrorList, Field, Heading, When } from '../ui.tsx';
 import { useAsync } from '../uiKit.ts';
 import { roleInfo } from '../../../server/policy.ts';
+import { cloudflareFailure } from './cdnKit.ts';
 
 /*
  * Settings → CDN (server/cdn.ts): the Cloudflare zone the app files are served through, and a token that may purge
@@ -114,7 +115,9 @@ export function Cdn() {
 /** The last publishes, and whether Cloudflare dropped each one's files. */
 function Publishes({ publishes, names }: { publishes: Publish[]; names: Record<string, string> }) {
   const purge = (p: Publish) => {
-    if (p.error?.startsWith('purge: ')) return <Badge kind="danger" title={p.error.slice(7)}>Purge failed</Badge>;
+    // only the Cloudflare plugin's failure: another plugin's after the same publish isn't the CDN's (cdnKit.ts)
+    const failed = cloudflareFailure(p.error);
+    if (failed) return <span className="flex min-w-0 items-center gap-2" title={failed}><Badge kind="danger">Purge failed</Badge><span className="min-w-0 truncate text-ink-2">{failed}</span></span>;
     if (p.purgedAt) return <span className="text-ink-2">Purged <When iso={p.purgedAt} /></span>;
     if (!p.publishedAt) return <Badge kind="warn">Publishing…</Badge>;
     return <span className="text-ink-3">Not purged</span>;

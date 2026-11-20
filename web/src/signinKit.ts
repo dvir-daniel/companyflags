@@ -28,3 +28,13 @@ export const lastSignInInfo = () => readPersistent<SignInInfo | null>('signin.in
 
 /** The fields' look on these pages: a little taller, on a faint fill. */
 export const field = 'h-10 bg-wash text-sm';
+
+/** How people join after the first account. */
+export const INVITE_ONLY = 'New here? Ask an admin for an invite link.';
+/** How the first account is made (server/identity.ts /api/setup/<secret>): the link the server prints while nobody has
+ *  an account. Without it the server doesn't say whether anyone has one, so the page says this to everyone. */
+export const SETUP_HINT = 'Setting up a new server? Open the setup link it printed when it started.';
+
+/** An invite link's secret, in the request's body rather than its address (server/identity.ts POST /invites). */
+export const inviteLookup = (token: string): [string, RequestInit] =>
+  ['/api/invites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token }) }];

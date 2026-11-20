@@ -4,14 +4,16 @@ import { Callout } from '@companyflags/ui/components/callout';
 import { Checkbox } from '@companyflags/ui/components/checkbox';
 import { Input } from '@companyflags/ui/components/input';
 import { authClient } from './authClient.ts';
-import { Frame, JoinSkeleton, Labeled, PasswordInput, SignInSkeleton, WayButton, type Tab } from './signinFrame.tsx';
-import { field, lastSignInInfo, rememberSignedIn, signInInfo, type Provider, type SignInInfo } from './signinKit.ts';
+import { Frame, JoinSkeleton, Labeled, PasswordInput, SignInFooter, SignInSkeleton, WayButton, type Tab } from './signinFrame.tsx';
+import { field, inviteLookup, lastSignInInfo, rememberSignedIn, SETUP_HINT, signInInfo, type Provider, type SignInInfo } from './signinKit.ts';
 
 /*
  * Signing in, with Better Auth (server/betterAuth.ts): an email and password, single sign-on with the organization's
  * identity provider (SAML or OIDC, set up by an admin in Settings), or Google, GitHub or Microsoft when the server
- * has them set up. The very first person creates the admin account (Sign up); everyone after joins with single
- * sign-on, a provider at an allowed domain, or an invite link from an admin (#/join/<invite>).
+ * has them set up. A new server makes its first account, the admin's, only through the setup link it prints when it
+ * starts: /api/setup/<secret> keeps the secret in a cookie and opens the console, and the server then tells this page
+ * (firstPerson) to offer Create the admin account. Everyone after joins with single sign-on, a provider at an allowed
+ * domain, or an invite link from an admin (#/join/<invite>).
  */
 
 // what a refused sign-in comes back with (a provider sign-in returns to /?error=<code>)
@@ -33,7 +35,6 @@ const explain = (e: { code?: string; message?: string } | null | undefined) =>
   (e?.code && REFUSED[e.code]) || sentence(e?.message ?? '') || 'Something went wrong. Try again.';
 /** A sign-in call that never got an answer (offline, the server down): said so, instead of spinning forever. */
 const UNREACHABLE = 'Can’t reach the CompanyFlags server. Check your connection, then try again.';
-const INVITE_ONLY = 'New here? Ask an admin for an invite link.';
 
 /** Where a sign-in goes back to: the page that was open (not an invite link). */
 const back = () => `/${location.hash.startsWith('#/join') ? '' : location.hash}`;
@@ -95,7 +96,8 @@ function Providers({ providers, label, onError }: { providers: Provider[]; label
   );
 }
 
-/** Shown when nobody is signed in: Sign in, or Sign up (the first person creates the admin account there). */
+/** Shown when nobody is signed in: Sign in, or Sign up (whoever opened the setup link of a new server creates the admin
+ *  account there). */
 export function SignInPage() {
   const { info, error: unreachable } = useSignInInfo();
   const [tab, setTab] = useState<Tab | null>(null);
@@ -140,7 +142,7 @@ export function SignInPage() {
   };
 
   if (shown === 'signup' && !first) {
-    // after the first account, a password account needs an invite: Sign up says how to get one
+    // without the setup link (or after the first account) a password account needs an invite: Sign up says how to get one
     return (
       <Frame tab="signup" onTab={switchTo} title="Sign up" intro="Accounts here are by invite."
         footer={<>Have an account? <button type="button" className="cursor-pointer border-0 bg-transparent p-0 text-ink underline" onClick={() => switchTo('signin')}>Sign in</button></>}>
@@ -154,6 +156,8 @@ export function SignInPage() {
           </p>
           <Providers providers={info.providers} label="Sign up with" onError={setError} />
         </>}
+        {/* the server doesn't say whether anyone has an account without its setup link, so this is said to everyone */}
+        <Callout>{SETUP_HINT}</Callout>
         {error && <Callout tone="error" role="alert">{error}</Callout>}
       </Frame>
     );
@@ -165,7 +169,7 @@ export function SignInPage() {
       title={signup ? 'Create the admin account' : 'Sign in'}
       intro={signup ? 'Nobody has an account here yet: the first one is the admin’s. The admin sets up environments and flag sets, and invites everyone else.'
         : 'Enter your email below to sign in to your account'}
-      footer={signup ? 'If this server was used before, use your admin email.' : INVITE_ONLY}>
+      footer={signup ? 'If this server was used before, use your admin email.' : <SignInFooter />}>
       <form className="grid gap-4" onSubmit={submit}>
         {signup && (
           <Labeled id="si-name" label="Your name">
@@ -219,7 +223,7 @@ export function JoinPage({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(takeReturnedError);
   useEffect(() => {
-    fetch(`/api/invites/${encodeURIComponent(token)}`).then(async (r) => {
+    fetch(...inviteLookup(token)).then(async (r) => {
       if (!r.ok) { setInvite('gone'); return; }
       const v = await r.json();
       setInvite(v); setName(v.name);
@@ -230,7 +234,7 @@ export function JoinPage({ token }: { token: string }) {
   if (invite === null) return <JoinSkeleton />;
   if (invite === 'gone') {
     return (
-      <Frame tab="signup" onTab={toSignIn} title="This invite link doesn’t work any more" intro="It has been used, or it has expired (links work for 7 days). Ask an admin for a new one.">
+      <Frame title="This invite link doesn’t work any more" intro="It has been used, or it has expired (links work for 7 days). Ask an admin for a new one.">
         <Button className="h-10 w-full" onClick={() => toSignIn('signin')}>Go to sign in</Button>
       </Frame>
     );
@@ -307,13 +311,14 @@ export function ResetPage({ token }: { token: string }) {
   };
   if (done) {
     return (
-      <Frame tab="signin" onTab={toSignIn} title="Your password is changed" intro="You’re signed out everywhere. Sign in with your new password.">
+      <Frame title="Your password is changed" intro="You’re signed out everywhere. Sign in with your new password.">
         <Button className="h-10 w-full" onClick={toSignIn}>Go to sign in</Button>
       </Frame>
     );
   }
   return (
-    <Frame tab="signin" onTab={toSignIn} title="Choose a new password" intro="An admin made you this link. It works once, for a day.">
+    <Frame title="Choose a new password" intro="An admin made you this link. It works once, for a day."
+      footer={<button type="button" onClick={toSignIn} className="cursor-pointer border-0 bg-transparent p-0 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Back to sign in</button>}>
       <form className="grid gap-4" onSubmit={submit}>
         <Labeled id="rs-password" label="New password" hint="At least 10 characters.">
           <PasswordInput id="rs-password" value={password} onChange={setPassword} autoComplete="new-password" required minLength={10} />

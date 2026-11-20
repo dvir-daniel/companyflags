@@ -3,12 +3,15 @@
 Webhooks go both ways. **Out**: after each change, CompanyFlags posts what changed to an address: Slack, CI, or the
 system you're [moving from](/guide/migration). **In**: another system posts its values, and they're imported.
 
+Webhooks are the `webhooks()` plugin. It runs unless your config file lists plugins without it. See
+[Plugins](/reference/plugins).
+
 Admins set both up on the console's **Migration** page. Each one's history (added, changed, deleted, new secret) is in
 History, which names only an address's host.
 
 ## Out
 
-**+ Webhook out**: a name, the address, and:
+**+ Add webhook out** opens **New webhook out**: a name, the address, and:
 
 - **Sends**: *changes* (what an environment serves: rules, defaults, entities' settings, which flag sets a flag is in) and/or
   *reviews* (a request made, approved, rejected or scheduled).
@@ -28,7 +31,18 @@ The address and the header's value are kept on the server and never shown again;
   2 min, 10 min, 30 min, 1 h and 2 h. Later messages wait behind it, so the order holds. After the last try that
   message is passed over, and the console shows why.
 - **Switched off**, a webhook sends nothing; switched back on, it goes on from then.
-- Redirects aren't followed.
+- Redirects aren't followed, and what the address answers isn't read: only its status.
+
+### Where they can go
+
+Webhooks out go to **public addresses only**: never this machine, your private network or a cloud's metadata address
+(`169.254.169.254`). The address a name resolves to is checked as the connection is made, so a name can't point
+somewhere else between the check and the send. Every address it can't reach, refused or not, gets the same message:
+*It couldn't be reached.* A timeout says so.
+
+For a system on your own network, allow its origin: `FF_WEBHOOK_ALLOWED_ORIGINS=http://ci.internal:8080`
+(comma-separated), or `webhooks({ allowedOrigins: [...] })` in the config file. See
+[Configuration](/self-hosting/configuration#webhooks).
 
 ### The JSON message
 
@@ -57,6 +71,15 @@ The address and the header's value are kept on the server and never shown again;
 - `values`: for `changes`, what the flags it changed are set to **now**, per environment, as
   [CompanyFlags values](/guide/migration#companyflags-values). Use it to keep another system the same.
 - `url`: the console's page for it, when `BETTER_AUTH_URL` is set.
+
+In a `layer.*` change, `before` and `after` hold the flag's settings. An entity's have an `inherit`, one of three
+fixed values whatever your dimensions are called (the names are older than dimensions, and stay):
+
+| `inherit` | The console says |
+|---|---|
+| `base_rules_then_base_default` | Rules only |
+| `base_rules_then_customer_default` | Rules + own default |
+| `customer_only` | Own settings only |
 
 ### Signatures
 
@@ -103,11 +126,13 @@ type = "changes" ? {
 }
 ```
 
-The expression can't read files or the network, and stops after a second.
+The expression can't read files or the network. It runs apart from the server, with a second, a memory limit and
+4 MB of JSON in and out. One that runs over a limit switches its webhook off, with the reason in the console: fix the
+expression, then switch it on.
 
 ## In
 
-**+ Webhook in**: a name, the environment it imports into, the format (as for an
+**+ Add webhook in** opens **New webhook in**: a name, the environment it imports into, the format (as for an
 [import](/guide/migration#import)), and whether it creates missing flags. Its address is shown once:
 
 ```
@@ -131,7 +156,7 @@ curl -X POST https://flags.example.com/hooks/v1/ffh_3_k2… \
 | `400` | the body isn't JSON |
 | `401` | no webhook at this address (or its address was replaced) |
 | `409` | the webhook is switched off |
-| `413` | the body is over 1 MB |
+| `413` | the body is over 1 MB: refused as it arrives, before the address is checked, also when it's sent in chunks |
 | `422` | `{ "error", "problems": [ … ] }`: nothing was imported |
 
 A post goes through the same checks and saves as the console, recorded in History as *Webhook: &lt;its name&gt;*.

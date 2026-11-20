@@ -4,31 +4,37 @@
 //   POST /hooks/v1/<token>   a webhook in's address (shown once in the console)
 
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { consoleRoutes, definePlugin } from '../plugin.ts';
-import { createWebhooks } from '../webhooks.ts';
+import { allowedOriginsFrom, publicFetch } from '../publicFetch.ts';
+import { BODY_MAX, BODY_TOO_LARGE, createWebhooks } from '../webhooks.ts';
 
 export type WebhooksOptions = {
-  /** How the server sends them: fetch, unless a test hands it another. Without one, nothing is sent. */
+  /** How the server sends them: to public addresses only (publicFetch), unless a test hands it another fetch. With
+   *  `fetch: undefined`, nothing is sent. */
   fetch?: typeof fetch;
+  /** Origins on your own network that webhooks may reach, e.g. http://ci.internal:8080. Default:
+   *  FF_WEBHOOK_ALLOWED_ORIGINS, comma-separated. */
+  allowedOrigins?: string[];
   /** tests: how long a hole in the history is waited for, and how often it looks for changes */
   gapWaitMs?: number;
   everyMs?: number;
 };
 
-const BODY_MAX = 1_000_000;
-
 export const webhooks = (o: WebhooksOptions = {}) => definePlugin({
   id: 'webhooks',
   setup: ({ db, plane, baseURL, log }) => {
+    const allowedOrigins = o.allowedOrigins ?? allowedOriginsFrom(process.env.FF_WEBHOOK_ALLOWED_ORIGINS);
     const hooks = createWebhooks(db, plane, {
-      fetch: 'fetch' in o ? o.fetch : globalThis.fetch, gapWaitMs: o.gapWaitMs, everyMs: o.everyMs, baseURL, log,
+      fetch: 'fetch' in o ? o.fetch : publicFetch({ allowedOrigins }), gapWaitMs: o.gapWaitMs, everyMs: o.everyMs, baseURL, log,
     });
 
-    // webhooks in: another system posts its values here
+    // webhooks in: another system posts its values here. The size is checked as the body arrives (a body sent in chunks
+    // has no Content-Length), and the body is read only once the address is known to be a webhook's.
     const routes = new Hono();
-    routes.post('/hooks/v1/:token', async (c) => {
-      if (Number(c.req.header('content-length') ?? 0) > BODY_MAX) return c.json({ error: 'The body is larger than 1 MB.' }, 413);
-      const r = await hooks.receive(c.req.param('token'), await c.req.text());
+    const limit = bodyLimit({ maxSize: BODY_MAX, onError: (c) => c.json({ error: BODY_TOO_LARGE }, 413) });
+    routes.post('/hooks/v1/:token', limit, async (c) => {
+      const r = await hooks.receive(c.req.param('token'), () => c.req.text());
       return c.json(r.json, r.status as 200);
     });
 

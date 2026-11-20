@@ -1,6 +1,6 @@
-// Pure evaluator. Runs only on trusted servers (M1): apps get values in their entity's file
-// (clientFile.ts), never rule documents. The same function powers those files, backends' flagd JSON (flagd.ts)
-// and the console's trace (S9).
+// Pure evaluator, the one that decides every answer. Runs only on this server: apps get answers (OFREP, ofrep.ts) or
+// values (their entity's app file, clientFile.ts), never rules; backends get rules as flagd JSON (flagd.ts, through
+// forEntity). The same function powers OFREP, the app files, flagd JSON and the console's trace.
 
 import { ANY_APP, NONE, namesEntities, reportedByApp, resolverFor, type Asker } from './fields.ts';
 import { bucketFor } from './hash.ts';
@@ -438,13 +438,13 @@ export function evaluate(snapshot: Snapshot, flagKey: string, ctx: EvalContext, 
   }
   if (explain) trace.push({ stage: 'enabled', layer: 'base', outcome: 'info', detail: 'flag is on' });
 
-  // the entity chain, level by level: the first rule that matches decides (overrides fail closed, M4)
+  // the entity chain, level by level: the first rule that matches decides (overrides fail closed: a missing value matches)
   for (const [i, lv] of chain.levels.entries()) {
     const stage = STAGE_OF[lv.level];
     const layer = layerName(lv.level);
     const owner = lv.owner ?? undefined;
     if (lv.skippedBy) {
-      // an entity below uses "Own settings only": these rules are shown as skipped, explicitly (M3)
+      // an entity below uses "Own settings only": these rules are shown as skipped, explicitly
       if (explain) for (const r of lv.rules) {
         trace.push({ stage, layer, ...(owner ? { owner } : {}), ruleKey: r.ruleKey, ruleName: r.name, outcome: 'skipped',
           detail: `skipped: "${nameOf(lv.skippedBy)}" uses only its own settings` });
@@ -487,7 +487,7 @@ export type AnswerPick = DecidedBy & { variant: string; group?: string | null };
 export type AnswerException = AnswerPick & {
   when: Condition[];                // checks that depend on the request (app, version, device…)
   percent: number | null;           // % of devices, for a "% of devices" rule
-  locked: boolean;                  // overrides treat a missing attribute as a match (M4)
+  locked: boolean;                  // overrides treat a missing attribute as a match (they fail closed)
   split: (Omit<Split, 'ranges'> & { range: SplitRange }) | null;
 };
 // A % rule with a name for devices outside it: a device that reaches it (`when` passes and it has the ID the

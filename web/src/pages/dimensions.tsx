@@ -62,6 +62,9 @@ export function DimensionsSection({ admin, focus }: { admin: boolean; focus?: bo
   useEffect(() => { setDirty('dimensions', edited); return () => setDirty('dimensions', false); }, [edited, setDirty]);
 
   const problems = checkDimensions(rows);
+  // until there's an entry, the only file an app can read is its flag set's file for everyone (the app-files plugin)
+  const files = meta.plugins?.includes('app-files') ?? true;
+  const until = files ? ' Until then, apps can read only the file for everyone (Flag sets → Link).' : '';
   const set = (i: number, change: Partial<Row>) => setRows((rs) => rs.map((r, j) => {
     if (j !== i) return r;
     const next = { ...r, ...change };
@@ -89,13 +92,13 @@ export function DimensionsSection({ admin, focus }: { admin: boolean; focus?: bo
       {rows.length === 0 ? (
         admin ? (
           <div className="grid gap-3 border border-grid px-5 py-4 max-sm:px-4">
-            <span className="text-13 text-ink-2">None yet: every app gets the same file. Start from one of these, or make your own.</span>
+            <span className="text-13 text-ink-2">None yet. An app reads its flags with an entry’s app link (on the entry’s page), so add a dimension and one entry first.{until} Start from one of these, or make your own.</span>
             <div className="flex flex-wrap gap-2">
               {PRESETS.map((p) => <Button key={p.name} variant="secondary" onClick={() => preset(p.dimensions)}>{p.name}</Button>)}
               <Button variant="secondary" onClick={() => add('top')}>Custom</Button>
             </div>
           </div>
-        ) : <Empty>No dimensions yet: every app gets the same file. An admin sets them up here.</Empty>
+        ) : <Empty>No dimensions yet. An app reads its flags with an entry’s app link, so an admin adds a dimension and one entry here first.{until}</Empty>
       ) : (
         <div role="table" aria-label="Dimensions">
           <div role="row" className={cn(COLS, tableHeadClass)}>

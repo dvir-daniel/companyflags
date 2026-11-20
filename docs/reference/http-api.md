@@ -11,6 +11,7 @@ remote evaluation and the health checks. All of them answer JSON. The examples u
 | `GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>` | backends | API key |
 | `POST /ofrep/v1/evaluate/flags`, `POST /ofrep/v1/evaluate/flags/<key>` | OpenFeature OFREP providers | an app's token, or a backend's API key |
 | `GET /ofrep/v1/events/<env>/<signature>` | OpenFeature OFREP providers (change events) | the signature from an answer |
+| [`POST /hooks/v1/<token>`](/guide/webhooks#in) | another system (webhook in) | the address itself |
 | `GET /healthz`, `GET /readyz` | load balancers, orchestrators | none |
 
 ## Errors
@@ -21,10 +22,23 @@ An error is JSON with a status code:
 { "error": "no file at this link" }
 ```
 
-An address the server doesn't know under `/api`, `/client`, `/sdk` or `/ofrep` is a `404` with
+An address the server doesn't know under `/api`, `/client`, `/sdk`, `/ofrep` or `/hooks` is a `404` with
 `{"error":"no such endpoint: GET /client/v1/nope"}`, never the console's page. (Under `/api`, a request that isn't
 signed in gets `401` first.) An unexpected error is `500 {"error":"internal error"}`. OFREP endpoints answer their
 own errors the OFREP way (below).
+
+### Request size
+
+Each request body has a limit, by address. A larger one gets `413 {"error":"the request body is larger than …"}`
+as it arrives, also when it's sent in chunks with no `Content-Length`.
+
+| Address | Most it takes |
+|---|---|
+| `/ofrep/` | 64 KB |
+| `/api/auth/` (sign-in) | 256 KB |
+| `/hooks/` (webhooks in) | 1 MB |
+| `/api/migration/` (imports) | 4 MB |
+| everything else | 1 MB |
 
 ## App files
 
@@ -67,9 +81,9 @@ kept for a day. See [CDN](/self-hosting/cdn) for caching them.
 
 | Status | When |
 |---|---|
-| `404 {"error":"no file at this link"}` | the entity doesn't exist or the secret is wrong: the same answer for every wrong link |
-| `404 {"error":"environment \"<env>\" not found"}` | no such environment |
-| `404 {"error":"flag set \"<key>\" not found"}` | no such flag set, or it is for backends (they have no file) |
+| `404 {"error":"no file at this link"}` | an entity's file: a wrong environment, flag set, entity or secret, the same answer for every wrong link |
+| `404 {"error":"environment \"<env>\" not found"}` | the file before sign-in: no such environment |
+| `404 {"error":"flag set \"<key>\" not found"}` | the file before sign-in: no such flag set, or it is for backends (they have no file) |
 
 ## Backends
 
@@ -112,8 +126,9 @@ GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>
 }
 ```
 
-`path` is the entity's app file; `token` is the same link as an app's credential for OFREP (below). Both are for the
-key's environment. `Cache-Control: no-store`.
+`path` is the entity's app file, only when the `appFiles()` plugin runs. `token` is made from the same link, with a
+secret of its own for this flag set: an app's credential for OFREP (below). Both are for the key's environment.
+`Cache-Control: no-store`.
 
 | Status | When |
 |---|---|
@@ -167,9 +182,9 @@ Content-Type: application/json
 |---|---|
 | `200` | the answer |
 | `304` | every flag: nothing changed since that ETag |
-| `400` | `PARSE_ERROR`: the body isn't JSON; `INVALID_CONTEXT`: no `context`, an entity that doesn't exist, or one not under the entity named above it; for one flag, `GENERAL` when it can't be evaluated |
+| `400` | `PARSE_ERROR`: the body isn't JSON; `INVALID_CONTEXT`: no `context`, an entity that doesn't exist (with an `all` key), or one not under the entity named above it; for one flag, `GENERAL` when it can't be evaluated |
 | `401` | `{"error":"unknown or replaced app link"}` for a wrong token, `{"error":"unknown or revoked API key"}` for a wrong key, `{"error":"missing API key (Authorization: Bearer <key>)"}` without one |
-| `403` | `GENERAL`: the entity is outside the credential's scope |
+| `403` | `GENERAL`: the entity is outside the credential's scope. An app token, or a key scoped to `entity` or `below`, gets this same answer for an entity that doesn't exist |
 | `404` | one flag: `FLAG_NOT_FOUND`, the flag doesn't exist or isn't in this flag set |
 
 **Change events.** The answer for every flag also has `eventStreams`: one server-sent events stream,
@@ -194,6 +209,14 @@ The console talks to the server under `/api`: `/api/auth/*` is the sign-in (Bett
 console's own API. It is for the console, not a stable public API yet: its addresses and answers may change in any
 release.
 
-It needs a signed-in session (the cookie) and, for every change (any method but `GET`, `HEAD` and `OPTIONS`), the
-header `X-Requested-With: companyflags` and a JSON body. A request without the header, or one the browser marks
-`Sec-Fetch-Site: cross-site`, gets `403`. See [Security model](/guide/security#changes-from-the-console).
+Some of it needs no session: the sign-in (`/api/auth/*` and `GET /api/sign-in`), and these two.
+
+- `GET /api/setup/<secret>` is the [setup link](/self-hosting/sign-in#the-first-account) a new server prints. It
+  keeps the secret in a cookie and redirects to the console. A wrong secret, or a server that has accounts, gets
+  `404`. A script can send the secret in an `X-Setup` header with its sign-up request instead.
+- `POST /api/invites` with `{"token": "…"}` says who an invite link is for. The token goes in the body, so it stays
+  out of access logs.
+
+The rest needs a signed-in session (the cookie). Every change (any method but `GET`, `HEAD` and `OPTIONS`) also
+needs the header `X-Requested-With: companyflags` and a JSON body. A request without the header, or one the browser
+marks `Sec-Fetch-Site: cross-site`, gets `403`. See [Security model](/guide/security#changes-from-the-console).

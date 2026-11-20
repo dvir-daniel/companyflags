@@ -10,7 +10,7 @@
 // What carries over exactly (test/flagd.test.ts evaluates the JSON and compares it with our evaluator):
 // - The order: overrides, the entity's rules, those of each entity above it, rules for everyone, then the most
 //   specific default.
-// - Checks on missing values: a missing value never matches a rule, except an override's ("fails closed", M4).
+// - Checks on missing values: a missing value never matches a rule, except an override's ("fails closed").
 // - % of devices: flagd's `fractional` with the bucketing value {"cat": ["<salt>/", <device ID>]} and weights out of
 //   10000 is our hash version 2 (hash.ts), so a device is in the same group here as on the server and in the apps.
 // - "Use the default in the app's code": a branch returns null with no defaultVariant, so the SDK uses its own default.
@@ -113,7 +113,7 @@ function lineCheck(e: AnswerException): Logic {
 const SEMVER: Partial<Record<Op, string>> = { semver_lt: '<', semver_lte: '<=', semver_gt: '>', semver_gte: '>=', semver_eq: '=' };
 const NUMBER: Partial<Record<Op, string>> = { lt: '<', lte: '<=', gt: '>', gte: '>=' };
 
-/** One check as JsonLogic. A missing value never matches (testCondition's null), except in an override (M4). */
+/** One check as JsonLogic. A missing value never matches (testCondition's null), except in an override. */
 function check(c: Condition, locked: boolean): Logic {
   if (c.op === 'exists') return present(c.field);
   if (c.op === 'missing') return missing(c.field);

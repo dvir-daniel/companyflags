@@ -14,8 +14,10 @@ const cookies = new Map<string, string>();
 before(async () => { ctx = await startApp({ signIn }); call = browser(ctx); });
 after(async () => { await ctx.stop(); });
 
+// without an invite: the first account, with the setup link the server prints
 const signUp = async (email: string, invite?: string) => {
-  const r = await call('POST', '/api/auth/sign-up/email', { body: { email, name: email.split('@')[0], password: PASSWORD }, headers: invite ? { 'x-invite': invite } : {} });
+  const r = await call('POST', '/api/auth/sign-up/email', { body: { email, name: email.split('@')[0], password: PASSWORD },
+    headers: invite ? { 'x-invite': invite } : { 'x-setup': ctx.setupToken! } });
   if (r.status === 200) cookies.set(email, r.cookie);
   return r;
 };

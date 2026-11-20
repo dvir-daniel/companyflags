@@ -21,8 +21,19 @@ echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 docker compose up -d
 ```
 
-Open <http://localhost:8787> and create the admin account right away: until it exists, whoever reaches the sign-in
-page first becomes the admin.
+Then make the admin account with the setup link the server prints:
+
+```bash
+docker compose logs companyflags
+```
+
+```text
+[companyflags] nobody has an account yet: make the admin account at http://localhost:8787/api/setup/<secret>
+```
+
+Open the link and create the account. Only that link can make the first account, and it stops working once it
+exists. The server prints it at every start until then. See
+[Sign-in → The first account](/self-hosting/sign-in#the-first-account).
 
 Add settings to `.env` (see [Configuration](/self-hosting/configuration)). At least set `BETTER_AUTH_URL` to the
 address people open the console at, such as `https://flags.example.com`.
@@ -42,10 +53,12 @@ docker run -d --name companyflags -p 8787:8787 \
 Without `DATABASE_URL`, data goes to an embedded Postgres in `/data/db`. Mount a volume there to keep it:
 
 ```bash
-docker run -d -p 8787:8787 -v companyflags:/data \
+docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" -e BETTER_AUTH_URL=http://localhost:8787 \
   ghcr.io/dvir-daniel/companyflags:0.1
 ```
+
+`docker logs companyflags` shows the setup link for the admin account.
 
 ::: warning The embedded database is for trying it and small setups
 It is one process's: run one container with it, never several on one volume. For production use Postgres, with

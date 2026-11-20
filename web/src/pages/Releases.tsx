@@ -25,6 +25,8 @@ import { releaseVersionProblem } from '../../../server/semver.ts';
 import { hiddenKey } from '../../../server/evaluator.ts';
 import { useEnvs } from './envs.ts';
 import { StepBar, type ReleaseList, type ReleaseRow } from './releaseParts.tsx';
+import { NoFlagSets } from './setup.tsx';
+import { roleInfo } from '../../../server/policy.ts';
 
 const MD = 'max-md:hidden';
 /** the release, its step here, when it last changed here, the owner, the remove-by date */
@@ -51,12 +53,14 @@ export function Releases({ envKey }: { envKey?: string }) {
   const owners = paging.data?.owners ?? [];
   const filtered = !!(q || show || owner);
   const reset = () => { setQ(''); setShow(''); setOwner(''); };
+  // viewers can look but not change anything (server/access.ts): no form the server would refuse
+  const mayChange = roleInfo(meta.me.role).changes;
   const SHOW: [string, string][] = [['', 'All'], ['rolling', `Rolling out in ${where}`], ['not_started', `Not started in ${where}`], ['done', 'Ready to clean up'], ['overdue', 'Overdue']];
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <PageBar title="Releases" count={<CountSlot text={paging.data ? (filtered ? `${paging.data.matched} of ${paging.data.all}` : String(paging.data.all)) : undefined} />}
-        actions={<Button onClick={() => setCreating(true)}>+ New release</Button>}>
+        actions={mayChange ? <Button onClick={() => setCreating(true)}>+ New release</Button> : <span className="text-13 text-ink-3">Viewers can look but not change anything</span>}>
         <FilterSelect label="Environment" value={env} onChange={(v) => go(`releases/${v}`)} options={meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])} />
       </PageBar>
 
@@ -84,7 +88,7 @@ export function Releases({ envKey }: { envKey?: string }) {
           : !paging.data ? <SkeletonRows cols={COLS} cells={['', '', MD, MD, MD]} rowClass={ROW} />
           : rows.length === 0 ? (
             <div className="px-6 py-10">
-              <Empty action={filtered ? <Button variant="secondary" onClick={reset}>Clear filters</Button> : <Button onClick={() => setCreating(true)}>+ New release</Button>}>
+              <Empty action={filtered ? <Button variant="secondary" onClick={reset}>Clear filters</Button> : mayChange ? <Button onClick={() => setCreating(true)}>+ New release</Button> : undefined}>
                 {filtered ? 'No releases match.' : 'No releases yet. A release turns a new feature on step by step, then is removed.'}
               </Empty>
             </div>
@@ -218,13 +222,15 @@ function CreateRelease({ onClose, owners }: { onClose: () => void; owners: strin
       </Field>
       <div className="grid gap-1.5" role="group" aria-label="Flag sets">
         <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">Flag sets</span>
-        <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
-          {meta.projects.map((p) => (
-            <Switch key={p.key} label={p.key} checked={apps.includes(p.key)} onChange={(on) => setApps(on ? [...apps, p.key] : apps.filter((x) => x !== p.key))}>
-              <span className="font-mono text-13 text-ink">{p.key}</span>
-            </Switch>
-          ))}
-        </div>
+        {meta.projects.length === 0 ? <NoFlagSets what="this release" /> : (
+          <div className="flex flex-wrap gap-x-5 gap-y-2 py-1">
+            {meta.projects.map((p) => (
+              <Switch key={p.key} label={p.key} checked={apps.includes(p.key)} onChange={(on) => setApps(on ? [...apps, p.key] : apps.filter((x) => x !== p.key))}>
+                <span className="font-mono text-13 text-ink">{p.key}</span>
+              </Switch>
+            ))}
+          </div>
+        )}
       </div>
       <p className="m-0 text-13 text-ink-3">
         {versions

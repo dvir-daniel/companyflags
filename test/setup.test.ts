@@ -28,10 +28,13 @@ describe('a new install, start to finish (in order)', () => {
 
   // each person's session cookie, from their last sign-up or sign-in
   const sessions = new Map<string, string>();
-  const signUp = async (email: string, o: { invite?: string; name?: string; password?: string } = {}) => {
+  // the cookie the setup link sets in the browser that opens it
+  let setupCookie = '';
+  const signUp = async (email: string, o: { invite?: string; name?: string; password?: string; cookie?: string } = {}) => {
     const r = await call('POST', '/api/auth/sign-up/email', {
       body: { email, name: o.name ?? email.split('@')[0], password: o.password ?? PASSWORD },
       headers: o.invite ? { 'x-invite': o.invite } : {},
+      ...(o.cookie ? { cookie: o.cookie } : {}),
     });
     if (r.status === 200) sessions.set(email.toLowerCase(), r.cookie);
     return r;
@@ -59,7 +62,28 @@ describe('a new install, start to finish (in order)', () => {
     }
     assert.ok((await ctx.db.query(`select 1 from condition_field`)).rows.length > 10, 'the rule attributes are there');
     const page = await call('GET', '/api/sign-in');
-    assert.deepEqual(page.json, { kind: 'better-auth', providers: [], firstPerson: true, sso: false }, 'the sign-in page offers to create the admin');
+    assert.deepEqual(page.json, { kind: 'better-auth', providers: [], firstPerson: false, sso: false }, 'the sign-in page doesn’t say the server is new');
+  });
+
+  test('whoever reaches a new server first can’t make the admin account: it takes the setup link the server printed', async () => {
+    assert.ok(ctx.setupToken && ctx.setupToken.length >= 30);
+    assert.equal(await ctx.needsSetup(), true);
+    const first = await signUp('eve@elsewhere.example');
+    assert.equal(first.status, 403, 'a sign-up without the setup link');
+    assert.match(first.json.message, /invite link/, 'told what anyone without an invite is told');
+    assert.equal((await signUp('eve@elsewhere.example', { cookie: 'companyflags.setup=made-up-secret' })).status, 403, 'a made-up setup link');
+    assert.equal(await accounts('eve@elsewhere.example'), 0, 'no account was made');
+
+    const wrong = await call('GET', '/api/setup/made-up-secret');
+    assert.equal(wrong.status, 404);
+    assert.equal(wrong.cookie, '', 'no cookie for a wrong link');
+    assert.match(wrong.headers.get('content-type') ?? '', /^text\/html/, 'a page someone can read, not JSON');
+    const open = await call('GET', `/api/setup/${ctx.setupToken}`);
+    assert.deepEqual([open.status, open.location], [302, '/'], 'the link opens the console');
+    assert.match(open.headers.get('set-cookie') ?? '', /HttpOnly/i);
+    assert.match(open.headers.get('set-cookie') ?? '', /SameSite=Lax/i);
+    setupCookie = open.cookie;
+    assert.equal((await call('GET', '/api/sign-in', { cookie: setupCookie })).json.firstPerson, true, 'where the admin account is made');
   });
 
   test('only a Better Auth session signs someone in', async () => {
@@ -71,12 +95,15 @@ describe('a new install, start to finish (in order)', () => {
   });
 
   test('the first person to create an account is the admin; after that, an account needs an invite', async () => {
-    const lee = await signUp('Lee@Corp.com', { name: 'Lee Park' });
+    const lee = await signUp('Lee@Corp.com', { name: 'Lee Park', cookie: setupCookie });
     assert.equal(lee.status, 200);
     const first = await (await as('lee@corp.com')).get('/meta');
     assert.equal(first.status, 200);
     assert.deepEqual([first.json.me.key, first.json.me.name, first.json.me.role, first.json.signIn], ['lee@corp.com', 'Lee Park', 'admin', 'better-auth']);
-    assert.equal((await call('GET', '/api/sign-in')).json.firstPerson, false);
+    assert.equal((await call('GET', '/api/sign-in', { cookie: setupCookie })).json.firstPerson, false);
+    assert.equal((await call('GET', `/api/setup/${ctx.setupToken}`)).status, 404, 'the setup link works once');
+    assert.equal(await ctx.needsSetup(), false);
+    assert.equal((await signUp('sam@corp.com', { cookie: setupCookie })).status, 403, 'and its cookie makes no second account');
 
     const uninvited = await signUp('sam@corp.com');
     assert.equal(uninvited.status, 403);
@@ -89,7 +116,9 @@ describe('a new install, start to finish (in order)', () => {
     assert.equal(added.json.key, 'sam@corp.com');
     const invite: string = added.json.invite;
     assert.ok(invite.length >= 30);
-    assert.deepEqual((await call('GET', `/api/invites/${invite}`)).json, { email: 'sam@corp.com', name: '' }, 'the link knows who it is for');
+    assert.deepEqual((await call('POST', '/api/invites', { body: { token: invite } })).json, { email: 'sam@corp.com', name: '' }, 'the link knows who it is for');
+    assert.deepEqual((await call('POST', '/api/invites', { body: { token: invite } })).json, { email: 'sam@corp.com', name: '' }, 'asked with the secret in the body, out of access logs');
+    assert.equal((await call('POST', '/api/invites', { body: { token: 'not-the-link' } })).status, 404);
     assert.equal((await admin.get('/meta')).json.users.find((u: any) => u.key === 'sam@corp.com').status, 'invited');
 
     assert.equal((await signUp('sam@corp.com', { invite: 'not-the-link' })).status, 403, 'a wrong link');
@@ -100,7 +129,7 @@ describe('a new install, start to finish (in order)', () => {
     const meta = (await (await as('sam@corp.com')).get('/meta')).json;
     assert.deepEqual([meta.me.key, meta.me.name, meta.me.role], ['sam@corp.com', 'Sam Lee', 'viewer']);
     assert.equal(meta.users.find((u: any) => u.key === 'sam@corp.com').status, 'active');
-    assert.equal((await call('GET', `/api/invites/${invite}`)).status, 404, 'an invite link works once');
+    assert.equal((await call('POST', '/api/invites', { body: { token: invite } })).status, 404, 'an invite link works once');
     assert.equal((await admin.post('/people/sam@corp.com/invite')).status, 409, 'someone with an account needs no invite');
     assert.equal((await admin.post('/people', { email: 'sam@corp.com' })).status, 409, 'already here');
     assert.equal((await admin.post('/people', { email: 'not an email' })).status, 422);
@@ -293,12 +322,14 @@ test('a database from before Better Auth: an existing admin makes the first acco
   }
   old = await startApp({ ...where, signIn });
   const call = browser(old);
-  const up = (email: string, invite?: string) => call('POST', '/api/auth/sign-up/email', {
-    body: { email, name: email.split('@')[0], password: PASSWORD }, headers: invite ? { 'x-invite': invite } : {} });
-  assert.equal((await call('GET', '/api/sign-in')).json.firstPerson, true, 'nobody has an account yet');
-  assert.equal((await up('bo@corp.com')).status, 403, 'not an admin');
-  assert.equal((await up('new@corp.com')).status, 403, 'not anyone at all');
-  const ann = await up('ann@corp.com');
+  const setup = { 'x-setup': old.setupToken! };
+  const up = (email: string, headers: Record<string, string> = {}) => call('POST', '/api/auth/sign-up/email', {
+    body: { email, name: email.split('@')[0], password: PASSWORD }, headers });
+  assert.equal((await call('GET', '/api/sign-in', { headers: setup })).json.firstPerson, true, 'nobody has an account yet');
+  assert.equal((await up('bo@corp.com', setup)).status, 403, 'not an admin');
+  assert.equal((await up('new@corp.com', setup)).status, 403, 'not anyone at all');
+  assert.equal((await up('ann@corp.com')).status, 403, 'not even the admin, without the setup link');
+  const ann = await up('ann@corp.com', setup);
   assert.equal(ann.status, 200);
   const meta = (await call('GET', '/api/meta', { cookie: ann.cookie })).json;
   assert.equal(meta.me.role, 'admin', 'the role they had');
@@ -306,7 +337,7 @@ test('a database from before Better Auth: an existing admin makes the first acco
   assert.equal((await call('GET', '/api/sign-in')).json.firstPerson, false);
   const link = await call('POST', '/api/people/bo@corp.com/invite', { cookie: ann.cookie, body: {} });
   assert.equal(link.status, 200);
-  assert.equal((await up('bo@corp.com', link.json.invite)).status, 200);
+  assert.equal((await up('bo@corp.com', { 'x-invite': link.json.invite })).status, 200);
   assert.equal((await call('GET', '/api/meta', { cookie: ann.cookie })).json.users[1].role, 'editor', 'and theirs');
 });
 
@@ -324,10 +355,11 @@ test('sessions outlive a restart: the cookie secret is kept with the data', asyn
     rmSync(dir, { recursive: true, force: true });
   });
   const first = await start();
-  const r = await browser(first)('POST', '/api/auth/sign-up/email', { body: { email: 'ops@corp.com', name: 'Ops', password: PASSWORD } });
+  const r = await browser(first)('POST', '/api/auth/sign-up/email', { body: { email: 'ops@corp.com', name: 'Ops', password: PASSWORD }, headers: { 'x-setup': first.setupToken! } });
   assert.equal(r.status, 200);
   await stop(first);
   const second = await start();
+  assert.equal(second.setupToken, first.setupToken, 'the same setup link after a restart (and on every server on the database)');
   const meta = await browser(second)('GET', '/api/meta', { cookie: r.cookie });
   assert.equal(meta.status, 200);
   assert.deepEqual([meta.json.me.key, meta.json.me.role], ['ops@corp.com', 'admin']);

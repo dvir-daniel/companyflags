@@ -10,10 +10,28 @@ Who may join, what each role may do and what removing access takes away are deci
 
 ## The first account
 
-A new install has no accounts. The first person to create one on the sign-in page becomes the **admin**.
+A new install has no accounts. The first one is the **admin**'s, and only a **setup link** can make it. While nobody
+has an account, the server prints the link at every start:
 
-::: warning Make the admin account right after deploying
-Until it exists, whoever reaches the sign-in page first becomes the admin.
+```text
+[companyflags] nobody has an account yet: make the admin account at https://flags.example.com/api/setup/<secret>
+```
+
+Opening it keeps its secret in a cookie for an hour and opens the console, where you create the admin account. Then
+invite everyone else from **Settings → People**.
+
+- The link is built on `BETTER_AUTH_URL` (or the server's own address without it). Its secret is made from
+  `BETTER_AUTH_SECRET`, so it stays the same across restarts, and every instance on one database prints the same one.
+  Nothing about it is stored.
+- It works until the first account exists. After that, or with a wrong secret, it answers `404`.
+- Until then nobody else can join at all: not with Google, GitHub or Microsoft at a domain in `FF_SIGNUP_DOMAINS`,
+  and not with single sign-on.
+- Scripts can send the secret in an `X-Setup` header instead of opening the link.
+- A database from before accounts (people with roles, nobody with an account yet) needs the link too: an existing
+  admin opens it and makes the first account with their own email.
+
+::: warning Keep the setup link secret
+Until the admin account exists, whoever has the link can make it. Don't paste it anywhere others can read.
 :::
 
 ## Who can join
@@ -31,8 +49,8 @@ After the first account, nobody makes an account on their own. A person can join
 People who join without an invite start as viewers; an admin gives them a role. People an admin added keep the role
 the admin chose, however they sign in.
 
-Password accounts are only made from an invite link (or as the very first account), so nobody can claim an address
-they weren't invited as. Passwords have at least 10 characters.
+Password accounts are only made from an invite link (or as the first account, with the setup link), so nobody can
+claim an address they weren't invited as. Passwords have at least 10 characters.
 
 ## Email and password
 
@@ -115,8 +133,11 @@ for managing them are switched off.
 ### Require single sign-on
 
 Turn on **Require single sign-on** for a connection, when you add it or later on its row. Then nobody at its domains
-signs in with a password or makes a password account, so someone removed from your identity provider can't sign in.
-Admins keep their password, in case the identity provider is down.
+(and their subdomains) signs in with a password, Google, GitHub or Microsoft, or makes a password account, so someone
+removed from your identity provider can't sign in. Admins keep their other ways in, in case the identity provider is
+down.
+
+Turning it on signs out everyone at its domains but admins, at once. They sign in again with single sign-on.
 
 ### An identity provider on a private network
 
@@ -128,8 +149,8 @@ your identity provider is on your private network, add its origin to `BETTER_AUT
 
 A session lasts 7 days and is renewed while it is used. Changing `BETTER_AUTH_SECRET` signs everyone out.
 
-- Turning on **Require single sign-on** stops new password sign-ins at once. Sessions already open keep working
-  until they expire (about 7 days after their last use) or the person is removed.
+- Turning on **Require single sign-on** ends the sessions of everyone at its domains but admins, at once, single
+  sign-on sessions too. They sign in again with single sign-on.
 - **Remove** in Settings → People ends that person's sessions at once.
 - Removing a single sign-on connection signs out everyone who signed in through it, at once.
 
@@ -143,7 +164,7 @@ back. You can't remove yourself, and there is always at least one admin.
 
 | Role | In the API | What it may do |
 |---|---|---|
-| Viewer | `viewer` | Look at everything, run Trace and Compare. Changes nothing, and can't see app links. |
+| Viewer | `viewer` | Look at everything, use the Debug tab and Compare. Changes nothing, and can't see app links. |
 | Editor | `editor` | Change flags and entities, see and replace app links. |
 | Approver | `approver` | What an editor does, and review other people's requests. |
 | On call | `oncall` | What an approver does, and break-glass in a protected environment: turn a kill switch or ops flag off, or roll a version release back, without review and with a reason. |

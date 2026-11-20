@@ -5,7 +5,7 @@ import { CODE_DEFAULT, type Condition, type Inherit, type Layer, type Op, type R
 import { HASH_VERSION } from './hash.ts';
 import { isVersionRelease } from './release.ts';
 import { parseSemver } from './semver.ts';
-import { fieldLabel, opLabel, OPS_BY_TYPE, type ConditionLike } from './words.ts';
+import { CHOICES, fieldLabel, opLabel, OPS_BY_TYPE, type ConditionLike } from './words.ts';
 
 export type RuleDoc = Partial<Omit<Rule, 'split' | 'conditions'>> & {
   conditions?: ConditionLike[];
@@ -72,7 +72,6 @@ export const GROUP_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 export const groupNameProblem = (name: string) => (GROUP_NAME.test(name) ? null : 'Group names use letters, digits, _ - and . (up to 64 characters, no spaces)');
 const groupName = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 
-const INHERIT: Inherit[] = ['base_rules_then_base_default', 'base_rules_then_customer_default', 'customer_only'];
 const UUID = /^[0-9a-f-]{36}$/i;
 
 // ---- one check ---------------------------------------------------------------------------------
@@ -172,7 +171,7 @@ export function checkLayer(flag: FlagFacts, fields: FieldFacts, isBase: boolean,
   } else {
     if (doc.enabled != null || doc.variationWhenOff != null) errors.push('Own settings can’t turn the flag on or off — only the flag’s On/Off switch can');
     const inherit = doc.inherit ?? 'base_rules_then_base_default';
-    if (!INHERIT.includes(inherit)) errors.push(`unknown choice “${inherit}”`);
+    if (!CHOICES.includes(inherit)) errors.push(`unknown choice “${inherit}”`);
     if (inherit === 'base_rules_then_base_default') {
       if (doc.defaultVariation) errors.push('“Rules only” has no default of its own — remove the default or change the choice');
     } else needVar(doc.defaultVariation, 'Own default');

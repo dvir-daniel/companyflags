@@ -66,7 +66,7 @@ export function ChildrenGrid({ entity, below, env }: { entity: Who; below: Dimen
           {/* inside the sideways-scrolling box the header can't stick under the page bar, so it sits at the top of the grid */}
           <div role="row" className={cn('grid', tableHeadClass, '[--page-bar-h:0px]')} style={cols}>
             <span role="columnheader" className="sticky left-0 z-10 bg-panel">Flag</span>
-            <span role="columnheader"><ColumnHead label={entity.name} help={`What ${entity.name} itself gets. Its ${many(below)} get the same unless they have settings of their own.`} /></span>
+            <ColumnHead label={entity.name} help={`What ${entity.name} itself gets. Its ${many(below)} get the same unless they have settings of their own.`} />
             {children.map((b) => <span key={b.key} role="columnheader"><a href={entityHref(b.dimension, b.key, env)} className="text-inherit">{b.name}</a></span>)}
           </div>
           {!data ? <SkeletonRows cols="grid" style={cols} cells={['', '', ...children.map(() => '')]} rowClass="min-h-14" />

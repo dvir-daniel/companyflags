@@ -31,7 +31,7 @@ import { overdue, readyToCleanUp, releaseState, stepText, type ReleaseState } fr
 import { DEFAULT_PAGE_SIZE, likePattern, listQuery, pageOf, searchHit } from './listing.ts';
 import { entityWords, sourceText } from './words.ts';
 import {
-  addVersion, archiveFlag, updateFlagMeta, createApiKey, createEnvironment, createFlag, createProject, deleteProject, dimensionRows, revokeApiKey, rotateClientLink,
+  addVersion, archiveFlag, updateFlagMeta, createApiKey, createEnvironment, createFlag, createProject, deleteProject, dimensionRows, revokeApiKey, rotateClientLink, rotateEnvironmentLinks,
   saveDimensions, setDelivery, updateEnvironment, updateProject, upsertEntity, upsertVariations, type NewFlag,
 } from './control.ts';
 import { loadLayers, type DataPlane } from './snapshot.ts';
@@ -305,7 +305,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json({ ok: true });
   });
 
-  // Who a change to the rules for everyone would not reach (M3 warning before saving them): every entity whose chain
+  // Who a change to the rules for everyone would not reach (the warning before saving them): every entity whose chain
   // skips the rules for everyone here — its own "Own settings only", or one above it. `entityLayers`: how many entities
   // have settings of their own on the flag. With ?entity=: `following`, how many entities under it follow its settings
   // on this flag (their chain reaches it, not skipped): saving its settings changes what they get too.
@@ -752,7 +752,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json({ ok: true });
   });
 
-  // ------------------------------------------------------------ settings (admins): environments, apps
+  // ------------------------------------------------------------ settings (admins): environments, flag sets
   app.post('/environments', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await createEnvironment(db, await c.req.json(), actor(c.get('user'))), 201);   // its app files are served at once
@@ -761,6 +761,12 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
   app.put('/environments/:env', async (c) => {
     adminOnly(c.get('user'));
     return c.json(await updateEnvironment(db, c.req.param('env'), await c.req.json(), actor(c.get('user'))));
+  });
+
+  // every app link and app token in the environment replaced at once, for when its secret may have leaked (control.ts)
+  app.post('/environments/:env/links/rotate', async (c) => {
+    adminOnly(c.get('user'));
+    return c.json(await rotateEnvironmentLinks(db, c.req.param('env'), actor(c.get('user'))));
   });
 
   app.post('/flag-sets', async (c) => {
@@ -835,12 +841,10 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json(await sso.remove(c.req.param('id'), actor(c.get('user'))));
   });
 
-  // ------------------------------------------------------------ the plugins' console routes (plugin.ts), signed in as above
-  for (const p of plugins) if (p.parts.console) app.route('/', p.parts.console({ actor, adminOnly }));
-
   // ------------------------------------------------------------ migration (values.ts): import and export in another
-  // system's formats (webhooks out and in are a plugin: plugins/webhooks.ts). Everyone can export; only admins
-  // import. An import goes through the same saves as the console: a request for review where approval is needed.
+  // system's formats (webhooks out and in are a plugin: plugins/webhooks.ts). Everyone who changes things can export;
+  // only admins import, and only admins export with a JSONata expression (it runs on the server, as an import's does).
+  // An import goes through the same saves as the console: a request for review where approval is needed.
   type ImportBody = { environment?: string; format?: unknown; text?: unknown; input?: unknown; expression?: unknown; createFlags?: unknown; flagSets?: unknown; reason?: unknown };
   const readImport = async (b: ImportBody) => {
     let input = b.input;
@@ -868,10 +872,11 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
   });
   app.post('/migration/export', async (c) => {
     const b = await c.req.json<{ environment?: string; format?: unknown; flagSet?: string | null; expression?: string | null }>();
+    if (b.format === 'jsonata' && !may(c.get('user'), 'changesSettings')) throw new HttpError(403, 'only admins can export with a JSONata expression');
     return c.json({ output: await fromValues(snapshot(String(b.environment ?? '')), b.format, { flagSet: b.flagSet, expression: b.expression }) });
   });
 
-  // ------------------------------------------------------------ trace / playground (S9: runs the real evaluator)
+  // ------------------------------------------------------------ trace / playground (runs the real evaluator)
   app.post('/trace', async (c) => {
     const body = await c.req.json<{ environment: string; project: string; entity: string | null; attrs: Record<string, unknown>; flag?: string }>();
     const snap = snapshot(body.environment);
@@ -885,7 +890,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json({ revision: snap.revision, results });
   });
 
-  // Compare two sides (two entities, two environments or two apps) flag by flag: what each one gets and why.
+  // Compare two sides (two entities, two environments or two flag sets) flag by flag: what each one gets and why.
   type Side = { environment: string; project: string; entity: string | null };
   app.post('/compare', async (c) => {
     const body = await c.req.json<{ a: Side; b: Side; attrs?: Record<string, unknown>; q?: string; onlyDiff?: boolean; page?: number; size?: number }>();
@@ -936,6 +941,10 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
       off();                    // however the loop ends, the subscriber goes
     }
   }));
+
+  // ------------------------------------------------------------ the plugins' console routes (plugin.ts), signed in as above.
+  // Last, so a plugin can't answer in place of a core route (and LOOK_ONLY's viewer POSTs stay the core's).
+  for (const p of plugins) if (p.parts.console) app.route('/', p.parts.console({ actor, adminOnly }));
 
   return app;
 }

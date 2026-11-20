@@ -1,25 +1,28 @@
 import { useState, type ReactNode } from 'react';
 import { BuildingsIcon, EyeIcon, EyeSlashIcon, GithubLogoIcon, GoogleLogoIcon, WindowsLogoIcon } from '@phosphor-icons/react';
 import { Button } from '@companyflags/ui/components/button';
+import { BrandMark, Wordmark } from '@companyflags/ui/components/app-frame';
 import { Input } from '@companyflags/ui/components/input';
 import { cn } from '@companyflags/ui/lib/utils';
 import { Bone } from './loading.tsx';
-import { field, type Provider } from './signinKit.ts';
+import { field, INVITE_ONLY, SETUP_HINT, type Provider } from './signinKit.ts';
 
 /*
  * The sign-in pages' frame and their shapes while they load, without Better Auth's client: the console shows them
  * from its first download, while signin.tsx (and the client it needs) is still on its way, so the page that follows
  * draws over the same card, fields and button instead of replacing a line of text.
  *
- * The look: a faint grid behind one card, with "Sign in" and "Sign up" as folder tabs on its top edge.
+ * The look: the console's mark above a faint grid and one card, with "Sign in" and "Sign up" as folder tabs on its top
+ * edge. The tabs switch the whole page, so they're buttons that say which page is current, not a tab widget. Pages
+ * that are neither (a password reset, an invite that no longer works) have no tabs.
  */
 
 export type Tab = 'signin' | 'signup';
 const TABS: [Tab, string][] = [['signin', 'Sign in'], ['signup', 'Sign up']];
 
-/** The sign-in pages' frame: the tabs, then a card with a title, a sentence, the form and a closing line. */
+/** The sign-in pages' frame: the tabs (when `tab` is given), then a card with a title, a sentence, the form and a closing line. */
 export function Frame({ tab, onTab, title, intro, footer, children }: {
-  tab: Tab; onTab?: (t: Tab) => void; title: ReactNode; intro?: ReactNode; footer?: ReactNode; children: ReactNode;
+  tab?: Tab; onTab?: (t: Tab) => void; title: ReactNode; intro?: ReactNode; footer?: ReactNode; children: ReactNode;
 }) {
   return (
     <main className="relative grid min-h-dvh place-items-start justify-center overflow-hidden bg-background px-4 pt-[10vh] pb-12 text-ink">
@@ -27,19 +30,21 @@ export function Frame({ tab, onTab, title, intro, footer, children }: {
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-60 [mask-image:radial-gradient(ellipse_at_50%_35%,black_10%,transparent_70%)]"
         style={{ backgroundImage: 'linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px)', backgroundSize: '48px 48px' }} />
       <div className="relative w-full max-w-md">
-        <span className="mb-3 block font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">CompanyFlags</span>
-        <div role="tablist" aria-label="Sign in or sign up" className="flex">
-          {TABS.map(([t, label]) => (
-            <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => onTab?.(t)} disabled={!onTab && tab !== t}
-              className={cn('relative -mb-px h-10 cursor-pointer border border-b-0 px-5 text-sm font-medium disabled:cursor-default',
-                tab === t ? 'z-10 border-rule-2 bg-background text-ink' : 'border-transparent bg-transparent text-ink-3 hover:text-ink-2')}>
-              {label}
-            </button>
-          ))}
-        </div>
+        <span className="mb-4 flex items-center gap-2.5 text-ink"><BrandMark /><Wordmark>COMPANYFLAGS.</Wordmark></span>
+        {tab && (
+          <div role="group" aria-label="Sign in or sign up" className="flex">
+            {TABS.map(([t, label]) => (
+              <button key={t} type="button" aria-current={tab === t ? 'page' : undefined} onClick={() => onTab?.(t)} disabled={!onTab && tab !== t}
+                className={cn('relative -mb-px h-10 cursor-pointer border border-b-0 px-5 text-sm font-medium disabled:cursor-default',
+                  tab === t ? 'z-10 border-rule-2 bg-background text-ink' : 'border-transparent bg-transparent text-ink-3 hover:text-ink-2')}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <section className="grid gap-5 border border-rule-2 bg-background p-6 shadow-[0_24px_64px_var(--shadow-strong)] max-sm:p-5">
           <div className="grid gap-1.5">
-            <h1 className="m-0 text-[22px] leading-tight font-semibold">{title}</h1>
+            <h1 className="m-0 text-lg leading-tight font-semibold">{title}</h1>
             {intro && <p className="m-0 text-13 text-ink-2">{intro}</p>}
           </div>
           {children}
@@ -97,14 +102,31 @@ export function WayButton({ way, label, busy, disabled, onClick }: { way: Provid
   );
 }
 
+/** The sign-in card's closing lines: how to join, and how a new server's admin account is made (its setup link). */
+export function SignInFooter() {
+  return <><span className="block">{INVITE_ONLY}</span><span className="mt-1 block">{SETUP_HINT}</span></>;
+}
+
 /** The sign-in page before its code is in: the usual form, not yet usable. */
 export function SignInSkeleton() {
   return (
-    <Frame tab="signin" title="Sign in" intro="Enter your email below to sign in to your account" footer="New here? Ask an admin for an invite link.">
+    <Frame tab="signin" title="Sign in" intro="Enter your email below to sign in to your account" footer={<SignInFooter />}>
       <form aria-busy className="grid gap-4" onSubmit={(e) => e.preventDefault()}>
         <Labeled id="sk-email" label="Email"><Input id="sk-email" className={field} type="email" disabled placeholder="you@example.com" /></Labeled>
         <Labeled id="sk-password" label="Password"><PasswordInput id="sk-password" disabled /></Labeled>
         <Button type="submit" className="mt-1 h-10 w-full" disabled>Sign in</Button>
+      </form>
+    </Frame>
+  );
+}
+
+/** A password reset link's page before its code is in (signin.tsx ResetPage), the same card. */
+export function ResetSkeleton() {
+  return (
+    <Frame title="Choose a new password" intro="An admin made you this link. It works once, for a day." footer="Back to sign in">
+      <form aria-busy className="grid gap-4" onSubmit={(e) => e.preventDefault()}>
+        <Labeled id="sk-reset" label="New password" hint="At least 10 characters."><PasswordInput id="sk-reset" disabled /></Labeled>
+        <Button type="submit" className="mt-1 h-10 w-full" disabled>Set new password</Button>
       </form>
     </Frame>
   );

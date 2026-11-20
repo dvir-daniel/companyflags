@@ -40,7 +40,7 @@ const KIND_TEXT: Record<string, string> = {
   // from before dimensions
   'customer.create': 'Added an entry', 'customer.update': 'Changed an entry', 'customer.link_replaced': 'Replaced an app link',
   'dimensions.update': 'Changed the dimensions',
-  'environment.create': 'Added the environment',
+  'environment.create': 'Added the environment', 'environment.links_replaced': 'Replaced every app link in this environment',
 };
 const kindText = (k: string) => KIND_TEXT[k] ?? k.replace(/[._]/g, ' ');
 

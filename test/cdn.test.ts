@@ -1,9 +1,10 @@
 // Settings → CDN (server/cdn.ts): an admin saves the Cloudflare zone and token, checked with Cloudflare first; the
-// token never comes back to the browser; publishes then purge with them; the server's own CF_ZONE_ID and
-// CF_API_TOKEN win and can't be changed from the console. Cloudflare here is a fake.
+// token never comes back to the browser; publishes then purge with them; the server's own (cloudflare()'s options,
+// else CF_ZONE_ID and CF_API_TOKEN) win and can't be changed from the console. Cloudflare here is a fake.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot } from './helpers.ts';
+import { boot, builtIns } from './helpers.ts';
+import { cloudflare as cloudflarePlugin } from '../server/plugins/index.ts';
 
 const ZONE = '0123456789abcdef0123456789abcdef';
 const TOKEN = 'cf-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1234';
@@ -17,7 +18,7 @@ const cloudflare = (async (url: string, init: RequestInit) => {
 const ok = () => { answer = { status: 200, body: '{"success":true}' }; };
 
 let t: Awaited<ReturnType<typeof boot>>;
-before(async () => { t = await boot({ cdn: { fetch: cloudflare } }); });
+before(async () => { t = await boot({ plugins: builtIns({ cloudflare: { fetch: cloudflare } }) }); });
 after(async () => { await t.stop(); });
 
 const lastPublish = async () => {
@@ -102,7 +103,7 @@ test('a new zone ID keeps the saved token; purge now; a failed purge shows on th
   assert.equal(failed.status, 502);
   assert.match(failed.json.error, /didn’t go through: Cloudflare said 500/);
   assert.equal((await change(3)).status, 200, 'a publish still goes out');
-  assert.match((await lastPublish()).error ?? '', /^purge: Cloudflare said 500/);
+  assert.match((await lastPublish()).error ?? '', /^purge: cloudflare: Cloudflare said 500/, 'kept with the plugin’s name');
   ok();
 });
 
@@ -117,15 +118,29 @@ test('removed: publishes stop purging; removing again says there’s nothing', a
   assert.deepEqual(calls, []);
 });
 
-test('set on the server (CF_ZONE_ID, CF_API_TOKEN): it wins, shows as the server’s, and can’t be changed in the console', async () => {
-  const own = await boot({ cdn: { fetch: cloudflare, zoneId: ZONE, token: TOKEN } });
+test('set on the server (cloudflare()’s options): it wins, shows as the server’s, and can’t be changed in the console', async () => {
+  const own = await boot({ plugins: builtIns({ cloudflare: { fetch: cloudflare, zoneId: ZONE, token: TOKEN } }) });
   try {
     const s = (await own.as('alice').get('/cdn')).json;
     assert.deepEqual([s.source, s.zoneId, s.tokenEnd], ['server', ZONE, '1234']);
     const put = await own.as('dana').put('/cdn', { zoneId: ZONE, token: TOKEN });
     assert.equal(put.status, 409);
-    assert.match(put.json.error, /CF_ZONE_ID/);
+    assert.match(put.json.error, /cloudflare\(\) in companyflags\.config\.ts, or CF_ZONE_ID/);
     assert.equal((await own.as('dana').del('/cdn')).status, 409);
+  } finally { await own.stop(); }
+});
+
+test('set on the server with CF_ZONE_ID and CF_API_TOKEN, while the config file lists cloudflare() (as init writes it)', async () => {
+  const own = await boot({ plugins: [cloudflarePlugin({ fetch: cloudflare })], env: { CF_ZONE_ID: ZONE, CF_API_TOKEN: TOKEN } });
+  try {
+    const s = (await own.as('alice').get('/cdn')).json;
+    assert.deepEqual([s.source, s.zoneId, s.tokenEnd], ['server', ZONE, '1234']);
+    calls.length = 0;
+    const { version, layer } = await own.baseOf('max_upload_mb', 'dev');
+    assert.equal((await own.as('alice').put('/flags/max_upload_mb/layers/dev/base', { layer: { ...layer, defaultVariation: layer.defaultVariation === 'enterprise' ? 'standard' : 'enterprise' }, expectedVersion: version })).status, 200);
+    await own.settle();
+    for (let i = 0; i < 50 && !calls.length; i++) await new Promise((r) => setTimeout(r, 10));
+    assert.deepEqual(calls, [{ url: `https://api.cloudflare.com/client/v4/zones/${ZONE}/purge_cache`, token: TOKEN, tags: ['env-dev'] }]);
   } finally { await own.stop(); }
 });
 

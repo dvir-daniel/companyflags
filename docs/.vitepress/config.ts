@@ -21,10 +21,11 @@ export default defineConfig({
     siteTitle: 'CompanyFlags',
     nav: [
       { text: 'Readme', link: '/', activeMatch: '^/$' },
-      { text: 'Docs', link: '/guide/introduction', activeMatch: '/guide/' },
-      { text: 'OpenFeature', link: '/sdk/openfeature', activeMatch: '/sdk/' },
+      // the security model's address is under /guide/, but it is listed in the reference
+      { text: 'Docs', link: '/guide/introduction', activeMatch: '^/guide/(?!security$)' },
+      { text: 'OpenFeature', link: '/sdk/openfeature', activeMatch: '^/sdk/openfeature' },
       { text: 'Self-hosting', link: '/self-hosting/docker', activeMatch: '/self-hosting/' },
-      { text: 'Reference', link: '/reference/http-api', activeMatch: '/reference/' },
+      { text: 'Reference', link: '/reference/http-api', activeMatch: '^/(reference/|guide/security$)' },
       { text: 'GitHub', link: repo },
     ],
     sidebar: [
@@ -40,28 +41,39 @@ export default defineConfig({
         text: 'Concepts',
         items: [
           { text: 'How it fits together', link: '/guide/concepts' },
+          { text: 'Architecture', link: '/guide/architecture' },
           { text: 'Dimensions', link: '/guide/dimensions' },
           { text: 'Flags and rules', link: '/guide/flags-and-rules' },
-          { text: 'Releases', link: '/guide/releases' },
-          { text: 'Approvals and history', link: '/guide/approvals' },
-          { text: 'Flags as code', link: '/guide/flags-as-code' },
-          { text: 'Architecture', link: '/guide/architecture' },
+          { text: 'Flag sets', link: '/guide/flag-sets' },
         ],
       },
       {
-        text: 'Delivering flags',
+        text: 'Reading flags',
         items: [
-          { text: 'Flag sets', link: '/guide/flag-sets' },
-          { text: 'Backends', link: '/guide/backends' },
           { text: 'OpenFeature (web, mobile, servers)', link: '/sdk/openfeature' },
+          { text: 'Backends', link: '/guide/backends' },
           { text: 'The app file', link: '/sdk/app-file' },
+        ],
+      },
+      {
+        text: 'Changing flags',
+        items: [
+          { text: 'Releases', link: '/guide/releases' },
+          { text: 'Approvals and history', link: '/guide/approvals' },
+          { text: 'Flags as code', link: '/guide/flags-as-code' },
+        ],
+      },
+      {
+        text: 'Plugins',
+        items: [
+          { text: 'Plugins', link: '/reference/plugins' },
+          { text: 'Webhooks', link: '/guide/webhooks' },
         ],
       },
       {
         text: 'Migration',
         items: [
           { text: 'Moving from another system', link: '/guide/migration' },
-          { text: 'Webhooks', link: '/guide/webhooks' },
         ],
       },
       {
@@ -72,16 +84,15 @@ export default defineConfig({
           { text: 'Sign-in and single sign-on', link: '/self-hosting/sign-in' },
           { text: 'CDN (Cloudflare)', link: '/self-hosting/cdn' },
           { text: 'Production checklist', link: '/self-hosting/production' },
-          { text: 'Security model', link: '/guide/security' },
         ],
       },
       {
         text: 'Reference',
         items: [
           { text: 'HTTP API', link: '/reference/http-api' },
-          { text: 'Plugins', link: '/reference/plugins' },
           { text: 'CLI', link: '/reference/cli' },
           { text: 'Attributes', link: '/reference/attributes' },
+          { text: 'Security model', link: '/guide/security' },
         ],
       },
     ],

@@ -18,6 +18,7 @@ import { ChildrenGrid } from './childrenGrid.tsx';
 import { EntityTree } from './entityTree.tsx';
 import { EntityDialog, EntityFlags, EntityHeader, LoadError, OwnCounts } from './entityParts.tsx';
 import { aboveOf, countText, MD, selectedRow, toTop, type EntityRow, type Who } from './entityKit.ts';
+import { roleInfo } from '../../../server/policy.ts';
 
 /*
  * What config is served per, as dense console pages (the Flags pattern): a sticky page bar, a full-width table with
@@ -95,13 +96,15 @@ function EntityList({ dimensionKey, view, onView }: { dimensionKey: string; view
     toast(`Exported ${count(dimension, list.length)} to ${dimension.key}.csv`);
   };
   const env = pageEnv(meta);
+  // viewers can look but not change anything (server/access.ts): no form the server would refuse
+  const mayChange = roleInfo(meta.me.role).changes;
   const emptyText = up ? `No ${many(dimension)} yet. Each one gets what its ${one(up)} gets on every flag until it has settings of its own.`
     : `No ${many(dimension)} yet. Each one you add ${getsWithoutOwn(null)} on every flag until it has settings of its own.`;
 
   return (
     <div ref={root} className="flex min-h-full flex-1 flex-col">
       <PageBar title={title(dimension)} count={<CountSlot text={paging.data ? countText(paging.data) : undefined} />}
-        actions={<Button onClick={() => setAdding(true)}>+ Add {one(dimension)}</Button>}>
+        actions={mayChange ? <Button onClick={() => setAdding(true)}>+ Add {one(dimension)}</Button> : <span className="text-13 text-ink-3">Viewers can look but not change anything</span>}>
         {!tree && <>
           <SearchField ref={search} className="w-[240px] max-md:w-auto max-md:flex-1" placeholder="Search  /" value={q}
             onChange={(e) => setQ(e.target.value)} aria-label={`Search ${many(dimension)} by name or key`} />
@@ -118,12 +121,12 @@ function EntityList({ dimensionKey, view, onView }: { dimensionKey: string; view
       {tree ? <EntityTree top={dimension} env={env} /> : <>
         <div role="table" aria-label={title(dimension)} aria-busy={paging.loading} className={cn('flex-1', paging.loading && 'opacity-70', onView && 'border-t border-rule')}>
           <div role="row" className={cn(cols, tableHeadClass)}>
-            <span role="columnheader"><RowCheck checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label={`Select all ${many(dimension)} on this page`} /></span>
+            <RowCheck head checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label={`Select all ${many(dimension)} on this page`} />
             <span role="columnheader" aria-sort="ascending" title="By name, A to Z" className="inline-flex items-center gap-1 text-ink">
               {capital(dimension.singular)}<ArrowUpIcon aria-hidden className="size-3" />
             </span>
             {up && <span role="columnheader" className={MD}>{capital(up.singular)}</span>}
-            <span role="columnheader"><ColumnHead label="Own settings" help={`Settings that apply only to this ${one(dimension)}, counted per environment. With none, it ${up ? `gets what its ${one(up)} gets` : getsWithoutOwn(null)}.`} /></span>
+            <ColumnHead label="Own settings" help={`Settings that apply only to this ${one(dimension)}, counted per environment. With none, it ${up ? `gets what its ${one(up)} gets` : getsWithoutOwn(null)}.`} />
             <span role="columnheader" className={MD}>Added</span>
             <span role="columnheader"><span className="sr-only">Open</span></span>
           </div>
@@ -131,7 +134,7 @@ function EntityList({ dimensionKey, view, onView }: { dimensionKey: string; view
             : !paging.data ? <SkeletonRows cols={cols} cells={up ? ['', '', MD, '', MD, ''] : ['', '', '', MD, '']} rowClass={LIST_ROW} />
             : rows.length === 0 ? (
               <div className="px-6 py-10 max-sm:px-4">
-                <Empty action={n ? <Button variant="secondary" onClick={() => setQ('')}>Clear search</Button> : <Button onClick={() => setAdding(true)}>+ Add {one(dimension)}</Button>}>
+                <Empty action={n ? <Button variant="secondary" onClick={() => setQ('')}>Clear search</Button> : mayChange ? <Button onClick={() => setAdding(true)}>+ Add {one(dimension)}</Button> : undefined}>
                   {n ? `Nothing matches “${q.trim()}”.` : emptyText}
                 </Empty>
               </div>
@@ -139,7 +142,7 @@ function EntityList({ dimensionKey, view, onView }: { dimensionKey: string; view
               <div key={c.key} role="row" data-row-index={i} data-active={keys.active === i} data-selected={sel.isSelected(c.key)}
                 onClick={() => { keys.setActive(i); openEntity(c.key); }} onPointerEnter={() => { void preload(entityHref(dimension.key, c.key), meta); }}
                 className={cn(cols, tableRowClass, LIST_ROW, selectedRow, 'cursor-default')}>
-                <span role="cell"><RowCheck checked={sel.isSelected(c.key)} onChange={() => sel.toggle(c.key)} label={`Select ${c.name}`} /></span>
+                <RowCheck checked={sel.isSelected(c.key)} onChange={() => sel.toggle(c.key)} label={`Select ${c.name}`} />
                 <span role="cell" className="min-w-0">
                   <span className="block truncate text-13 font-medium">{c.name}</span>
                   <span className="block truncate font-mono text-11 text-ink-3">

@@ -69,7 +69,8 @@ Set it up in one of two ways:
 - **Settings → CDN** (admins): the domain's Zone ID (on its Overview page in Cloudflare, under API) and an API token.
   Saving checks both with Cloudflare first by purging a tag no file carries (`companyflags-check`). The token stays
   on the server; the console and History show only its last 4 characters.
-- **On the server**: `CF_ZONE_ID` and `CF_API_TOKEN`. These win over the console, which shows them read-only.
+- **On the server**: `CF_ZONE_ID` and `CF_API_TOKEN`, or `cloudflare({ zoneId, token })` in the config file. These
+  win over the console, which shows them read-only.
 
 Make the token in **My Profile → API Tokens → Create Token** with only **Zone → Cache Purge → Purge**, on this zone
 only. It needs nothing else. Your Cloudflare plan must offer purge by cache tag.
@@ -81,7 +82,8 @@ How the purge runs:
   cache's minute;
 - **Settings → CDN** lists the last publishes and whether each purge went through, and has **Purge now** for one
   environment;
-- replacing an entity's app link publishes every environment again, so the old link's file is purged too.
+- replacing an entity's app link publishes every environment again, so the old link's file is purged too; replacing
+  every link in an environment publishes that environment again.
 
 The purge has not been tested against a real Cloudflare zone by the project. Check it on yours: publish a change,
 then see that **Settings → CDN** shows the purge went through and that the next request is a cache miss

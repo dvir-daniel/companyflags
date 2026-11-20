@@ -9,6 +9,9 @@ with `testCondition` in [server/evaluator.ts](https://github.com/dvir-daniel/com
 [server/semver.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/semver.ts) and
 [server/hash.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/hash.ts).
 
+The app file is the `appFiles()` plugin. It runs unless your config file lists plugins without it. See
+[Plugins](/reference/plugins).
+
 ## Getting it
 
 ```http
@@ -18,6 +21,8 @@ If-None-Match: W/"…"            (the ETag of the file you have, if any)
 
 - `200` with the file and an `ETag` (weak); `304` when your copy is current.
 - `404` with `{ "error": "…" }` for any wrong link, environment or flag set.
+- Before sign-in, read `GET /client/v1/flags/<environment>/<flag set>`: what every device gets. **Settings → Flag
+  sets → Link** on a flag set for apps shows that address for each environment.
 - Ask again every minute or so, and when the app comes to the foreground. Keep the last file on the device and start
   from it next time.
 
@@ -134,4 +139,5 @@ with their known values, is in [Attributes](/reference/attributes).
 Your reader is right when it gives the same answer as the server for every device. The server's tests do this for
 the reference reader across thousands of combinations
 ([test/client-file.test.ts](https://github.com/dvir-daniel/companyflags/blob/main/test/client-file.test.ts));
-the console's **Try it** panel shows the server's answer for any entity, flag set and device, to compare by hand.
+the flag's **Debug** tab in the console shows the server's answer for any entity, flag set and device, to compare by
+hand.

@@ -1,10 +1,7 @@
 // After a publish, drop the environment's files from Cloudflare's cache so apps get the new values in
 // seconds instead of within a minute. Every app file is tagged with its environment (delivery.ts Cache-Tag).
-// Which zone and token: server/cdn.ts (Settings → CDN, or the server's CF_ZONE_ID and CF_API_TOKEN). Only the
-// server's own start (index.ts) gives createApp a way to reach Cloudflare, so tests never purge a real zone.
-
-/** Drops one environment's files from the CDN: 'off' when no CDN is set up, so nothing was purged. */
-export type Purger = (environment: string) => Promise<'purged' | 'off' | void>;
+// Which zone and token: cdn.ts (cloudflare()'s options, else CF_ZONE_ID and CF_API_TOKEN, else Settings → CDN).
+// Only the cloudflare plugin's `fetch` reaches Cloudflare: tests hand it a fake, so they never purge a real zone.
 
 /** How long one purge may take: the outbox doesn't wait for it, but a hung request shouldn't pile up either. */
 export const PURGE_TIMEOUT_MS = 5000;

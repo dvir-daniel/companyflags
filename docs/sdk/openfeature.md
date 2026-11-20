@@ -13,6 +13,9 @@ API for feature flags, with OpenFeature's own providers:
 version 0.4: `POST /ofrep/v1/evaluate/flags` (every flag, for client providers) and
 `POST /ofrep/v1/evaluate/flags/{key}` (one flag, for server providers).
 
+OFREP is the `ofrep()` plugin. It runs unless your config file lists plugins without it. See
+[Plugins](/reference/plugins).
+
 ## Who is asking
 
 Each request carries a credential in `Authorization: Bearer …` (or OFREP's `X-API-Key` header):
@@ -82,10 +85,15 @@ stands for everyone you haven't identified yet.
 
 ### React
 
+```bash
+npm install @openfeature/react-sdk @openfeature/ofrep-web-provider
+```
+
 ```tsx
 import { OpenFeature, OpenFeatureProvider, useBooleanFlagValue } from '@openfeature/react-sdk';
 import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
 
+await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' } });
 OpenFeature.setProvider(new OFREPWebProvider({
   baseUrl: 'https://flags.example.com',
   headers: [['Authorization', `Bearer ${flagsToken}`]],
@@ -138,12 +146,12 @@ entity's rules and answers in memory.
 | The flag is off | `reason: DISABLED`, no value: the app's own default |
 | The flag uses the code default | no value: the provider returns the default written in your app |
 | The flag isn't in this flag set | `FLAG_NOT_FOUND` (404 for one flag; left out of the bulk answer) |
-| An entity that doesn't exist, or a chain that doesn't match | `400 INVALID_CONTEXT` |
-| An entity outside the credential's reach | `403` |
+| A chain that doesn't match, or an entity that doesn't exist (with an `all` key) | `400 INVALID_CONTEXT` |
+| An entity outside the credential's reach, or one that doesn't exist (an app token, or a key for some entities) | `403` |
 | No credential, or a wrong or replaced one | `401` |
 
-The answers are the server's own evaluator's, the same as the console's **Try it** and the backends' flagd JSON. The
-server's tests check this with OpenFeature's own web and server OFREP providers
+The answers are the server's own evaluator's, the same as the flag's **Debug** tab in the console and the backends'
+flagd JSON. The server's tests check this with OpenFeature's own web and server OFREP providers
 ([test/ofrep.test.ts](https://github.com/dvir-daniel/companyflags/blob/main/test/ofrep.test.ts)).
 
 ## Cost

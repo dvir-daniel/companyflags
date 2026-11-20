@@ -35,7 +35,7 @@ export const discoverOverHttp = (trustedOrigins: readonly string[] = []): Discov
 export type SsoPlugin = { registerConnection: (body: Record<string, unknown>, headers: Headers) => Promise<void> };
 
 export type SsoOptions = {
-  access: Pick<Access, 'connectionRemoved'>;
+  access: Pick<Access, 'connectionRemoved' | 'ssoNowRequired'>;
   /** none while the tests' header signs people in: then connections can't be added */
   plugin?: SsoPlugin;
   discover: Discover;
@@ -55,7 +55,7 @@ export function singleSignOn(db: Db, o: SsoOptions) {
     list: () => listConnections(db),
     /** `headers` are the admin's own request's (the plugin records who added it); `base` is the console's address */
     add: (input: NewConnection, actor: Actor, request: { headers: Headers; base: string }) => addConnection(db, o, request, input, actor),
-    setRequireSso: (id: string, requireSso: boolean, actor: Actor) => setRequireSso(db, id, requireSso, actor),
+    setRequireSso: (id: string, requireSso: boolean, actor: Actor) => setRequireSso(db, o.access, id, requireSso, actor),
     remove: (id: string, actor: Actor) => removeConnection(db, o.access, id, actor),
   };
 }
@@ -178,16 +178,20 @@ async function addConnection(db: Db, o: SsoOptions, { headers, base }: { headers
 
   await o.plugin.registerConnection(body, headers);
   await db.query(`update sso_provider set domain_verified = true, require_sso = $2 where provider_id = $1`, [id, input.requireSso === true]);
+  if (input.requireSso === true) await o.access.ssoNowRequired(db, domains);
   await audit(db, actor, 'sso.add', { after: { id, type: input.type, domains, requireSso: input.requireSso === true } });
   return (await listConnections(db)).find((c) => c.id === id)!;
 }
 
-/** Requiring single sign-on, or not, for a connection's domains. */
-async function setRequireSso(db: Db, id: string, requireSso: boolean, actor: Actor) {
+/** Requiring single sign-on, or not, for a connection's domains. Required from now: everyone at its domains but the
+ *  admins is signed out, and signs in again with single sign-on (access.ts ssoNowRequired). */
+async function setRequireSso(db: Db, access: SsoOptions['access'], id: string, requireSso: boolean, actor: Actor) {
   const r = await db.query(`update sso_provider set require_sso = $2 where provider_id = $1`, [id, requireSso]);
   if (!r.affected) throw new HttpError(404, `no connection "${id}"`);
+  const conn = (await listConnections(db)).find((c) => c.id === id)!;
+  if (requireSso) await access.ssoNowRequired(db, conn.domains);
   await audit(db, actor, 'sso.update', { after: { id, requireSso } });
-  return (await listConnections(db)).find((c) => c.id === id)!;
+  return conn;
 }
 
 /** Removes a connection: nobody signs in with it any more, and everyone who signed in with it is signed out
@@ -223,13 +227,14 @@ async function discover(read: Discover, issuer: string) {
 }
 
 // Addresses that aren't on the public internet (RFC 6890): this machine, private networks, link-local (cloud
-// metadata at 169.254.169.254), carrier-grade NAT, documentation, multicast and reserved ranges.
+// metadata at 169.254.169.254), carrier-grade NAT, documentation, multicast and reserved ranges. In IPv6, ::/96 is
+// the unspecified address, this machine, and IPv4 written the old way (::10.0.0.1).
 const NOT_PUBLIC = new BlockList();
 for (const [net, bits] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12],
   ['192.0.0.0', 24], ['192.0.2.0', 24], ['192.168.0.0', 16], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]] as const) {
   NOT_PUBLIC.addSubnet(net, bits, 'ipv4');
 }
-for (const [net, bits] of [['::', 128], ['::1', 128], ['64:ff9b::', 96], ['100::', 64], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) {
+for (const [net, bits] of [['::', 96], ['64:ff9b::', 96], ['100::', 64], ['2001:db8::', 32], ['fc00::', 7], ['fe80::', 10], ['ff00::', 8]] as const) {
   NOT_PUBLIC.addSubnet(net, bits, 'ipv6');
 }
 

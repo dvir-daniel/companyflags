@@ -1,9 +1,11 @@
-// Data plane, made to sit behind a CDN (Cloudflare). Three sets of routes: app files (the app-files plugin), app links
-// (core) and flagd JSON (the flagd plugin); plugins/ mounts the plugins' ones, index.ts the links.
+// Reading flags without OFREP (OFREP itself is ofrep.ts), made to sit behind a CDN (Cloudflare): app files (the
+// app-files plugin), flagd JSON (the flagd plugin) and app links (the core). plugins/ mounts the plugins' routes,
+// index.ts the links. This file also makes and reads app tokens, the credential apps use with OFREP.
 //
-// Apps (android, ios, web): one file per environment, app and entity, values only (clientFile.ts).
+// App files, for apps (android, ios, web) that read a file instead of using OFREP: one file per environment, flag set
+// and entity, values only (clientFile.ts).
 //   GET /client/v1/flags/:env/:app                     before login: what everyone gets
-//   GET /client/v1/flags/:env/:app/:entity/:secret     the entity's file (:app is the flag set); the console gives each entity its link
+//   GET /client/v1/flags/:env/:app/:entity/:secret     the entity's file (:app is the flag set): the entity's app link
 // The CDN caches by path, so this server only builds a file when the CDN doesn't have it, and keeps it in
 // memory until the next publish. Each response is tagged with its environment (Cache-Tag), so a publish can
 // purge them all at once (purge.ts). The device checks the rest itself: its model, OS, browser, app version,
@@ -23,12 +25,13 @@ import { etag, RETAINED_304_HEADERS } from 'hono/etag';
 import { all, HttpError, one, type Db } from './db.ts';
 import { appTokenSecret, authenticate, clientSecret, LruCache, mayAsk, sameSecret, type KeyCache, type Principal } from './auth.ts';
 import type { Snapshot } from './evaluator.ts';
-import type { DataPlane } from './snapshot.ts';
+import type { Snapshots } from './plugin.ts';
 import { buildClientFile } from './clientFile.ts';
 import { buildFlagdDoc } from './flagd.ts';
 
 const gzipAsync = promisify(gzip);
-const hash = (s: string) => createHash('sha256').update(s).digest('base64url').slice(0, 22);
+/** A short sha256 of an answer, for its ETag (app files, flagd JSON, OFREP): 22 base64url characters. */
+export const shortHash = (s: string) => createHash('sha256').update(s).digest('base64url').slice(0, 22);
 type Download = { json: string; gz: Uint8Array<ArrayBuffer>; etag: string };
 // gzipped once per file and sent as is (a view of the same bytes, not a copy per response)
 const gzipped = async (json: string) => { const b = await gzipAsync(json); return new Uint8Array(b.buffer as ArrayBuffer, b.byteOffset, b.byteLength); };
@@ -39,40 +42,36 @@ function remember(perKey: Map<string, Promise<Download>>, id: string, d: Promise
   return d;
 }
 
-// Each file is built once per publish, on first request. A new publish makes a new snapshot, which drops them.
-const clientFiles = new WeakMap<Snapshot, Map<string, Promise<Download>>>();
-function clientDownload(snap: Snapshot, app: string, entity: string | null): Promise<Download> {
-  let perKey = clientFiles.get(snap);
-  if (!perKey) clientFiles.set(snap, (perKey = new Map()));
-  const id = `${app}|${entity ?? ''}`;
+// Each file is built, hashed and gzipped once per publish, on first request. A new publish makes a new snapshot, which
+// drops them. The ETag covers `content` only (the values or the flags, not the publish number): a publish that changes
+// nothing in a file is a 304. Weak: the gzipped and the plain response are the same content in different bytes
+// (RFC 9110 §8.8.1), and a CDN that compresses again keeps a weak ETag as it is.
+type Files = WeakMap<Snapshot, Map<string, Promise<Download>>>;
+function download(files: Files, snap: Snapshot, id: string, build: () => { content: string; json: string }): Promise<Download> {
+  let perKey = files.get(snap);
+  if (!perKey) files.set(snap, (perKey = new Map()));
   const d = perKey.get(id);
   if (d) return d;
   return remember(perKey, id, (async () => {
-    const file = buildClientFile(snap, app, entity ? snap.entities[entity] : null);
-    const content = JSON.stringify(file.flags);                    // the ETag covers the values, not the publish number
-    const json = `{"environment":${JSON.stringify(file.environment)},"revision":${file.revision},"flags":${content}}`;
-    // weak: the gzipped and the plain response are the same content in different bytes (RFC 9110 §8.8.1), and a CDN
-    // that compresses again keeps a weak ETag as it is
-    return { json, gz: await gzipped(json), etag: `W/"${hash(content)}"` };
+    const { content, json } = build();
+    return { json, gz: await gzipped(json), etag: `W/"${shortHash(content)}"` };
   })());
 }
 
-// flagd JSON (flagd.ts): built, hashed and gzipped once per publish for each (backend, entity). The ETag covers the
-// flags only, as an app's file's covers its values: a publish that changes nothing here is a 304.
-const flagdDocs = new WeakMap<Snapshot, Map<string, Promise<Download>>>();
-function flagdDownload(snap: Snapshot, project: string, entity: string): Promise<Download> {
-  let perKey = flagdDocs.get(snap);
-  if (!perKey) flagdDocs.set(snap, (perKey = new Map()));
-  const id = `${project}|${entity}`;
-  const d = perKey.get(id);
-  if (d) return d;
-  return remember(perKey, id, (async () => {
-    const doc = buildFlagdDoc(snap, project, snap.entities[entity]);
-    const content = JSON.stringify(doc.flags);
-    const json = `{"$schema":${JSON.stringify(doc.$schema)},"metadata":${JSON.stringify(doc.metadata)},"flags":${content}}`;
-    return { json, gz: await gzipped(json), etag: `W/"${hash(content)}"` };
-  })());
-}
+const clientFiles: Files = new WeakMap();
+const clientDownload = (snap: Snapshot, flagSet: string, entity: string | null) => download(clientFiles, snap, `${flagSet}|${entity ?? ''}`, () => {
+  const file = buildClientFile(snap, flagSet, entity ? snap.entities[entity] : null);
+  const content = JSON.stringify(file.flags);
+  return { content, json: `{"environment":${JSON.stringify(file.environment)},"revision":${file.revision},"flags":${content}}` };
+});
+
+// flagd JSON (flagd.ts), for each (backend flag set, entity)
+const flagdDocs: Files = new WeakMap();
+const flagdDownload = (snap: Snapshot, flagSet: string, entity: string) => download(flagdDocs, snap, `${flagSet}|${entity}`, () => {
+  const doc = buildFlagdDoc(snap, flagSet, snap.entities[entity]);
+  const content = JSON.stringify(doc.flags);
+  return { content, json: `{"$schema":${JSON.stringify(doc.$schema)},"metadata":${JSON.stringify(doc.metadata)},"flags":${content}}` };
+});
 
 // The link secrets: environment secret + each entity's link version, read once a minute at most, by each app
 // (createApp makes its own LinkCache), one request at a time (the others wait for it). Replacing an entity's link,
@@ -158,7 +157,7 @@ function send(c: Context, d: Download, cacheControl: string, tag?: string) {
 // serving the last file for a day. A publish purges the environment's tag, so changes show in seconds.
 const CDN_CACHE = 'public, max-age=60, stale-while-revalidate=600, stale-if-error=86400';
 
-type Parts = { db: Db; plane: Pick<DataPlane, 'snapshots'>; links: LinkCache; keys: KeyCache; flagSets: AppCache };
+type Parts = { db: Db; plane: Snapshots; links: LinkCache; keys: KeyCache; flagSets: AppCache };
 
 const snapshotIn = (plane: Parts['plane'], env: string) => {
   const snap = plane.snapshots.get(env);
@@ -190,15 +189,16 @@ export function appFileRoutes({ db, plane, links, flagSets: apps }: Parts) {
 
   app.get('/client/v1/flags/:env/:app/:entity/:secret', async (c) => {
     const { env, app: appKey, entity, secret } = c.req.param();
-    const snap = snapshotFor(env);
-    // one answer for every kind of wrong link, so it can't be used to find out which entities exist
+    // One answer for every kind of wrong link (environment, flag set, entity or secret), after the same work, so links
+    // can't be used to find out which entities exist: the secret is worked out for an unknown entity too.
     const noFile = () => new HttpError(404, 'no file at this link');
-    if (!Object.hasOwn(snap.entities, entity)) throw noFile();             // in memory: checked before the database
-    await ensureClientApp(db, apps, appKey);
+    const snap = plane.snapshots.get(env);
     const l = await links.get(db);
     const envSecret = l.envs.get(env);
     const v = l.versions.get(entity);
-    if (!envSecret || v === undefined || !sameSecret(secret, clientSecret(envSecret, entity, v))) throw noFile();
+    const right = sameSecret(secret, clientSecret(envSecret ?? '', entity, v ?? 0));
+    if (!snap || !Object.hasOwn(snap.entities, entity) || !envSecret || v === undefined || !right) throw noFile();
+    try { await ensureClientApp(db, apps, appKey); } catch { throw noFile(); }
     return send(c, await clientDownload(snap, appKey, entity), CDN_CACHE, `env-${env}`);
   });
 

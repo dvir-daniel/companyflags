@@ -62,7 +62,7 @@ function HelpTip({ children, label, className }: { children: React.ReactNode; la
         aria-label={label ?? (typeof children === "string" ? children : "What's this?")}
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "relative inline-grid size-3.5 shrink-0 cursor-help place-items-center border-0 bg-transparent p-0 align-[-2px] text-ink-4 outline-none hover:text-ink focus-visible:text-ink",
+          "relative inline-grid size-3.5 shrink-0 cursor-help place-items-center border-0 bg-transparent p-0 align-[-2px] text-ink-3 outline-none hover:text-ink focus-visible:text-ink",
           "after:absolute after:-inset-1.5 after:content-['']",
           className
         )}

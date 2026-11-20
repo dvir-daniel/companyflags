@@ -69,14 +69,16 @@ get the same answer. CompanyFlags covers all of it in one place, and your code r
 ## Quickstart
 
 ```bash
-docker run -d -p 8787:8787 -v companyflags:/data \
+docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \
   -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
   -e BETTER_AUTH_URL=http://localhost:8787 \
   ghcr.io/dvir-daniel/companyflags
+docker logs companyflags   # the setup link: make the admin account at http://localhost:8787/api/setup/…
 ```
 
-Open <http://localhost:8787>, create the admin account, and the console walks you through four steps: environments,
-flag sets, dimensions, and your first flag.
+Open the setup link the server prints and create the admin account: only that link can make it. The console then
+walks you through five steps: environments, flag sets, dimensions and a first entity, your first flag, and connecting
+an app.
 
 For production, run it with Postgres:
 
@@ -84,6 +86,7 @@ For production, run it with Postgres:
 curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 docker compose up -d
+docker compose logs companyflags   # the setup link
 ```
 
 Or from source (Node.js 22.18+, pnpm 11):
@@ -91,7 +94,7 @@ Or from source (Node.js 22.18+, pnpm 11):
 ```bash
 git clone https://github.com/dvir-daniel/companyflags.git && cd companyflags
 corepack enable && pnpm install
-pnpm serve           # builds the console and serves it with the API on http://localhost:8787
+pnpm serve           # builds the console, serves it with the API on http://localhost:8787, prints the setup link
 ```
 
 ## Read flags with OpenFeature
@@ -135,9 +138,18 @@ import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugi
 export default defineConfig({
   database: { url: process.env.DATABASE_URL },
   auth: { baseURL: 'https://flags.example.com' },
-  plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()],
+  plugins: [
+    ofrep(),
+    flagd(),
+    appFiles(),
+    cloudflare(),      // the zone and token from CF_ZONE_ID and CF_API_TOKEN
+    webhooks(),
+  ],
 });
 ```
+
+The file goes in the server's own folder: the clone's root, or `/app` in the Docker image. companyflags isn't an npm
+package; the file's imports come from the server it sits next to.
 
 Keep the flags your code reads in a file next to it, and push it from CI:
 
@@ -162,7 +174,7 @@ See [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins),
 
 One evaluator decides every answer: OFREP's, the app files', the backends' flagd JSON and the console's trace. The
 tests check each against it, with OpenFeature's own providers and flagd's own logic, for many entities and devices
-(about 380 tests, on embedded and real Postgres). Several server instances can share one Postgres database.
+(hundreds of tests, on embedded and real Postgres). Several server instances can share one Postgres database.
 
 ## Documentation
 

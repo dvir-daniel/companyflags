@@ -1,12 +1,12 @@
 // Control-plane operations other than layer saves. Every one is recorded through the change journal (journal.ts):
-// those that change what's served are a new version and a publish (S5: entities, delivery and variations change
-// evaluated output too), the rest are history only.
+// those that change what's served are a new version and a publish (entities, delivery and variations change the
+// answers too), the rest are history only.
 
 import { randomBytes } from 'node:crypto';
 import { all, HttpError, one, type Db, type Tx } from './db.ts';
 import { KEY_SCOPES, newApiKey, type KeyScope } from './auth.ts';
 import { canonical, createChangeSet, deliveredTo, flagSetupProblems, normalizeLayer, projectIds, writeLayer, type Actor, type LayerDoc } from './layers.ts';
-import { audit, change, changeEverywhere } from './journal.ts';
+import { audit, change, changeEverywhere, type Env } from './journal.ts';
 import { CODE_DEFAULT, HIDDEN_PREFIX, hiddenKey } from './evaluator.ts';
 import { needsRemoveBy, cleanTags, flagNameProblem, isVersionFlag, reservedKeyProblem } from './checks.ts';
 import { newVersionProblem, releaseVersionProblem } from './semver.ts';
@@ -388,7 +388,7 @@ export async function createApiKey(db: Db, p: { environment: string; project: st
     // shared: the flag set can't change kind or be deleted until this key is made (updateProject, deleteProject)
     const proj = await one<{ id: number; kind: string }>(tx, `select id, kind from project where key = $1 for share`, [p.project]);
     if (!env || !proj) throw new HttpError(404, 'environment or flag set not found');
-    // apps don't use keys: they read their entity's file at its link
+    // apps don't use keys: they read with an app token (OFREP) or at an app link (app files)
     if (proj.kind !== 'server') throw new HttpError(422, 'API keys are for flag sets for backends; apps read theirs at an app link');
     if (!KEY_SCOPES.includes(p.scope as KeyScope)) throw new HttpError(422, `scope must be ${KEY_SCOPES.join(', ')}`);
     const ent = p.entity ? await one<{ id: string }>(tx, `select id from entity where key = $1 and archived_at is null`, [p.entity]) : null;
@@ -420,6 +420,19 @@ export async function rotateClientLink(db: Db, entityKey: string, actor: Actor) 
       where key = $1 and archived_at is null returning id, client_link_version as v`, [entityKey]);
     if (!c) throw new HttpError(404, `“${entityKey}” not found`);
     await changeEverywhere(tx, actor, { kind: 'entity.link_replaced', entity: entityKey, after: { linkVersion: c.v } });
+  });
+}
+
+// Replaces every app link and app token in one environment at once: the environment gets a new secret (each link's
+// and token's secret is made from it, auth.ts), and a new version and a publish, which purges the CDN. For when the
+// environment's secret may have leaked (a database backup, a copy of the data): every old link and token stops
+// working, and each entity's backend hands its apps the new ones at their next sign-in.
+export async function rotateEnvironmentLinks(db: Db, envKey: string, actor: Actor) {
+  return db.transaction(async (tx) => {
+    const env = await one<Env>(tx, `update environment set link_secret = $2 where key = $1 returning id, key`, [envKey, randomSecret()]);
+    if (!env) throw new HttpError(404, `environment "${envKey}" not found`);
+    await change(tx, env, actor, { kind: 'environment.links_replaced' });
+    return { environment: env.key, replaced: true };
   });
 }
 

@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react';
 import { Button } from '@companyflags/ui/components/button';
-import { Callout } from '@companyflags/ui/components/callout';
 import { tableHeadClass, tableRowClass } from '@companyflags/ui/components/data-table';
-import { Drawer } from '@companyflags/ui/components/drawer';
+import { Drawer, DrawerSection } from '@companyflags/ui/components/drawer';
 import { Input } from '@companyflags/ui/components/input';
 import { NativeSelect } from '@companyflags/ui/components/native-select';
 import { PageBar } from '@companyflags/ui/components/page-bar';
@@ -12,6 +11,7 @@ import { go, useApp } from '../app.ts';
 import { plural } from '../text.ts';
 import { Actions, Badge, Empty, ErrorList, Field, Heading, Modal } from '../ui.tsx';
 import { copyText, useAsync } from '../uiKit.ts';
+import { everyoneFilePath } from '../paths.ts';
 import { ROLE_OPTIONS, roleName, selectField, useRefresh } from './settingsKit.ts';
 import { SingleSignOn } from './sso.tsx';
 import { Cdn } from './cdn.tsx';
@@ -229,7 +229,37 @@ function EnvironmentDrawer({ env, onClose }: { env: Env | null; onClose: () => v
         </Field>
         <ErrorList error={error} />
       </div>
+      {env && <ReplaceLinks env={env} />}
     </Drawer>
+  );
+}
+
+/** Every app link and app token in one environment replaced at once (server/control.ts rotateEnvironmentLinks), for
+ *  when one may have leaked. Admins only, like the drawer it's in. */
+function ReplaceLinks({ env }: { env: Env }) {
+  const { toast, ask } = useApp();
+  const { busy, error, run } = useAsync();
+  const replace = async () => {
+    const { action } = await ask({
+      title: `Replace every link in ${env.name}?`,
+      body: <>
+        <p>Every app link and app token in {env.name} stops working at once. Apps get new ones from your backend at their next sign-in.</p>
+        <p>Links in other environments stay as they are. History keeps a note of it.</p>
+      </>,
+      actions: [{ id: 'keep', label: 'Keep the links' }, { id: 'replace', label: 'Replace every link', tone: 'danger' }],
+    });
+    if (action !== 'replace') return;
+    if (!(await run(() => api('POST', `/environments/${encodeURIComponent(env.key)}/links/rotate`)))) return;
+    toast(`Replaced every app link in ${env.name}`);
+  };
+  return (
+    <DrawerSection title="App links" className="mt-8 border-t border-rule pt-5">
+      <div className="grid gap-3">
+        <p className="m-0 text-13 text-ink-2">If an app link or token may have leaked, replace them all here. Each entry’s own link can be replaced on its page.</p>
+        <ErrorList error={error} />
+        <span className="flex"><Button variant="stop" disabled={busy} onClick={() => void replace()}>{busy ? 'Replacing…' : 'Replace every link in this environment'}</Button></span>
+      </div>
+    </DrawerSection>
   );
 }
 
@@ -246,7 +276,10 @@ function FlagSetsSection({ admin }: { admin: boolean }) {
   const { meta, toast, ask } = useApp();
   const refresh = useRefresh();
   const [drawer, setDrawer] = useState<{ app: App | null } | null>(null);
+  const [fileOf, setFileOf] = useState<string | null>(null);
   const { error, setError, run } = useAsync();
+  // the app-files plugin serves each app flag set's file for everyone (server/delivery.ts), with no entry needed
+  const files = meta.plugins?.includes('app-files') ?? true;
 
   const remove = async (p: App) => {
     setError(null);
@@ -283,6 +316,7 @@ function FlagSetsSection({ admin }: { admin: boolean }) {
               <code role="cell" className="truncate font-mono text-13 font-medium">{p.key}</code>
               <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{p.kind === 'client' ? 'For apps: each reads its file at an app link' : 'For backends: each uses an API key'}</span>
               <span role="cell" className="flex justify-end gap-2">
+                {files && p.kind === 'client' && <Button variant="secondary" aria-label={`Link to ${p.key}’s file for everyone`} onClick={() => setFileOf(p.key)}>Link</Button>}
                 {admin && <>
                   <Button variant="secondary" aria-label={`Edit ${p.key}`} onClick={() => { setError(null); setDrawer({ app: p }); }}>Edit</Button>
                   <Button variant="secondary" aria-label={`Delete ${p.key}`} onClick={() => void remove(p)}>Delete</Button>
@@ -294,7 +328,33 @@ function FlagSetsSection({ admin }: { admin: boolean }) {
       )}
       {/* mounted only while open (keyed by the flag set), so each opening starts fresh */}
       {drawer && <AppDrawer key={drawer.app?.key ?? 'new'} app={drawer.app} onClose={() => setDrawer(null)} />}
+      {fileOf && <EveryoneFile flagSet={fileOf} onClose={() => setFileOf(null)} />}
     </section>
+  );
+}
+
+/** A flag set's file for everyone, in each environment: what an app reads before it knows who is signed in, and the
+ *  only file there is until the dimensions have an entry. Each entry's own link is on its page. */
+function EveryoneFile({ flagSet, onClose }: { flagSet: string; onClose: () => void }) {
+  const { meta, toast } = useApp();
+  return (
+    <Drawer open onClose={onClose} title={`${flagSet}: the file for everyone`} subtitle="The values everyone gets, with no entry’s own settings"
+      footer={<Button variant="secondary" onClick={onClose}>Done</Button>}>
+      <div className="grid gap-4 text-13 text-ink-2">
+        <p className="m-0">An app reads this before it knows who is signed in. Then it uses its entry’s own link, from the entry’s page (App link). Each environment has its own file.</p>
+        {meta.environments.map((e) => {
+          const url = `${location.origin}${everyoneFilePath(e.key, flagSet)}`;
+          return (
+            <Field key={e.key} label={e.name}>
+              <span className="flex min-w-0 items-center gap-2">
+                <Input readOnly value={url} onFocus={(ev) => ev.target.select()} className="h-[34px] font-mono text-13" />
+                <Button variant="secondary" aria-label={`Copy the link for ${e.name}`} onClick={() => void copyText(url, 'the link', toast)}>Copy</Button>
+              </span>
+            </Field>
+          );
+        })}
+      </div>
+    </Drawer>
   );
 }
 
@@ -338,42 +398,5 @@ function AppDrawer({ app, onClose }: { app: App | null; onClose: () => void }) {
         <ErrorList error={error} />
       </div>
     </Drawer>
-  );
-}
-
-const SETUP_STEPS: [string, string][] = [
-  ['Environments', 'Where flags live, such as Development and Production. Production can require an approval for every change.'],
-  ['Flag sets', 'The groups flags are sent in: one for each of your web, iOS and Android apps (each reads its file), and one for each backend (with an API key).'],
-  ['Dimensions', 'What config is served per, in your own words: one level, or a chain such as region › chain › store.'],
-  ['Your first flag', 'An on/off switch, a value that differs per entity, or a release that reaches a % of devices step by step.'],
-];
-
-/** Shown on every page until there is an environment to work in: the steps to set up. */
-export function GetStarted() {
-  const { meta } = useApp();
-  const admin = roleInfo(meta.me.role).changesSettings;
-  return (
-    <div className="grid max-w-[680px] content-start gap-8 p-12 max-sm:p-6">
-      <div className="grid gap-3">
-        <h1 className="m-0 text-[28px] leading-tight font-semibold text-ink">Welcome to CompanyFlags</h1>
-        <p className="m-0 text-15 text-subtitle">Four steps, and your apps read their first flag.</p>
-      </div>
-      {admin ? <>
-        <section className="grid gap-3">
-          <ol className="m-0 grid list-none gap-0 p-0">
-            {SETUP_STEPS.map(([title, text], i) => (
-              <li key={title} className="grid grid-cols-[28px_1fr] gap-3 border-t border-rule py-3 last:border-b">
-                <span className="font-mono text-13 text-ink-3">{String(i + 1).padStart(2, '0')}</span>
-                <span className="grid gap-0.5"><span className="text-13 font-medium text-ink">{title}</span><span className="text-13 text-ink-2">{text}</span></span>
-              </li>
-            ))}
-          </ol>
-          <div><Button onClick={() => go('settings')}>Open settings</Button></div>
-          <p className="m-0 text-13 text-ink-3">Moving from another system? Once these are done, the Migration page imports its flags, and both run side by side while you move them one at a time.</p>
-        </section>
-      </> : (
-        <Callout>An admin needs to add the environments and flag sets first. You’re signed in as {meta.me.key}, a {roleName(meta.me.role).toLowerCase()}.</Callout>
-      )}
-    </div>
   );
 }

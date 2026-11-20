@@ -63,11 +63,17 @@ export function download(name: string, text: string, type = 'application/json') 
 /** The full address of an incoming webhook, from its token. */
 export const incomingUrl = (token: string) => `${location.origin}/hooks/v1/${token}`;
 
+/** Whether a webhook's last try failed (after its last delivery, if any). */
+const lastFailed = (w: WebhookOut) => !!w.lastFailedAt && (!w.lastSentAt || w.lastFailedAt > w.lastSentAt);
+
 /** How the last delivery went, in a few words. */
 export function lastDelivery(w: WebhookOut): { text: string; tone: 'ok' | 'bad' | 'none' } {
   if (!w.enabled) return { text: 'Switched off', tone: 'none' };
-  const failed = w.lastFailedAt && (!w.lastSentAt || w.lastFailedAt > w.lastSentAt);
-  if (failed) return { text: w.lastError ?? 'Failed', tone: 'bad' };
+  if (lastFailed(w)) return { text: w.lastError ?? 'Failed', tone: 'bad' };
   if (w.lastSentAt) return { text: `Delivered${w.lastStatus ? ` (${w.lastStatus})` : ''}`, tone: 'ok' };
   return { text: 'Nothing sent yet', tone: 'none' };
 }
+
+/** What a switched-off webhook's last try said, when it failed: the server switches off one whose JSONata expression
+ *  runs over its limits, and says so here ("… The webhook was switched off: fix the expression, then switch it on."). */
+export const offBecause = (w: WebhookOut): string | null => (!w.enabled && lastFailed(w) && w.lastError ? w.lastError : null);

@@ -17,14 +17,17 @@ Light or Dark (two choices, no System) with `ThemeToggle` in the title bar; `src
 | --- | --- | --- |
 | Page | #000 | #FFF |
 | Panels | #0A0A0A, #121212 | #FAFAFA, #F5F5F5 |
-| Text | #FAFAFA; nav at 65%; muted #A3A3A3, #737373 | #0A0A0A; nav at 60%; muted #525252, #737373 |
+| Text | #FAFAFA; nav at 65%; muted #A3A3A3, #808080 | #0A0A0A; nav at 60%; muted #525252, #737373 |
 | Lines | #262626, #363636; rows at 8% white | #E5E5E5, #D4D4D4; rows at 8% black |
 | Primary | white, black text | #0A0A0A, white text |
 | Meaning colors | red #FF5A4E, amber #E8B864, green #7EE0A8, purple #B48CF5 | red #DC2626, amber #B45309, green #15803D, purple #7C3AED |
 
 ## Color
 
-- Dark: pure black (#000), panels #0A0A0A, grid lines #262626. Text #FAFAFA, nav text at 65% white, muted #A3A3A3 and #737373. Light mirrors it (table above).
+- Dark: pure black (#000), panels #0A0A0A, grid lines #262626. Text #FAFAFA, nav text at 65% white, muted #A3A3A3 and #808080. Light mirrors it (table above).
+- **Text is readable.** All text, placeholders included, is at least 4.5:1 on its background (WCAG AA), and icons at least 3:1:
+  the quietest text is `text-ink-3`, and dimmed text is `text-ink-nav`, never `text-ink/50`. `text-ink-4` is for decoration only
+  (slashes, carets, underlines), never for words or icons people need to read.
 - **Color only for meaning:**
   - each person's own color (attribution);
   - red for live: recording, production, problems, destructive actions;
@@ -64,6 +67,7 @@ Light or Dark (two choices, no System) with `ThemeToggle` in the title bar; `src
 | Dithered pixel texture as decoration | `dither`, `dither-fill` |
 | A mono footer with slashes | `Footer`, `FooterSlash` |
 | Light / dark | `ThemeToggle`, `useTheme`, `initTheme`, `themeBootScript` |
+| Phone (under 768px): no sidebar or footer; a bottom tab bar with the 4 most-used pages and More, which opens the whole sidebar in a `Drawer`. The tab bar reserves its height, so toasts stay above it | the console's `MobileNav` (web/src/shell.tsx), `useBottomReserve` |
 | Dense data pages: page bar, filter chips, sortable tables, bulk actions, drawer | `PageBar`, `FilterSelect`, `SortHeader`, `useSelection`, `useListKeys`, `BulkBar`, `Drawer` (see "Dense console") |
 | Prototype-only controls are dashed and labeled "Demo" | `Button variant="demo"`, `demoControlClass`, `DemoTag` |
 

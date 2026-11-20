@@ -1,4 +1,4 @@
-// Typed version comparison (M4). "5.10" > "5.9", "5" == "5.0.0", prereleases sort before releases.
+// Typed version comparison. "5.10" > "5.9", "5" == "5.0.0", prereleases sort before releases.
 
 export type SemVer = { major: number; minor: number; patch: number; pre: string[] };
 

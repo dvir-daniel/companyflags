@@ -12,8 +12,8 @@ let t: Awaited<ReturnType<typeof boot>>;
 before(async () => { t = await boot(); });
 after(async () => { await t.stop(); });
 
-const exportOf = async (format: string, o: Record<string, unknown> = {}) => {
-  const r = await t.as('alice').post('/migration/export', { environment: 'dev', format, ...o });
+const exportOf = async (format: string, o: Record<string, unknown> = {}, by = 'alice') => {
+  const r = await t.as(by).post('/migration/export', { environment: 'dev', format, ...o });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   return r.json.output;
 };
@@ -106,8 +106,11 @@ test('JSONata in and out: any shape, made into or from a values document', async
   const oldShape = { settings: [{ name: 'max_upload_mb', value: 5000 }] };
   const plan = (await preview({ format: 'jsonata', input: oldShape, expression: '{ "flags": settings{ name: { "value": value } } }' })).json.plan;
   assert.deepEqual(plan.changes.map((l: { text: string }) => l.text), ['Everyone gets 5000 (was 100)']);
-  const out = await exportOf('jsonata', { expression: 'flags.$each(function($v, $k) { { "name": $k, "value": $v.value } })[name = "max_upload_mb"]' });
+  const expression = 'flags.$each(function($v, $k) { { "name": $k, "value": $v.value } })[name = "max_upload_mb"]';
+  const out = await exportOf('jsonata', { expression }, 'dana');
   assert.deepEqual(out, { name: 'max_upload_mb', value: 100 });
+  const editor = await t.as('alice').post('/migration/export', { environment: 'dev', format: 'jsonata', expression });
+  assert.equal(editor.status, 403, 'an expression runs on the server: only admins, as for an import');
   const broken = await preview({ format: 'jsonata', input: {}, expression: '{ "flags": ' });
   assert.equal(broken.status, 422);
   assert.match(broken.json.error, /^The JSONata expression doesn’t read/);
@@ -118,6 +121,28 @@ test('a JSONata expression that runs without end is stopped', async () => {
   // JSONata turns a call in tail position into a loop: the time limit stops that one
   await assert.rejects(runJsonata('($f := function($x) { $f($x + 1) }; $f(0))', {}, { timeoutMs: 50, maxDepth: 500 }), /ran longer than 50 ms/);
   await assert.rejects(runJsonata('$count([1..9000000].($ * 2))', {}, { timeoutMs: 50, maxDepth: 300 }), /ran longer than 50 ms/);
+});
+
+test('a JSONata expression that takes all the memory, makes too much or never returns stops, and the server goes on answering', async () => {
+  const exporting = (expression: string) => t.as('dana').post('/migration/export', { environment: 'dev', format: 'jsonata', expression });
+  // while each runs, the server answers others: it runs in a worker of its own, never on the server's own thread
+  let answered = 0;
+  const others = setInterval(() => { void t.call('GET', '/healthz').then((r) => { if (r.status === 200) answered++; }); }, 50);
+  try {
+    for (const [expression, said] of [
+      ['$count($sort([1..3000000]))', /more memory than an expression may use/],       // one built-in on a huge list
+      ['$pad("", 50000000)', /result is larger than 4 MB/],
+      ['$contains("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", /^(a+)+$/)', /ran longer than 1000 ms/],   // a regular expression that backtracks without end
+    ] as const) {
+      const r = await exporting(expression);
+      assert.equal(r.status, 422, expression);
+      assert.match(r.json.error, said, expression);
+    }
+  } finally {
+    clearInterval(others);
+  }
+  assert.ok(answered >= 10, `the server answered meanwhile (${answered} times)`);
+  assert.deepEqual((await exportOf('jsonata', { expression: '$count($keys(flags)) > 0' }, 'dana')), true, 'and runs the next expression');
 });
 
 test('into an environment that needs approval, the changes are one request', async () => {

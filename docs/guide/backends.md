@@ -15,7 +15,7 @@ A backend also hands each signed-in user's app its entity's secret link and toke
 
 1. **Settings → Flag sets → + Add flag set** (admins): a key such as `api`, and the kind **For backends**. Then put
    flags in it, on each flag's **Settings** tab (see [Flag sets](/guide/flag-sets)).
-2. **API keys → + Create key** (admins): the environment, the flag set, what it **asks about**, and a label.
+2. **API keys → + New key** (admins): the environment, the flag set, what it **asks about**, and a label.
 
 | Scope | Asks about |
 |---|---|
@@ -28,6 +28,9 @@ The key is shown once. It looks like `ff_prod_api_…`: one environment, one fla
 [Security model](/guide/security#api-keys).
 
 ## flagd JSON
+
+flagd JSON is the `flagd()` plugin, and OFREP (below) the `ofrep()` plugin. Each runs unless your config file lists
+plugins without it. See [Plugins](/reference/plugins).
 
 ```http
 GET /sdk/v1/flagd/<dimension>/<entity>
@@ -151,8 +154,9 @@ Name the entity in the evaluation context by its dimension key. The server fills
 ```
 
 - **Which entity asks.** If the context names several dimensions (`"company": "globex", "brand": "lumen"`), the
-  lowest asks, and the others must be the ones above it. An entity that doesn't exist, or isn't under the one named
-  above it, is `400 INVALID_CONTEXT`. Outside the key's scope, `403`.
+  lowest asks, and the others must be the ones above it. One that isn't under the one named above it is
+  `400 INVALID_CONTEXT`. Outside the key's scope, `403`. An entity that doesn't exist is `400 INVALID_CONTEXT` for an
+  `all` key, and the same `403` for a key scoped to `entity` or `below`, so it can't tell which entities exist.
 - **Naming none.** A key for one entity (or `below` one) asks as its own entity. An `all` key asks as no entity: what
   every device gets before sign-in.
 - **The rest of the context** is what the request knows about itself, nested or dotted (`{"app": {"version":
@@ -169,9 +173,9 @@ requests go to the server on every evaluation: a CDN doesn't cache them.
 
 ## Hand links to apps
 
-Apps read their entity's file at a secret link, or ask with OpenFeature's OFREP provider using the same link as a
-token (see [Flag sets](/guide/flag-sets)). Your backend knows which entity a user belongs to, so it asks for both when
-the user signs in, naming the app's flag set, and hands them to the app:
+Apps read their entity's file at a secret link, or ask with OpenFeature's OFREP provider using a token made from that
+link for one flag set (see [Flag sets](/guide/flag-sets)). Your backend knows which entity a user belongs to, so it
+asks for both when the user signs in, naming the app's flag set, and hands them to the app:
 
 ```http
 GET /sdk/v1/links/<dimension>/<entity>?flagSet=<key>
@@ -184,14 +188,15 @@ Authorization: Bearer ff_prod_api_…
   "flagSet": "ios",
   "entity": "lumen",
   "path": "/client/v1/flags/prod/ios/lumen/k3J9xW2mQ7vR1tY5uP8sLa",
-  "token": "ffl_prod.ios.lumen.k3J9xW2mQ7vR1tY5uP8sLa"
+  "token": "ffl_prod.ios.lumen.Hc4nT8bZ1qW6eY0rS3vJ5d"
 }
 ```
 
 - The link is for the key's environment. `flagSet` is the key of a flag set for apps (`web`, `ios`, `android`); a
   flag set for backends has no file.
 - For the app file, the app reads `path` from the address apps use, usually the CDN in front of your server:
-  `https://flags.example.com/client/v1/flags/prod/ios/lumen/…`.
+  `https://flags.example.com/client/v1/flags/prod/ios/lumen/…`. `path` is there only when the `appFiles()` plugin
+  runs.
 - For OFREP, the app's provider sends `Authorization: Bearer <token>`. The token asks as that entity only.
 - The answer has `Cache-Control: no-store`: both are secrets. See [Security model](/guide/security#app-tokens).
 - `401` without a valid key, `403` for an entity outside the key's scope, `400` without `?flagSet=`, `404` for an

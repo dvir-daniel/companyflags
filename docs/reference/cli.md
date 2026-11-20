@@ -23,7 +23,8 @@ Runs the server: the console, its API and the [plugins](/reference/plugins). The
 ### `init`
 
 Writes `companyflags.config.ts` in this folder, with the database, sign-in and every built-in plugin. It won't
-write over one that's there unless you add `--force`.
+write over one that's there unless you add `--force`. Run it in the server's folder: the file's imports come from the
+server it sits next to. Run anywhere else, it writes the file and warns that the server can't load it there.
 
 ### `secret`
 
@@ -49,9 +50,27 @@ companyflags flags plan flags.json        # what a push would change
 companyflags flags push flags.json --as ci@acme.test
 ```
 
-The file defaults to `flags.json`. `--as` is the name History shows for the push (default: your user name).
+The file defaults to `flags.json`. `--as` is the name History shows for the push (default: your user name); it needs
+a value.
 
 | Exit code | Means |
 |---|---|
 | `0` | Done, or nothing to change. |
 | `1` | The file has problems (nothing was pushed), a step was refused (what was done before it is listed), or the command was wrong. |
+
+`migrate` and the `flags` commands also exit with `1` when the config file can't be loaded, or when the embedded
+database is open in another process. The `flags` commands do when the database is missing migrations or has ones
+this version doesn't know, and `migrate --check` does when migrations are pending.
+
+### `help`
+
+Lists the commands.
+
+## Unknown options
+
+Every command refuses an option or argument it doesn't know, and exits with `1` before it does anything:
+
+```text
+$ companyflags migrate --chek
+companyflags: migrate: unknown option "--chek" (see companyflags help)
+```

@@ -1,11 +1,12 @@
-// Background workers: the outbox publisher (S4), the scheduled-apply runner (S3), and catching up with publishes
-// made by other server processes on the same database.
+// Background workers: the outbox publisher (each change waits in publish_queue until its environment's new snapshot is
+// built), the runner of change sets scheduled for later, and catching up with publishes made by other server processes
+// on the same database.
 
 import { all, type Db } from './db.ts';
 import type { EventHub } from './events.ts';
 import { applyChangeSet } from './layers.ts';
 import type { DataPlane } from './snapshot.ts';
-import type { Purger } from './purge.ts';
+import type { OnPublish } from './plugin.ts';
 
 type QueueRow = { id: string; env_key: string; revision: string };
 
@@ -14,7 +15,7 @@ export type WorkerOptions = {
   onRemoteChange?: () => void;
 };
 
-export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: string) => void = () => {}, purge?: Purger, opts: WorkerOptions = {}) {
+export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: string) => void = () => {}, onPublish?: OnPublish, opts: WorkerOptions = {}) {
   async function publishOnce() {
     // Claim with a lease; messages are idempotent "env is at revision N" signals, so duplicates are harmless.
     const rows = await all<QueueRow>(db, `
@@ -44,21 +45,26 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
         await db.query(`update publish_queue set last_error = $2 where id = any($1::bigint[])`, [ids, String(e)]);
         continue;
       }
-      // The CDN purge runs on its own, after the rows are marked: a slow or failed purge only delays the change by
-      // the CDN's minute, and never holds up this loop (other publishes, scheduled applies).
-      if (purge) purgeLater(purge, env, ids);
+      // The plugins' onPublish (a CDN purge) runs on its own, after the rows are marked: a slow or failed purge only
+      // delays the change by the CDN's minute, and never holds up this loop (other publishes, scheduled applies).
+      if (onPublish) afterPublish(onPublish, env, ids);
     }
     return rows.length;
   }
 
-  function purgeLater(purge: Purger, env: string, ids: string[]) {
-    let p: ReturnType<Purger>;
-    try { p = purge(env); } catch (e) { p = Promise.reject(e); }
+  // Only an answer of 'purged' says a cache was purged (Settings → CDN shows when). A failure is logged, and kept on
+  // the rows as "purge: <plugin>: <what went wrong>", the words Settings → CDN shows (web/src/pages/cdn.tsx).
+  function afterPublish(hook: OnPublish, env: string, ids: string[]) {
+    const purged = () => db.query(`update publish_queue set purged_at = now() where id = any($1::bigint[])`, [ids]).catch(() => {});
+    let p: ReturnType<OnPublish>;
+    try { p = hook(env); } catch (e) { p = Promise.reject(e); }
     p.then(async (done) => {
-      if (done !== 'off') await db.query(`update publish_queue set purged_at = now() where id = any($1::bigint[])`, [ids]).catch(() => {});
+      if (done === 'purged') await purged();
     }, async (e) => {
-      log(`CDN purge for ${env} failed: ${(e as Error)?.message ?? e}`);
-      await db.query(`update publish_queue set last_error = $2 where id = any($1::bigint[])`, [ids, `purge: ${(e as Error)?.message ?? e}`]).catch(() => {});
+      const said = (e as Error)?.message ?? String(e);
+      log(`after publishing ${env}: ${said}`);
+      if ((e as { purged?: unknown })?.purged === true) await purged();
+      await db.query(`update publish_queue set last_error = $2 where id = any($1::bigint[])`, [ids, `purge: ${said}`]).catch(() => {});
     });
   }
 

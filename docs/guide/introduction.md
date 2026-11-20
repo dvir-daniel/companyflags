@@ -44,7 +44,7 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 - **OpenFeature, no SDK of ours.** Apps and backends use OpenFeature's own providers (OFREP, flagd), so you can switch
   to or from CompanyFlags without touching the code that reads flags.
 - **Privacy by construction.** A device asks as its own entity, with a token it can't change. Checks on dimensions, flag
-  sets and environments are settled on the server, so a device never receives a list of customers, another customer's
+  sets and environments are settled on the server, so a device never receives a list of entities, another entity's
   value, or a rule.
 - **Change control built in.** Protected environments, approvals by someone other than the author, scheduled
   changes, break-glass for on call, an append-only history, and restore.
@@ -54,9 +54,10 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 
 ## What it doesn't do (yet)
 
-CompanyFlags is before 1.0. It is tested (about 370 tests, on embedded and real Postgres) but young. Not built yet:
+CompanyFlags is before 1.0. It is tested (hundreds of tests, on embedded and real Postgres) but young. Not built yet:
 
 - experiment statistics (name your % groups and send them to your own analytics instead);
+- your own attributes beyond the built-in list ([Attributes](/reference/attributes));
 - sending email: invite and password reset links are made by an admin and sent by hand; SCIM provisioning;
 - secret values: don't put secrets in flag values.
 

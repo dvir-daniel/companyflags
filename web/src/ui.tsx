@@ -170,15 +170,16 @@ export function Collapsible({ title, children, defaultOpen = false }: { title: R
 /* ---------------------------------------------------------------- fields */
 
 const LABELABLE = new Set(['input', 'select', 'textarea']);
-type ControlProps = { id?: string; children?: ReactNode; 'aria-describedby'?: string };
+type ControlProps = { id?: string; children?: ReactNode; 'aria-describedby'?: string; 'aria-required'?: boolean };
 
 /**
  * Gives a field's control the id its label points at, and the hint as its description. The control is the first
  * native input, select or textarea, or the first component (Input, NativeSelect, ChipInput, EntityPicker… pass
  * `id` on to their own input), looking inside plain wrappers (a <span> around an input and a button). A control
- * with an id of its own keeps it. Returns the children and the id, or no id when there is no control.
+ * with an id of its own keeps it. A required field's control says so to screen readers (aria-required), as its label's
+ * asterisk does on screen. Returns the children and the id, or no id when there is no control.
  */
-function withControlId(children: ReactNode, id: string, describedBy: string | undefined): [ReactNode, string | undefined] {
+function withControlId(children: ReactNode, id: string, describedBy: string | undefined, required?: boolean): [ReactNode, string | undefined] {
   let found: string | undefined;
   const visit = (node: ReactNode): ReactNode => {
     if (found !== undefined || !isValidElement<ControlProps>(node)) return node;
@@ -189,7 +190,7 @@ function withControlId(children: ReactNode, id: string, describedBy: string | un
     }
     found = node.props.id ?? id;
     const described = [node.props['aria-describedby'], describedBy].filter(Boolean).join(' ') || undefined;
-    return cloneElement(node, { id: found, 'aria-describedby': described });
+    return cloneElement(node, { id: found, 'aria-describedby': described, ...(required ? { 'aria-required': true } : {}) });
   };
   const out = Children.map(children, visit);
   return found === undefined ? [children, undefined] : [out, found];
@@ -205,7 +206,7 @@ export function Field({ label, children, hint, required, className, htmlFor }: {
 }) {
   const auto = useId();
   const hintId = hint ? `${auto}hint` : undefined;
-  const [control, id] = htmlFor ? [children, htmlFor] : withControlId(children, `${auto}field`, hintId);
+  const [control, id] = htmlFor ? [children, htmlFor] : withControlId(children, `${auto}field`, hintId, required);
   const text = <>{label}{required && <span className="text-live" aria-hidden> *</span>}</>;
   return (
     <div className={cn('grid min-w-0 content-start gap-1.5', className)}>
@@ -270,7 +271,7 @@ export function ChipInput({ values, onChange, suggestions = [], placeholder, lab
       ))}
       <input id={id} list={left.length ? listId : undefined} aria-label={label} aria-invalid={invalid || undefined} aria-describedby={describedBy}
         value={text} placeholder={values.length ? '' : placeholder}
-        className="h-6 min-w-20 flex-1 border-0 bg-transparent px-1 text-13 text-ink outline-none select-text placeholder:text-ink-4 [&::-webkit-calendar-picker-indicator]:hidden"
+        className="h-6 min-w-20 flex-1 border-0 bg-transparent px-1 text-13 text-ink outline-none select-text placeholder:text-ink-3 [&::-webkit-calendar-picker-indicator]:hidden"
         onChange={(e) => {
           const v = e.target.value;
           // only a pick from the suggestions adds at once: typing "webapp" must not stop at "web". A pick comes as a

@@ -1,7 +1,7 @@
 {
   "name": "companyflags",
-  "version": "0.1.0",
-  "description": "The most comprehensive feature flag framework: open source, self-hosted, and read with OpenFeature.",
+  "version": "0.2.0",
+  "description": "A self-hosted feature flag and remote config server, read with OpenFeature.",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -24,7 +24,7 @@
     "openfeature",
     "flagd",
     "self-hosted",
-    "multi-tenant",
+    "dimensions",
     "cdn"
   ],
   "scripts": {

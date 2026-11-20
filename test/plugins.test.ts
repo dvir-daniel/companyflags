@@ -1,16 +1,20 @@
-// Plugins (server/plugin.ts, server/plugins/) and companyflags.config.ts (server/config.ts): an installation runs the
-// plugins it lists, and only those; a plugin of its own can serve routes, console routes and run after a publish; the
-// config file wins over the environment, which wins over the defaults.
+// Plugins (server/plugin.ts, server/plugins/) and companyflags.config.ts (server/config.ts, server/configFile.ts): an
+// installation runs the plugins it lists, and only those; a plugin of its own can serve routes, console routes, ask
+// the evaluator and run after a publish, and never takes the core's addresses; the config file wins over the
+// environment, which wins over the defaults.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { boot } from './helpers.ts';
-import { appFiles, cloudflare, consoleRoutes, defaultPlugins, definePlugin, flagd, ofrep } from '../server/plugins/index.ts';
-import { PluginError } from '../server/plugin.ts';
-import { ConfigError, defineConfig, loadConfig, resolveConfig } from '../server/config.ts';
+import {
+  appFiles, cloudflare, consoleRoutes, defaultPlugins, definePlugin, flagd, HttpError, ofrep, PluginError, type PluginContext,
+} from '../server/plugins/index.ts';
+import { ConfigError, defineConfig, type Config } from '../server/config.ts';
+import { loadConfig, resolveConfig } from '../server/configFile.ts';
 
 const ids = (plugins: { id: string }[]) => plugins.map((p) => p.id);
 
@@ -54,6 +58,8 @@ test('a plugin of one’s own: its routes, its console routes behind the sign-in
     setup: ({ plane }) => {
       const routes = new Hono();
       routes.get('/audit-feed/v1/revisions', (c) => c.json(Object.fromEntries([...plane.snapshots].map(([k, s]) => [k, s.revision]))));
+      // the core's HttpError, from companyflags/plugins: answered with its status and {"error": …}
+      routes.post('/audit-feed/v1/check', () => { throw new HttpError(422, 'That isn’t a revision.'); });
       return {
         routes,
         prefixes: ['/audit-feed'],
@@ -62,7 +68,7 @@ test('a plugin of one’s own: its routes, its console routes behind the sign-in
           app.get('/audit-feed', (c) => { adminOnly(c.get('user')); return c.json({ for: c.get('user').key }); });
           return app;
         },
-        onPublish: async (env) => { published.push(env); return 'purged'; },
+        onPublish: async (env) => { published.push(env); },
       };
     },
   });
@@ -70,6 +76,8 @@ test('a plugin of one’s own: its routes, its console routes behind the sign-in
   try {
     assert.equal(typeof (await t.call('GET', '/audit-feed/v1/revisions')).json.dev, 'number');
     assert.match((await t.call('GET', '/audit-feed/nothing')).json.error, /^no such endpoint/, 'its prefix is JSON, not the console page');
+    const refused = await t.call('POST', '/audit-feed/v1/check', {});
+    assert.deepEqual([refused.status, refused.json], [422, { error: 'That isn’t a revision.' }], 'an HttpError, not a 500');
     assert.equal((await t.as('dana').get('/audit-feed')).json.for, 'dana');
     assert.equal((await t.as('alice').get('/audit-feed')).status, 403, 'adminOnly: alice is an editor');
     assert.equal((await t.call('GET', '/api/audit-feed')).status, 401, 'signed in, as the console’s routes');
@@ -77,12 +85,89 @@ test('a plugin of one’s own: its routes, its console routes behind the sign-in
     assert.equal((await t.as('alice').put('/flags/android_quick_share/delivery', { environment: 'dev', projects: ['android', 'ios'] })).status, 200);
     await t.settle();
     assert.ok(published.includes('dev'), JSON.stringify(published));
+    await new Promise((r) => setTimeout(r, 30));
+    const row = (await t.db.query<{ purged: string | null }>(`select purged_at as purged from publish_queue order by id desc limit 1`)).rows[0];
+    assert.equal(row.purged, null, 'it purged no cache: Settings → CDN doesn’t say it did');
   } finally { await t.stop(); }
 });
 
-test('a plugin that isn’t one, or one listed twice, stops the start with what’s wrong', async () => {
-  await assert.rejects(boot({ plugins: [ofrep(), ofrep()] }), (e: Error) => e instanceof PluginError && /listed twice/.test(e.message));
-  await assert.rejects(boot({ plugins: [{ id: 'Bad Name', setup: () => ({}) }] }), (e: Error) => e instanceof PluginError && /not a plugin/.test(e.message));
+test('each plugin’s onPublish runs whatever the others do; a failure is kept with the plugin’s name', async () => {
+  const heard: string[] = [];
+  const logs: string[] = [];
+  const failing = definePlugin({ id: 'failing', setup: () => ({ onPublish: async () => { throw new Error('the feed is down'); } }) });
+  const purging = definePlugin({ id: 'purging', setup: () => ({ onPublish: async (env) => { heard.push(env); return 'purged' as const; } }) });
+  const t = await boot({ plugins: [failing, purging], log: (m) => logs.push(m) });
+  try {
+    const { version, layer } = await t.baseOf('payments_enabled', 'dev');
+    assert.equal((await t.as('alice').put('/flags/payments_enabled/layers/dev/base', { layer: { ...layer, enabled: !layer.enabled }, expectedVersion: version })).status, 200);
+    await t.settle();
+    let row: { purged: string | null; error: string | null } | undefined;
+    for (let i = 0; i < 50 && !(row?.error && row.purged); i++) {
+      row = (await t.db.query<{ purged: string | null; error: string | null }>(`select purged_at as purged, last_error as error from publish_queue order by id desc limit 1`)).rows[0];
+      if (!(row.error && row.purged)) await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.deepEqual(heard, ['dev'], 'the plugin after the failing one still ran');
+    assert.equal(row?.error, 'purge: failing: the feed is down');
+    assert.ok(row?.purged, 'the other one purged, and the publish says so');
+    assert.ok(logs.includes('after publishing dev: failing: the feed is down'), logs.join('\n'));
+  } finally { await t.stop(); }
+});
+
+test('a plugin that reads flags asks the one evaluator, and gets what OFREP gives an app', async () => {
+  let ask: PluginContext['evaluate'] | undefined;
+  const reader = definePlugin({ id: 'reader', setup: (ctx) => { ask = ctx.evaluate; return {}; } });
+  const t = await boot({ plugins: [ofrep(), reader] });
+  try {
+    const key = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'all' })).json.key;
+    const { token } = (await t.call('GET', '/sdk/v1/links/company/acme?flagSet=web', undefined, { authorization: `Bearer ${key}` })).json;
+    const app = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { targetingKey: 'd-1', device: { platform: 'web' } } }, { authorization: `Bearer ${token}` });
+    assert.equal(app.status, 200, JSON.stringify(app.json));
+    const fromOfrep = app.json.flags.map((f: { key: string; value?: unknown }) => [f.key, f.value ?? null]);
+    const who = { flagSet: 'web', entity: 'acme', attrs: { 'device.id': 'd-1', 'device.platform': 'web' } };
+    const every = ask!('dev', who);
+    assert.ok(every.length > 0);
+    assert.deepEqual(every.map((r) => [r.key, r.errorCode || r.codeDefault ? null : r.value ?? null]), fromOfrep);
+    const first = ask!('dev', who, every[0].key);
+    assert.deepEqual([first.key, first.value], [every[0].key, every[0].value]);
+    assert.throws(() => ask!('nowhere', { flagSet: 'web' }), (e: Error) => e instanceof HttpError && e.status === 404);
+    assert.throws(() => ask!('dev', { flagSet: 'web', entity: 'nobody' }), (e: Error) => e instanceof HttpError && e.status === 404);
+  } finally { await t.stop(); }
+});
+
+test('a plugin never takes the core’s addresses: its prefixes are checked at the start, and the core’s console routes answer first', async () => {
+  const claiming = (prefix: string) => definePlugin({ id: 'claiming', setup: () => ({ prefixes: [prefix] }) });
+  const refused: [string, RegExp][] = [
+    ['audit', /starts with \//], ['/api', /taken by the core \(\/api\)/], ['/sdk/v2', /taken by the core \(\/sdk\)/], ['/ofrep/v2', /taken by the plugin "ofrep"/],
+  ];
+  for (const [prefix, why] of refused) {
+    await assert.rejects(boot({ plugins: [ofrep(), claiming(prefix)] }), (e: Error) => e instanceof PluginError && why.test(e.message), prefix);
+  }
+  const shadow = definePlugin({
+    id: 'shadow',
+    setup: () => ({ console: () => { const app = consoleRoutes(); app.post('/trace', (c) => c.json({ shadow: true })); return app; } }),
+  });
+  const t = await boot({ plugins: [shadow] });
+  try {
+    const r = await t.as('alice').post('/trace', { environment: 'dev', project: 'android', entity: null, attrs: {}, flag: 'android_quick_share' });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.deepEqual([r.json.shadow, r.json.result?.key], [undefined, 'android_quick_share'], 'the core’s trace answered');
+  } finally { await t.stop(); }
+});
+
+test('a plugin that isn’t one, or one listed twice, stops the start with what’s wrong, before any setup runs', async () => {
+  let setUp = 0;
+  const counting = definePlugin({ id: 'counting', setup: () => { setUp++; return {}; } });
+  await assert.rejects(boot({ plugins: [counting, ofrep(), ofrep()] }), (e: Error) => e instanceof PluginError && /listed twice/.test(e.message));
+  await assert.rejects(boot({ plugins: [counting, { id: 'Bad Name', setup: () => ({}) }] }), (e: Error) => e instanceof PluginError && /not a plugin/.test(e.message));
+  assert.equal(setUp, 0, 'every entry is checked first');
+});
+
+test('a setup that fails stops the background work of the plugins set up before it', async () => {
+  let stopped = 0;
+  const busy = definePlugin({ id: 'busy', setup: () => ({ worker: { wake: () => {}, drain: async () => {}, stop: async () => { stopped++; } } }) });
+  const broken = definePlugin({ id: 'broken', setup: () => { throw new Error('no database for me'); } });
+  await assert.rejects(boot({ plugins: [busy, broken] }), /no database for me/);
+  assert.equal(stopped, 1);
 });
 
 test('the config: the file’s settings, else the environment’s, else the defaults', () => {
@@ -100,6 +185,9 @@ test('the config: the file’s settings, else the environment’s, else the defa
   assert.deepEqual([fromFile.databaseUrl, fromFile.port, ids(fromFile.plugins)], ['postgres://file/db', 9100, ['ofrep', 'flagd']]);
   assert.equal(fromFile.signIn.kind === 'better-auth' && fromFile.signIn.settings.baseURL, 'https://file.example.com');
   assert.throws(() => resolveConfig({ server: { port: 70000 } }, {}), ConfigError);
+  // production is NODE_ENV's alone: a file can't turn off the production checks
+  const prod = resolveConfig({ auth: { production: false } } as Config, { NODE_ENV: 'production' });
+  assert.equal(prod.signIn.kind === 'better-auth' && prod.signIn.settings.production, true);
   assert.deepEqual(ids(defaultPlugins()), ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks']);
   assert.equal(cloudflare().id, 'cloudflare');
 });
@@ -121,6 +209,16 @@ export default defineConfig({ server: { port: 9200 }, plugins: [ofrep(), flagd()
     await assert.rejects(loadConfig({ cwd: dir, env: { FF_CONFIG: 'missing.ts' } }), ConfigError);
     writeFileSync(join(dir, 'bad.config.ts'), `export const config = {};\n`);
     await assert.rejects(loadConfig({ cwd: dir, env: { FF_CONFIG: 'bad.config.ts' } }), /export its config as the default/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a config file outside the server’s folder: the error says to keep it there', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-config-'));
+  try {
+    writeFileSync(join(dir, 'companyflags.config.ts'), `import { defineConfig } from 'companyflags/config';\nexport default defineConfig({});\n`);
+    await assert.rejects(loadConfig({ cwd: dir, env: {} }), (e: Error) => e instanceof ConfigError && /only resolves inside the server’s folder .*\/app in Docker/.test(e.message));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

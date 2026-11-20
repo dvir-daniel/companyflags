@@ -74,7 +74,7 @@ function CommandInput({
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
-            "w-full bg-transparent text-sm text-ink outline-hidden placeholder:text-ink-4 disabled:cursor-not-allowed disabled:opacity-50",
+            "w-full bg-transparent text-sm text-ink outline-hidden placeholder:text-ink-3 disabled:cursor-not-allowed disabled:opacity-50",
             className
           )}
           {...props}
@@ -124,7 +124,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "overflow-hidden text-foreground **:[[cmdk-group-heading]]:px-4 **:[[cmdk-group-heading]]:pt-2.5 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-11 **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:text-ink-4",
+        "overflow-hidden text-foreground **:[[cmdk-group-heading]]:px-4 **:[[cmdk-group-heading]]:pt-2.5 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-11 **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:text-ink-3",
         className
       )}
       {...props}

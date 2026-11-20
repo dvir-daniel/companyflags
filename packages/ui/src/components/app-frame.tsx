@@ -14,8 +14,8 @@ import { Kbd } from "./kbd.tsx"
  *
  * Every part takes className and the usual element props, so an app can add its own
  * (Tauri's data-tauri-drag-region, a router's active state, and so on).
- * In a narrow window (under 768px) an AppFrame's sidebar turns into a row of links under the
- * title bar (styles.css, "narrow windows").
+ * In a narrow window (under 768px) the app hides the sidebar and the footer and shows its own bottom tab
+ * bar instead (the console's MobileNav; DESIGN.md "Patterns"): the frame's grid then gives the page the width.
  */
 
 function AppFrame({
@@ -65,6 +65,15 @@ function WindowLights({ className }: { className?: string }) {
   )
 }
 
+/** The product's mark: three stepped bars, the layers from the defaults down to one entry. Drawn in the text color. */
+function BrandMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" className={cn("shrink-0", className)}>
+      <path d="M0 0h16v4H0zM0 6h11v4H0zM0 12h6v4H0z" fill="currentColor" />
+    </svg>
+  )
+}
+
 /** The product name in caps with a closing period: COMPANYMEMORY. */
 function Wordmark({ className, ...props }: React.ComponentProps<"span">) {
   return <span data-slot="wordmark" className={cn("text-sm leading-none font-semibold tracking-[0.01em]", className)} {...props} />
@@ -82,7 +91,7 @@ function TitleBarStatus({ warn, className, ...props }: React.ComponentProps<"div
       data-slot="title-bar-status"
       className={cn(
         "flex items-center border-l border-sep px-4 font-mono text-xs tracking-[0.6px] uppercase",
-        warn ? "text-flag" : "text-ink/50",
+        warn ? "text-flag" : "text-ink-nav",
         className
       )}
       {...props}
@@ -118,7 +127,7 @@ function SidebarSearch({
       type="button"
       data-slot="sidebar-search"
       className={cn(
-        "mb-5 flex h-8 w-full shrink-0 cursor-default items-center gap-[9px] border border-rule bg-transparent pr-1.5 pl-2.5 text-left text-sm text-ink/55 hover:border-rule-2 hover:text-ink-1",
+        "mb-5 flex h-8 w-full shrink-0 cursor-default items-center gap-[9px] border border-rule bg-transparent pr-1.5 pl-2.5 text-left text-sm text-ink-nav hover:border-rule-2 hover:text-ink-1",
         className
       )}
       {...props}
@@ -131,7 +140,7 @@ function SidebarSearch({
 }
 
 function SidebarLabel({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="sidebar-label" className={cn("px-3 pb-1.5 font-mono text-11 text-ink-4 uppercase", className)} {...props} />
+  return <div data-slot="sidebar-label" className={cn("px-3 pb-1.5 font-mono text-11 text-ink-3 uppercase", className)} {...props} />
 }
 
 /**
@@ -213,7 +222,7 @@ function Footer({ className, ...props }: React.ComponentProps<"footer">) {
   return (
     <footer
       data-slot="footer"
-      className={cn("flex h-[34px] shrink-0 items-center gap-2.5 border-t border-rule px-4 font-mono text-11 whitespace-nowrap text-ink/50", className)}
+      className={cn("flex h-[34px] shrink-0 items-center gap-2.5 border-t border-rule px-4 font-mono text-11 whitespace-nowrap text-ink-nav", className)}
       {...props}
     />
   )
@@ -231,6 +240,7 @@ function DemoTag() {
 export {
   AppFrame,
   Avatar,
+  BrandMark,
   DemoTag,
   Footer,
   FooterSlash,

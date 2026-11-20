@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { createApp, type AppOptions } from '../server/index.ts';
+import { defaultPlugins, type CloudflareOptions, type WebhooksOptions } from '../server/plugins/index.ts';
 import { bucketFor, HASH_VERSION } from '../server/hash.ts';
 import { fixtures } from './fixtures.ts';
 
@@ -26,13 +27,19 @@ export async function testDatabase(): Promise<{ url?: string; drop: () => Promis
 
 type App = Awaited<ReturnType<typeof createApp>>;
 
+/** Every built-in plugin, as a server without a list gets them, with these options: no `fetch` for Cloudflare or
+ *  webhooks unless a test gives a fake, so a test never reaches them. */
+export const builtIns = (o: { cloudflare?: CloudflareOptions; webhooks?: WebhooksOptions } = {}) =>
+  defaultPlugins({ cloudflare: { fetch: undefined, ...o.cloudflare }, webhooks: { fetch: undefined, ...o.webhooks } });
+
 /** createApp on a new test database; stop() stops the workers, closes the database and drops it. If the app
- *  can't start, the database is dropped before the error is passed on. */
+ *  can't start, the database is dropped before the error is passed on. The plugins read no environment variables
+ *  of the shell (CF_ZONE_ID, …) unless a test gives its own `env`. */
 export async function startApp(opts: AppOptions = {}): Promise<App & { stop: () => Promise<void> }> {
   const tdb = opts.databaseUrl || opts.dataDir ? { url: opts.databaseUrl, drop: async () => {} } : await testDatabase();
   let ctx: App;
   try {
-    ctx = await createApp({ ...opts, databaseUrl: tdb.url });
+    ctx = await createApp({ env: {}, ...opts, databaseUrl: tdb.url });
   } catch (e) {
     await tdb.drop().catch(() => {});
     throw e;

@@ -276,7 +276,6 @@ function Queue() {
       list.map((c) => [c.id, c.status, c.environment, `${approvalsOf(c)}/${neededIn(c.environment)}`, c.author, c.createdAt, c.items.map(changeTag).join(' '), c.reason]));
     toast(`Exported ${plural(list.length, 'request')} to ${file}`);
   };
-  const ariaSort = (k: Sort) => (sort === k ? (dir === 'asc' ? 'ascending' : 'descending') : undefined);
 
   // an empty list says why, and offers one way on
   const empty = !all ? null
@@ -299,15 +298,15 @@ function Queue() {
 
       <div role="table" aria-label="Requests" aria-busy={loading} className={cn('flex-1', loading && all && 'opacity-70')}>
         <div role="row" className={cn(COLS, tableHeadClass)}>
-          <span role="columnheader"><RowCheck checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all shown" /></span>
-          <span role="columnheader" aria-sort={ariaSort('id')}><SortHeader label="Request" sortKey="id" sort={sort} dir={dir} onSort={onSort} /></span>
-          <span role="columnheader" aria-sort={ariaSort('status')}><SortHeader label="Status" sortKey="status" sort={sort} dir={dir} onSort={onSort} help={HELP.status} /></span>
-          <span role="columnheader" className={MD}><ColumnHead label="Approvals" help={HELP.approvals} /></span>
+          <RowCheck head checked={sel.all} indeterminate={sel.some} onChange={sel.toggleAll} label="Select all shown" />
+          <SortHeader label="Request" sortKey="id" sort={sort} dir={dir} onSort={onSort} />
+          <SortHeader label="Status" sortKey="status" sort={sort} dir={dir} onSort={onSort} help={HELP.status} />
+          <ColumnHead className={MD} label="Approvals" help={HELP.approvals} />
           <span role="columnheader" className={MD}>Changes</span>
           <span role="columnheader" className={XL}>Environment</span>
-          <span role="columnheader" aria-sort={ariaSort('author')} className={MD}><SortHeader label="Requested by" sortKey="author" sort={sort} dir={dir} onSort={onSort} /></span>
+          <SortHeader className={MD} label="Requested by" sortKey="author" sort={sort} dir={dir} onSort={onSort} />
           <span role="columnheader" className={XL}>Why</span>
-          <span role="columnheader" aria-sort={ariaSort('when')} className={MD}><SortHeader label="When" sortKey="when" sort={sort} dir={dir} onSort={onSort} /></span>
+          <SortHeader className={MD} label="When" sortKey="when" sort={sort} dir={dir} onSort={onSort} />
         </div>
         {!all ? <SkeletonRows cols={COLS} cells={CELLS} />
           : empty && rows.length === 0 ? (
@@ -329,7 +328,7 @@ function Queue() {
               // a click anywhere on the row opens it; the request number is the button keyboard and screen-reader users open it with
               <div key={cs.id} role="row" data-row-index={i} data-active={keys.active === i} data-selected={sel.isSelected(String(cs.id))}
                 onClick={() => openRow(i, cs.id)} className={cn(COLS, tableRowClass, selectedRow, 'cursor-default')}>
-                <span role="cell"><RowCheck checked={sel.isSelected(String(cs.id))} onChange={() => sel.toggle(String(cs.id))} label={`Select request #${cs.id}`} /></span>
+                <RowCheck checked={sel.isSelected(String(cs.id))} onChange={() => sel.toggle(String(cs.id))} label={`Select request #${cs.id}`} />
                 <span role="cell" className="min-w-0">
                   <button type="button" aria-label={`Open request #${cs.id}`} onClick={(e) => { e.stopPropagation(); openRow(i, cs.id); }}
                     className={cn(cellButton, 'font-mono text-13 font-medium')}>#{cs.id}</button>

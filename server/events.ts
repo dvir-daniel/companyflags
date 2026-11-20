@@ -1,22 +1,24 @@
-// Tells the console about every publish, so open pages refresh (GET /api/events), and OpenFeature's providers, so apps
-// fetch their flags again at once (GET /ofrep/v1/events, ofrep.ts).
+// Tells the console about every publish, so open pages refresh (GET /api/events), and the plugins' live readers, so
+// apps fetch their flags again at once (OFREP's GET /ofrep/v1/events, ofrep.ts). It fires in every server process for
+// each publish: its own, and those of other processes it catches up with (workers.ts).
 
 export class EventHub {
   console = new Set<(event: string, data: unknown) => void>();
-  ofrep = new Set<(environment: string, revision: number) => void>();
+  readers = new Set<(environment: string, revision: number) => void>();
 
   subscribeConsole(fn: (event: string, data: unknown) => void) {
     this.console.add(fn);
     return () => this.console.delete(fn);
   }
 
-  subscribeOfrep(fn: (environment: string, revision: number) => void) {
-    this.ofrep.add(fn);
-    return () => this.ofrep.delete(fn);
+  /** Every publish this process hears of: which environment, at which revision. Returns the way to stop listening. */
+  subscribe(fn: (environment: string, revision: number) => void) {
+    this.readers.add(fn);
+    return () => this.readers.delete(fn);
   }
 
   publish(environment: string, revision: number) {
     for (const fn of this.console) fn('revision', { environment, revision });
-    for (const fn of this.ofrep) fn(environment, revision);
+    for (const fn of this.readers) fn(environment, revision);
   }
 }

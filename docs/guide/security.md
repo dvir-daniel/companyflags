@@ -23,7 +23,8 @@ An app gets its entity's values in one environment, in one of two ways: it reads
 
 ## Secret links
 
-Each entity, at every level, has a secret link per environment and flag set for apps:
+Each entity, at every level, has one secret link per environment. The flag set is in the path, so the same link reads
+every flag set for apps of that entity:
 
 ```text
 /client/v1/flags/prod/web/acme/<secret>
@@ -38,8 +39,12 @@ Each entity, at every level, has a secret link per environment and flag set for 
   environment. The old link and its token stop working at once on the instance that replaced it and within a minute
   on the others, and every environment publishes again, which purges the CDN. Links of the entities under it don't
   change.
-- Every wrong link to an entity's file, a wrong secret or an entity that doesn't exist, gets the same
-  `404 {"error":"no file at this link"}`, so links can't be used to find out which entities exist.
+- Every wrong link to an entity's file gets the same `404 {"error":"no file at this link"}`, after the same work:
+  a wrong environment, flag set, entity or secret. So links can't be used to find out which entities exist.
+- **Replacing every link in an environment** (admins: Settings → the environment's **Edit** → **Replace every link in this environment**, or `POST /api/environments/<env>/links/rotate`) gives that
+  environment a new secret, for when it may have leaked. Every app link, app token and OFREP change-event address
+  there stops working at once; the other environments' don't change. The environment publishes again, which purges
+  the CDN, and History records it. Hand apps their new links from your backend as usual.
 
 ### App tokens
 
@@ -53,8 +58,9 @@ Authorization: Bearer ffl_prod.web.acme.<secret>
   the entity and the link's version, so a token for `web` can't be turned into one for `ios`. Your backend gets it and
   the link from `/sdk/v1/links` and hands them to the app at sign-in; the console shows it on the entity's **App
   link** as **OpenFeature token**.
-- A token asks about its own entity only, like an API key with scope `entity`. Naming another entity in the
-  evaluation context gets `403`.
+- A token asks about its own entity only, like an API key with scope `entity`. Naming any other entity in the
+  evaluation context gets the same `403` (`this key can’t ask about "…"`), whether that entity exists or not, so a
+  token can't be used to find out which entities exist. Keys scoped to `entity` or `below` answer the same way.
 - Replacing the link stops the token at the same moment. Every wrong token gets the same
   `401 {"error":"unknown or replaced app link"}`.
 - Like the link, it is readable by anyone who has the app once it holds it: it gives that entity's values, nothing
@@ -92,11 +98,17 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
 - sessions are a cookie, signed with `BETTER_AUTH_SECRET`, lasting 7 days and renewed while used;
 - passwords are kept as hashes, and have at least 10 characters;
 - the providers' tokens are stored encrypted with the secret;
-- rate limits on sign-in are on in production (`NODE_ENV=production`);
+- rate limits on sign-in are on unless `NODE_ENV` is `development` or `test`. They count the connection's address,
+  or what your own proxies say (`FF_TRUSTED_PROXIES`), never a header a client sets itself;
 - SAML answers must be signed, are checked against the request they answer, and work once; OIDC uses PKCE;
 - adding an OIDC connection won't read an issuer on a private or loopback address unless an admin trusted its origin
   (`BETTER_AUTH_TRUSTED_ORIGINS`), so it can't be used to look around your network;
-- password accounts are made only from an admin's invite link for that email, or as the very first account.
+- password accounts are made only from an admin's invite link for that email, or as the first account;
+- **the first account is the admin's, made only with the setup link** the server prints while nobody has an
+  account. Until then nobody else joins, however they sign in. See
+  [Sign-in → The first account](/self-hosting/sign-in#the-first-account);
+- where a single sign-on connection requires single sign-on, nobody at its domains but admins signs in with a
+  password, Google, GitHub or Microsoft. Turning it on signs them out at once.
 
 ## Changes from the console
 
@@ -109,8 +121,8 @@ sends no CORS headers, so no other site gets that permission.
 ## Protected environments and history
 
 - An environment with **approvals needed** above 0 is protected: a change there is a request, and it applies only
-  after that many approvals. Nobody approves their own request, and an approval counts only for the request as it is
-  now; editing it asks for approval again.
+  after that many approvals. Nobody approves their own request, and an approval is recorded against the request's
+  exact content. A request can't be edited: to change it, its author withdraws it and sends a new one.
 - **Break-glass** (on call and admins): turn a kill switch or ops flag off, or roll a version release back, without
   review. It needs a reason, and History keeps it.
 - **History is append-only.** Database triggers refuse to update, delete or truncate it, whatever the server does.
@@ -118,6 +130,32 @@ sends no CORS headers, so no other site gets that permission.
   who use the console.
 
 See [Approvals and history](/guide/approvals).
+
+## Webhooks
+
+[Webhooks](/guide/webhooks) are the `webhooks()` plugin.
+
+- **A webhook in's address is a credential that writes.** Anyone with `/hooks/v1/<token>` can post values into its
+  environment. Where changes need approval, a post makes a request; elsewhere it applies at once. The address is shown
+  once and the server keeps only a hash of its secret. Keep it as you keep an API key.
+- **Only admins** make, change or replace webhooks, in and out, and History records each of these. The changes a
+  post makes are in History too, by *Webhook: &lt;its name&gt;*.
+- **Webhooks out** keep their address and header on the server: the console never shows them again. The signing
+  secret is shown once.
+- **Webhooks out reach public addresses only**: not this machine, your private network or a cloud's metadata address,
+  checked as each connection is made, with no redirects followed. An operator allows an origin on the network with
+  `FF_WEBHOOK_ALLOWED_ORIGINS`. Whatever an address does, the console gets one message for an unreachable one, so a
+  webhook's **Test** can't be used to look around your network.
+
+## Limits
+
+What admins and others send stays within limits, so it can't take the server down:
+
+- **Request bodies.** 64 KB for OFREP, 256 KB for sign-in, 1 MB for webhooks in and the console's API, 4 MB for
+  imports. A larger body gets `413` as it arrives, also when it's sent in chunks.
+- **JSONata** (imports, exports, webhooks out) runs in a worker thread apart from the server: a second, 500 levels
+  deep, a memory limit, and 4 MB of JSON in and out. One that runs over gets `422`; a webhook's is switched off.
+  Only admins write expressions: for imports, webhooks, and exports with JSONata.
 
 ## Roles
 
@@ -134,9 +172,9 @@ script, by hash) and refuses to be framed. Every response has `X-Frame-Options: 
 ## What the database holds
 
 Besides your flags and history, the database keeps password hashes and the secrets the server needs: each
-environment's link secret (from which every link can be made), single sign-on client secrets and the Cloudflare
-token. Anyone who can read the database or its backups can read every entity's file. Restrict access to it, and
-protect its backups the same way.
+environment's link secret (from which every link can be made), single sign-on client secrets, the Cloudflare
+token, and webhooks' addresses, headers and signing secrets. Anyone who can read the database or its backups can
+read every entity's file. Restrict access to it, and protect its backups the same way.
 
 ## Don't put secrets in flag values
 

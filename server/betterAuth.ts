@@ -12,7 +12,8 @@ import { sso } from '@better-auth/sso';
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, type CompiledQuery, type DatabaseConnection, type Dialect, type Driver, type Kysely, type QueryResult } from 'kysely';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
+import { BlockList, isIP } from 'node:net';
 import type { Access, Accounts, Attempt, Who } from './access.ts';
 import { all, HttpError, one, type Db, type Queryable } from './db.ts';
 
@@ -31,30 +32,98 @@ export type AuthSettings = {
   /** More origins Better Auth trusts, e.g. an identity provider on a private network (BETTER_AUTH_TRUSTED_ORIGINS). */
   trustedOrigins?: string[];
   production?: boolean;
-  /** Where sign-in rate limits read the client's address (ipAddressFor). By default the connection's own address; behind
-   *  a proxy, the header it sets (FF_CLIENT_IP_HEADER, e.g. cf-connecting-ip) or X-Forwarded-For past the proxies'
-   *  addresses (FF_TRUSTED_PROXIES, comma-separated, e.g. 10.0.0.0/8). */
+  /** Rate limits on sign-in. From the environment: on unless NODE_ENV is development or test, so a server started
+   *  without NODE_ENV has them. Left out: in production only. */
+  rateLimit?: boolean;
+  /** Where sign-in rate limits read the client's address (clientAddressFor). By default the connection's own address.
+   *  Behind a proxy, for connections from the proxies' addresses (FF_TRUSTED_PROXIES, comma-separated, e.g.
+   *  10.0.0.0/8): the header the proxy sets (FF_CLIENT_IP_HEADER, e.g. cf-connecting-ip), or X-Forwarded-For past the
+   *  proxies. A connection from anywhere else is its own address, whatever its headers say. */
   clientIp?: { header?: string; trustedProxies?: string[] };
 };
 
-/** The header this server sets to the connection's own address for Better Auth's rate limits, replacing any value a
- *  client sent (identity.ts). Read only when no proxy setting says otherwise. */
+/** The header this server sets to the client's address for Better Auth's rate limits, replacing any value a client
+ *  sent (identity.ts, clientAddressFor). Better Auth reads only this one. */
 export const CLIENT_IP_HEADER = 'x-ff-client-ip';
 
 /** How long a password reset link works. */
 export const RESET_LINK_HOURS = 24;
 
-/** Better Auth's `advanced.ipAddress`: which header holds the client's address, and which proxies to look past. */
-export function ipAddressFor(s: Pick<AuthSettings, 'clientIp'>) {
-  const header = s.clientIp?.header?.toLowerCase();
-  const trustedProxies = s.clientIp?.trustedProxies?.length ? s.clientIp.trustedProxies : undefined;
-  if (header) return { ipAddressHeaders: [header], ...(trustedProxies ? { trustedProxies } : {}) };
-  if (trustedProxies) return { ipAddressHeaders: ['x-forwarded-for'], trustedProxies };
-  return { ipAddressHeaders: [CLIENT_IP_HEADER] };
+/** Better Auth's `advanced.ipAddress`: the header this server sets (identity.ts), never one a client could send. */
+export const ipAddressFor = () => ({ ipAddressHeaders: [CLIENT_IP_HEADER] });
+
+/** The proxies' addresses (FF_TRUSTED_PROXIES), and why the settings can't be used, if they can't. */
+function proxyList(s: Pick<AuthSettings, 'clientIp'>): { proxies: BlockList; problem: string | null } {
+  const proxies = new BlockList();
+  const header = s.clientIp?.header?.trim();
+  const entries = s.clientIp?.trustedProxies ?? [];
+  for (const entry of entries) {
+    const [net, bits, extra] = entry.split('/');
+    const family = isIP(net);
+    const max = family === 4 ? 32 : 128;
+    const n = bits === undefined ? max : /^[0-9]+$/.test(bits) ? Number(bits) : NaN;
+    if (!family || extra !== undefined || !(n >= 0 && n <= max)) {
+      return { proxies, problem: `FF_TRUSTED_PROXIES: "${entry}" isn’t an address or a range like 10.0.0.0/8` };
+    }
+    proxies.addSubnet(net, n, family === 4 ? 'ipv4' : 'ipv6');
+  }
+  if (header && !entries.length) {
+    return { proxies, problem: `FF_CLIENT_IP_HEADER needs FF_TRUSTED_PROXIES: the addresses of the proxies that set ${header} (e.g. 10.0.0.0/8), so a client that reaches this server directly can’t set it` };
+  }
+  return { proxies, problem: null };
+}
+
+/** Why the client address settings can't be used, or null. The server doesn't start with them (authSecret). */
+export const clientIpProblem = (s: Pick<AuthSettings, 'clientIp'>) => proxyList(s).problem;
+
+/** An address as written: an IPv4 address written as IPv6 (::ffff:10.0.0.1) as itself. */
+const plain = (a: string) => a.trim().replace(/^::ffff:(?=[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$)/i, '');
+
+/** The client's address for sign-in rate limits, from the connection's own address and the request's headers. Only a
+ *  connection from one of the proxies (FF_TRUSTED_PROXIES) is believed about someone else's address: its header
+ *  (FF_CLIENT_IP_HEADER), or the last address in X-Forwarded-For that isn't one of the proxies. */
+export function clientAddressFor(s: Pick<AuthSettings, 'clientIp'>) {
+  const header = s.clientIp?.header?.trim().toLowerCase();
+  const { proxies } = proxyList(s);
+  const trusted = (a: string) => { const f = isIP(a); return f !== 0 && proxies.check(a, f === 4 ? 'ipv4' : 'ipv6'); };
+  return (headers: Headers, connection: string | undefined): string | undefined => {
+    const from = connection ? plain(connection) : undefined;
+    if (!from || !trusted(from)) return from;
+    if (header) {
+      const said = plain(headers.get(header) ?? '');
+      return isIP(said) ? said : from;
+    }
+    const hops = (headers.get('x-forwarded-for') ?? '').split(',').map(plain).filter(Boolean);
+    for (let i = hops.length - 1; i >= 0; i--) {
+      if (!isIP(hops[i])) return from;
+      if (!trusted(hops[i])) return hops[i];
+    }
+    return from;
+  };
 }
 
 /** The request header that carries an invite link's secret when someone creates a password account. */
 export const INVITE_HEADER = 'x-invite';
+
+/** The setup link's secret, when the first account is made (access.ts): in this header, or in this cookie, which the
+ *  setup link sets (identity.ts), so the console's own sign-up and provider sign-ins carry it. */
+export const SETUP_HEADER = 'x-setup';
+export const SETUP_COOKIE = 'companyflags.setup';
+
+/** The setup link's secret: made from the sign-in's secret, so every server on one database prints the same link and
+ *  nothing about it is stored. It works only while nobody has an account (access.ts). */
+export const setupTokenFor = (secret: string) => createHmac('sha256', secret).update('companyflags/setup').digest('base64url').slice(0, 32);
+
+/** The setup link's secret a request carries: the header, else the cookie. */
+export function setupOf(headers: Headers | undefined | null): string | undefined {
+  const said = headers?.get(SETUP_HEADER)?.trim();
+  if (said) return said;
+  for (const part of (headers?.get('cookie') ?? '').split(';')) {
+    const [name, ...value] = part.trim().split('=');
+    if (name === SETUP_COOKIE) return value.join('=') || undefined;
+  }
+  return undefined;
+}
 
 const list = (v?: string) => (v ?? '').split(',').map((s) => s.trim().toLowerCase().replace(/^@/, '')).filter(Boolean);
 const provider = (id?: string, secret?: string) => (id && secret ? { clientId: id, clientSecret: secret } : undefined);
@@ -71,9 +140,13 @@ export function authSettingsFromEnv(env: NodeJS.ProcessEnv = process.env): AuthS
     microsoft: microsoft && { ...microsoft, tenantId: env.MICROSOFT_TENANT_ID || undefined },
     trustedOrigins: origins(env.BETTER_AUTH_TRUSTED_ORIGINS),
     production: env.NODE_ENV === 'production',
+    rateLimit: env.NODE_ENV !== 'development' && env.NODE_ENV !== 'test',
     clientIp: { header: env.FF_CLIENT_IP_HEADER?.trim() || undefined, trustedProxies: origins(env.FF_TRUSTED_PROXIES) },
   };
 }
+
+/** Whether sign-in has rate limits: as set, or in production. */
+export const rateLimitsOn = (s: Pick<AuthSettings, 'rateLimit' | 'production'>) => s.rateLimit ?? !!s.production;
 
 /** The provider sign-ins that are set up, for the sign-in page. */
 export const providersOf = (s: AuthSettings) => (['google', 'github', 'microsoft'] as const).filter((p) => s[p]);
@@ -96,11 +169,21 @@ export type BetterAuth = {
   registerConnection: (body: Record<string, unknown>, headers: Headers) => Promise<void>;
 };
 
-export async function createAuth(db: Db, s: AuthSettings, access: Access): Promise<BetterAuth> {
-  const resetTokens = new Map<string, string>();     // email → the reset token Better Auth just made (sendResetPassword)
+/** The secret that signs session cookies and makes the setup link: BETTER_AUTH_SECRET, required in production;
+ *  elsewhere one made on the first start and kept in the database. Settings the sign-in can't start with are refused
+ *  (SetupError). */
+export async function authSecret(db: Db, s: AuthSettings): Promise<string> {
   if (s.production && !s.secret) throw new SetupError('set BETTER_AUTH_SECRET (at least 32 random characters, e.g. openssl rand -base64 32) to sign people in');
   if (s.production && s.secret!.length < 32) throw new SetupError('BETTER_AUTH_SECRET is too short: use at least 32 random characters, e.g. openssl rand -base64 32');
   if (s.production && !s.baseURL) throw new SetupError('set BETTER_AUTH_URL to the console’s address, e.g. https://flags.example.com');
+  const problem = clientIpProblem(s);
+  if (problem) throw new SetupError(problem);
+  return s.secret ?? await localSecret(db);
+}
+
+export async function createAuth(db: Db, s: AuthSettings, access: Access): Promise<BetterAuth> {
+  const resetTokens = new Map<string, string>();     // email → the reset token Better Auth just made (sendResetPassword)
+  const secret = await authSecret(db, s);
   const microsoft = s.microsoft && { clientId: s.microsoft.clientId, clientSecret: s.microsoft.clientSecret, tenantId: s.microsoft.tenantId ?? 'common' };
 
   const auth = betterAuth({
@@ -111,7 +194,7 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
       allowedHosts: ['localhost', 'localhost:*', '127.0.0.1', '127.0.0.1:*'], protocol: 'http',
       fallback: `http://localhost:${process.env.PORT ?? 8787}`,       // a request without a Host header
     },
-    secret: s.secret ?? await localSecret(db),
+    secret,
     database: { dialect: dbDialect(db), type: 'postgres', transaction: false },
     telemetry: { enabled: false },
     emailAndPassword: {
@@ -129,10 +212,10 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
       ...(microsoft && { microsoft }),
     },
     trustedOrigins: s.trustedOrigins,
-    // said here rather than left to Better Auth's reading of NODE_ENV: rate limits on sign-in in production only,
+    // said here rather than left to Better Auth's reading of NODE_ENV: rate limits on sign-in as set (rateLimitsOn),
     // and the Origin check always (Better Auth would skip it when NODE_ENV=test)
-    rateLimit: { enabled: !!s.production },
-    advanced: { disableOriginCheck: false, ipAddress: ipAddressFor(s) },
+    rateLimit: { enabled: rateLimitsOn(s) },
+    advanced: { disableOriginCheck: false, ipAddress: ipAddressFor() },
     // nobody changes or deletes their own account here: an admin removes access (access.ts).
     // Single sign-on connections are managed by admins through the console's API (sso.ts), never these endpoints.
     disabledPaths: ['/delete-user', '/change-email', '/update-user', '/request-password-reset', '/forget-password', ...SSO_ADMIN_PATHS],
@@ -229,11 +312,11 @@ type Source = { action: string; method: string; sso?: { providerId: string } };
 function attemptOf(user: UserInfo, source: Source, ctx?: { headers?: Headers; request?: Request } | null): Attempt {
   const email = String(user.email ?? '');
   const account = source.action === 'create-user' ? 'new' : 'existing';  // else a returning sign-in, or a way in added
-  if (source.sso?.providerId) return { email, with: 'sso', account, connection: source.sso.providerId };
-  if (source.method === 'email-password') {
-    return { email, with: 'password', account, invite: ctx?.headers?.get(INVITE_HEADER) ?? ctx?.request?.headers.get(INVITE_HEADER) ?? undefined };
-  }
-  return { email, with: 'provider', account, emailVerified: user.emailVerified === true };
+  const headers = ctx?.headers ?? ctx?.request?.headers;
+  const setup = setupOf(headers);
+  if (source.sso?.providerId) return { email, with: 'sso', account, connection: source.sso.providerId, setup };
+  if (source.method === 'email-password') return { email, with: 'password', account, invite: headers?.get(INVITE_HEADER) ?? undefined, setup };
+  return { email, with: 'provider', account, emailVerified: user.emailVerified === true, setup };
 }
 
 /** Better Auth's accounts, for the access module (access.ts `Accounts`): auth_user, one per email; its sessions and
@@ -249,6 +332,12 @@ export const betterAuthAccounts: Accounts = {
   removeSignInsWith: async (q, connection) => {
     await q.query(`delete from auth_session where user_id in (select user_id from auth_account where provider_id = $1)`, [connection]);
     await q.query(`delete from auth_account where provider_id = $1`, [connection]);
+  },
+  // a connection now requires single sign-on: the sessions at its domains end (their ways in stay)
+  endSessionsAt: async (q, domains, except) => {
+    await q.query(`delete from auth_session where user_id in (select id from auth_user
+      where exists (select 1 from unnest($1::text[]) d where split_part(lower(email), '@', 2) = d or split_part(lower(email), '@', 2) like '%.' || d)
+        and not (lower(email) = any($2::text[])))`, [domains, except]);
   },
 };
 

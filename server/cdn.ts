@@ -3,15 +3,17 @@
 // minute. Without it nothing breaks: the CDN asks this server again after a minute.
 //
 // Which zone and token, first found:
-//   1. the server's environment, CF_ZONE_ID and CF_API_TOKEN (index.ts): shown in Settings → CDN, not changeable there;
+//   1. the server's: cloudflare()'s options in companyflags.config.ts, else CF_ZONE_ID and CF_API_TOKEN
+//      (plugins/cloudflare.ts). Shown in Settings → CDN, not changeable there;
 //   2. Settings → CDN: an admin saves them (cdn_setting). Saving checks them with Cloudflare first.
 // The token is kept on the server, like single sign-on client secrets: the console only ever sees its last 4 characters.
-// Only the server's own start gives this a way to reach Cloudflare (`fetch`); without it (tests) nothing goes out.
+// Only the plugin's `fetch` reaches Cloudflare; without one (tests) nothing goes out.
 
 import { all, HttpError, one, type Db } from './db.ts';
 import * as journal from './journal.ts';
 import type { Actor } from './layers.ts';
-import { CloudflareError, envTag, purgeTags, type CloudflareZone, type Purger } from './purge.ts';
+import type { OnPublish } from './plugin.ts';
+import { CloudflareError, envTag, purgeTags, type CloudflareZone } from './purge.ts';
 
 export type CdnSource = 'server' | 'console';
 export type CdnState = {
@@ -41,7 +43,7 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
   }
 
   /** The worker's purger: one environment's files, after its publish. 'off' when no CDN is set up. */
-  const purge: Purger = async (environment) => {
+  const purge: OnPublish = async (environment) => {
     const z = await zone();
     if (!z || !o.fetch) return 'off';
     await purgeTags(o.fetch, z, [envTag(environment)]);
@@ -64,7 +66,7 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
     }
   }
 
-  const fromServerError = () => new HttpError(409, 'The CDN is set on the server (CF_ZONE_ID and CF_API_TOKEN): change it there.');
+  const fromServerError = () => new HttpError(409, 'The CDN is set on the server (cloudflare() in companyflags.config.ts, or CF_ZONE_ID and CF_API_TOKEN): change it there.');
 
   return {
     purge,

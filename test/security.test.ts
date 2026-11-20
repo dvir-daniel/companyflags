@@ -176,6 +176,68 @@ test('replacing an entity’s link is a new version in every environment, so its
   assert.equal((await t.call('GET', old)).status, 404);
 });
 
+test('every wrong app link gets the same answer, so links can’t be used to find out which entities exist', async () => {
+  const fake = 'AAAAAAAAAAAAAAAAAAAAAA';
+  const answer = async (path: string) => { const r = await t.call('GET', path); return JSON.stringify([r.status, r.json]); };
+  const wrong = await answer(`/client/v1/flags/dev/web/no-such-entity/${fake}`);
+  assert.equal(wrong, JSON.stringify([404, { error: 'no file at this link' }]));
+  for (const path of [
+    `/client/v1/flags/dev/web/vandelay/${fake}`,                          // an entity that exists, a wrong secret
+    `/client/v1/flags/dev/zz-not-a-flag-set/vandelay/${fake}`,            // and a flag set that doesn't
+    `/client/v1/flags/dev/zz-not-a-flag-set/no-such-entity/${fake}`,
+    `/client/v1/flags/zz-not-an-env/web/vandelay/${fake}`,
+    (await t.link('dev', 'web', 'wonka')).replace('/web/', '/zz-not-a-flag-set/'),   // the right secret, a flag set that doesn't exist
+  ]) assert.equal(await answer(path), wrong, path);
+});
+
+test('an admin replaces every app link and token in an environment at once; the others go on', async () => {
+  const devLink = await t.link('dev', 'web', 'acme');
+  const prodLink = await t.link('prod', 'web', 'acme');
+  const { appToken } = await import('../server/delivery.ts');
+  const token = await appToken(t.db, 'dev', 'acme', 'web');
+  const ofrep = (bearer: string) => t.call('POST', '/ofrep/v1/evaluate/flags', { context: {} }, { authorization: `Bearer ${bearer}` });
+  assert.equal((await ofrep(token)).status, 200);
+  const revision = t.plane.get('dev').revision;
+  assert.equal((await t.as('alice').post('/environments/dev/links/rotate')).status, 403, 'admins only');
+  assert.equal((await t.as('dana').post('/environments/nope/links/rotate')).status, 404);
+  assert.equal((await t.as('dana').post('/environments/dev/links/rotate')).status, 200);
+  await t.settle();
+  assert.ok(t.plane.get('dev').revision > revision, 'a new version: published, and the CDN purged');
+  assert.equal((await t.call('GET', devLink)).status, 404, 'the old link');
+  assert.equal((await ofrep(token)).status, 401, 'the old token');
+  const newLink = await t.link('dev', 'web', 'acme');
+  assert.notEqual(newLink, devLink);
+  assert.equal((await t.call('GET', newLink)).status, 200, 'the new link');
+  assert.equal((await ofrep(await appToken(t.db, 'dev', 'acme', 'web'))).status, 200, 'the new token');
+  assert.equal((await t.call('GET', prodLink)).status, 200, 'another environment’s links go on');
+  const h = (await t.as('dana').get('/history?environment=dev')).json as any[];
+  assert.ok(h.some((x) => x.changeType === 'environment.links_replaced' && x.changedBy === 'dana'), 'in History');
+});
+
+test('a body larger than its address allows is refused as it comes, even sent in chunks with no length', async () => {
+  // a body made as it is read: how much of it the server read
+  const endless = (chunk = 64 * 1024, total = 64 * 1024 * 1024) => {
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) { if (sent >= total) { c.close(); return; } sent += chunk; c.enqueue(new Uint8Array(chunk).fill(97)); },
+    });
+    return { body, sent: () => sent };
+  };
+  const post = (path: string, body: ReadableStream<Uint8Array> | string, headers: Record<string, string> = {}) => t.app.request(path,
+    { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body, duplex: 'half' } as RequestInit);
+  for (const [path, limit] of [['/hooks/v1/ffh_1_AAAAAAAAAAAAAAAAAAAAAAAAAAAA', 1000 * 1024], ['/api/auth/sign-in/email', 256 * 1024],
+    ['/ofrep/v1/evaluate/flags', 64 * 1024], ['/api/flags', 1024 * 1024]] as const) {
+    const b = endless();
+    const r = await post(path, b.body);
+    assert.equal(r.status, 413, path);
+    assert.match(((await r.json()) as { error: string }).error, /the request body is larger than/);
+    assert.ok(b.sent() <= limit + 2 * 64 * 1024, `${path}: read ${b.sent()} bytes of 64 MB`);
+  }
+  const said = await post('/ofrep/v1/evaluate/flags', '{}', { 'content-length': String(10 * 1024 * 1024) });
+  assert.equal(said.status, 413, 'a length over the limit: refused before reading');
+  assert.equal((await post('/ofrep/v1/evaluate/flags', JSON.stringify({ context: {} }))).status, 401, 'a body within it goes on');
+});
+
 test('API keys: listed without their secret; revoked ones say so', async () => {
   const made = (await t.as('dana').post('/api-keys', { environment: 'dev', project: 'server-ds', scope: 'entity', entity: 'acme', label: 'acme backend' })).json;
   await t.as('dana').post(`/api-keys/${made.id}/revoke`);
@@ -232,6 +294,9 @@ test('a % of devices is saved with hash version 2; a file that failed to build i
   const failed = await t.call('GET', link);
   assert.deepEqual([failed.status, failed.json], [500, { error: 'internal error' }], 'nothing about the server’s insides');
   assert.ok(logs.some((l) => /unsupported hash_version 3/.test(l) && /at /.test(l)), 'logged, with its stack');
+  const secret = link.split('/').pop()!;
+  assert.ok(logs.every((l) => !l.includes(secret)), 'never the link’s secret: the log names the route');
+  assert.ok(logs.some((l) => l.includes('GET /client/v1/flags/:env/:app/:entity/:secret')));
   // …and isn't kept: once the snapshot is right again, the same publish's file is built
   rule.split!.hashVersion = 2;
   assert.equal((await t.call('GET', link)).status, 200);

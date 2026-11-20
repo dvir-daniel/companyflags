@@ -1,4 +1,4 @@
-// Bucketing hash contract (M6). Each version maps a 32-bit MurmurHash3 (x86, seed 0) to [0, 10000) as
+// Bucketing hash contract. Each version maps a 32-bit MurmurHash3 (x86, seed 0) to [0, 10000) as
 // floor(hash × 10000 / 2^32), over the text `${salt}/${unit}`:
 //   hash_version 2: the hash of its deterministic CBOR encoding (a text-string head, then the UTF-8 bytes). This is
 //     flagd's `fractional` with the bucketing value {"cat": [salt, "/", unit]} and weights out of 10000, so a backend

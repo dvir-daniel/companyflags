@@ -39,7 +39,8 @@ export function DraftBar({ env, onReview, className }: { env: string; onReview: 
         <span className="truncate text-ink-2 max-md:hidden">{s.flags.map((g) => g.key).join(', ')}</span>
       </span>
       <button type="button" className={barTextButton} onClick={discardAll}>Discard draft</button>
-      <Button onClick={onReview}>Review and publish</Button>
+      {/* the page bar's Publish changes (or Request review) is the one primary: this opens the same review */}
+      <Button variant="secondary" onClick={onReview}>Review</Button>
     </div>
   );
 }

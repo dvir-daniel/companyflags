@@ -1,6 +1,6 @@
-# CompanyFlags
+# Glossary
 
-Feature flags and remote config: one set of rules for everyone, optional settings per entity of the installation's own dimensions, reviewed changes in protected environments, and answers read with OpenFeature (OFREP, flagd) or from a values-only file per entity and flag set.
+The words CompanyFlags uses, and the ones it avoids. CompanyFlags is feature flags and remote config: one set of rules for everyone, optional settings per entity of the installation's own dimensions, reviewed changes in protected environments, and answers read with OpenFeature (OFREP, flagd) or from a values-only file per entity and flag set.
 
 ## Dimensions
 
@@ -27,8 +27,8 @@ One step of the entity chain; a level can decide, pass to the next, or be skippe
 _Avoid_: tier, stage
 
 **Override for everyone**:
-A rule that applies before any entity's own settings and that no entity can override.
-_Avoid_: locked rule, global override
+A rule that applies before any entity's own settings and that no entity can override (a locked rule).
+_Avoid_: global override
 
 **Rules for everyone**:
 The rules that apply after the own settings of an entity and those above it have not decided.
@@ -96,7 +96,7 @@ An environment where a change needs at least one approval, by someone other than
 _Avoid_: prod (as a synonym)
 
 **Break-glass**:
-An on-call person turning a flag off in a protected environment without review, with a stated reason that is recorded.
+On call or an admin applying one change at once in a protected environment, with a recorded reason: turning a kill switch or ops flag off, or rolling a version release back.
 _Avoid_: emergency override, bypass
 
 **Version**:
@@ -144,8 +144,12 @@ The decision whether someone may sign in or make an account, made in one place f
 _Avoid_: join policy, sign-up check
 
 **First admin**:
-Whoever makes the first account on a new install, or, on a database that has people but no accounts yet, an existing admin.
+Whoever makes the first account with the setup link: on a new install, whoever opens it; on a database that has people but no accounts yet, an existing admin.
 _Avoid_: owner, superuser
+
+**Setup link**:
+The link a new server prints at every start while nobody has an account (`/api/setup/<secret>`); only it can make the first account, the admin's. Its secret is made from `BETTER_AUTH_SECRET`, and it stops working once the first account exists.
+_Avoid_: bootstrap token, claim link
 
 **Signup domain**:
 An email domain whose people may join as viewers when Google, GitHub or Microsoft confirms their email.
@@ -156,7 +160,7 @@ Your organization's identity provider, added by an admin for its email domains; 
 _Avoid_: SSO provider (in the console), IdP config
 
 **Require single sign-on**:
-A connection's setting that stops password sign-ins and password accounts at its domains, except for admins.
+A connection's setting that stops password, Google, GitHub and Microsoft sign-ins and password accounts at its domains, except for admins; turning it on signs the others out.
 _Avoid_: SSO only, enforce SSO
 
 **Password reset link**:

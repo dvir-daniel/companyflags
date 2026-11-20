@@ -16,7 +16,7 @@
 @source "./components";
 
 /* Two themes, light and dark, measured from better-auth.com. <html data-theme="light|dark"> picks one;
-   src/lib/theme.ts sets it from the person's choice (System, Light or Dark) before the first paint. */
+   src/lib/theme.ts sets it from the person's choice (Light or Dark) before the first paint. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* ---- light (the default until the theme script runs) */
@@ -75,7 +75,7 @@
   --ink-1: rgba(250, 250, 250, 0.8);
   --ink-nav: rgba(250, 250, 250, 0.65);
   --ink-2: #a3a3a3;
-  --ink-3: #737373;
+  --ink-3: #808080; /* 5.3:1 on the page, 5.0:1 on a panel: small help text and table heads read (WCAG AA) */
   --ink-4: #4d4d4d;
   --subtitle: #999999;
   --rule: #262626;
@@ -331,35 +331,8 @@
   }
 }
 
-/* Narrow windows (a phone, a small browser preview): the sidebar of an AppFrame becomes a row of
-   links under the title bar. Desktop windows never get this narrow. */
-@media (max-width: 767px) {
-  @layer utilities {
-    [data-slot="app-frame"] [data-slot="sidebar"] {
-      flex-direction: row;
-      gap: 0;
-      padding: 0 4px;
-      overflow-x: auto;
-      overflow-y: hidden;
-      border-right: 0;
-      border-bottom: 1px solid var(--rule);
-      scrollbar-width: none;
-    }
-    [data-slot="app-frame"] [data-slot="sidebar"] :is([data-slot="sidebar-search"], [data-slot="sidebar-label"], [data-slot="sidebar-foot"]) {
-      display: none;
-    }
-    [data-slot="app-frame"] [data-slot="sidebar"] > a {
-      height: 40px;
-      width: auto;
-      padding-block: 0;
-      white-space: nowrap;
-    }
-    [data-slot="app-frame"] [data-slot="sidebar"] > a[aria-current="page"] {
-      background: transparent;
-      box-shadow: inset 0 -2px 0 var(--underline);
-    }
-  }
-}
+/* Narrow windows (a phone, under 768px): an app hides its sidebar and footer and shows its own bottom tab bar
+   (the console's MobileNav, web/src/shell.tsx; DESIGN.md "Patterns"). Nothing here changes the sidebar itself. */
 
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse-live {

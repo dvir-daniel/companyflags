@@ -26,12 +26,12 @@ the console and serves it with the API on http://localhost:8787, as in productio
 
 | Path | What it is |
 |---|---|
-| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, app files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` reads `companyflags.config.ts`; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
+| `server/` | The server: Hono on Node. `evaluator.ts` decides every answer; `api.ts` is the console's API; `plugin.ts` and `plugins/` are the plugins (OFREP in `ofrep.ts`, app files and flagd JSON in `delivery.ts`, the Cloudflare purge in `cdn.ts`); `config.ts` is the type of `companyflags.config.ts` and `configFile.ts` reads it; `cli.ts` is the `companyflags` command, with flags as code in `flagsAsCode.ts`; `access.ts` and `policy.ts` decide who may do what; `migrations/` is the schema |
 | `web/` | The console: React 19, Vite, Tailwind 4 |
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
 | `test/` | The server's and console's tests (`node --test`) |
 | `docs/` | The documentation site (VitePress); `docs/design/` holds design notes and decision records |
-| `examples/` | Small apps that use CompanyFlags |
+| `GLOSSARY.md` | Words we use, and the ones we avoid |
 
 ## Checks
 
@@ -64,7 +64,7 @@ CI runs all of these on every pull request.
 - **Console files.** A `.tsx` file exports only components, so React Fast Refresh can swap it in place. Hooks, class
   strings and helpers go in a `.ts` file beside it (`uiKit.ts`, `pages/settingsKit.ts`).
 - **Plain words.** Console text and docs say what happens in short, plain sentences: "Production needs an approval",
-  not "Approval workflow is enforced for protected environments".
+  not "Approval workflow is enforced for protected environments". Words we use: [GLOSSARY.md](GLOSSARY.md).
 - **Tests come with the change.** Anything about who may do what (sign-in, roles, API keys, links) or about what a
   device gets needs a test that would fail without your change.
 

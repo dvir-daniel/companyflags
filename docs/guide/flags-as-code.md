@@ -82,5 +82,8 @@ Plan on every pull request, push when it merges. The CLI works on the database d
   env: { DATABASE_URL: "${{ secrets.FLAGS_DATABASE_URL }}" }
 ```
 
+`FLAGS_DATABASE_URL` is the database itself, not an API key: anyone who can change the workflow can read every secret
+in it. Keep it in a protected GitHub environment and, if you can, use a role that isn't the database owner.
+
 Use the image of the version your server runs: the CLI refuses a database that is missing migrations, and an older
 CLI refuses a database a newer server migrated. The running server publishes what a push changes within a second.

@@ -20,7 +20,7 @@ function ThemeToggle({ compact, className, ...props }: React.ComponentProps<"but
       title={`Switch to the ${other} theme`}
       aria-label={`${label} theme. Switch to the ${other} theme.`}
       className={cn(
-        "flex cursor-default items-center gap-2 border-0 border-l border-sep bg-transparent px-4 font-mono text-xs tracking-[0.6px] text-ink/50 uppercase outline-none hover:text-ink",
+        "flex cursor-default items-center gap-2 border-0 border-l border-sep bg-transparent px-4 font-mono text-xs tracking-[0.6px] text-ink-nav uppercase outline-none hover:text-ink",
         "focus-visible:outline-1 focus-visible:-outline-offset-2 focus-visible:outline-ink",
         className
       )}

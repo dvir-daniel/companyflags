@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The companyflags command, like Better Auth's CLI: it reads companyflags.config.ts (config.ts) and works on the
+// The companyflags command, like Better Auth's CLI: it reads companyflags.config.ts (configFile.ts) and works on the
 // database the server uses. With embedded Postgres (no DATABASE_URL) the server must be stopped first: its files can
 // be open in one process at a time.
 //
@@ -13,11 +13,12 @@
 
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { connectDb, FolderInUseError, type Db } from './db.ts';
 import { migrate, MigrationError, pendingMigrations, readMigrations } from './migrate.ts';
-import { CONFIG_FILE, ConfigError, loadConfig, resolveConfig } from './config.ts';
+import { ConfigError } from './config.ts';
+import { CONFIG_FILE, loadConfig, resolveConfig, SERVER_FOLDER } from './configFile.ts';
 import { journaled } from './journal.ts';
 import { describe, planFlags, pullFlags, pushFlags, type Done, type Plan } from './flagsAsCode.ts';
 
@@ -71,31 +72,49 @@ export async function main(argv: string[], o: { cwd?: string; env?: NodeJS.Proce
   const out: Print = o.out ?? ((line) => process.stdout.write(`${line}\n`));
   const err: Print = o.err ?? ((line) => process.stderr.write(`${line}\n`));
   const [command, ...rest] = argv;
-  const flag = (name: string) => { const i = rest.indexOf(name); if (i < 0) return undefined; const v = rest[i + 1]; rest.splice(i, 2); return v; };
+  // Each command takes out the options and arguments it knows; anything left is a mistake, never ignored.
+  const flag = (name: string) => {
+    const i = rest.indexOf(name);
+    if (i < 0) return undefined;
+    const v = rest[i + 1];
+    if (v === undefined || v.startsWith('-')) throw new UsageError(`${name} needs a value, e.g. ${name} <name>`);
+    rest.splice(i, 2);
+    return v;
+  };
   const has = (name: string) => { const i = rest.indexOf(name); if (i < 0) return false; rest.splice(i, 1); return true; };
+  const nothingElse = (what: string) => {
+    if (rest.length) throw new UsageError(`${what}: unknown ${rest[0].startsWith('-') ? 'option' : 'argument'} "${rest[0]}" (see companyflags help)`);
+  };
   try {
     switch (command) {
       case undefined: case 'help': case '--help': case '-h':
         out(HELP);
         return 0;
       case 'start': {
+        nothingElse('start');
         const { start } = await import('./index.ts');
         await start({ cwd, env });
         return -1;                                    // keeps running
       }
       case 'init': {
+        const force = has('--force');
+        nothingElse('init');
         const file = resolve(cwd, CONFIG_FILE);
-        if (existsSync(file) && !has('--force')) throw new UsageError(`${CONFIG_FILE} is already here (--force writes over it)`);
+        if (existsSync(file) && !force) throw new UsageError(`${CONFIG_FILE} is already here (--force writes over it)`);
         writeFileSync(file, CONFIG_TEMPLATE);
         out(`wrote ${file}`);
+        // its imports (companyflags/config, /plugins) only resolve inside the server's folder
+        if (!inside(SERVER_FOLDER, cwd)) err(`warning: this folder isn’t inside the server’s folder (${SERVER_FOLDER}), so the server can’t load this file: move it there (/app in Docker)`);
         out('next: set BETTER_AUTH_SECRET (companyflags secret makes one), then companyflags start');
         return 0;
       }
       case 'secret':
+        nothingElse('secret');
         out(randomBytes(32).toString('base64url'));
         return 0;
       case 'migrate': {
         const check = has('--check');
+        nothingElse('migrate');
         return await withDb(cwd, env, false, async (db) => {
           if (check) {
             const pending = await pendingMigrations(db);
@@ -109,8 +128,10 @@ export async function main(argv: string[], o: { cwd?: string; env?: NodeJS.Proce
       }
       case 'flags': {
         const sub = rest.shift();
+        if (sub !== 'pull' && sub !== 'plan' && sub !== 'push') throw new UsageError('flags: pull, plan or push');
         const as = flag('--as') ?? env.USER ?? 'cli';
         const file = resolve(cwd, rest.shift() ?? 'flags.json');
+        nothingElse(`flags ${sub}`);
         if (sub === 'pull') {
           return await withDb(cwd, env, true, async (db) => {
             const f = await pullFlags(db);
@@ -119,7 +140,6 @@ export async function main(argv: string[], o: { cwd?: string; env?: NodeJS.Proce
             return 0;
           });
         }
-        if (sub !== 'plan' && sub !== 'push') throw new UsageError('flags: pull, plan or push');
         if (!existsSync(file)) throw new UsageError(`no ${file}: companyflags flags pull writes one`);
         let parsed: unknown;
         try { parsed = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} isn’t valid JSON: ${(e as Error).message}`); }
@@ -149,6 +169,13 @@ export async function main(argv: string[], o: { cwd?: string; env?: NodeJS.Proce
     }
     throw e;
   }
+}
+
+/** Whether a folder is the server's folder or inside it (through links too). */
+function inside(root: string, dir: string) {
+  const real = (p: string) => { try { return realpathSync(p); } catch { return resolve(p); } };
+  const r = relative(real(root), real(dir));
+  return r === '' || (r !== '..' && !r.startsWith(`..${sep}`) && !isAbsolute(r));
 }
 
 /** The configured database, opened for one command. `current`: it must have every migration (flags need today's

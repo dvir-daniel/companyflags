@@ -13,13 +13,17 @@ import { HelpTip } from "./tooltip.tsx"
  * checkbox column, sortable columns, a bulk-action bar while rows are selected, and keyboard use
  * (j/k or ↑/↓ to move, x to select, Enter to open, Esc to clear).
  *
+ * The head's parts carry their table roles (SortHeader and ColumnHead are column heads, RowCheck a cell, or a column
+ * head with `head`), so a page builds its rows from them with no roles of its own around them.
+ *
  * Layout is the page's: give the head and the rows the same grid-cols, e.g.
  *   const cols = "grid grid-cols-[40px_minmax(0,2fr)_100px_…]"
  *   <div role="table"><div role="row" className={cn(cols, tableHeadClass)}>…</div>
  *     {rows.map((r, i) => <div role="row" className={cn(cols, tableRowClass)} data-active={i === active} aria-selected={…}>…)}</div>
  */
 
-/** A column head that sorts: click to sort by it, again to flip the direction. `help` adds a "?" that explains the column. */
+/** A column head that sorts: click to sort by it, again to flip the direction. `help` adds a "?" that explains the column.
+ *  The sort is said on the head itself (aria-sort belongs on a column head, not on its button). */
 function SortHeader<K extends string>({
   label,
   sortKey,
@@ -38,26 +42,20 @@ function SortHeader<K extends string>({
   className?: string
 }) {
   const on = sort === sortKey
-  const button = (
-    <button
-      type="button"
-      onClick={() => onSort(sortKey, on && dir === "asc" ? "desc" : "asc")}
-      aria-sort={on ? (dir === "asc" ? "ascending" : "descending") : undefined}
-      className={cn(
-        "inline-flex cursor-default items-center gap-1 border-0 bg-transparent p-0 font-mono text-11 tracking-[0.55px] uppercase hover:text-ink",
-        on ? "text-ink" : "text-ink-3",
-        className
-      )}
-    >
-      {label}
-      {on ? dir === "asc" ? <ArrowUpIcon aria-hidden className="size-3" /> : <ArrowDownIcon aria-hidden className="size-3" /> : null}
-    </button>
-  )
-  if (!help) return button
   return (
-    <span className="inline-flex items-center gap-1">
-      {button}
-      <HelpTip>{help}</HelpTip>
+    <span role="columnheader" aria-sort={on ? (dir === "asc" ? "ascending" : "descending") : undefined} className={cn("inline-flex items-center gap-1", className)}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey, on && dir === "asc" ? "desc" : "asc")}
+        className={cn(
+          "inline-flex cursor-default items-center gap-1 border-0 bg-transparent p-0 font-mono text-11 tracking-[0.55px] uppercase hover:text-ink",
+          on ? "text-ink" : "text-ink-3"
+        )}
+      >
+        {label}
+        {on ? dir === "asc" ? <ArrowUpIcon aria-hidden className="size-3" /> : <ArrowDownIcon aria-hidden className="size-3" /> : null}
+      </button>
+      {help ? <HelpTip>{help}</HelpTip> : null}
     </span>
   )
 }
@@ -65,7 +63,7 @@ function SortHeader<K extends string>({
 /** A column head that doesn't sort, with an optional "?" that explains it. */
 function ColumnHead({ label, help, className }: { label: string; help?: React.ReactNode; className?: string }) {
   return (
-    <span className={cn("inline-flex items-center gap-1", className)}>
+    <span role="columnheader" className={cn("inline-flex items-center gap-1", className)}>
       {label}
       {help ? <HelpTip>{help}</HelpTip> : null}
     </span>
@@ -95,10 +93,10 @@ function TableSkeleton({ cols, cells, rows = 8 }: { cols: string; cells: string[
   )
 }
 
-/** The checkbox in a row or in the header ("select all on this page"). */
-function RowCheck({ checked, indeterminate, onChange, label }: { checked: boolean; indeterminate?: boolean; onChange: () => void; label: string }) {
+/** The checkbox in a row (a cell) or in the header ("select all on this page": pass `head`, a column head). */
+function RowCheck({ checked, indeterminate, onChange, label, head }: { checked: boolean; indeterminate?: boolean; onChange: () => void; label: string; head?: boolean }) {
   return (
-    <span className="flex items-center" onClick={(e) => e.stopPropagation()}>
+    <span role={head ? "columnheader" : "cell"} className="flex items-center" onClick={(e) => e.stopPropagation()}>
       <Checkbox checked={checked} indeterminate={indeterminate} onCheckedChange={() => onChange()} aria-label={label} />
     </span>
   )

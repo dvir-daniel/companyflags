@@ -36,7 +36,7 @@ Each entity has a secret **app link** per environment. An app uses it in one of 
 | Form | Looks like | Used by |
 |---|---|---|
 | OpenFeature token | `ffl_prod.web.acme.Vx8…` | OpenFeature's OFREP providers: `Authorization: Bearer <token>`. One per flag set: a `web` token can't read `ios` |
-| App file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [app file](/sdk/app-file) from your CDN |
+| App file address | `/client/v1/flags/prod/web/acme/Q2k…` | Code that reads the [app file](/sdk/app-file) from your CDN. The flag set is in the path, not in the secret: the same secret reads the entity's other flag sets for apps |
 
 Your backend knows which entity someone belongs to. When they sign in, it asks CompanyFlags for the entity's link
 with its API key, naming the app's flag set, and returns the token with the session:
@@ -46,7 +46,7 @@ with its API key, naming the app's flag set, and returns the token with the sess
 const res = await fetch(`https://flags.example.com/sdk/v1/links/company/${user.companyKey}?flagSet=web`, {
   headers: { Authorization: `Bearer ${process.env.FLAGS_API_KEY}` },
 });
-const { token } = await res.json();     // ffl_prod.web.acme.Q2k…   (and `path`, the app file's address)
+const { token } = await res.json();     // ffl_prod.web.acme.Vx8…   (and `path`, the app file's address)
 session.flagsToken = token;
 ```
 
