@@ -143,7 +143,7 @@ export function firstPaths(hash: string, meta: Meta): string[] {
     case 'keys': return [KEYS_PATH];
     case 'tokens': return [TOKENS_PATH];
     case 'approvals': return [CHANGE_SETS_PATH];
-    case 'settings': return a && a !== 'dimensions' ? [] : [SSO_PATH];   // Settings' single sign-on; its People page needs only /meta
+    case 'settings': return a === 'sso' ? [SSO_PATH] : [];   // Settings → Single sign-on; the other settings pages are drawn from /meta or load their own
     default: return [];
   }
 }

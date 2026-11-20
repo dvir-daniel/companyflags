@@ -18,3 +18,23 @@ export function useRefresh() {
   const { reload, toast } = useApp();
   return () => reload().catch(() => toast('Saved. This page couldn’t refresh: reload it to see the change.', 'err'));
 }
+
+/** Settings' pages, in the order of its menu (#/settings/<key>; #/settings is the first). CDN shows when the server runs
+ *  the Cloudflare plugin. */
+export const SETTINGS = [
+  { key: 'environments', label: 'Environments' },
+  { key: 'dimensions', label: 'Dimensions' },
+  { key: 'services', label: 'Services' },
+  { key: 'people', label: 'People' },
+  { key: 'sso', label: 'Single sign-on' },
+  { key: 'appearance', label: 'Appearance' },
+  { key: 'cdn', label: 'CDN', plugin: 'cloudflare' },
+] as const;
+export type SettingsKey = (typeof SETTINGS)[number]['key'];
+/** The pages this server has. */
+export const settingsPages = (plugins: string[] | undefined) =>
+  SETTINGS.filter((s) => !('plugin' in s) || (plugins ?? []).includes(s.plugin));
+/** The page an address opens: its key, or the first page for #/settings and anything unknown. */
+export const settingsKey = (sub: string | undefined): SettingsKey =>
+  (SETTINGS.find((s) => s.key === sub)?.key ?? 'environments');
+export const isSettingsKey = (sub: string | undefined) => SETTINGS.some((s) => s.key === sub);

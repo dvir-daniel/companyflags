@@ -12,18 +12,19 @@ import { plural } from '../text.ts';
 import { Actions, Badge, Empty, ErrorList, Field, Heading, Modal } from '../ui.tsx';
 import { copyText, useAsync } from '../uiKit.ts';
 import { everyoneFilePath } from '../paths.ts';
-import { ROLE_OPTIONS, roleName, selectField, useRefresh } from './settingsKit.ts';
+import { ROLE_OPTIONS, selectField, SETTINGS, settingsKey, useRefresh } from './settingsKit.ts';
 import { SingleSignOn } from './sso.tsx';
 import { Cdn } from './cdn.tsx';
 import { DimensionsSection } from './dimensions.tsx';
 import { AppearanceSection } from './appearance.tsx';
-import { needsReview, roleInfo, ROLES } from '../../../server/policy.ts';
+import { needsReview, roleInfo } from '../../../server/policy.ts';
 
 /*
- * Settings: what an admin sets up once. Environments (each flag has its own settings in each one), dimensions (what
- * config is served per: dimensions.tsx, #/settings/dimensions scrolls to it), services (what reads flags, each with its
- * own keys) and people: who may sign in, and their roles. Everyone can see it; only admins change it.
- * People have a page of their own (People.tsx, #/settings/people): with single sign-on there can be hundreds.
+ * Settings: what an admin sets up once, one page each (#/settings/<page>, settingsKit.ts SETTINGS), with Settings' own
+ * menu beside them (settingsFrame.tsx): environments (each flag has its own settings in each one), dimensions (what
+ * config is served per: dimensions.tsx), services (what reads flags, each with its own keys), people (People.tsx),
+ * single sign-on (sso.tsx), appearance (appearance.tsx) and the CDN (cdn.tsx). Everyone can see them; only admins
+ * change them.
  */
 
 const approvalsText = (n: number) => (n === 0 ? 'None: changes go out at once' : `${plural(n, 'approval')} before a change goes out`);
@@ -33,91 +34,71 @@ const MD = 'max-md:hidden';
 
 type Env = Meta['environments'][number];
 
-// `section`: 'dimensions' opens the page at its Dimensions (the sidebar's way there before there are any)
+// One page of Settings (settingsFrame.tsx draws the menu beside it): `section` is the address's second part.
 export function Settings({ section }: { section?: string }) {
   const { meta } = useApp();
   const admin = roleInfo(meta.me.role).changesSettings;
-  const [envDrawer, setEnvDrawer] = useState<{ env: Env | null } | null>(null);
-
+  const at = settingsKey(section);
+  const label = SETTINGS.find((s) => s.key === at)?.label ?? 'Settings';
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <PageBar title="Settings" count={admin ? undefined : 'Only admins can change these'} />
+      <PageBar crumbs={<a href="#/settings" className="text-ink-3 no-underline hover:text-ink hover:no-underline">Settings</a>} title={label}
+        count={admin ? undefined : 'Only admins can change these'} />
       <div className="grid gap-10 px-6 py-6 max-sm:px-4">
-        <section aria-labelledby="s-env" className="grid gap-3">
-          <Heading id="s-env" title="Environments" action={admin && <Button onClick={() => setEnvDrawer({ env: null })}>+ Add environment</Button>}>
-            Each flag has its own settings in each environment. Where approvals are needed, changes are reviewed and confirmed before they go out.
-          </Heading>
-          {meta.environments.length === 0 ? (
-            <Empty action={admin ? <Button onClick={() => setEnvDrawer({ env: null })}>+ Add environment</Button> : undefined}>
-              No environments yet. Most teams start with Development and Production.
-            </Empty>
-          ) : (
-            <div role="table" aria-label="Environments">
-              <div role="row" className={cn(ENV_COLS, tableHeadClass)}>
-                <span role="columnheader">Name</span><span role="columnheader" className={MD}>Key</span>
-                <span role="columnheader" className={MD}>Approvals</span><span />
-              </div>
-              {meta.environments.map((e) => (
-                <div key={e.key} role="row" className={cn(ENV_COLS, tableRowClass)}>
-                  <span role="cell" className="min-w-0 truncate font-medium">{e.name}</span>
-                  <code role="cell" className={cn(MD, 'truncate font-mono text-13 text-ink-2')}>{e.key}</code>
-                  <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{needsReview(e) ? <Badge kind="danger">{approvalsText(e.minApprovals)}</Badge> : approvalsText(0)}</span>
-                  <span role="cell" className="text-right">{admin && <Button variant="secondary" onClick={() => setEnvDrawer({ env: e })}>Edit</Button>}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <DimensionsSection admin={admin} focus={section === 'dimensions'} />
-
-        <ServicesSection admin={admin} />
-
-        <section aria-labelledby="s-people" className="grid gap-3">
-          <Heading id="s-people" title="People" action={<Button variant="secondary" onClick={() => go('settings/people')}>{admin ? 'Manage people' : 'See everyone'}</Button>}>
-            Who may sign in, and their roles. {admin ? 'Add people by email with their role: each gets an invite link to join. ' : 'An admin adds people and gives them a role. '}
-            With single sign-on, people at your organization’s domains join on their own as viewers.
-          </Heading>
-          <PeopleSummary users={meta.users} />
-        </section>
-
-        <section aria-labelledby="s-tokens" className="grid gap-3">
-          <Heading id="s-tokens" title="Access tokens" action={<Button variant="secondary" onClick={() => go('tokens')}>{admin ? 'Manage tokens' : 'Your tokens'}</Button>}>
-            A token acts as you, with a role up to yours, for scripts, the CLI and MCP clients. Everyone makes their own{admin ? '; you can see and revoke everyone’s' : ''}.
-          </Heading>
-        </section>
-
-        <SingleSignOn />
-
-        <AppearanceSection />
-
+        {at === 'environments' && <><EnvironmentsSection admin={admin} /><TokensNote admin={admin} /></>}
+        {at === 'dimensions' && <DimensionsSection admin={admin} />}
+        {at === 'services' && <ServicesSection admin={admin} />}
+        {at === 'sso' && <SingleSignOn />}
+        {at === 'appearance' && <AppearanceSection />}
         {/* the Cloudflare plugin's settings (server/plugins/cloudflare.ts), when this server runs it */}
-        {meta.plugins?.includes('cloudflare') && <Cdn />}
+        {at === 'cdn' && (meta.plugins?.includes('cloudflare') ? <Cdn /> : <Empty>This server runs without the Cloudflare plugin.</Empty>)}
       </div>
-
-      {/* the forms are mounted only while open, so each opening starts fresh */}
-      {envDrawer && <EnvironmentDrawer key={envDrawer.env?.key ?? 'new'} env={envDrawer.env} onClose={() => setEnvDrawer(null)} />}
     </div>
   );
 }
 
-/** Everyone at a glance: how many, by role, and who can't sign in yet. The list itself is on the People page. */
-function PeopleSummary({ users }: { users: User[] }) {
-  const can = users.filter((u) => u.status !== 'removed');
-  const byRole = ROLES.map((r) => [r, can.filter((u) => u.role === r).length] as const).filter(([, n]) => n > 0);
-  const invited = users.filter((u) => u.status === 'invited').length;
-  const removed = users.length - can.length;
+function EnvironmentsSection({ admin }: { admin: boolean }) {
+  const { meta } = useApp();
+  const [envDrawer, setEnvDrawer] = useState<{ env: Env | null } | null>(null);
   return (
-    <a href="#/settings/people" className="flex flex-wrap items-baseline gap-x-6 gap-y-2 border border-grid px-5 py-3.5 text-ink no-underline transition-colors duration-150 hover:bg-wash hover:no-underline max-sm:px-4">
-      <span className="text-sm font-medium">{plural(can.length, 'person', 'people')}</span>
-      {byRole.map(([r, n]) => {
-        const role = roleName(r).toLowerCase();
-        // "41 on call", but "200 viewers"
-        return <span key={r} className="text-13 text-ink-2"><span className="font-mono text-ink">{n.toLocaleString()}</span> {n === 1 || r === 'oncall' ? role : `${role}s`}</span>;
-      })}
-      {invited > 0 && <span className="text-13 text-flag">{invited.toLocaleString()} invited</span>}
-      {removed > 0 && <span className="text-13 text-ink-3">{removed.toLocaleString()} without access</span>}
-    </a>
+    <section aria-labelledby="s-env" className="grid gap-3">
+      <Heading id="s-env" title="Environments" action={admin && <Button onClick={() => setEnvDrawer({ env: null })}>+ Add environment</Button>}>
+        Each flag has its own settings in each environment. Where approvals are needed, changes are reviewed and confirmed before they go out.
+      </Heading>
+      {meta.environments.length === 0 ? (
+        <Empty action={admin ? <Button onClick={() => setEnvDrawer({ env: null })}>+ Add environment</Button> : undefined}>
+          No environments yet. Most teams start with Development and Production.
+        </Empty>
+      ) : (
+        <div role="table" aria-label="Environments">
+          <div role="row" className={cn(ENV_COLS, tableHeadClass)}>
+            <span role="columnheader">Name</span><span role="columnheader" className={MD}>Key</span>
+            <span role="columnheader" className={MD}>Approvals</span><span />
+          </div>
+          {meta.environments.map((e) => (
+            <div key={e.key} role="row" className={cn(ENV_COLS, tableRowClass)}>
+              <span role="cell" className="min-w-0 truncate font-medium">{e.name}</span>
+              <code role="cell" className={cn(MD, 'truncate font-mono text-13 text-ink-2')}>{e.key}</code>
+              <span role="cell" className={cn(MD, 'text-13 text-ink-2')}>{needsReview(e) ? <Badge kind="danger">{approvalsText(e.minApprovals)}</Badge> : approvalsText(0)}</span>
+              <span role="cell" className="text-right">{admin && <Button variant="secondary" onClick={() => setEnvDrawer({ env: e })}>Edit</Button>}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* the form is mounted only while open, so each opening starts fresh */}
+      {envDrawer && <EnvironmentDrawer key={envDrawer.env?.key ?? 'new'} env={envDrawer.env} onClose={() => setEnvDrawer(null)} />}
+    </section>
+  );
+}
+
+/** Where access tokens are: each person's own, from their account menu. */
+function TokensNote({ admin }: { admin: boolean }) {
+  return (
+    <section aria-labelledby="s-tokens" className="grid gap-3">
+      <Heading id="s-tokens" title="Access tokens" action={<Button variant="secondary" onClick={() => go('tokens')}>{admin ? 'Manage tokens' : 'Your tokens'}</Button>}>
+        A token acts as you, with a role up to yours, for scripts, the CLI and MCP clients. Everyone makes their own from their account menu{admin ? '; you can see and revoke everyone’s' : ''}.
+      </Heading>
+    </section>
   );
 }
 

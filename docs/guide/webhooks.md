@@ -6,7 +6,7 @@ system you're [moving from](/guide/migration). **In**: another system posts its 
 Webhooks are the `webhooks()` plugin. It runs unless your config file lists plugins without it. See
 [Plugins](/reference/plugins).
 
-Admins set both up on the console's **Migration** page. Each one's history (added, changed, deleted, new secret) is in
+Admins set both up on the console's **Webhooks** page (in the sidebar, under Connect). Each one's history (added, changed, deleted, new secret) is in
 History, which names only an address's host.
 
 ## Out

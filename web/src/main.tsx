@@ -21,6 +21,8 @@ import { Toaster, notify } from '@companyflags/ui/components/toast';
 import { initTheme } from '@companyflags/ui/lib/theme';
 import { applyLook, currentLook, loadLook, lookName, useLook } from './appearanceKit.ts';
 import { Banner } from './look.tsx';
+import { SettingsFrame } from './pages/settingsFrame.tsx';
+import { isSettingsKey, SETTINGS } from './pages/settingsKit.ts';
 import './index.css';
 
 // Each page is its own chunk, fetched the first time it's opened (or when a link to it is hovered: paths.ts).
@@ -38,6 +40,7 @@ const PAGE_CODE = {
   settings: () => import('./pages/Settings.tsx'),
   people: () => import('./pages/People.tsx'),
   migration: () => import('./pages/Migration.tsx'),
+  webhooks: () => import('./pages/Webhooks.tsx'),
 } as const;
 const Flags = lazy(() => PAGE_CODE.flags().then((m) => ({ default: m.Flags })));
 const FlagPage = lazy(() => PAGE_CODE.flag().then((m) => ({ default: m.FlagPage })));
@@ -55,6 +58,7 @@ const Settings = lazy(() => PAGE_CODE.settings().then((m) => ({ default: m.Setti
 const GetStarted = lazy(() => import('./pages/setup.tsx').then((m) => ({ default: m.GetStarted })));
 const People = lazy(() => PAGE_CODE.people().then((m) => ({ default: m.People })));
 const Migration = lazy(() => PAGE_CODE.migration().then((m) => ({ default: m.Migration })));
+const Webhooks = lazy(() => PAGE_CODE.webhooks().then((m) => ({ default: m.Webhooks })));
 // signing in needs Better Auth's client; people who are signed in never download it
 const SIGN_IN_CODE = () => import('./signin.tsx');
 const SignInPage = lazy(() => SIGN_IN_CODE().then((m) => ({ default: m.SignInPage })));
@@ -83,10 +87,10 @@ function knownRoute([page, a]: string[]): boolean {
   switch (page) {
     case 'flag': case 'release': case 'dimensions': return !!a;
     case 'approvals': return !a || /^\d+$/.test(a);
-    case 'settings': return !a || a === 'people' || a === 'dimensions';
+    case 'settings': return !a || isSettingsKey(a);
     // from before dimensions: they open the same pages under #/dimensions (OldAddress)
     case 'customers': case 'customer': return true;
-    case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'migration': return true;
+    case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'migration': case 'webhooks': return true;
     default: return false;
   }
 }
@@ -104,7 +108,7 @@ function NotFound() {
 /** The tab's title for each page, so tabs and history entries can be told apart. */
 function titleFor([page, a, b]: string[], meta: Meta | null): string {
   const name: Record<string, string> = {
-    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', tokens: 'Access tokens', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', join: 'Join',
+    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', tokens: 'Access tokens', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', webhooks: 'Webhooks', join: 'Join',
   };
   const dim = page === 'dimensions' && a ? meta?.dimensions.find((d) => d.key === a) : undefined;
   const dimName = dim ? dimTitle(dim) : a;
@@ -113,8 +117,7 @@ function titleFor([page, a, b]: string[], meta: Meta | null): string {
     : page === 'dimensions' && a && b ? `${meta ? entityLabel(meta.entities, b) : b} · ${dimName}`
     : page === 'dimensions' && a ? dimName ?? 'Page not found'
     : page === 'approvals' && a ? `Request #${a} · Approvals`
-    : page === 'settings' && a === 'people' ? 'People · Settings'
-    : page === 'settings' && a === 'dimensions' ? 'Dimensions · Settings'
+    : page === 'settings' && a && isSettingsKey(a) ? `${SETTINGS.find((s) => s.key === a)?.label} · Settings`
     : name[page] ?? 'Page not found';
   return `${title} · ${lookName()}`;
 }
@@ -398,8 +401,9 @@ function App() {
                 <Suspense fallback={skeleton}>
                   {/* a crash in a page shows in its place; another address starts that page fresh */}
                   <ErrorBoundary key={routeKey} where={page}>
-                    {!knownRoute(route) ? <NotFound /> : page === 'settings' ? (route[1] === 'people' ? <People /> : <Settings section={route[1]} />)
+                    {!knownRoute(route) ? <NotFound /> : page === 'settings' ? <SettingsFrame sub={route[1]}>{route[1] === 'people' ? <People /> : <Settings section={route[1]} />}</SettingsFrame>
                       : page === 'tokens' ? <Tokens />
+                      : page === 'webhooks' ? <Webhooks />
                       : page === 'customers' || page === 'customer' ? <OldAddress meta={meta} />
                       : !setUp ? <GetStarted /> : <>
                       {page === 'flags' && <Flags envKey={route[1]} tab={route[2]} />}

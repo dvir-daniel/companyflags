@@ -34,6 +34,7 @@ const PATHS = {
   keys: <><circle cx="6" cy="9" r="3.2" /><path d="M9.2 9H16M13.5 9v2.6M15.6 9v2" /></>,
   history: <><circle cx="9" cy="9" r="6.3" /><path d="M9 5.4V9l2.6 1.6" /></>,
   migration: <><path d="M2.5 6h11M10.5 3l3 3-3 3" /><path d="M15.5 12h-11M7.5 9l-3 3 3 3" /></>,
+  webhooks: <><circle cx="5" cy="13" r="2.2" /><circle cx="13" cy="13" r="2.2" /><circle cx="9" cy="5" r="2.2" /><path d="M8 7l-2.2 4M10 7l2.2 4M7.2 13h3.6" /></>,
   settings: <><circle cx="9" cy="9" r="2.4" /><path d="M9 2.5v2.2M9 13.3v2.2M2.5 9h2.2M13.3 9h2.2M4.4 4.4l1.6 1.6M12 12l1.6 1.6M4.4 13.6 6 12M12 6l1.6-1.6" /></>,
   search: <><circle cx="8" cy="8" r="4.5" /><path d="m11.4 11.4 3.6 3.6" /></>,
   more: <><path d="M3 5h12M3 9h12M3 13h12" /></>,
@@ -52,28 +53,32 @@ export function Icon({ name, size = 15 }: { name: IconName; size?: number }) {
 type NavItem = { key: string; label: string; icon: IconName; href?: string; current: (page: string, sub?: string) => boolean };
 const plainPage = (key: string, also?: string): Pick<NavItem, 'key' | 'current'> => ({ key, current: (p) => p === key || p === also });
 
-// grouped by how often people use them: the daily work first (change and review), then who gets what, then admin.
-// Who gets what: one page per dimension, top to bottom ("Regions", "Chains", "Stores"); with none yet, the way to set them up.
+// Grouped by what people come for: the flags and what happened to them (daily), who gets what (the dimensions' pages,
+// top to bottom: "Regions", "Stores"; with none yet, the way to set them up), how other systems connect, and Settings.
 function navOf(meta: Meta | null): { group: string; items: NavItem[] }[] {
   const dims = meta?.dimensions ?? [];
+  const noDims = !!meta && dims.length === 0;
   return [
-    { group: 'Change', items: [
+    { group: 'Flags', items: [
       { ...plainPage('flags', 'flag'), label: 'Flags', icon: 'flags' },
       { ...plainPage('releases', 'release'), label: 'Releases', icon: 'releases' },
       { ...plainPage('approvals'), label: 'Approvals', icon: 'approvals' },
+      { ...plainPage('history'), label: 'History', icon: 'history' },
     ] },
     { group: 'Targeting', items: [
-      ...(meta && dims.length === 0 ? [{ key: 'settings/dimensions', label: 'Set up dimensions', icon: 'entities' as const, href: '#/settings/dimensions',
+      ...(noDims ? [{ key: 'settings/dimensions', label: 'Set up dimensions', icon: 'entities' as const, href: '#/settings/dimensions',
         current: (p: string, sub?: string) => p === 'settings' && sub === 'dimensions' }] : []),
       ...dims.map((d): NavItem => ({ key: `dimensions/${d.key}`, label: title(d), icon: 'entities', href: dimensionHref(d.key),
         current: (p, sub) => p === 'dimensions' && sub === d.key })),
       { ...plainPage('compare'), label: 'Compare', icon: 'compare' },
     ] },
-    { group: 'Admin', items: [
-      { ...plainPage('history'), label: 'History', icon: 'history' },
+    { group: 'Connect', items: [
       { ...plainPage('keys'), label: 'API keys', icon: 'keys' },
+      ...(!meta || meta.plugins?.includes('webhooks') ? [{ ...plainPage('webhooks'), label: 'Webhooks', icon: 'webhooks' as const }] : []),
       { ...plainPage('migration'), label: 'Migration', icon: 'migration' },
-      { key: 'settings', label: 'Settings', icon: 'settings', current: (p, sub) => p === 'settings' && sub !== 'dimensions' },
+    ] },
+    { group: 'Admin', items: [
+      { key: 'settings', label: 'Settings', icon: 'settings', current: (p, sub) => p === 'settings' && !(noDims && sub === 'dimensions') },
     ] },
   ];
 }

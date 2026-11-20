@@ -79,9 +79,9 @@ test('the first requests of each page, with what this browser remembers', () => 
   assert.deepEqual(paths.firstPaths('#/history', meta), ['/history?']);
   assert.deepEqual(paths.firstPaths('#/keys', meta), ['/api-keys']);
   assert.deepEqual(paths.firstPaths('#/approvals', meta), ['/change-sets']);
-  assert.deepEqual(paths.firstPaths('#/settings', meta), ['/sso']);   // its Single sign-on section
+  assert.deepEqual(paths.firstPaths('#/settings', meta), []);   // Environments, drawn from /meta
   assert.deepEqual(paths.firstPaths('#/settings/people', meta), []);   // People is drawn from /meta
-  assert.deepEqual(paths.firstPaths('#/settings/dimensions', meta), ['/sso']);   // Settings, opened at its Dimensions
+  assert.deepEqual(paths.firstPaths('#/settings/sso', meta), ['/sso']);   // Single sign-on loads its connections
   assert.deepEqual(paths.firstPaths('#/flag/%E0%A4%A', meta), []);
 });
 

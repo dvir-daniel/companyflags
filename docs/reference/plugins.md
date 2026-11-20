@@ -54,7 +54,7 @@ token, and with the app file's `path` when `appFiles()` runs.
 | `allowedOrigins` | Origins on your own network that webhooks out may reach, such as `['http://ci.internal:8080']`. Left out: `FF_WEBHOOK_ALLOWED_ORIGINS`. Without either, webhooks go to public addresses only. |
 | `fetch` | How the server sends them. Leave it out: the default sends to public addresses only. |
 
-Admins add the webhooks themselves, on the console's Migration page: see [Webhooks](/guide/webhooks).
+Admins add the webhooks themselves, on the console's Webhooks page: see [Webhooks](/guide/webhooks).
 
 ## Writing a plugin
 

@@ -4,6 +4,11 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **The console's sidebar and Settings:** the sidebar is grouped as Flags (flags, releases, approvals, history),
+  Targeting, Connect (API keys, webhooks, migration) and Settings. Settings is one page per subject, with its own menu:
+  Environments, Dimensions, Services, People, Single sign-on, Appearance and CDN (`#/settings/<page>`). Webhooks have
+  a page of their own (`#/webhooks`) instead of a section of Migration.
+
 ## 0.7.0 (2026-11-20)
 
 - **Appearance:** Settings → Appearance sets the console's name, logo (and one for dark), browser tab icon, an accent
