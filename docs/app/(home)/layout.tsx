@@ -15,6 +15,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         { text: 'OpenFeature', url: '/sdk/openfeature' },
         { text: 'Self-hosting', url: '/self-hosting/docker' },
         { text: 'Reference', url: '/reference/http-api' },
+        { text: 'Enterprise', url: '/guide/enterprise' },
         { type: 'menu', text: 'Resources', items: RESOURCES.map((r) => ({
           text: r.text, description: r.description, url: r.url === '/llms.txt' ? `${BASE}/llms.txt` : r.url, external: r.external,
         })) },

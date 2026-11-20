@@ -10,10 +10,11 @@ import { RESOURCES } from '@/lib/resources';
 
 const TABS: { text: string; url: string; match: (p: string) => boolean }[] = [
   { text: 'Readme', url: '/', match: (p) => p === '/' },
-  { text: 'Docs', url: '/guide/introduction', match: (p) => p.startsWith('/guide/') && p !== '/guide/security' },
+  { text: 'Docs', url: '/guide/introduction', match: (p) => p.startsWith('/guide/') && p !== '/guide/security' && p !== '/guide/enterprise' },
   { text: 'OpenFeature', url: '/sdk/openfeature', match: (p) => p.startsWith('/sdk/') },
   { text: 'Self-hosting', url: '/self-hosting/docker', match: (p) => p.startsWith('/self-hosting/') },
   { text: 'Reference', url: '/reference/http-api', match: (p) => p.startsWith('/reference/') || p === '/guide/security' },
+  { text: 'Enterprise', url: '/guide/enterprise', match: (p) => p === '/guide/enterprise' },
 ];
 
 function Resources() {

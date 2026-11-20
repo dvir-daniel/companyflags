@@ -20,7 +20,7 @@ const ICONS = {
 };
 
 const GROUPS: { name: string; icon: keyof typeof ICONS; pages: [string, string][] }[] = [
-  { name: 'Getting started', icon: 'start', pages: [['Introduction', '/guide/introduction'], ['Quickstart', '/guide/quickstart'], ['Examples', '/guide/examples'], ['Compared with others', '/guide/comparison']] },
+  { name: 'Getting started', icon: 'start', pages: [['Introduction', '/guide/introduction'], ['Quickstart', '/guide/quickstart'], ['Examples', '/guide/examples'], ['Compared with others', '/guide/comparison'], ['Enterprise', '/guide/enterprise']] },
   { name: 'Concepts', icon: 'concepts', pages: [['How it fits together', '/guide/concepts'], ['Architecture', '/guide/architecture'], ['Dimensions', '/guide/dimensions'], ['Flags and rules', '/guide/flags-and-rules'], ['Services', '/guide/services']] },
   { name: 'Reading flags', icon: 'reading', pages: [['OpenFeature (web, mobile, servers)', '/sdk/openfeature'], ['Backends', '/guide/backends'], ['The app file', '/sdk/app-file']] },
   { name: 'Changing flags', icon: 'changing', pages: [['Releases', '/guide/releases'], ['Approvals and history', '/guide/approvals'], ['Flags as code', '/guide/flags-as-code'], ['Flags in the age of AI', '/guide/ai'], ['AI resources', '/guide/ai-resources']] },
