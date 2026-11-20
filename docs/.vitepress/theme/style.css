@@ -171,6 +171,8 @@ html { -webkit-font-smoothing: antialiased; }
 /* the landing page runs edge to edge */
 .VPContent.is-home, .VPPage:has(.cf-landing) { padding: 0 !important; }
 .VPContent:has(.cf-landing) { padding-top: var(--vp-nav-height) !important; }
+/* the landing page has nothing to search: the box is for the docs (⌘K still opens it) */
+.Layout:has(.cf-landing) .VPNavBarSearch { display: none; }
 .VPContent:has(.cf-landing) .VPPage, .VPContent:has(.cf-landing) .container, .VPContent:has(.cf-landing) .content { max-width: none !important; padding: 0 !important; margin: 0 !important; }
 
 /* ---- illustrations, in Better Auth's way: square icon tiles joined by thin lines, dashed "+" tiles, chips with a
