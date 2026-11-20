@@ -67,7 +67,7 @@ export default defineConfig({
   plugins: [
     ofrep(),                                   // OpenFeature's OFREP providers, for apps and backends
     flagd(),                                   // flagd JSON, for backends that evaluate in-process
-    appFiles(),                                // values-only files per entity, behind a CDN
+    appFiles(),                                // CDN files (flagd JSON) per entity, behind a CDN
     cloudflare(),                              // purge Cloudflare's cache after each publish (CF_ZONE_ID, CF_API_TOKEN)
     webhooks(),                                // webhooks out (Slack, CI, another system) and in (Migration page)
     mcp(),                                     // MCP at /mcp, for AI agents with an access token

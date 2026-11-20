@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { createApp } from '../server/index.ts';
 import { SetupError } from '../server/betterAuth.ts';
 import { signInFromEnv, type SignIn } from '../server/identity.ts';
-import { browser, CSRF, startApp, testDatabase } from './helpers.ts';
+import { browser, cdnAnswer, CSRF, startApp, testDatabase } from './helpers.ts';
 
 const signIn: SignIn = { kind: 'better-auth', settings: {} };
 const PASSWORD = 'correct horse battery';
@@ -267,7 +267,7 @@ describe('a new install, start to finish (in order)', () => {
     await ctx.workers.drain();
     const dev = await call('GET', '/client/v1/flags/dev/web');
     assert.equal(dev.status, 200);
-    assert.equal(dev.json.flags.fast_checkout.value, true);
+    assert.equal(cdnAnswer(dev.json, 'fast_checkout').value, true);
 
     assert.equal((await sam.post('/environments', { key: 'staging', name: 'Staging' })).status, 201);
     await ctx.workers.drain();
@@ -277,7 +277,7 @@ describe('a new install, start to finish (in order)', () => {
     assert.deepEqual(f.layers.staging.base.rules, []);
     const staging = await call('GET', '/client/v1/flags/staging/web');
     assert.equal(staging.status, 200, 'its files are served at once');
-    assert.ok(!('fast_checkout' in staging.json.flags), 'off there: apps keep the default in their code');
+    assert.ok(cdnAnswer(staging.json, 'fast_checkout').codeDefault, 'off there: apps keep the default in their code');
   });
 
   test('settings changes are in History, with who made them', async () => {

@@ -53,8 +53,8 @@ CI runs all of these on every pull request.
 
 ## How we build
 
-- **One evaluator.** `server/evaluator.ts` decides every answer. App files (`clientFile.ts`), OpenFeature's OFREP
-  answers (`ofrep.ts`), backends' flagd JSON (`flagd.ts`) and the console's trace all come from it, and tests check each
+- **One evaluator.** `server/evaluator.ts` decides every answer. OpenFeature's OFREP answers (`ofrep.ts`), flagd
+  JSON (`flagd.ts`: backends' and apps' CDN files) and the console's trace all come from it, and tests check each
   of them against it, with OpenFeature's own providers and flagd's own logic, for many devices and entities.
 - **No SDK of our own.** Apps and backends use OpenFeature's providers (OFREP, flagd). A new delivery feature fits one of
   those protocols, or it isn't built.

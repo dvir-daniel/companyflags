@@ -6,7 +6,7 @@
 //
 // comes_from: 'key' (the link or API key), 'token' (the entity: from the app's link, or named by a backend within its
 // key's scope): both worked out on the server; 'sdk' (what the app reports about itself, in OpenFeature's evaluation
-// context, or checked on the device against the app file): never read from request headers, so a cached file can't
+// context, or checked on the device by the rules in its CDN file): never read from request headers, so a cached file can't
 // vary by User-Agent.
 //
 // Besides this list, the installation's own attributes come from its dimensions (dimensions.ts): one per dimension,

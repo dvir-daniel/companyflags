@@ -131,8 +131,8 @@ millions of devices you may prefer that no request reaches the server at all. Th
 environment, service and entity, built once per publish and cached by your [CDN](/self-hosting/cdn), with the
 entity's values and the few checks only the device can make. Nothing runs per request; the CDN answers.
 
-There is no OpenFeature provider for the CDN file. Reading it is about a hundred lines of code, described completely
-in [The CDN file](/reading/local-apps).
+The CDN file is flagd JSON: web apps and React Native read it with OpenFeature's flagd evaluator. See
+[The CDN file](/reading/local-apps).
 
 ## Next
 

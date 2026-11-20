@@ -1,7 +1,7 @@
 // "Use code default" (Firebase Remote Config's "in-app default"): serve no remote value.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot } from './helpers.ts';
+import { boot, cdnAnswer } from './helpers.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
 before(async () => { t = await boot(); });
@@ -22,10 +22,13 @@ test('a rule can set a remote value, or explicitly keep the code default', async
   assert.equal(oldAndroid.reason, 'TARGETING_MATCH');
 });
 
-test('the app file leaves out flags that only use the code default', async () => {
-  const keys = async (cust: string) => Object.keys((await t.appFile('dev', 'web', cust)).json.flags);
-  assert.ok(!(await keys('acme')).includes('welcome_message'));
-  assert.ok((await keys('globex')).includes('welcome_message'));
+test('in the CDN file, a flag that only uses the code default has no value to give: the app keeps its own', async () => {
+  const acme = (await t.appFile('dev', 'web', 'acme')).json;
+  assert.deepEqual([acme.flags.welcome_message.defaultVariant, acme.flags.welcome_message.targeting], [null, undefined]);
+  assert.ok(cdnAnswer(acme, 'welcome_message').codeDefault);
+  const globex = (await t.appFile('dev', 'web', 'globex')).json;
+  assert.equal(cdnAnswer(globex, 'welcome_message').value, (await t.trace({ project: 'web', entity: 'globex', flag: 'welcome_message' })).value);
+  assert.ok(!cdnAnswer(globex, 'welcome_message').codeDefault);
 });
 
 test('OFF sends nothing; code default also works for own defaults and split ranges', async () => {

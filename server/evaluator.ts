@@ -1,6 +1,7 @@
 // Pure evaluator, the one that decides every answer. Runs only on this server: apps get answers (OFREP, ofrep.ts) or
-// values (their entity's app file, clientFile.ts), never rules; backends get rules as flagd JSON (flagd.ts, through
-// forEntity). The same function powers OFREP, the app files, flagd JSON and the console's trace.
+// their entity's CDN file; backends get flagd JSON. Both files are the same flagd JSON (flagd.ts, through forEntity),
+// with what the server knows already settled. The same function powers OFREP, the CDN files, flagd JSON and the
+// console's trace.
 
 import { ANY_APP, NONE, namesEntities, reportedByApp, resolverFor, type Asker } from './fields.ts';
 import { bucketFor } from './hash.ts';
@@ -363,7 +364,7 @@ export function entityChain(flag: FlagDef, entity: EntityInfo | null): EntityCha
 }
 
 // Whether a device's bucket (0–9999) is inside one range of a % of devices: `from` is in, `to` is not.
-// The one place this is decided; clientFile.ts readClientFile keeps its own copy as the SDK's reference logic.
+// The one place this is decided; in flagd JSON (flagd.ts) the same range is flagd's `fractional`.
 const inRange = (bucket: number, r: { from: number; to: number }) => bucket >= r.from && bucket < r.to;
 const rangeAt = (ranges: SplitRange[], bucket: number) => ranges.find((r) => inRange(bucket, r)) ?? null;
 
@@ -477,7 +478,7 @@ export function evaluate(snapshot: Snapshot, flagKey: string, ctx: EvalContext, 
 }
 
 // ---------------------------------------------------------------- one entity, any request
-// "What does this entity get?" when only the environment and the entity are known (the entity page, its app files,
+// "What does this entity get?" when only the environment and the entity are known (the entity page, its CDN files,
 // its flagd JSON). Walks the entity chain, as evaluate() does: checks on the environment and on every dimension are
 // settled here (for an entity above a dimension too, and for no entity), so no entity key ever reaches a file; the
 // rest depend on the request and become exceptions. The first rule that always applies, or the chain's default, is the answer.
@@ -492,7 +493,8 @@ export type AnswerException = AnswerPick & {
 };
 // A % rule with a name for devices outside it: a device that reaches it (`when` passes and it has the ID the
 // rule splits by, `unit`; no unit = settled here) without landing inside carries `group` from then on.
-// `at`: how many exceptions come before it, so it can be put back in order (clientFile.ts).
+// `at`: how many exceptions come before it, so it can be put back in order. (flagd JSON has no place for group names,
+// so flagd.ts leaves these out.)
 export type OutsideMark = { at: number; when: Condition[]; locked: boolean; unit: { by: string; fallbackBy: string | null } | null; group: string };
 export type EntityAnswer = { gets: AnswerPick; exceptions: AnswerException[]; outside?: OutsideMark[] };
 

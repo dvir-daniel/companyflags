@@ -9,11 +9,13 @@ import { join } from 'node:path';
 import { connectDb, FolderInUseError, one, type Db } from '../server/db.ts';
 import { checksum, migrate, MigrationError, readMigrations, type Migration } from '../server/migrate.ts';
 import { createApp } from '../server/index.ts';
-import { CSRF, testDatabase } from './helpers.ts';
+import { cdnAnswer, CSRF, deviceIn, testDatabase } from './helpers.ts';
+import { testCondition, type Condition } from '../server/evaluator.ts';
+import { bucketFor } from '../server/hash.ts';
 import { syncFields } from '../server/fields.ts';
 import { fixtures } from './fixtures.ts';
 import { readFileSync } from 'node:fs';
-import { seedBeforeDimensions, CHANGE_SET_RULE, CUSTOMERS, DIMENSION_OF, KEYS } from './before-dimensions.ts';
+import { seedBeforeDimensions, etagOf, CHANGE_SET_RULE, CUSTOMERS, DIMENSION_OF, KEYS } from './before-dimensions.ts';
 
 const m = (name: string, sql: string): Migration => ({ name, sql, checksum: checksum(sql) });
 const SHIPPED = readMigrations();
@@ -98,6 +100,24 @@ test('0011 lets a version release go without a remove-by date; an on/off release
   assert.ok(releases!.n >= 3, 'the releases already there keep their dates');
 }));
 
+// The files in before-dimensions.json are in the app file's format of then: a value per flag, and "when" lines the
+// device picked from in order. readRecorded is what a device read from one, to compare with what an app reads from
+// its CDN file (flagd JSON) now. It reads only what those files have: checks, overrides and % of devices.
+type RecordedLine = { if: Condition[]; value?: unknown; codeDefault?: true; locked?: true; split?: { by: string; salt: string; hashVersion: number; from: number; to: number } };
+type RecordedFile = { revision: number; flags: Record<string, { value?: unknown; codeDefault?: true; when?: RecordedLine[] }> };
+function readRecorded(file: RecordedFile, key: string, attrs: Record<string, unknown>): { value?: unknown; codeDefault?: true } {
+  const f = file.flags[key];
+  const line = (f.when ?? []).find((l) => l.if.every((c) => testCondition(c, attrs[c.field]) ?? !!l.locked)
+    && (!l.split || (attrs[l.split.by] !== undefined && inside(bucketFor(l.split.salt, String(attrs[l.split.by]), l.split.hashVersion), l.split))));
+  const x = line ?? f;
+  return x.codeDefault ? { codeDefault: true } : { value: x.value };
+}
+const inside = (b: number, r: { from: number; to: number }) => b >= r.from && b < r.to;
+// every version the files' checks tell apart, and devices in each part of their % (salt "f": 0–30%, 30–40%, the rest)
+const RECORDED_DEVICES: Record<string, unknown>[] = [undefined, '1.0.0', '2.5.0', '3.1.0'].flatMap((v) =>
+  [undefined, deviceIn('f', 0, 3000), deviceIn('f', 3000, 4000), deviceIn('f', 4000, 10000)].map((id) =>
+    ({ ...(v ? { 'app.version': v } : {}), ...(id ? { 'device.id': id } : {}) })));
+
 test('0013: customers become company › brand, and every file, flagd JSON, link and key is what it was', async (t) => {
   const golden = JSON.parse(readFileSync(new URL('./before-dimensions.json', import.meta.url), 'utf8'));
   const tdb = await testDatabase();
@@ -135,17 +155,30 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
   assert.deepEqual(rules.map((r) => r.by).filter(Boolean).sort(), ['company', 'device.id', 'entity']);
   assert.ok(await one(app.db, `select 1 from condition_field where name = 'customer.id'`));
 
-  // every app file: the same link (same secret), the same values, the same ETag
+  // every CDN file: the same link (same secret), and every device gets what it got from the file of then. The files
+  // are flagd JSON now, so their bytes and ETags are new: the ETag is the hash of the new file's flags.
+  const sameAnswers = (file: any, recorded: RecordedFile, where: string) => {
+    for (const key of Object.keys(recorded.flags)) {
+      for (const attrs of RECORDED_DEVICES) {
+        const was = readRecorded(recorded, key, attrs);
+        const now = cdnAnswer(file, key, attrs);
+        assert.deepEqual(now.codeDefault ? 'code default' : now.value, was.codeDefault ? 'code default' : was.value, `${where} ${key} ${JSON.stringify(attrs)}`);
+      }
+    }
+    assert.deepEqual(Object.keys(file.flags).sort(), Object.keys(recorded.flags).sort(), `${where}: the same flags`);
+  };
   for (const c of CUSTOMERS) {
     const link = (await call('GET', `/api/dimensions/${DIMENSION_OF[c]}/${c}/link?environment=prod`, { as: 'dana' })).json.path.replace(':service', 'web');
     assert.equal(link, golden.links[c], `${c}’s link`);
     const file = await call('GET', link);
     assert.equal(file.status, 200, c);
-    assert.deepEqual([file.json.flags, file.json.revision], [golden.files[c].flags, golden.files[c].revision], `${c}’s file`);
-    assert.equal(file.headers.get('etag'), golden.files[c].etag, `${c}’s ETag`);
+    assert.equal(file.json.metadata.revision, golden.files[c].revision, `${c}’s file`);
+    sameAnswers(file.json, golden.files[c], `${c}’s file`);
+    assert.equal(file.headers.get('etag'), etagOf(file.json.flags), `${c}’s ETag`);
   }
   const anon = await call('GET', '/client/v1/flags/prod/web');
-  assert.deepEqual([anon.json.flags, anon.headers.get('etag')], [golden.files[''].flags, golden.files[''].etag], 'before login');
+  sameAnswers(anon.json, golden.files[''], 'before login');
+  assert.equal(anon.headers.get('etag'), etagOf(anon.json.flags));
 
   // flagd JSON: Velvet's own key (now scope entity) and the shared one (now all), by path and by the old header
   const flagd = (key: string, path = '', headers: Record<string, string> = {}) => call('GET', `/sdk/v1/flagd${path}`, { headers: { authorization: `Bearer ${key}`, ...headers } });
@@ -174,9 +207,11 @@ test('0013: customers become company › brand, and every file, flagd JSON, link
   assert.equal(applied.status, 200, JSON.stringify(applied.json));
   await app.workers.drain();
   const solo = await call('GET', golden.links.solo);
-  assert.deepEqual(solo.json.flags.f, { value: 'D' }, 'Solo first, by its rule from before');
+  assert.deepEqual([solo.json.flags.f.targeting, cdnAnswer(solo.json, 'f').value], [undefined, 'D'], 'Solo first, by its rule from before');
   assert.ok((await app.db.query(`select 1 from flag_rule where rule_key = $1 and conditions::text like '%customer.id%'`, [CHANGE_SET_RULE])).rows.length, 'kept as it was written');
-  assert.deepEqual((await call('GET', '/client/v1/flags/prod/web')).json.flags.f, { value: 'A' }, 'and only Solo: nobody else is named');
+  const everyone = (await call('GET', '/client/v1/flags/prod/web')).json;
+  assert.deepEqual([everyone.flags.f.targeting, cdnAnswer(everyone, 'f').value], [undefined, 'A'], 'and only Solo: nobody else is named');
+  assert.ok(!JSON.stringify(everyone).includes('solo'));
 });
 
 test('a migration that fails changes nothing, and the fixed one applies later', () => withDb(async (open) => {

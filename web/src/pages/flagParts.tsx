@@ -401,7 +401,7 @@ export function DeliveryPanel({ flag, onSaved }: { flag: FlagDetail; onSaved: ()
     onSaved();
   };
   const groups = useMemo(() => [
-    { title: 'Apps', sub: 'Apps get values only. Your rules never leave the server.', list: meta.projects.filter((p) => p.kind === 'client') },
+    { title: 'Apps', sub: 'Apps get their values and the checks only the device makes. The rest of your rules stays on the server.', list: meta.projects.filter((p) => p.kind === 'client') },
     { title: 'Backends', sub: 'Your own backends, which get the rules.', list: meta.projects.filter((p) => p.kind === 'server') },
   ], [meta.projects]);
   return (

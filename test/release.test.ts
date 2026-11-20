@@ -8,11 +8,10 @@ import type { Layer } from '../server/evaluator.ts';
 import {
   applyChange, backChange, changeText, holdBacks, isRollback, isVersionRelease, nextChange, ownRules, readyToCleanUp, releaseState, stepText, type Change, type LayerLike, type Variant,
 } from '../server/release.ts';
-import { buildClientFile, readClientFile } from '../server/clientFile.ts';
 import { buildFlagdDoc } from '../server/flagd.ts';
 import { bucketFor, HASH_VERSION } from '../server/hash.ts';
 import { hiddenKey } from '../server/evaluator.ts';
-import { flagdEvaluate, nest, ours, same } from './flagdReference.ts';
+import { cdnAnswer, flagdEvaluate, nest, ours, same } from './flagdReference.ts';
 import { boot, deviceIn } from './helpers.ts';
 
 const fields: FieldFacts = {
@@ -485,16 +484,21 @@ describe('version releases end to end', () => {
     assert.deepEqual([await on(early), await on(later)], ['1.0.2', '1.0.0'], 'the hotfix reaches the same 5%');
     assert.equal(await on(null), '1.0.0', 'no device ID: not in the %');
 
-    // what the app reads: its entity's file, and a backend's flagd JSON, agree with the server for every device
+    // what the app reads: its entity's CDN file, and the same flagd JSON as built, agree with the server for every device
     const snap = t.plane.get('dev');
-    const file = buildClientFile(snap, 'web', snap.entities.acme);
+    const file = (await t.appFile('dev', 'web', 'acme')).json;
     const doc = buildFlagdDoc(snap, 'web', snap.entities.acme);
+    assert.deepEqual(file.flags, doc.flags);
     for (const id of [early, later, null, deviceIn('web_bundle/1.0.1', 9000, 10000)]) {
       const want = await on(id);
-      assert.equal(readClientFile(file, 'web_bundle', attrsOf(id)).value, want, `the app file, ${id}`);
+      assert.equal(cdnAnswer(file, 'web_bundle', attrsOf(id)).value, want, `the CDN file, ${id}`);
       assert.equal(same(flagdEvaluate(doc, 'web_bundle', nest(attrsOf(id)))), same(ours(snap, 'web_bundle', 'web', 'acme', attrsOf(id))), `flagd, ${id}`);
     }
-    assert.deepEqual(file.flags.web_bundle.when?.map((l) => [l.value, l.split?.salt, l.split?.to]), [['1.0.2', 'web_bundle/1.0.1', 500]]);
+    // one branch: the first 5% by the salt of 1.0.1 get 1.0.2, everyone else the default
+    const branches = file.flags.web_bundle.targeting.if;
+    assert.equal(branches.length, 3);
+    assert.equal(file.flags.web_bundle.variants[branches[1]], '1.0.2');
+    assert.deepEqual(branches[0].and[1]['=='][0].fractional, [{ cat: ['web_bundle/1.0.1/', { var: 'device.id' }] }, ['in', 500], ['out', 9500]]);
 
     await save('dev', { kind: 'everyone' });
     assert.equal(await on(null), '1.0.2', 'everyone: devices without an ID too');

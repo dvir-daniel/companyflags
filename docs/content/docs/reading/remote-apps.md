@@ -77,4 +77,4 @@ your backend gave the app).
 
 OFREP answers come from the server, one request per context and refresh, not from the CDN's cache: the server
 evaluates every flag for the request in memory (microseconds per flag). For very large fleets, the
-[CDN file](/reading/local-apps) is the alternative: one file per entity, read on the device by code of your own.
+[CDN file](/reading/local-apps) is the alternative: one flagd JSON file per entity, cached by a CDN and evaluated on the device.

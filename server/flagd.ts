@@ -1,8 +1,11 @@
-// flagd JSON for backends (GET /sdk/v1/flagd/<dimension>/<entity>): one entity's flags as a flagd flag set
-// (https://flagd.dev/reference/flag-definitions/), for flagd itself or an OpenFeature flagd provider evaluating in-process.
+// flagd JSON: one entity's flags in one service as a flagd flag set (https://flagd.dev/reference/flag-definitions/), for
+// flagd itself or an OpenFeature flagd provider evaluating in-process. Backends get it with an API key
+// (GET /sdk/v1/flagd/<dimension>/<entity>); apps get the same document as their CDN file, at their app link
+// (GET /client/v1/flags/<env>/<service>/<entity>/<secret>, or /client/v1/flags/<env>/<service> before sign-in: no entity).
+// Both are served by delivery.ts.
 //
-// It is built the way an app's file is (clientFile.ts): forEntity settles everything the server knows for every
-// request of this backend (the environment, the service, the entity and those above it), and what's left depends on the
+// forEntity settles everything the server knows for every request of this service (the environment, the service, the
+// entity and those above it), so no other entity is named and none of their values is in it; what's left depends on the
 // request. Each of those lines becomes one branch of a flat JsonLogic "if"; the entity's answer is the last branch:
 //
 //   { "if": [ <line 1's checks>, "<variant>", <line 2's checks>, "<variant>", …, <the answer when none applies> ] }
@@ -43,7 +46,7 @@ export type FlagdDoc = {
 export const flagSetId = (environment: string, service: string, entity: string | null) =>
   (entity ? `${environment}/${service}/${entity}` : `${environment}/${service}`);
 
-/** One backend's flags for one entity (`entity` null: what it gets with no entity), as flagd JSON. */
+/** One service's flags for one entity (`entity` null: what it gets with no entity), as flagd JSON. */
 export function buildFlagdDoc(snap: Snapshot, project: string, entity: EntityInfo | null): FlagdDoc {
   const flags: Record<string, FlagdFlag> = {};
   for (const key of sortedFlagKeys(snap)) {

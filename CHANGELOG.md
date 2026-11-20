@@ -4,6 +4,12 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **The CDN file is flagd JSON (breaking for apps that read it).** `/client/v1/flags/…` now answers with the same flagd
+  JSON backends get, made for the app service and the entity, so web apps and React Native read it with OpenFeature's
+  `@openfeature/flagd-core` instead of code of your own. Off and code-default flags are now in it (the app's default
+  still answers), % group names aren't (read them over OFREP), and the device's attributes are nested
+  (`{"app":{"version":"6.0.0"}}`). Every file's ETag changes once.
+
 - **Docs: "Reading flags" by who decides.** Six pages: an overview with the four ways (an app or a backend, and the
   server or your code deciding), the evaluation context, remote evaluation in apps and in backends (OFREP), and local
   evaluation in apps (the CDN file, formerly the app file) and in backends (flagd). The old pages point to the new ones.

@@ -2,15 +2,14 @@
 // snapshots. Every combination of the four states per level (no settings, Rules only, Rules + own default, Own settings
 // only: 4^4 at 4 levels) is checked against a small model of the documented order written here, not against
 // entityChain(). Then the four ways of answering agree for every entity at every level and none: evaluate(), the entity
-// page (forEntity + answerFor), the app file as the device reads it (readClientFile), and flagd JSON as flagd reads it.
+// page (forEntity + answerFor), the CDN file as the app's flagd provider reads it, and flagd JSON as flagd reads it on a backend.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildClientFile, readClientFile } from '../server/clientFile.ts';
 import { buildFlagdDoc } from '../server/flagd.ts';
 import {
   answerFor, CODE_DEFAULT, entityChain, evaluate, forEntity, type EntityInfo, type FlagDef, type Inherit, type Layer, type Rule,
 } from '../server/evaluator.ts';
-import { flagdEvaluate, nest, ours, same } from './flagdReference.ts';
+import { cdnAnswer, flagdEvaluate, nest, ours, same } from './flagdReference.ts';
 import { entities, snapshotOf } from './kit.ts';
 
 const MODES: (Inherit | null)[] = [null, 'base_rules_then_base_default', 'base_rules_then_customer_default', 'customer_only'];
@@ -132,7 +131,7 @@ function busyFlag(depth: number, modes: (Inherit | null)[], seed: number): FlagD
 const DEVICES = [{}, { 'device.platform': 'tv' }, { 'device.platform': 'ios', 'app.build': 120 },
   ...Array.from({ length: 16 }, (_, i) => ({ 'device.id': `dev-${i}`, 'device.platform': ['web', 'ios'][i % 2], 'app.version': `${i % 5}.5.0`, ...(i % 3 ? { 'app.build': 50 * i } : {}) }))];
 
-test('1 to 4 dimensions: evaluate(), the entity page, the app file and flagd JSON agree for every entity and none', () => {
+test('1 to 4 dimensions: evaluate(), the entity page, the CDN file and flagd JSON agree for every entity and none', () => {
   let checked = 0;
   for (let depth = 1; depth <= 4; depth++) {
     const { dims, ents } = chainOf(depth);
@@ -142,20 +141,20 @@ test('1 to 4 dimensions: evaluate(), the entity page, the app file and flagd JSO
       const snap = snapshotOf([f], ents, dims);
       for (const entity of [null, ...KEYS.slice(0, depth).map((k) => ents[k])] as (EntityInfo | null)[]) {
         const page = forEntity(f, snap, entity);
-        const file = buildClientFile(snap, 'web', entity);
+        const file = buildFlagdDoc(snap, 'web', entity);        // the CDN file
         const doc = buildFlagdDoc(snap, 'server-ds', entity);
         for (const attrs of DEVICES) {
           const where = `depth ${depth} ${JSON.stringify(modes)} ${entity?.key ?? 'none'} ${JSON.stringify(attrs)}`;
           const real = evaluate(snap, 'f', { environment: 'dev', project: 'web', entity, attrs }, false);
           const pick = answerFor(f, page, { environment: 'dev', project: 'web', entity, attrs });
           assert.deepEqual([pick.variant, pick.section, pick.owner], [real.variant, real.decidedBy.section, real.decidedBy.owner], `page: ${where}`);
-          const device = readClientFile(file, 'f', attrs);
-          assert.deepEqual(device.codeDefault ? 'code default' : device.value, real.codeDefault ? 'code default' : real.value, `app file: ${where}`);
+          const device = cdnAnswer(file, 'f', attrs);
+          assert.deepEqual(device.codeDefault ? 'code default' : device.value, real.codeDefault ? 'code default' : real.value, `CDN file: ${where}`);
           assert.equal(same(flagdEvaluate(doc, 'f', nest(attrs))), same(ours(snap, 'f', 'server-ds', entity?.key ?? null, attrs)), `flagd: ${where}`);
           checked++;
         }
         // nothing about entities reaches a device or a backend: every check on them is settled on the server
-        assertNothingAbout([file, doc.flags], dims, where0(depth, modes, entity));
+        assertNothingAbout([file.flags, doc.flags], dims, where0(depth, modes, entity));
       }
     }
   }
@@ -163,7 +162,7 @@ test('1 to 4 dimensions: evaluate(), the entity page, the app file and flagd JSO
 });
 const where0 = (depth: number, modes: unknown, e: EntityInfo | null) => `depth ${depth} ${JSON.stringify(modes)} ${e?.key ?? 'none'}`;
 
-/** No check on a dimension, `entity` or the old names, and no entity key, in an app file or flagd flags. */
+/** No check on a dimension, `entity` or the old names, and no entity key, in a CDN file's or a backend's flagd flags. */
 function assertNothingAbout(files: unknown, dims: readonly string[], where: string) {
   const text = JSON.stringify(files);
   for (const field of ['entity', 'customer.id', 'customer.company', ...dims]) {
@@ -184,11 +183,11 @@ test('an entity above a dimension, and no entity: checks on lower dimensions are
   };
   const snap = snapshotOf([f], ents, dims);
   for (const [entity, plain, newer] of [[ents.e2, 'B', 'B'], [ents.e1, 'A', 'C'], [ents.e0, 'A', 'C'], [null, 'B', 'B']] as const) {
-    const file = buildClientFile(snap, 'web', entity);
+    const file = buildFlagdDoc(snap, 'web', entity);
     const doc = buildFlagdDoc(snap, 'server-ds', entity);
-    assertNothingAbout([file, doc.flags], dims, entity?.key ?? 'none');
+    assertNothingAbout([file.flags, doc.flags], dims, entity?.key ?? 'none');
     for (const [attrs, want] of [[{}, plain], [{ 'app.version': '2.1.0' }, newer]] as const) {
-      assert.equal(readClientFile(file, 'f', attrs).value, want, `${entity?.key ?? 'none'} ${JSON.stringify(attrs)}`);
+      assert.equal(cdnAnswer(file, 'f', attrs).value, want, `${entity?.key ?? 'none'} ${JSON.stringify(attrs)}`);
       assert.equal(flagdEvaluate(doc, 'f', nest(attrs)).value, want, `flagd: ${entity?.key ?? 'none'} ${JSON.stringify(attrs)}`);
     }
   }

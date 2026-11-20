@@ -1,8 +1,7 @@
 // Save flow, approvals, schema invariants, the outbox, and what apps and backends read (files and snapshots).
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot } from './helpers.ts';
-import { readClientFile } from '../server/clientFile.ts';
+import { boot, cdnAnswer } from './helpers.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
 before(async () => { t = await boot(); });
@@ -120,7 +119,7 @@ describe('approvals', () => {
 describe('data plane', () => {
   test('the entity comes from the link; what an app says about itself can’t change it', async () => {
     const file = (await t.appFile('dev', 'android', 'vandelay')).json;
-    const read = (key: string, attrs: Record<string, unknown>) => readClientFile(file, key, attrs);
+    const read = (key: string, attrs: Record<string, unknown>) => cdnAnswer(file, key, attrs);
     const spoof = { 'device.id': 'dev-1', entity: 'soylent', company: 'soylent', 'customer.id': 'soylent', project: 'ios', 'app.version': '6.0.0' };
     assert.equal(read('api_base_url', spoof).value, 'https://android.vandelay.api.example.com');
     assert.equal(read('data_region_host', spoof).value, 'https://us.data.example.com');   // spoofed entity (an EU one) ignored
@@ -141,10 +140,10 @@ describe('data plane', () => {
 
   test('a save goes through the outbox and reaches the app’s file', async () => {
     const ms = (await t.as('alice').get('/flags/api_base_url')).json.layers.dev.entities.find((c: any) => c.entity === 'vandelay').layer;
-    const before_ = (await t.appFile('dev', 'web', 'vandelay')).json.revision;
+    const before_ = (await t.appFile('dev', 'web', 'vandelay')).json.metadata.revision;
     await t.as('alice').put('/flags/api_base_url/layers/dev/vandelay', { layer: ms, expectedVersion: ms.version });
     await t.settle();
-    assert.ok((await t.appFile('dev', 'web', 'vandelay')).json.revision > before_);
+    assert.ok((await t.appFile('dev', 'web', 'vandelay')).json.metadata.revision > before_);
     const q = (await t.as('alice').get('/publish-queue')).json;
     assert.ok(q.every((row: any) => row.publishedAt));
   });

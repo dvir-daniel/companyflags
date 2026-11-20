@@ -14,7 +14,7 @@ A backend service's key never goes in an app.
   answer or the file is made. Lists of entities and the rules themselves never reach a device. Acme's web app gets
   Acme's values, not the rule that gave them.
 - **What only the device knows stays as small lines.** Checks on the device's model, OS, browser, app version,
-  country, or its ID for a % of devices are left in the file as `when` lines the app checks itself. Those lines show
+  country, or its ID for a % of devices are left in the file as flagd rules the app checks itself. Those lines show
   the conditions and the values the entity could get, for example "6.0.0 and later get the new checkout". With
   OFREP the server checks those too, and the app gets only its answers.
 - **The service and environment come from the credential.** An app's key, link or token says them, never anything

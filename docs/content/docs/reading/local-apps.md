@@ -1,16 +1,19 @@
 ---
 title: "Local evaluation in apps: the CDN file"
-description: "An app downloads one JSON file for its entity, cached by a CDN, and decides each flag on the device."
+description: "An app downloads its entity's flags as flagd JSON, cached by a CDN, and decides each flag on the device."
 ---
 
-Most apps read flags [remotely, with OpenFeature](/reading/remote-apps). The **CDN file** is the other way: everything one entity's
-app needs from its service, as one JSON file your CDN caches, so no request reaches the server. There is no OpenFeature
-provider for it; this page describes it completely, so you can read it in any language. The server's own reference is
-about 100 lines:
-`readClientFile` in [server/clientFile.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/clientFile.ts),
-with `testCondition` in [server/evaluator.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/evaluator.ts),
-[server/semver.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/semver.ts) and
-[server/hash.ts](https://github.com/dvir-daniel/companyflags/blob/main/server/hash.ts).
+Most apps read flags [remotely, with OpenFeature](/reading/remote-apps). The **CDN file** is the other way: an app
+downloads its entity's flags once, as [flagd](https://flagd.dev) JSON, and decides each flag itself. The file is the
+same for every device of that entity, so a CDN caches it and no request reaches your server.
+
+It's the same format a backend's [flagd JSON](/reading/local-backends) uses. The difference is what the server puts
+in it:
+
+- **For an app service and one entity:** the server settles everything it already knows (the environment, the
+  service, the entity and the levels above it) and leaves in only what the device must check itself: its app
+  version, its platform, its ID for a % of devices. Rules about other entities are never in it.
+- **Safe to share:** it's read at a secret link, not with a key, and a CDN may cache it.
 
 The CDN file is the `appFiles()` plugin. It runs unless your config file lists plugins without it. See
 [Plugins](/reference/plugins).
@@ -26,123 +29,90 @@ If-None-Match: W/"…"            (the ETag of the file you have, if any)
 - `404` with `{ "error": "…" }` for any wrong link, environment or service.
 - Before sign-in, read `GET /client/v1/flags/<environment>/<service>`: what every device gets. **Settings →
   Services → Link** on an app service shows that address for each environment.
+- To give each signed-in user's app its entity's link, your backend asks for it: see
+  [Signed app links](/reading/context#signed-app-links).
 - Ask again every minute or so, and when the app comes to the foreground. Keep the last file on the device and start
   from it next time.
 
-## Shape
+## What's in it
+
+Shortened: the real file also checks that `app.version` is there, and falls back to `session.id` for a device
+with no ID.
+
+```json
+{
+  "$schema": "https://flagd.dev/schema/v0/flags.json",
+  "metadata": { "flagSetId": "prod/web/acme", "environment": "prod", "revision": 42 },
+  "flags": {
+    "dark_mode_v2": {
+      "state": "ENABLED",
+      "variants": { "off": false, "on": true },
+      "defaultVariant": "off",
+      "targeting": { "if": [
+        { "sem_ver": [{ "var": "app.version" }, "<", "6.0.0"] }, "off",
+        { "==": [{ "fractional": [{ "cat": ["dark_mode_v2/", { "var": "device.id" }] }, ["in", 3000], ["out", 7000]] }, "in"] }, "on",
+        null
+      ] }
+    }
+  }
+}
+```
+
+The rules for this flag were "below 6.0 → off, beta entities → on, else 30% of devices → on". Acme isn't a beta
+entity, and the server knew that, so the beta rule isn't in Acme's file. See [flagd JSON](/reading/local-backends#get-the-flagd-json)
+for how each part reads.
+
+## Web apps and React Native
+
+OpenFeature's flagd evaluator, `@openfeature/flagd-core`, reads the file in the browser or in React Native, with no
+code of your own:
+
+```bash
+npm install @openfeature/flagd-core
+```
 
 ```ts
-type ClientFile = {
-  environment: string;
-  revision: number;                       // the environment's publish number
-  flags: Record<string, FileFlag>;        // by flag key
-};
+import { FlagdCore } from '@openfeature/flagd-core';
 
-type FileFlag = {
-  value?: unknown;                        // the value when no line below decides
-  codeDefault?: true;                     // …or: no remote value, the app keeps the default in its code
-  group?: string | null;                  // the % group name, when the flag's default comes from a %
-  when?: FileLine[];                      // lines tried in order, before `value`
-};
+const core = new FlagdCore();
+let etag = '';
 
-type FileLine = {
-  if: Condition[];                        // every check must pass
-  value?: unknown;
-  codeDefault?: true;
-  locked?: true;                          // an override: a missing attribute counts as a pass
-  split?: { by: string; fallbackBy?: string; salt: string; hashVersion: number; from: number; to: number };
-  group?: string | null;                  // set when a % decides: the name of its part (null: no name)
-  outside?: string;                       // an outside line: no value, a group name for devices outside a %
-  unit?: { by: string; fallbackBy?: string };
-};
+async function refresh(link: string) {
+  const res = await fetch(link, { headers: etag ? { 'If-None-Match': etag } : {} });
+  if (res.status === 304) return;
+  etag = res.headers.get('ETag') ?? '';
+  core.setConfigurations(await res.text());
+}
 
-type Condition = { field: string; op: Op; values?: (string | number)[] };
+const link = 'https://flags.example.com/client/v1/flags/prod/web/acme/k3J9xW2mQ7vR1tY5uP8sLa';
+await refresh(link);
+setInterval(() => refresh(link), 60_000);
+
+const context = { targetingKey: installId, app: { version: '6.2.0' }, device: { id: installId } };
+core.resolveBooleanEvaluation('dark_mode_v2', false, context).value;
 ```
 
-A flag that isn't in the file isn't in this service: use the code default.
+## Android and iOS
 
-## Reading one flag
+OpenFeature has no provider that evaluates flagd JSON on an Android or iOS device. Native apps have two choices:
 
-Given the flag `f` and the device's attributes `attrs` (a flat map: `app.version`, `device.id`…):
-
-```text
-outside = none
-for each line in f.when (in order):
-    if any check in line.if fails → next line
-        (a check that can't be read — missing value, a version like "abc" — fails, unless line.locked: then it passes)
-    if line.outside is set:
-        if line.unit is set and the device has no unit ID → next line
-        outside = outside ?? line.outside        (remember the first one)
-        → next line
-    if line.split is set:
-        unit = attrs[split.by], or attrs[split.fallbackBy] when that's missing
-        if unit is missing → next line
-        b = bucket(split.salt, unit, split.hashVersion)
-        if b < split.from or b >= split.to → next line
-    return answer(line)
-return answer(f)
-
-answer(x):
-    value = x.codeDefault ? (use the code default) : x.value
-    group = x has a `group` key ? x.group : outside      (null means no name)
-```
-
-A value is **missing** when it's absent, `null` or the empty string.
-
-## Checks
-
-| `op` | Passes when | Values |
-|---|---|---|
-| `in` / `not_in` | the value, as text, is / isn't one of `values` | any |
-| `contains_any` / `contains_none` | the value is a list holding one / none of `values` | any |
-| `starts_with` / `ends_with` | the text starts / ends with one of `values` | text |
-| `semver_lt`, `semver_lte`, `semver_gt`, `semver_gte`, `semver_eq` | the value compared as a version with `values[0]` | a version |
-| `lt`, `lte`, `gt`, `gte` | the value compared as a number with `values[0]` | a number |
-| `exists` / `missing` | the value is there / missing | none |
-
-Every op except `exists` and `missing` **can't be read** (the line fails, or passes if `locked`) when the value is
-missing, or when a version or number doesn't parse.
-
-**Versions** parse leniently: an optional `v`, then 1 to 3 numbers (`5`, `5.1`, `5.1.2`), an optional
-`-prerelease` and an ignored `+build`. Missing parts are 0, so `5` equals `5.0.0`. Prereleases sort before the release
-(`6.0.0-beta.2` < `6.0.0`), compared part by part: numbers as numbers, below text.
-
-## The bucket of a % of devices
-
-```text
-bucket(salt, unit, 2) = floor(murmur3_x86_32(cbor_text(salt + "/" + unit), seed 0) × 10000 / 2^32)
-```
-
-- `cbor_text(s)` is the deterministic CBOR encoding of the text `s`: a head with major type 3 and the UTF-8 length
-  (`0x60 + n` below 24 bytes, `0x78 n` below 256, `0x79 nn` below 65536, else `0x7a nnnn`), then the UTF-8 bytes.
-- The result is 0 to 9999; a device is inside a line's split when `from <= bucket < to`.
-- This is exactly flagd's `fractional` with the bucketing value `{"cat": [salt, "/", unit]}`, so a backend using flagd
-  puts each device in the same group.
-- `hashVersion` is 2 in every file today. Treat a line with another version as not matching.
-
-Test vectors:
-
-| salt | unit | MurmurHash3 | bucket |
-|---|---|---|---|
-| `new_checkout` | `device-1` | 2747386712 | 6396 |
-| `new_checkout` | `device-2` | 2657031076 | 6186 |
-| `dark_mode` | `d-42` | 1798716484 | 4187 |
-| `web_bundle/1.0.1` | `5f0c2a1e` | 3211301130 | 7476 |
+- **Read remotely** with OpenFeature's OFREP providers for Kotlin and Swift: see
+  [Remote evaluation in apps](/reading/remote-apps#android-and-ios). This is the usual way.
+- **Evaluate the file yourself** with a JsonLogic library, adding flagd's operators: `sem_ver`, `fractional`,
+  `starts_with` and `ends_with` ([flagd's custom operations](https://flagd.dev/reference/custom-operations/)).
 
 ## Attributes to report
 
-Report what your platform knows, by these names: `app.version`, `app.build`, `app.channel`, `device.id` (a random ID
-kept for the install), `session.id`, `device.platform`, `device.type`, `device.manufacturer`, `device.model`,
-`device.memory_class`, `device.os`, `device.os_version`, `device.api_level`, `device.browser`,
-`device.browser_version`, `device.browser_engine`, `geo.country`, `locale.language`, `locale.timezone`. The full list,
-with their known values, is in [Attributes](/reference/attributes).
+Report what your platform knows, by these names, nested as JsonLogic reads them (`{ "app": { "version": "6.2.0" } }`):
+`app.version`, `app.build`, `app.channel`, `device.id` (a random ID kept for the install), `session.id`,
+`device.platform`, `device.type`, `device.manufacturer`, `device.model`, `device.memory_class`, `device.os`,
+`device.os_version`, `device.api_level`, `device.browser`, `device.browser_version`, `device.browser_engine`,
+`geo.country`, `locale.language`, `locale.timezone`. The full list, with their known values, is in
+[Attributes](/reference/attributes).
 
-## Checking your implementation
+## The same answers as the server
 
-Your reader is right when it gives the same answer as the server for every device. The server's tests do this for
-the reference reader across thousands of combinations
-([test/client-file.test.ts](https://github.com/dvir-daniel/companyflags/blob/main/test/client-file.test.ts));
-the flag's **Debug** tab in the console shows the server's answer for any entity, service and device, to compare by
-hand.
-
-To give each signed-in user's app its entity's file at a secret link, your backend asks for it: see [Signed app links](/reading/context#signed-app-links).
+The file is evaluated the way flagd evaluates, so it gives the server's answers, with flagd's few differences: reasons
+are coarser, and a % rule's group names aren't in the answer. See
+[What differs from the server](/reading/local-backends#what-differs-from-the-server). A device lands in the same %
+group everywhere: `fractional` uses the server's own hash.

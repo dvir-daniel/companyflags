@@ -9,13 +9,14 @@ CompanyFlags has no SDK of its own: you use OpenFeature's providers. There are f
 
 | | **The server decides** (remote evaluation) | **Your code decides** (local evaluation) |
 |---|---|---|
-| **App** (web, mobile) | [OFREP providers for web, React, Android and iOS](/reading/remote-apps) | [The CDN file](/reading/local-apps): values only, plus the checks only the device knows. Safe to share, cached by a CDN |
-| **Backend** | [OFREP providers for Node.js, Go, Java, Python, .NET](/reading/remote-backends) | [flagd JSON](/reading/local-backends): the entity's full rules. Secret, never cached by a CDN |
+| **App** (web, mobile) | [OFREP providers for web, React, Android and iOS](/reading/remote-apps) | [The CDN file](/reading/local-apps): flagd JSON for the app's entity, with only the checks the device knows. Safe to share, cached by a CDN |
+| **Backend** | [OFREP providers for Node.js, Go, Java, Python, .NET](/reading/remote-backends) | [flagd JSON](/reading/local-backends): flagd JSON for the backend's entity, with its full rules. Secret, never cached by a CDN |
 
-The two local files are different. **flagd JSON** holds the entity's rules, so only a backend may read it, with its
-secret key. The **CDN file** is made for devices: the server works out everything it can ahead of time and leaves in
-only what the device must check itself (its app version, its platform, which % group it's in). So a CDN can share
-it, and nobody can learn your rules from it.
+Both local ways read the same format, [flagd](https://flagd.dev) JSON, with OpenFeature's flagd evaluator. What the
+server puts in it differs: for a **backend** it keeps the rules that depend on the request, behind the backend's
+secret key. For an **app** it settles everything it can ahead of time and leaves in only what the device must check
+itself (its app version, its platform, which % group it's in), so a CDN can share it and nobody learns your rules
+from it.
 
 ## Which to pick
 

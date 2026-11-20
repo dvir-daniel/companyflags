@@ -6,8 +6,8 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) first: it has the layout, the commands a
   :8787), `pnpm check` (types, lint, every test), `pnpm test:pg` (on a real Postgres), `pnpm docs:dev`.
 - **Node runs the TypeScript directly** (type stripping): no build step for the server. Use only erasable syntax (no
   enums, no parameter properties, no namespaces) and `.ts` extensions in imports.
-- **One evaluator.** `server/evaluator.ts` decides every answer; OFREP (`server/ofrep.ts`), app files
-  (`server/clientFile.ts`), flagd JSON (`server/flagd.ts`) and the console's trace all come from it. A change to how
+- **One evaluator.** `server/evaluator.ts` decides every answer; OFREP (`server/ofrep.ts`), flagd JSON
+  (`server/flagd.ts`, for backends and, as CDN files, for apps) and the console's trace all come from it. A change to how
   answers are decided needs a test comparing them.
 - **No SDK of our own.** Apps and backends use OpenFeature's providers (OFREP, flagd). Don't add a client library or
   custom headers; fit the feature into those protocols.

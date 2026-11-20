@@ -1,11 +1,13 @@
-// Group names on a % of devices: the app is told which group it is in (its file says, clientFile.ts), so its own
-// analytics can compare devices inside the % with devices outside it.
+// Group names on a % of devices: the app is told which group it is in (OFREP's metadata.group, server/ofrep.ts), so its
+// own analytics can compare devices inside the % with devices outside it. The CDN file is flagd JSON, which has nowhere
+// to put the names: it gives the same values, without them.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CODE_DEFAULT, evaluate, type FlagDef, type Rule, type Snapshot } from '../server/evaluator.ts';
 import { checkRule } from '../server/checks.ts';
 import { boot, deviceIn as firstDevice } from './helpers.ts';
-import { readClientFile } from '../server/clientFile.ts';
+import { appToken } from '../server/delivery.ts';
+import { cdnAnswer } from './flagdReference.ts';
 
 const K = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 // device ids inside / outside the first 20% for a salt
@@ -87,22 +89,37 @@ test('names saved in the console reach the app with each flag', async () => {
   const stored = (await t.as('alice').get('/flags/new_checkout')).json.layers.dev.base.rules.find((r: Rule) => r.split).split;
   assert.deepEqual([stored.ranges[0].group, stored.outsideGroup], ['checkout_test', 'checkout_control']);
 
-  const file = (await t.appFile('dev', 'android', 'acme')).json;
-  const fetchFlag = (device: string) => readClientFile(file, 'new_checkout', { 'device.id': device, 'app.version': '6.0.0' });
   const salt = stored.salt;
-  assert.equal(fetchFlag(deviceIn(salt, stored.ranges[0].to)).group, 'checkout_test');
-  assert.equal(fetchFlag(deviceOut(salt, stored.ranges[0].to)).group, 'checkout_control');
+  const [inside, outside] = [deviceIn(salt, stored.ranges[0].to), deviceOut(salt, stored.ranges[0].to)];
+  const answers = await ofrep(inside);
+  assert.equal(answers.new_checkout.metadata?.group, 'checkout_test');
+  assert.equal((await ofrep(outside)).new_checkout.metadata?.group, 'checkout_control');
   // other flags carry no group at all
-  for (const k of Object.keys(file.flags)) if (k !== 'new_checkout') assert.equal(readClientFile(file, k, { 'device.id': 'x' }).group, undefined, k);
+  for (const [k, a] of Object.entries(answers)) if (k !== 'new_checkout') assert.equal(a.metadata?.group, undefined, k);
+  // the CDN file: the same values, no names
+  const file = (await t.appFile('dev', 'android', 'acme')).json;
+  for (const device of [inside, outside]) {
+    assert.deepEqual(cdnAnswer(file, 'new_checkout', { 'device.id': device, 'app.version': '6.0.0' }).value, (await ofrep(device)).new_checkout.value, device);
+  }
+  assert.ok(!JSON.stringify(file).includes('checkout_test') && !JSON.stringify(file).includes('checkout_control'));
 });
+
+/** Every flag's OFREP answer for acme's android app, as the app asks with its app token. */
+async function ofrep(device: string): Promise<Record<string, { value?: unknown; metadata?: { group?: string } }>> {
+  const token = await appToken(t.db, 'dev', 'acme', 'android');
+  const r = await t.call('POST', '/ofrep/v1/evaluate/flags', { context: { 'device.id': device, 'app.version': '6.0.0' } }, { authorization: `Bearer ${token}` });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  return Object.fromEntries(r.json.flags.map((f: { key: string }) => [f.key, f]));
+}
 
 test('a device in a named group that keeps its in-app default still hears its group name', async () => {
   await nameGroups();
   const saved = await t.editBase('new_checkout', 'dev', (layer) => ({ ...layer, defaultVariation: CODE_DEFAULT }));
   assert.equal(saved.status, 200, JSON.stringify(saved.json));
   const stored = (await t.baseOf('new_checkout', 'dev')).layer.rules.find((r: Rule) => r.split).split;
+  const device = deviceOut(stored.salt, stored.ranges[0].to);
+  const answer = (await ofrep(device)).new_checkout;
+  assert.deepEqual([answer.value, answer.metadata?.group], [undefined, 'checkout_control'], 'no value: the app keeps its own default');
   const file = (await t.appFile('dev', 'android', 'acme')).json;
-  assert.ok(file.flags.new_checkout, 'kept in the file for its group name');
-  assert.deepEqual(readClientFile(file, 'new_checkout', { 'device.id': deviceOut(stored.salt, stored.ranges[0].to), 'app.version': '6.0.0' }),
-    { codeDefault: true, group: 'checkout_control' });
+  assert.ok(cdnAnswer(file, 'new_checkout', { 'device.id': device, 'app.version': '6.0.0' }).codeDefault, 'the CDN file: the in-app default, no name');
 });

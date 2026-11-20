@@ -5,7 +5,8 @@
 // in chain.test.ts.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildClientFile } from '../server/clientFile.ts';
+import { buildFlagdDoc } from '../server/flagd.ts';
+import { cdnAnswer } from './flagdReference.ts';
 import {
   answerFor, CODE_DEFAULT, contextFor, entityChain, evaluate, forEntity, UnknownEntityError,
   type Condition, type FlagDef, type Inherit, type Layer, type Rule, type Snapshot,
@@ -216,7 +217,8 @@ test('the entity, its company and its brand, at each level: evaluate() and the a
       assert.equal(full.variant, matches[i] ? 'b' : 'a', where);
       const page = forEntity(f, W, entity);
       assert.deepEqual([page.gets.variant, page.gets.namesEntity, page.exceptions], [full.variant, full.decidedBy.namesEntity, []], `settled on the server: ${where}`);
-      assert.deepEqual(buildClientFile(snap, 'web', entity).flags.f, { value: matches[i] ? 'B' : 'A' }, `the app file, with no check on the entity: ${where}`);
+      assert.deepEqual(buildFlagdDoc(snap, 'web', entity).flags.f, { state: 'ENABLED', variants: matches[i] ? { b: 'B' } : { a: 'A' }, defaultVariant: matches[i] ? 'b' : 'a' },
+        `the CDN file, with no check on the entity: ${where}`);
     });
   }
   // a rule naming them: "Company is Tyrell" names Velvet and Tyrell; "Company or brand is Tyrell" only Tyrell
@@ -234,7 +236,7 @@ test('below the asker’s level a dimension is none: an override on it doesn’t
   assert.match(at(TYRELL).trace.find((s) => s.stage === 'locked')!.conditions![0].note!, /none/);
   assert.equal(at(null).variant, 'b', 'no entity at all (before login): missing, so the override matches, as it always did');
   for (const entity of [VELVET, TYRELL, null]) {
-    assert.equal(buildClientFile(snapOf(f), 'web', entity).flags.f.value, at(entity).value, `the app file agrees for ${entity?.key}`);
+    assert.equal(cdnAnswer(buildFlagdDoc(snapOf(f), 'web', entity), 'f').value, at(entity).value, `the CDN file agrees for ${entity?.key}`);
   }
   // a % by a dimension the asker has none of: no value to split by, so it doesn't apply
   const byBrand = flag({ rules: [rule({ split: { by: 'brand', fallbackBy: null, salt: 's', hashVersion: 2, ranges: [{ variation: 'c', from: 0, to: 10000 }] } })] });

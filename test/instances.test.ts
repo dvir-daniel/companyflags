@@ -3,7 +3,8 @@
 // Needs a real Postgres server: the embedded one is a single process's (pnpm test:pg, and CI).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, startApp, testDatabase } from './helpers.ts';
+import { boot, cdnAnswer, startApp, testDatabase } from './helpers.ts';
+import type { FlagdDoc } from '../server/flagd.ts';
 
 const needsPg = process.env.FF_TEST_PG ? false : 'needs a Postgres server (pnpm test:pg)';
 
@@ -14,16 +15,18 @@ test('two servers on one database serve the same thing after a round', { skip: n
   try {
     const fileOn = async (server: typeof a | typeof b, path: string) => {
       const r = await server.app.request(path);
-      return { status: r.status, body: r.status === 200 ? await r.json() as { revision: number; flags: Record<string, unknown> } : null };
+      return { status: r.status, body: r.status === 200 ? await r.json() as FlagdDoc : null };
     };
-    assert.ok((await fileOn(b, '/client/v1/flags/dev/web')).body!.flags.payments_enabled, 'b starts with what a has');
+    const onA = cdnAnswer((await fileOn(a, '/client/v1/flags/dev/web')).body!, 'payments_enabled');
+    assert.ok(!onA.codeDefault);
+    assert.deepEqual(cdnAnswer((await fileOn(b, '/client/v1/flags/dev/web')).body!, 'payments_enabled'), onA, 'b starts with what a has');
 
     // a switches payments off; b catches up on its next round
     await a.editBase('payments_enabled', 'dev', (layer) => ({ ...layer, enabled: false }));
     await b.workers.drain();
     const onB = await fileOn(b, '/client/v1/flags/dev/web');
-    assert.equal(onB.body!.flags.payments_enabled, undefined, 'off: nothing is sent');
-    assert.equal(onB.body!.revision, a.plane.get('dev').revision);
+    assert.equal(onB.body!.flags.payments_enabled.state, 'DISABLED', 'off: the app keeps the default in its code');
+    assert.equal(onB.body!.metadata.revision, a.plane.get('dev').revision);
 
     // a link replaced on a stops working on b
     const link = await a.link('dev', 'web', 'acme');

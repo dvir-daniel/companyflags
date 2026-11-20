@@ -124,6 +124,13 @@ export function nest(attrs: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+/** What an app's OpenFeature flagd provider answers from its CDN file (flagd JSON) for one flag, given what the device
+ *  knows about itself, dotted as the rules name it ("app.version"). A flag that isn't in the file: the default in code. */
+export function cdnAnswer(file: FlagdDoc, key: string, attrs: Record<string, unknown> = {}): Answer {
+  const a = flagdEvaluate(file, key, nest(attrs));
+  return a.notFound ? { codeDefault: true, notFound: true } : a;
+}
+
 export function ours(snap: Snapshot, key: string, project: string, entity: string | null, attrs: Record<string, unknown>): Answer {
   const r = evaluate(snap, key, contextFor(snap, { project, entity }, attrs, { trust: 'app' }), false);
   if (r.errorCode === 'FLAG_NOT_FOUND') return { notFound: true };

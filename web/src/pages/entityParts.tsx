@@ -604,8 +604,8 @@ function AppLink({ open, onClose, entity, env }: { open: boolean; onClose: () =>
             {ofrep && <Field label="OpenFeature token" hint="For OpenFeature’s OFREP providers (web, Android, iOS): send it as Authorization: Bearer <token>.">
               <Input readOnly value={link?.token ?? ''} placeholder="Loading…" onFocus={(e) => e.target.select()} className="h-[34px] font-mono text-13" aria-label="OpenFeature token" />
             </Field>}
-            {files && <Field label="App file" hint="The same link as an address: the app’s values only, cached by your CDN.">
-              <Input readOnly value={url} placeholder="Loading…" onFocus={(e) => e.target.select()} className="h-[34px] font-mono text-13" aria-label="App link" />
+            {files && <Field label="CDN file" hint="The same link as an address: this entity’s flagd JSON, with only the checks the device makes, cached by your CDN.">
+              <Input readOnly value={url} placeholder="Loading…" onFocus={(e) => e.target.select()} className="h-[34px] font-mono text-13" aria-label="CDN file link" />
             </Field>}
           </>}
         </>}

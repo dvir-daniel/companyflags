@@ -5,7 +5,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hiddenKey as k } from '../server/evaluator.ts';
 import { buildFlagdDoc } from '../server/flagd.ts';
-import { boot } from './helpers.ts';
+import { boot, cdnAnswer } from './helpers.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
 before(async () => { t = await boot(); });
@@ -43,7 +43,7 @@ test('a flag with free values takes typed values only; a new one writes no histo
   assert.equal((await t.trace({ project: 'web', entity: 'acme', flag: 'api_host' })).value, EU);
   assert.equal((await t.trace({ project: 'web', entity: 'globex', flag: 'api_host' })).value, US);
   const file = (await t.appFile('dev', 'web', 'acme')).json;
-  assert.equal(file.flags.api_host.value, EU, 'the app file has the value, as for any flag');
+  assert.equal(cdnAnswer(file, 'api_host').value, EU, 'the CDN file has the value, as for any flag');
 });
 
 test('variants are on by default; an on/off flag always uses them; the setting can be turned off and on again', async () => {

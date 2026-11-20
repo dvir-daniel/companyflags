@@ -4,10 +4,9 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './helpers.ts';
-import { buildClientFile, readClientFile } from '../server/clientFile.ts';
 import { contextFor, evaluate, type Inherit } from '../server/evaluator.ts';
-import type { FlagdDoc } from '../server/flagd.ts';
-import { flagdEvaluate, nest, ours, same } from './flagdReference.ts';
+import { buildFlagdDoc, type FlagdDoc } from '../server/flagd.ts';
+import { cdnAnswer, flagdEvaluate, nest, ours, same } from './flagdReference.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
 before(async () => {
@@ -91,13 +90,13 @@ test('a brand follows its company, then the defaults; its own settings come firs
       await setLayer('velvet', brand, 'brand');
       await t.settle();
       const snap = t.plane.get('dev');
-      const file = buildClientFile(snap, 'web', snap.entities.velvet);
+      const file = buildFlagdDoc(snap, 'web', snap.entities.velvet);   // the brand's CDN file
       for (const lang of LANGS) {
         const where = `brand=${brand} company=${company} lang=${lang}`;
         const want = expected(lang, brand, company);
         const got = evaluate(snap, 'brand_matrix', ctx(snap, 'velvet', lang));
         assert.equal(got.value, want, `evaluator: ${where}`);
-        assert.equal(readClientFile(file, 'brand_matrix', { 'locale.language': lang }).value, want, `the brand’s app file: ${where}`);
+        assert.equal(cdnAnswer(file, 'brand_matrix', { 'locale.language': lang }).value, want, `the brand’s CDN file: ${where}`);
         // the company itself and its other brand never see Velvet's settings
         const onyx = evaluate(snap, 'brand_matrix', ctx(snap, 'onyx', lang));
         assert.equal(onyx.value, expected(lang, null, company), `onyx: ${where}`);
@@ -157,12 +156,13 @@ test('“Company is Tyrell” covers Tyrell and all its brands; “Company or br
   const snap = t.plane.get('prod');
   const get = (entity: string | null) => evaluate(snap, 'brand_matrix', ctx(snap, entity, 'en')).value;
   assert.deepEqual([get('velvet'), get('onyx'), get('tyrell'), get('wonka'), get(null)], ['brand_rule', 'company_rule', 'company_rule', 'base_default', 'base_default']);
-  const axeFile = buildClientFile(snap, 'web', snap.entities.onyx);
-  assert.equal(readClientFile(axeFile, 'brand_matrix', { 'locale.language': 'en' }).value, 'company_rule', 'settled on the server for the brand’s file');
-  assert.ok(!JSON.stringify(axeFile).includes('"field":"company"'), 'no company list reaches the device');
+  const axeFile = buildFlagdDoc(snap, 'web', snap.entities.onyx);
+  assert.equal(cdnAnswer(axeFile, 'brand_matrix', { 'locale.language': 'en' }).value, 'company_rule', 'settled on the server for the brand’s file');
+  assert.ok(!JSON.stringify(axeFile).includes('{"var":"company"}'), 'no company list reaches the device');
+  assert.ok(!JSON.stringify(axeFile).includes('velvet') && !JSON.stringify(axeFile).includes('tyrell'), 'nor the other entities the rules name');
 });
 
-test('a brand has its own app link and file, like any entity', async () => {
+test('a brand has its own app link and CDN file, like any entity', async () => {
   const velvet = await t.appFile('dev', 'web', 'velvet', {});
   assert.equal(velvet.status, 200);
   const onyx = await t.link('dev', 'web', 'onyx');

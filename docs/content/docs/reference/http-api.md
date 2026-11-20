@@ -72,19 +72,22 @@ GET /client/v1/flags/<env>/<service>/<entity>/<secret>
 sign-in. The second is one entity's file, at its secret link; the console shows it on the entity's page, and backends
 get it from `/sdk/v1/links` (below). `HEAD` works too.
 
+The answer is [flagd](https://flagd.dev) JSON, as a backend's flagd JSON is, made for the app service and the
+entity (or for no entity, before sign-in):
+
 ```json
 {
-  "environment": "prod",
-  "revision": 42,
+  "$schema": "https://flagd.dev/schema/v0/flags.json",
+  "metadata": { "flagSetId": "prod/web/acme", "environment": "prod", "revision": 42 },
   "flags": {
-    "api_base_url": { "value": "https://api.example.com" },
-    "new_checkout": { "value": false, "when": [ … ] }
+    "api_base_url": { "state": "ENABLED", "variants": { "default": "https://api.example.com" }, "defaultVariant": "default" },
+    "new_checkout": { "state": "ENABLED", "variants": { "on": true, "off": false }, "defaultVariant": "off", "targeting": { … } }
   }
 }
 ```
 
-`revision` is the environment's publish number. The flags hold values only; the format of each flag, its `when`
-lines and how an app reads them are in [The CDN file](/reading/local-apps).
+`metadata.revision` is the environment's publish number. What's in it, and how an app reads it, are in
+[The CDN file](/reading/local-apps).
 
 Headers:
 

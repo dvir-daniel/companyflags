@@ -1,4 +1,4 @@
-// The Cloudflare plugin: after each publish, drops that environment's app files from Cloudflare's cache (../cdn.ts),
+// The Cloudflare plugin: after each publish, drops that environment's CDN files from Cloudflare's cache (../cdn.ts),
 // so apps get a change in seconds instead of within a minute. The zone and a token that may purge it are set here,
 // else with CF_ZONE_ID and CF_API_TOKEN, else by an admin in the console (Settings → CDN, its console routes below).
 
@@ -6,7 +6,7 @@ import { consoleRoutes, definePlugin } from '../plugin.ts';
 import { createCdn } from '../cdn.ts';
 
 export type CloudflareOptions = {
-  /** The zone the app files are served through, and an API token with Zone → Cache Purge → Purge on it. Each one
+  /** The zone the CDN files are served through, and an API token with Zone → Cache Purge → Purge on it. Each one
    *  left out comes from CF_ZONE_ID or CF_API_TOKEN. With both, they win over the console's; with neither, an admin
    *  sets them in the console. */
   zoneId?: string;

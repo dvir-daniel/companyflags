@@ -1,6 +1,6 @@
 // Plugins: the parts of CompanyFlags an installation turns on in companyflags.config.ts, the way Better Auth's
 // plugins are. The core is the console and its API, sign-in, the evaluator, the change journal, publishing and app
-// links. A plugin adds a way to read flags (OFREP, flagd JSON, app files), work to do after a publish (a CDN purge),
+// links. A plugin adds a way to read flags (OFREP, flagd JSON, CDN files), work to do after a publish (a CDN purge),
 // work of its own in the background (sending webhooks), or another way into the console's API (MCP, for agents). The built-in ones are in plugins/; each is a function that
 // takes its options and returns a Plugin.
 //

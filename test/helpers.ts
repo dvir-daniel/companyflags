@@ -5,6 +5,8 @@ import { defaultPlugins, type CloudflareOptions, type WebhooksOptions } from '..
 import { bucketFor, HASH_VERSION } from '../server/hash.ts';
 import { fixtures } from './fixtures.ts';
 
+export { cdnAnswer } from './flagdReference.ts';
+
 // Tests never run as production (whatever the shell says): no rate limits on sign-in, no production checks.
 // (The server sets Better Auth's rate limits and Origin check itself, so this doesn't depend on import order.)
 if (process.env.NODE_ENV === 'production') process.env.NODE_ENV = 'development';
@@ -98,7 +100,7 @@ export async function boot(opts: AppOptions = {}) {
     const top = await ctx.db.query<{ d: string }>(`select key as d from dimension where parent_id is null`);
     return `/dimensions/${r.rows[0]?.d ?? top.rows[0]?.d ?? 'company'}/${key}`;
   };
-  // What an app reads: its entity's file at the entity's link (or, with no entity, the before-login file)
+  // What an app reads: its entity's CDN file (flagd JSON) at the entity's link (or, with no entity, the before-sign-in file)
   const link = async (environment: string, app: string, entity: string) =>
     (await as('dana').get(`${await entityPath(entity)}/link?environment=${environment}`)).json.path.replace(':service', app) as string;
   const appFile = async (environment: string, app: string, entity: string | null, headers: Record<string, string> = {}) =>

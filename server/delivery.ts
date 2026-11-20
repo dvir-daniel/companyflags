@@ -1,15 +1,17 @@
-// Reading flags without OFREP (OFREP itself is ofrep.ts), made to sit behind a CDN (Cloudflare): app files (the
+// Reading flags without OFREP (OFREP itself is ofrep.ts), made to sit behind a CDN (Cloudflare): CDN files (the
 // app-files plugin), flagd JSON (the flagd plugin) and app links (the core). plugins/ mounts the plugins' routes,
 // index.ts the links. This file also makes and reads app tokens, the credential apps use with OFREP.
 //
-// App files, for apps (android, ios, web) that read a file instead of using OFREP: one file per environment, service
-// and entity, values only (clientFile.ts).
+// CDN files, for apps (android, ios, web) that read a file instead of using OFREP: one file per environment, service
+// and entity, as flagd JSON (flagd.ts), read by an OpenFeature flagd provider in-process (or by flagd).
 //   GET /client/v1/flags/:env/:app                     before login: what everyone gets
 //   GET /client/v1/flags/:env/:app/:entity/:secret     the entity's file (:app is the service): the entity's app link
-// The CDN caches by path, so this server only builds a file when the CDN doesn't have it, and keeps it in
-// memory until the next publish. Each response is tagged with its environment (Cache-Tag), so a publish can
-// purge them all at once (purge.ts). The device checks the rest itself: its model, OS, browser, app version,
-// the country (the CDN's cf-ipcountry response header), and its own id for a % of devices.
+// Everything the server knows is settled in the file (the environment, the service, the entity and those above it),
+// so it names no other entity and holds none of their values. The CDN caches by path, so this server only builds a
+// file when the CDN doesn't have it, and keeps it in memory until the next publish. Each response is tagged with its
+// environment (Cache-Tag), so a publish can purge them all at once (purge.ts). The device checks the rest itself, in
+// the flagd JSON's rules: its model, OS, browser, app version, the country (the CDN's cf-ipcountry response header),
+// and its own id for a % of devices.
 //
 // Backend servers, with an API key: GET /sdk/v1/flagd/:dimension/:entity, one entity's flags as flagd JSON (flagd.ts),
 // for flagd or an OpenFeature flagd provider evaluating in-process; GET /sdk/v1/links/:dimension/:entity?service=<key>, the
@@ -26,11 +28,10 @@ import { all, HttpError, one, type Db } from './db.ts';
 import { appTokenSecret, authenticate, clientSecret, LruCache, mayAsk, sameSecret, type KeyCache, type Principal } from './auth.ts';
 import type { Snapshot } from './evaluator.ts';
 import type { Snapshots } from './plugin.ts';
-import { buildClientFile } from './clientFile.ts';
 import { buildFlagdDoc } from './flagd.ts';
 
 const gzipAsync = promisify(gzip);
-/** A short sha256 of an answer, for its ETag (app files, flagd JSON, OFREP): 22 base64url characters. */
+/** A short sha256 of an answer, for its ETag (CDN files, flagd JSON, OFREP): 22 base64url characters. */
 export const shortHash = (s: string) => createHash('sha256').update(s).digest('base64url').slice(0, 22);
 type Download = { json: string; gz: Uint8Array<ArrayBuffer>; etag: string };
 // gzipped once per file and sent as is (a view of the same bytes, not a copy per response)
@@ -43,7 +44,7 @@ function remember(perKey: Map<string, Promise<Download>>, id: string, d: Promise
 }
 
 // Each file is built, hashed and gzipped once per publish, on first request. A new publish makes a new snapshot, which
-// drops them. The ETag covers `content` only (the values or the flags, not the publish number): a publish that changes
+// drops them. The ETag covers `content` only (the flags, not the publish number): a publish that changes
 // nothing in a file is a 304. Weak: the gzipped and the plain response are the same content in different bytes
 // (RFC 9110 §8.8.1), and a CDN that compresses again keeps a weak ETag as it is.
 type Files = WeakMap<Snapshot, Map<string, Promise<Download>>>;
@@ -58,20 +59,19 @@ function download(files: Files, snap: Snapshot, id: string, build: () => { conte
   })());
 }
 
-const clientFiles: Files = new WeakMap();
-const clientDownload = (snap: Snapshot, service: string, entity: string | null) => download(clientFiles, snap, `${service}|${entity ?? ''}`, () => {
-  const file = buildClientFile(snap, service, entity ? snap.entities[entity] : null);
-  const content = JSON.stringify(file.flags);
-  return { content, json: `{"environment":${JSON.stringify(file.environment)},"revision":${file.revision},"flags":${content}}` };
-});
-
-// flagd JSON (flagd.ts), for each (backend service, entity)
-const flagdDocs: Files = new WeakMap();
-const flagdDownload = (snap: Snapshot, service: string, entity: string) => download(flagdDocs, snap, `${service}|${entity}`, () => {
-  const doc = buildFlagdDoc(snap, service, snap.entities[entity]);
+// flagd JSON (flagd.ts) for one service and entity (null: what it gets with no entity). The same document goes to
+// backends (flagdDownload, for a backend service) and to apps as their CDN file (clientDownload, for an app service).
+const flagdJson = (snap: Snapshot, service: string, entity: string | null) => {
+  const doc = buildFlagdDoc(snap, service, entity ? snap.entities[entity] : null);
   const content = JSON.stringify(doc.flags);
   return { content, json: `{"$schema":${JSON.stringify(doc.$schema)},"metadata":${JSON.stringify(doc.metadata)},"flags":${content}}` };
-});
+};
+const clientFiles: Files = new WeakMap();
+const clientDownload = (snap: Snapshot, service: string, entity: string | null) =>
+  download(clientFiles, snap, `${service}|${entity ?? ''}`, () => flagdJson(snap, service, entity));
+const flagdDocs: Files = new WeakMap();
+const flagdDownload = (snap: Snapshot, service: string, entity: string) =>
+  download(flagdDocs, snap, `${service}|${entity}`, () => flagdJson(snap, service, entity));
 
 // The link secrets: environment secret + each entity's link version, read once a minute at most, by each app
 // (createApp makes its own LinkCache), one request at a time (the others wait for it). Replacing an entity's link,
@@ -165,7 +165,7 @@ const snapshotIn = (plane: Parts['plane'], env: string) => {
   return snap;
 };
 
-/** App files (the app-files plugin): GET /client/v1/flags/…, values only, for apps and the CDN in front of them. */
+/** CDN files (the app-files plugin): GET /client/v1/flags/…, flagd JSON for apps and the CDN in front of them. */
 export function appFileRoutes({ db, plane, links, services: apps }: Parts) {
   const app = new Hono();
   // If-None-Match → 304 the standard way (weak comparison, a list of ETags, *), keeping the headers a 304 must carry.
