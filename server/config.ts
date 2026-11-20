@@ -3,12 +3,12 @@
 // configuration.md), then the defaults, so a server with no file runs as before and the Docker image needs none.
 //
 //   import { defineConfig } from 'companyflags/config';
-//   import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
+//   import { appFiles, cloudflare, flagd, mcp, ofrep, webhooks } from 'companyflags/plugins';
 //
 //   export default defineConfig({
 //     database: { url: process.env.DATABASE_URL },
 //     auth: { baseURL: 'https://flags.example.com' },
-//     plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()],
+//     plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks(), mcp()],
 //   });
 //
 // This module is what `companyflags/config` gives a config file: its type and defineConfig. The server (index.ts) and

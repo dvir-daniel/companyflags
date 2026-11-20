@@ -4,10 +4,11 @@ import type { Plugin } from '../plugin.ts';
 import { appFiles } from './appFiles.ts';
 import { cloudflare, type CloudflareOptions } from './cloudflare.ts';
 import { flagd } from './flagd.ts';
+import { mcp } from './mcp.ts';
 import { ofrep } from './ofrep.ts';
 import { webhooks, type WebhooksOptions } from './webhooks.ts';
 
-export { appFiles, cloudflare, flagd, ofrep, webhooks, type CloudflareOptions, type WebhooksOptions };
+export { appFiles, cloudflare, flagd, mcp, ofrep, webhooks, type CloudflareOptions, type WebhooksOptions };
 export {
   definePlugin, consoleRoutes, PluginError,
   type Plugin, type PluginContext, type PluginParts, type ConsoleHelpers, type ConsoleRoutes, type OnPublish, type Evaluate, type Asking, type Snapshots,
@@ -20,4 +21,4 @@ export type { Actor } from '../layers.ts';
 
 /** Every built-in plugin, as an installation without a list of its own gets them. */
 export const defaultPlugins = (o: { cloudflare?: CloudflareOptions; webhooks?: WebhooksOptions } = {}): Plugin[] =>
-  [ofrep(), flagd(), appFiles(), cloudflare(o.cloudflare), webhooks(o.webhooks)];
+  [ofrep(), flagd(), appFiles(), cloudflare(o.cloudflare), webhooks(o.webhooks), mcp()];

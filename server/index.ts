@@ -10,6 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import { routePath } from 'hono/route';
 import { secureHeaders } from 'hono/secure-headers';
 import { consoleApi } from './api.ts';
+import { createTokens } from './tokens.ts';
 import { FolderInUseError, HttpError, openDb, type Db } from './db.ts';
 import { MigrationError } from './migrate.ts';
 import { createIdentity, signInFromEnv, type SignIn } from './identity.ts';
@@ -83,9 +84,15 @@ export async function createApp(opts: AppOptions = {}) {
   const sso = singleSignOn(db, {
     access, plugin: auth, discover: opts.discover ?? discoverOverHttp(settings?.trustedOrigins ?? []), baseURL: settings?.baseURL, production: settings?.production,
   });
-  // the plugins (plugin.ts): set up once, with what the core shares
+  // the plugins (plugin.ts): set up once, with what the core shares. `request` is the app's own fetch, bound once the
+  // app below is built.
+  let built: Hono | null = null;
+  const request = async (input: string, init?: RequestInit) => {
+    if (!built) throw new Error('the server isn’t built yet: call request from a request, not from a plugin’s setup');
+    return built.request(input, init);
+  };
   const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: { fetch: undefined }, webhooks: { fetch: undefined } }), {
-    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, keys, links, services: apps,
+    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, request, keys, links, services: apps,
   }).catch(async (e) => { await store.close(); throw e; });
   const on = new Set(plugins.map((p) => p.id));
   const publisher = startWorkers(db, plane, hub, log, opts.onPublish ?? publishHooks(plugins), {
@@ -119,14 +126,15 @@ export async function createApp(opts: AppOptions = {}) {
     }
   });
   app.route('/api', identity.routes);                    // sign-in pages and Better Auth: open to everyone
-  app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, plugins }));
+  const tokens = createTokens(db);
+  app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins }));
   app.route('/', linkRoutes({ db, plane, links, keys, services: apps }, { files: on.has('app-files') }));   // app links, for backends
   for (const p of plugins) if (p.parts.routes) app.route('/', p.parts.routes);
   // An unknown address under the API, the app files or the backend downloads is a 404 with a JSON error,
   // never the console's page (which answers every other address, below). The built-in plugins' prefixes stay JSON
   // even when the plugin is off.
   const noSuchEndpoint = (c: Context) => c.json({ error: `no such endpoint: ${c.req.method} ${c.req.path}` }, 404);
-  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', '/hooks', ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
+  const prefixes = new Set(['/api', '/client', '/sdk', '/ofrep', '/hooks', '/mcp', ...plugins.flatMap((p) => p.parts.prefixes ?? [])]);
   for (const prefix of prefixes) {
     app.all(prefix, noSuchEndpoint);
     app.all(`${prefix}/*`, noSuchEndpoint);
@@ -148,6 +156,7 @@ export async function createApp(opts: AppOptions = {}) {
     app.use('/*', serveStatic({ root: './web/dist' }));
     app.get('*', page);
   }
+  built = app;
   return { app, db, plane, hub, workers, identity, plugins: [...on], setupToken, needsSetup: () => access.needsSetup() };
 }
 

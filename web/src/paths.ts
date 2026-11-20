@@ -75,6 +75,8 @@ export const releaseListPath = (env: string, show: string, owner: string, q: str
 /** The requests that change one flag (a release page shows those still open). */
 export const flagRequestsPath = (key: string) => `/change-sets?flag=${seg(key)}`;
 export const KEYS_PATH = '/api-keys';
+/** Your access tokens (server/tokens.ts); an admin adds ?all=1 for everyone's. */
+export const TOKENS_PATH = '/tokens';
 export const CHANGE_SETS_PATH = '/change-sets';
 /** Settings → Single sign-on: the connections (pages/sso.tsx). */
 export const SSO_PATH = '/sso';
@@ -139,6 +141,7 @@ export function firstPaths(hash: string, meta: Meta): string[] {
     }
     case 'history': return [historyPath(historyFilters())];
     case 'keys': return [KEYS_PATH];
+    case 'tokens': return [TOKENS_PATH];
     case 'approvals': return [CHANGE_SETS_PATH];
     case 'settings': return a && a !== 'dimensions' ? [] : [SSO_PATH];   // Settings' single sign-on; its People page needs only /meta
     default: return [];

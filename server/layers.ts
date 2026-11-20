@@ -14,7 +14,7 @@ import { compareVersions } from './semver.ts';
 import { audit, change, notRolledBack, RESTORABLE, type Entry, type NotRolledBack } from './journal.ts';
 
 export type { LayerDoc, RuleDoc } from './checks.ts';
-export type Actor = { name: string; type: 'user' | 'service_token' | 'scheduler' | 'bypass' | 'system' };
+export type Actor = { name: string; type: 'user' | 'service_token' | 'scheduler' | 'bypass' | 'system' | 'agent' };
 export type Item = {
   kind?: 'layer' | 'delivery';             // what it changes: a layer (the default), or the services the flag is in
   flag: string;
@@ -231,7 +231,9 @@ async function applyDelivery(tx: Tx, env: { id: number; key: string }, flag: Fla
 
 const hashItems = (items: unknown[]) => createHash('sha256').update(canonical(items)).digest('hex').slice(0, 16);
 
-export async function createChangeSet(db: Db, envKey: string, items: Item[], author: string, reason: string | null) {
+/** `author`: a person's key (or a webhook's name), or the Actor, so an agent's request says it's an agent's. */
+export async function createChangeSet(db: Db, envKey: string, items: Item[], author: string | Actor, reason: string | null) {
+  const by: Actor = typeof author === 'string' ? { name: author, type: 'user' } : author;
   if (!Array.isArray(items) || !items.length) throw new HttpError(422, 'a request needs at least one change');
   return db.transaction(async (tx) => {
     const env = await one<{ id: number }>(tx, `select id from environment where key = $1`, [envKey]);
@@ -268,15 +270,15 @@ export async function createChangeSet(db: Db, envKey: string, items: Item[], aut
       prepared.push({ it: hashed, flag, entityId: cust?.id ?? null, before: stripVersion(before), proposed: { doc: it.proposed, allowReshuffle: !!it.allowReshuffle }, hashed });
     }
     const hash = hashItems(prepared.map((p) => p.hashed));
-    const cs = await one<{ id: string }>(tx, `insert into change_set (environment_id, author, reason, content_hash) values ($1,$2,$3,$4) returning id`,
-      [env.id, author, reason, hash]);
+    const cs = await one<{ id: string }>(tx, `insert into change_set (environment_id, author, reason, content_hash, by_agent) values ($1,$2,$3,$4,$5) returning id`,
+      [env.id, by.name, reason, hash, by.type === 'agent']);
     for (const [seq, p] of prepared.entries()) {
       await tx.query(`insert into change_set_item (change_set_id, seq, kind, flag_id, entity_id, expected_layer_version, expected_base_version, before, proposed)
         values ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
         [cs!.id, seq, p.it.kind === 'delivery' ? 'delivery' : 'layer', p.flag.id, p.entityId, p.it.kind === 'delivery' ? null : p.it.expectedLayerVersion,
           p.it.expectedBaseVersion ?? null, JSON.stringify(p.before), JSON.stringify(p.proposed)]);
     }
-    await audit(tx, { name: author, type: 'user' }, { kind: 'change_set.create', environment: env.id, comment: reason, changeSetId: cs!.id });
+    await audit(tx, { name: by.name, type: by.type === 'agent' ? 'agent' : 'user' }, { kind: 'change_set.create', environment: env.id, comment: reason, changeSetId: cs!.id });
     return { id: Number(cs!.id) };
   });
 }
@@ -451,14 +453,15 @@ export type Submitted =
   | { applied: true; revision: number; versions: Record<string, number | null>; bypass?: true }
   | { applied: false; changeSetId: number };
 
-export async function submitChange(db: Db, envKey: string, items: Item[], user: { key: string; role: string },
+export async function submitChange(db: Db, envKey: string, items: Item[], user: { key: string; role: string; token?: { agent: boolean } },
   opts: { reason?: string | null; bypassReason?: string | null } = {}): Promise<Submitted> {
+  const by: Actor = { name: user.key, type: user.token?.agent ? 'agent' : 'user' };
   if (!items.length) throw new HttpError(422, 'nothing to save');
   const env = await one<EnvFacts & { id: number }>(db, `select id, min_approvals as "minApprovals" from environment where key = $1`, [envKey]);
   if (!env) throw new HttpError(404, 'environment not found');
   const reason = opts.reason?.trim() || null;
   if (!needsReview(env)) {
-    return { applied: true, ...(await applyItems(db, envKey, items, { name: user.key, type: 'user' }, { comment: reason ?? undefined })) };
+    return { applied: true, ...(await applyItems(db, envKey, items, by, { comment: reason ?? undefined })) };
   }
   const bypass = opts.bypassReason?.trim();
   if (bypass) {
@@ -468,8 +471,29 @@ export async function submitChange(db: Db, envKey: string, items: Item[], user: 
     return { applied: true, bypass: true, ...res };
   }
   if (!reason) throw new HttpError(422, 'add a reason for the reviewer');
-  const cs = await createChangeSet(db, envKey, items, user.key, reason);
+  const cs = await createChangeSet(db, envKey, items, by, reason);
   return { applied: false, changeSetId: cs.id };
+}
+
+// An alert turns a kill switch off (POST /api/alerts/kill, docs/guide/ai.md): the console's break-glass "Turn off now",
+// sent by Grafana, Datadog or any alert with an On call or Admin token. Only a kill switch, only its defaults' On/Off
+// switch, only off. It goes live at once in any environment, and History records it as break-glass ('bypass') under
+// the token's person, with the alert's name. A kill switch that's off already changes nothing (alerts fire again).
+export type Killed = { applied: true; revision: number; versions: Record<string, number | null>; bypass: true } | { applied: false; alreadyOff: true };
+export const ALERT_NAME_MAX = 200;
+export async function killFromAlert(db: Db, envKey: string, flagKey: string, user: { key: string; role: string }, alert?: string | null): Promise<Killed> {
+  if (!roleInfo(user.role).breaksGlass) throw new HttpError(403, 'only an On call or Admin token can turn a flag off from an alert');
+  const env = await one<EnvFacts & { id: number }>(db, `select id, min_approvals as "minApprovals" from environment where key = $1`, [envKey]);
+  if (!env) throw new HttpError(404, `environment ${envKey} not found`);
+  const flag = await flagRow(db, flagKey);
+  if (flag.kind !== 'kill_switch') throw new HttpError(422, `${flagKey} isn’t a kill switch: an alert only turns kill switches off`);
+  const cur = await currentLayer(db, env.id, flag.id, null);
+  if (!cur?.enabled) return { applied: false, alreadyOff: true };
+  const item: Item = { flag: flagKey, entity: null, expectedLayerVersion: cur.version, proposed: { ...stripVersion(cur), enabled: false } as LayerDoc };
+  if (needsReview(env)) await checkBreakGlass(db, env, item, user);
+  const name = alert?.trim().slice(0, ALERT_NAME_MAX);
+  const comment = name ? `Turned off by the alert “${name}”` : 'Turned off by an alert';
+  return { applied: true, bypass: true, ...(await applyItems(db, envKey, [item], { name: user.key, type: 'bypass' }, { comment })) };
 }
 
 // ---------------------------------------------------------------- summaries for the flags list

@@ -15,3 +15,6 @@ docs/.vitepress/dist
 !.env.example
 coverage
 *.log
+
+# agents' git worktrees
+.claude/worktrees/

@@ -11,6 +11,7 @@ import type { Identity } from './identity.ts';
 import { may, mustBeAllowed, type Access, type Person } from './access.ts';
 import { serviceProvider, type SingleSignOn } from './sso.ts';
 import type { PluginParts } from './plugin.ts';
+import type { Tokens, TokenPerson } from './tokens.ts';
 import { applyImport, fromValues, planImport, toValues } from './values.ts';
 import { appToken, clientLink } from './delivery.ts';
 import { notRolledBack, RESTORABLE } from './journal.ts';
@@ -19,11 +20,11 @@ import {
   contextFor, entityChain, evaluate, forEntity, HIDDEN_PREFIX, CODE_DEFAULT, sortedFlagKeys, UnknownEntityError,
   type EntityInfo, type EvalContext, type FlagDef, type Snapshot,
 } from './evaluator.ts';
-import { mayApprove, type ChangeSetFacts } from './policy.ts';
+import { mayApprove, roleInfo, type ChangeSetFacts } from './policy.ts';
 import type { EventHub } from './events.ts';
 import { fieldInfo, type FieldInfo } from './fields.ts';
 import {
-  applyChangeSet, cancelChangeSet, createChangeSet, restoreItems, reviewChangeSet, scheduleChangeSet, submitChange, summarizeLayers, versionsServed,
+  applyChangeSet, cancelChangeSet, createChangeSet, killFromAlert, restoreItems, reviewChangeSet, scheduleChangeSet, submitChange, summarizeLayers, versionsServed,
   type Actor, type Item, type LayerDoc,
 } from './layers.ts';
 import { entityKeyProblem, isVersionFlag } from './checks.ts';
@@ -35,15 +36,16 @@ import {
   saveDimensions, setDelivery, updateEnvironment, updateProject, upsertEntity, upsertVariations, type NewFlag,
 } from './control.ts';
 import { loadLayers, type DataPlane } from './snapshot.ts';
+import { planFlags, pullFlags, pushFlags, type Done } from './flagsAsCode.ts';
 
 // `db` is the app's journaled database (journal.ts): what a change does after it commits (waking the publisher,
 // forgetting cached links and keys, building a new environment's snapshot) happens there, not in the routes.
-type Deps = { db: Db; plane: DataPlane; hub: EventHub; identity: Identity; access: Access; sso: SingleSignOn; plugins: { id: string; parts: PluginParts }[] };
+type Deps = { db: Db; plane: DataPlane; hub: EventHub; identity: Identity; access: Access; sso: SingleSignOn; tokens: Tokens; plugins: { id: string; parts: PluginParts }[] };
 type User = Person;
 
 // The only POSTs a viewer may make: they run the evaluator and change nothing. Exact addresses: an entity or
 // environment can't be called "trace" or "compare" (checks.ts RESERVED_KEYS), and nothing else ends this way.
-const LOOK_ONLY = new Set(['POST /api/trace', 'POST /api/compare']);
+const LOOK_ONLY = new Set(['POST /api/trace', 'POST /api/compare', 'POST /api/flags-as-code/plan']);
 /** The header the console sends with every change; a cross-site page can't add it (see the top of this file). */
 export const CSRF_HEADER = 'x-requested-with';
 export const CSRF_VALUE = 'companyflags';
@@ -66,11 +68,27 @@ type GridRow = { key: string; valueType: FlagDef['valueType']; enabled: boolean;
 type Outcome = { sent: boolean; value: unknown; codeDefault: boolean; variant: string | null; source: string; rule: string | null; byDevice: boolean };
 type CompareRow = { key: string; a: Outcome; b: Outcome; same: boolean };
 
-export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: Deps) {
+export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins }: Deps) {
   const app = new Hono<{ Variables: { user: User } }>();
 
-  // who is asking, and may they change anything at all
+  // who is asking, and may they change anything at all: an access token (tokens.ts), or the console's sign-in
   app.use('*', async (c, next) => {
+    const bearer = c.req.header('authorization')?.match(/^Bearer\s+(cfp_\S+)$/i)?.[1];
+    if (bearer) {
+      // a token belongs in a script or an agent: one from a browser was put in a web page by mistake
+      if (c.req.header('origin')) throw new HttpError(403, 'an access token can’t be used from a browser');
+      const t = await tokens.resolve(bearer);
+      if (!t) throw new HttpError(401, 'unknown, expired or revoked access token');
+      if (!READS.has(c.req.method)) {
+        const body = await c.req.text();
+        if (body) {
+          try { JSON.parse(body); } catch { throw new HttpError(400, 'the request body isn’t valid JSON'); }
+        }
+        if (!LOOK_ONLY.has(`${c.req.method} ${c.req.path}`)) mustBeAllowed(t, 'changes');
+      }
+      c.set('user', t);
+      return next();
+    }
     const who = await identity.who(c.req.raw.headers);
     if (who && !READS.has(c.req.method)) {
       // the sign-in is a cookie, which a browser sends whoever made the page: changes need proof
@@ -84,7 +102,9 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
       }
     }
     const u = await access.signedIn(who);
-    if (!READS.has(c.req.method) && !LOOK_ONLY.has(`${c.req.method} ${c.req.path}`)) mustBeAllowed(u, 'changes');
+    // a viewer may make and revoke their own tokens (a token is never above its person's role)
+    const ownTokens = c.req.path === '/api/tokens' || c.req.path.startsWith('/api/tokens/');
+    if (!READS.has(c.req.method) && !LOOK_ONLY.has(`${c.req.method} ${c.req.path}`) && !ownTokens) mustBeAllowed(u, 'changes');
     c.set('user', u);
     await next();
   });
@@ -96,7 +116,10 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     if (!s) throw new HttpError(404, `environment "${env}" not found`);
     return s;
   };
-  const actor = (u: User): Actor => ({ name: u.key, type: 'user' });
+  // an agent's token acts under its person's name, as an agent (tokens.ts)
+  const actor = (u: User): Actor => ({ name: u.key, type: (u as Partial<TokenPerson>).token?.agent ? 'agent' : 'user' });
+  /** Tokens are made and revoked in the console only: never with a token. */
+  const notWithToken = (u: User) => { if ((u as Partial<TokenPerson>).token) throw new HttpError(403, 'access tokens are made and revoked in the console, signed in'); };
   const adminOnly = (u: User) => mustBeAllowed(u, 'changesSettings');
   // when a request doesn't say which environment: the first one
   const firstEnv = async () => (await one<{ key: string }>(db, `select key from environment order by id limit 1`))?.key ?? '';
@@ -226,7 +249,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
   });
 
   app.get('/flags/:key', async (c) => {
-    const f = await one<any>(db, `select id, key, name, tags, value_type as "valueType", kind, free_values as "freeValues", description, owner,
+    const f = await one<any>(db, `select id, key, name, tags, value_type as "valueType", kind, free_values as "freeValues", json_schema as "jsonSchema", description, owner,
       remove_by::text as "removeBy", archived_at as "archivedAt", created_at as "createdAt" from flag where key = $1`, [c.req.param('key')]);
     if (!f) throw new HttpError(404, 'flag not found');
     // every environment at once: one query each for the variants, the environments, the deliveries and the layers
@@ -492,7 +515,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
       params.push(flag);
       where.push(`exists (select 1 from change_set_item i join flag f on f.id = i.flag_id where i.change_set_id = cs.id and f.key = $${params.length})`);
     }
-    const rows = await all<any>(db, `select cs.id, e.key as environment, cs.status, cs.author, cs.reason, cs.scheduled_at as "scheduledAt",
+    const rows = await all<any>(db, `select cs.id, e.key as environment, cs.status, cs.author, cs.by_agent as "byAgent", cs.reason, cs.scheduled_at as "scheduledAt",
       cs.created_at as "createdAt", cs.decided_at as "decidedAt", cs.applied_at as "appliedAt", cs.applied_revision as "appliedRevision",
       cs.last_error as "lastError",
       (select json_agg(json_build_object('kind', i.kind, 'flag', f.key, 'entity', cu.key) order by i.seq) from change_set_item i join flag f on f.id = i.flag_id
@@ -506,7 +529,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
 
   app.get('/change-sets/:id{[0-9]+}', async (c) => {
     const id = Number(c.req.param('id'));
-    const cs = await one<any>(db, `select cs.id, e.key as environment, e.min_approvals as "minApprovals", cs.status, cs.author, cs.reason, cs.content_hash as "contentHash",
+    const cs = await one<any>(db, `select cs.id, e.key as environment, e.min_approvals as "minApprovals", cs.status, cs.author, cs.by_agent as "byAgent", cs.reason, cs.content_hash as "contentHash",
       cs.scheduled_at as "scheduledAt", cs.created_at as "createdAt", cs.applied_revision as "appliedRevision", cs.last_error as "lastError"
       from change_set cs join environment e on e.id = cs.environment_id where cs.id = $1`, [id]);
     if (!cs) throw new HttpError(404, 'change set not found');
@@ -521,7 +544,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
 
   app.post('/change-sets', async (c) => {
     const body = await c.req.json<{ environment: string; reason?: string; items: Item[] }>();
-    return c.json(await createChangeSet(db, body.environment, body.items, c.get('user').key, body.reason ?? null), 201);
+    return c.json(await createChangeSet(db, body.environment, body.items, actor(c.get('user')), body.reason ?? null), 201);
   });
 
   app.post('/change-sets/:id{[0-9]+}/review', async (c) => {
@@ -841,6 +864,26 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
     return c.json(await sso.remove(c.req.param('id'), actor(c.get('user'))));
   });
 
+  // ------------------------------------------------------------ flags as code (flagsAsCode.ts), for the CLI over HTTP
+  // The same pull, plan and push as the CLI on the database, as the caller: an agent's token is recorded as an agent,
+  // and where an environment needs approval a change of services is a request. Pull and plan for anyone signed in.
+  app.get('/flags-as-code', async (c) => c.json(await pullFlags(db)));
+  app.post('/flags-as-code/plan', async (c) => c.json(await planFlags(db, await c.req.json().catch(() => null))));
+  // 200 { plan, done }; a file with problems: 422 { error, plan } and nothing is pushed; a step refused: its status,
+  // with { error, plan, done } (what was done before it)
+  app.post('/flags-as-code/push', async (c) => {
+    const plan = await planFlags(db, await c.req.json().catch(() => null));
+    if (plan.problems.length) return c.json({ error: 'the file has problems: nothing was pushed', plan }, 422);
+    try {
+      return c.json({ plan, done: await pushFlags(db, plan, actor(c.get('user'))) });
+    } catch (e) {
+      const done = (e as Error & { done?: Done[] }).done;
+      const cause = (e as Error).cause;
+      if (!done || !(cause instanceof HttpError)) throw cause ?? e;       // not a refusal: the server's own error
+      return c.json({ error: (e as Error).message, plan, done }, cause.status as 422);
+    }
+  });
+
   // ------------------------------------------------------------ migration (values.ts): import and export in another
   // system's formats (webhooks out and in are a plugin: plugins/webhooks.ts). Everyone who changes things can export;
   // only admins import, and only admins export with a JSONata expression (it runs on the server, as an import's does).
@@ -941,6 +984,40 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
       off();                    // however the loop ends, the subscriber goes
     }
   }));
+
+  // ------------------------------------------------------------ alerts (layers.ts killFromAlert)
+  // An alert turns a kill switch off at once, recorded as break-glass. Only with a person's On call or Admin token (an
+  // agent's is Viewer or Editor), never from a browser (the check at the top). flag, environment and alert come in the
+  // JSON body, or in the address (?flag=…&environment=…&alert=…) for an alert tool whose body can't be shaped.
+  app.post('/alerts/kill', async (c) => {
+    const u = c.get('user') as User & Partial<TokenPerson>;
+    if (!u.token) throw new HttpError(403, 'alerts call this with an access token: Authorization: Bearer cfp_…');
+    if (u.token.agent) throw new HttpError(403, 'an agent’s token can’t turn flags off: an agent never breaks glass');
+    if (!roleInfo(u.role).breaksGlass) throw new HttpError(403, 'only an On call or Admin token can turn a flag off from an alert');
+    const body = await c.req.json<unknown>().catch(() => null);
+    const field = (k: string) => {
+      const v = (body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>)[k] : undefined) ?? c.req.query(k);
+      if (v !== undefined && v !== null && typeof v !== 'string') throw new HttpError(422, `${k}: a string`);
+      return (v as string | null | undefined)?.trim() || undefined;
+    };
+    const flag = field('flag');
+    const environment = field('environment');
+    if (!flag || !environment) throw new HttpError(422, 'say which flag to turn off, and where: { "flag": "payments_enabled", "environment": "prod" }');
+    return c.json(await killFromAlert(db, environment, flag, u, field('alert')));
+  });
+
+  // ------------------------------------------------------------ access tokens (tokens.ts): your own; an admin sees everyone's
+  app.get('/tokens', async (c) => c.json(await tokens.list(c.get('user'), { all: c.req.query('all') === '1' })));
+  app.post('/tokens', async (c) => {
+    const u = c.get('user');
+    notWithToken(u);
+    return c.json(await tokens.create(u, await c.req.json(), actor(u)), 201);
+  });
+  app.delete('/tokens/:id', async (c) => {
+    const u = c.get('user');
+    notWithToken(u);
+    return c.json(await tokens.revoke(u, Number(c.req.param('id')), actor(u)));
+  });
 
   // ------------------------------------------------------------ the plugins' console routes (plugin.ts), signed in as above.
   // Last, so a plugin can't answer in place of a core route (and LOOK_ONLY's viewer POSTs stay the core's).

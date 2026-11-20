@@ -3,6 +3,7 @@ import type { DecidedBy } from '../../server/evaluator.ts';
 import type { FieldInfo } from '../../server/fields.ts';
 import { entityWords, type EntityWords, type Vocab } from '../../server/words.ts';
 import type { Dimension } from '../../server/dimensions.ts';
+import type { JsonSchema } from '../../server/jsonSchema.ts';
 // One vocabulary with the server: the in-app default, attribute names, comparisons, section and level names, the
 // three choices, what an entity gets with nothing of its own, and the dimensions' words.
 export { CODE_DEFAULT } from '../../server/evaluator.ts';
@@ -35,6 +36,8 @@ export type FlagDetail = {
   removeBy: string | null; archivedAt: string | null; createdAt?: string;
   /** free values: any value is typed into the rules and the default (each a hidden variant), with no named list */
   freeValues?: boolean;
+  /** a JSON flag's JSON Schema (server/jsonSchema.ts): every value it serves matches it */
+  jsonSchema?: JsonSchema | null;
   variations: Variation[]; delivery: Record<string, string[]>;
   layers: Record<string, { base: Layer; entities: { entity: string; layer: Layer }[] }>;
   /** a version release (docs/design/release-versions.md): per environment, the version it was on before its current one,

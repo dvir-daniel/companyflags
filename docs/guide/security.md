@@ -107,6 +107,26 @@ their app service's own key.
 A backend's flagd JSON holds one entity's flags: the rules still to check on the request, and only the values that
 entity can get. Another entity's own values and keys aren't in it.
 
+## Access tokens
+
+An access token is for the console's API (`/api`): scripts, the CLI and MCP clients. It acts as you, with a role up
+to yours.
+
+- **Make one** in the console: your name at the foot of the sidebar → **Access tokens** → **+ New token**. Give it a
+  name, a role (Viewer, Editor or your own) and how long it works: 30, 90 or 365 days. It is shown once; the server
+  keeps only its hash and a prefix (`cfp_` and 6 characters).
+- **Send it** as `Authorization: Bearer cfp_…` on `/api`. No cookie and no `X-Requested-With` header: a token isn't
+  sent by a browser on its own, so it needs neither.
+- **For an agent** (Claude, Cursor, Codex…), tick **For an agent**. Its role is Viewer or Editor only, so it never
+  approves, breaks glass or manages anything. Its changes show as an agent's in History, under your name. Where
+  changes need approval they're requests, marked **agent** in Approvals, and someone else approves them.
+- **Not from a browser.** A request with a token and an `Origin` header gets `403`. A token belongs in a script or an
+  agent's settings, never in a web page.
+- **Revoke** a token on the same page: it stops at once, on every server. An expired token stops the same way. If your
+  role goes down, your tokens go down with it.
+- Tokens are made and revoked only in the signed-in console, never with a token. Admins see and revoke everyone's.
+  Each is recorded in History.
+
 ## Sign-in
 
 Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single sign-on](/self-hosting/sign-in)):

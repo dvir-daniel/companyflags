@@ -214,10 +214,10 @@ export function EntityHeaderSkeleton({ back }: { back?: { href: string; label: s
 
 const TITLES: Record<string, string> = {
   flags: 'Flags', releases: 'Releases', approvals: 'Approvals', compare: 'Compare',
-  history: 'History', keys: 'API keys', settings: 'Settings',
+  history: 'History', keys: 'API keys', tokens: 'Access tokens', settings: 'Settings',
 };
 /** the pages whose bar has a button (+ New flag, + Add …, Export…) */
-const WITH_ACTIONS = new Set(['flags', 'releases', 'dimensions', 'keys', 'history']);
+const WITH_ACTIONS = new Set(['flags', 'releases', 'dimensions', 'keys', 'tokens', 'history']);
 /** the pages whose filters sit in a row of their own under the bar, not in it */
 const NO_BAR_FILTERS = new Set(['settings', 'history']);
 

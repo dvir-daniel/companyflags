@@ -156,11 +156,12 @@ export function Sidebar({ meta, page, sub, pending, onSearch, className }: {
   );
 }
 
-/** Who is signed in, at the foot of the sidebar: a button that opens their account menu, with Sign out. */
+/** Who is signed in, at the foot of the sidebar: a button that opens their account menu, with their access tokens and Sign out. */
 function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger className="mt-3 -mx-2 flex w-[calc(100%+16px)] cursor-pointer items-center gap-2.5 border-0 bg-transparent px-2 py-1.5 text-left leading-[1.35] text-ink hover:bg-wash aria-expanded:bg-wash"
         aria-label={`${shortName(me)}, ${roleInfo(me.role).label}: account menu`}>
         <Avatar initials={shortName(me).slice(0, 2).toUpperCase()} color={personColor(meta, me)} />
@@ -176,6 +177,7 @@ function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
           <span className="truncate text-ink-2">{me.key}</span>
           <span className="text-ink-3">{roleInfo(me.role).label}</span>
         </div>
+        <a href="#/tokens" onClick={() => setOpen(false)} className="border-t border-rule pt-3 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Access tokens</a>
         {meta.signIn === 'better-auth' ? (
           <Button variant="secondary" className="w-full" disabled={busy} onClick={() => { setBusy(true); void signOut(); }}>{busy ? 'Signing out…' : 'Sign out'}</Button>
         ) : (

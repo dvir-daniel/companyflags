@@ -9,6 +9,7 @@ import { cva } from "class-variance-authority"
  * - live: red, for production, problems and recording.
  * - warn: amber, for things waiting on someone.
  * - ok: green, for things that are on or done.
+ * - agent: purple, for what an AI agent did or asked for.
  * - count: inverted white block with a number, as on a sidebar item.
  */
 const badgeVariants = cva(
@@ -20,6 +21,7 @@ const badgeVariants = cva(
         live: "border-live/40 text-live",
         warn: "border-flag/35 text-flag",
         ok: "border-ok/35 text-ok",
+        agent: "border-tool/40 text-tool",
         count: "min-w-[19px] justify-center border-0 bg-ink px-[5px] leading-[17px] font-medium tracking-normal text-background",
       },
     },

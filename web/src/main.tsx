@@ -31,6 +31,7 @@ const PAGE_CODE = {
   dimensions: () => import('./pages/Entities.tsx'),
   compare: () => import('./pages/Compare.tsx'),
   keys: () => import('./pages/Keys.tsx'),
+  tokens: () => import('./pages/Tokens.tsx'),
   history: () => import('./pages/History.tsx'),
   settings: () => import('./pages/Settings.tsx'),
   people: () => import('./pages/People.tsx'),
@@ -45,6 +46,7 @@ const DimensionPage = lazy(() => PAGE_CODE.dimensions().then((m) => ({ default: 
 const EntityPage = lazy(() => PAGE_CODE.dimensions().then((m) => ({ default: m.EntityPage })));
 const Compare = lazy(() => PAGE_CODE.compare().then((m) => ({ default: m.Compare })));
 const Keys = lazy(() => PAGE_CODE.keys().then((m) => ({ default: m.Keys })));
+const Tokens = lazy(() => PAGE_CODE.tokens().then((m) => ({ default: m.Tokens })));
 const History = lazy(() => PAGE_CODE.history().then((m) => ({ default: m.History })));
 const Settings = lazy(() => PAGE_CODE.settings().then((m) => ({ default: m.Settings })));
 // the first-run steps (pages/setup.tsx), which the Flags list also shows until apps can read flags
@@ -82,7 +84,7 @@ function knownRoute([page, a]: string[]): boolean {
     case 'settings': return !a || a === 'people' || a === 'dimensions';
     // from before dimensions: they open the same pages under #/dimensions (OldAddress)
     case 'customers': case 'customer': return true;
-    case 'flags': case 'releases': case 'compare': case 'keys': case 'history': case 'migration': return true;
+    case 'flags': case 'releases': case 'compare': case 'keys': case 'tokens': case 'history': case 'migration': return true;
     default: return false;
   }
 }
@@ -100,7 +102,7 @@ function NotFound() {
 /** The tab's title for each page, so tabs and history entries can be told apart. */
 function titleFor([page, a, b]: string[], meta: Meta | null): string {
   const name: Record<string, string> = {
-    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', join: 'Join',
+    flags: 'Flags', releases: 'Releases', compare: 'Compare', keys: 'API keys', tokens: 'Access tokens', history: 'History', settings: 'Settings', approvals: 'Approvals', migration: 'Migration', join: 'Join',
   };
   const dim = page === 'dimensions' && a ? meta?.dimensions.find((d) => d.key === a) : undefined;
   const dimName = dim ? dimTitle(dim) : a;
@@ -152,7 +154,7 @@ function useGuardedRoute(isDirty: () => boolean, confirmLeave: () => Promise<boo
 }
 
 // pages built as dense console pages (full width, sticky page bar); the rest sit in a centred column
-const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'customers', 'customer', 'compare', 'approvals', 'keys', 'history', 'settings', 'migration']);
+const DENSE = new Set(['flags', 'flag', 'releases', 'release', 'dimensions', 'customers', 'customer', 'compare', 'approvals', 'keys', 'tokens', 'history', 'settings', 'migration']);
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
 type Answer = { action: string | null; reason: string };
@@ -394,6 +396,7 @@ function App() {
                   {/* a crash in a page shows in its place; another address starts that page fresh */}
                   <ErrorBoundary key={routeKey} where={page}>
                     {!knownRoute(route) ? <NotFound /> : page === 'settings' ? (route[1] === 'people' ? <People /> : <Settings section={route[1]} />)
+                      : page === 'tokens' ? <Tokens />
                       : page === 'customers' || page === 'customer' ? <OldAddress meta={meta} />
                       : !setUp ? <GetStarted /> : <>
                       {page === 'flags' && <Flags envKey={route[1]} tab={route[2]} />}

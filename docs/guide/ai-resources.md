@@ -42,32 +42,60 @@ If your agent reads `AGENTS.md` or `CLAUDE.md` instead, paste this into it and c
 - Our services: web, ios, android (apps), api (backend). Our dimensions: company › brand.
 ```
 
-## Evaluate flags from your editor (MCP)
+## Connect your agent (MCP)
 
-OpenFeature's own MCP server, [`@openfeature/mcp`](https://openfeature.dev/docs/reference/other-technologies/mcp/),
-evaluates flags over OFREP, so it works with CompanyFlags as it is. Add it to your MCP client:
+CompanyFlags has an MCP server at `/mcp`. An agent in Claude, Cursor, VS Code or Codex can then list and explain
+flags, see what a flag gives a company, find releases to clean up, and propose changes. Each change tool first says
+what it would do; with `apply: true` it does it, and where changes need approval it opens a request a person approves.
+
+1. **Make a token for the agent:** in the console, your name → **Access tokens** → **+ New token**, with *For an
+   agent* ticked. It is Viewer or Editor, and History shows its changes as an agent's.
+2. **Add the server to your client**, with the token in a header:
+
+```bash
+# Claude Code
+claude mcp add --transport http companyflags https://flags.example.com/mcp \
+  --header "Authorization: Bearer cfp_…"
+```
+
+```json
+// Cursor (.cursor/mcp.json) and other clients that take a URL
+{
+  "mcpServers": {
+    "companyflags": { "url": "https://flags.example.com/mcp", "headers": { "Authorization": "Bearer cfp_…" } }
+  }
+}
+```
+
+For a client that only starts local servers, run the bridge from the Docker image (or `pnpm cli mcp` in a clone):
 
 ```json
 {
   "mcpServers": {
-    "OpenFeature": { "command": "npx", "args": ["-y", "@openfeature/mcp"] }
+    "companyflags": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "-e", "COMPANYFLAGS_URL", "-e", "COMPANYFLAGS_TOKEN", "ghcr.io/dvir-daniel/companyflags", "companyflags", "mcp"],
+      "env": { "COMPANYFLAGS_URL": "https://flags.example.com", "COMPANYFLAGS_TOKEN": "cfp_…" }
+    }
   }
 }
 ```
 
-and point it at your server with a key, in `~/.openfeature-mcp.json`:
+| Tools | |
+|---|---|
+| Read | `list_flags`, `get_flag`, `list_services`, `list_environments`, `list_dimensions`, `history`, `list_requests`, `stale_flags` |
+| Explain | `evaluate` (what flags give a context), `explain` (why, step by step) |
+| Change | `create_flag`, `set_services`, `set_enabled`, `set_default`, `archive_flag` |
+
+It also has the prompts `put_behind_a_flag` and `clean_up_releases`, and each flag as a resource
+(`companyflags://flags/<key>`). Sign-in is with an access token for now; OAuth sign-in from the client is planned.
+
+### Or OpenFeature's MCP server
+
+OpenFeature's own [`@openfeature/mcp`](https://openfeature.dev/docs/reference/other-technologies/mcp/) evaluates
+flags over OFREP, and only that. Point it at your server with an app service's key in Development, in
+`~/.openfeature-mcp.json`:
 
 ```json
-{
-  "OFREP": {
-    "baseUrl": "https://flags.example.com",
-    "bearerToken": "ff_dev_web_…"
-  }
-}
+{ "OFREP": { "baseUrl": "https://flags.example.com", "bearerToken": "ff_dev_web_…" } }
 ```
-
-Use an **app service's key in Development**: it reads values only, so the assistant can ask "what does `new_checkout`
-give Acme?" and can't change anything. The server also gives install steps for the OpenFeature SDK of your platform.
-
-A CompanyFlags MCP server, with tools to explain, propose and clean up flags (production changes as requests a
-person approves), is planned next.

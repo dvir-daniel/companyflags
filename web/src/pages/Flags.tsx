@@ -19,9 +19,11 @@ import { go, useApp } from '../app.ts';
 import { writePersistent } from '../persist.ts';
 import { plural } from '../text.ts';
 import { Actions, Badge, ChipInput, Empty, ErrorList, Field, Modal, OnOff, Pager, Segmented, Switch, When } from '../ui.tsx';
-import { monoLabel, type Paged, useAsync, usePersistentState, useServerPage, useSlashFocus } from '../uiKit.ts';
+import { monoLabel, textareaField, type Paged, useAsync, usePersistentState, useServerPage, useSlashFocus } from '../uiKit.ts';
 import { cleanTags, flagNameProblem, keyFromName, needsRemoveBy as removeByRequired, normalizeTag } from '../../../server/checks.ts';
-import { blankRow, fromText, rowError, valueError, ValueInput, ValuesEditor, type ValueRow } from '../values.tsx';
+import { blankRow, fromText, rowError, toText, valueError, ValueInput, ValuesEditor, type ValueRow } from '../values.tsx';
+import { firstMismatch } from '../../../server/jsonSchema.ts';
+import { aiConfigTemplate, readSchemaText, schemaText } from './flagTemplates.ts';
 import { hiddenKey } from '../../../server/evaluator.ts';
 import { type SaveResult } from './flagParts.tsx';
 import { useEnvs } from './envs.ts';
@@ -353,6 +355,8 @@ const kindHint = (k: string) => {
   return rest ? `${rest[0].toUpperCase()}${rest.slice(1)}.` : undefined;
 };
 
+const TEMPLATE_OPTIONS = [{ value: 'blank', label: 'Blank' }, { value: 'ai', label: 'AI config' }];
+
 const startRows = (type: string): ValueRow[] => type === 'bool'
   ? [{ key: 'on', text: 'true', isNew: true }, { key: 'off', text: 'false', isNew: true }]
   : [{ key: 'default', text: type === 'number' ? '0' : type === 'json' ? '{}' : '', isNew: true }];
@@ -364,12 +368,22 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
   const [key, setKeyRaw] = useState('');
   const [keyEdited, setKeyEdited] = useState(false);
   const setKey = (k: string) => { setKeyEdited(true); setKeyRaw(k); };
-  const onName = (n: string) => { setName(n); if (!keyEdited) setKeyRaw(keyFromName(n)); };
+  const onName = (n: string) => {
+    setName(n);
+    if (!keyEdited) setKeyRaw(keyFromName(n));
+    if (template === 'ai' && !descEdited) setDescriptionRaw(aiConfigTemplate(n).description);
+  };
   const [owner, setOwner] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [valueType, setValueType] = useState('bool');
   const [kind, setKind] = useState('release');
-  const [description, setDescription] = useState('');
+  const [description, setDescriptionRaw] = useState('');
+  const [descEdited, setDescEdited] = useState(false);
+  const setDescription = (d: string) => { setDescEdited(true); setDescriptionRaw(d); };
+  // a template fills the form (flagTemplates.ts); everything stays editable
+  const [template, setTemplate] = useState('blank');
+  // a JSON flag's JSON Schema (server/jsonSchema.ts), as typed: empty for none
+  const [schema, setSchema] = useState('');
   const [removeBy, setRemoveBy] = useState(() => new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10));
   const [rows, setRows] = useState<ValueRow[]>(startRows('bool'));
   const [def, setDef] = useState<string>(CODE_DEFAULT);
@@ -386,10 +400,29 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
   const tagError = cleanTags(tags).problem;
   const nameError = flagNameProblem(name);
   const valuesInvalid = free ? !!valueError(valueType, first) : rows.some((r) => rowError(valueType, r, rows));
+  const typedSchema = valueType === 'json' ? readSchemaText(schema) : { schema: null, error: null };
+  // the values that don't match the schema, as the server would refuse them: "fast: model is required"
+  const mismatch = typedSchema.schema && !valuesInvalid
+    ? firstMismatch(typedSchema.schema, free ? [{ key: 'The value everyone gets', value: fromText(valueType, first) }] : rows.map((r) => ({ key: r.key, value: fromText(valueType, r.text) })))
+    : null;
   const needsRemoveBy = removeByRequired(kind);
-  const canSubmit = !!key && !keyError && !tagError && !nameError && (free || rows.length > 0) && !valuesInvalid && !busy;
+  const canSubmit = !!key && !keyError && !tagError && !nameError && (free || rows.length > 0) && !valuesInvalid && !typedSchema.error && !mismatch && !busy;
 
-  const setType = (t: string) => { setValueType(t); setRows(startRows(t)); setDef(CODE_DEFAULT); setFirst(''); };
+  const setType = (t: string) => { setValueType(t); setRows(startRows(t)); setDef(CODE_DEFAULT); setFirst(''); setSchema(''); };
+  const chooseTemplate = (t: string) => {
+    setTemplate(t);
+    if (t === 'ai') {
+      const tpl = aiConfigTemplate(name);
+      setValueType(tpl.valueType); setKind(tpl.kind); setNamed(true); setFirst('');
+      setRows(tpl.variants.map((v) => ({ key: v.key, text: toText(tpl.valueType, v.value), isNew: true })));
+      setDef(tpl.defaultVariation);
+      setSchema(schemaText(tpl.jsonSchema));
+      if (!descEdited || !description.trim()) { setDescriptionRaw(tpl.description); setDescEdited(false); }
+    } else {
+      setType('bool'); setKind('release');
+      if (!descEdited) setDescriptionRaw('');
+    }
+  };
 
   const submit = async () => {
     const res = await run(() => api('POST', '/flags', {
@@ -402,6 +435,7 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
         variations: rows.map((r) => ({ key: r.key, value: fromText(valueType, r.text) })),
         base: { enabled: true, defaultVariation: def, rules: [] },
       }),
+      ...(typedSchema.schema ? { jsonSchema: typedSchema.schema } : {}),
       delivery: Object.fromEntries(meta.environments.map((e) => [e.key, delivery])),
     }));
     // a release opens on its release page (Releases.tsx), where its first step is chosen
@@ -415,6 +449,11 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
         <Button disabled={!canSubmit} onClick={submit}>{busy ? 'Creating…' : 'Create flag'}</Button>
       </Actions>
     }>
+      <div className="grid gap-1.5">
+        <span className={monoLabel}>Start from</span>
+        <Segmented className="justify-self-start" label="Start from" value={template} onChange={chooseTemplate} options={TEMPLATE_OPTIONS} />
+        {template === 'ai' && <span className="text-13 text-ink-3">A JSON config for an AI feature: its model, prompt and settings, with two variants to compare and a JSON Schema they must match.</span>}
+      </div>
       <div className="grid grid-cols-2 gap-4 max-sm:grid-cols-1">
         <Field label="Name" hint={nameError ? <span className="text-live">{nameError}</span> : 'What people see in the list, e.g. New search ranking.'}>
           <Input data-autofocus value={name} placeholder="New search ranking" aria-invalid={!!nameError} onChange={(e) => onName(e.target.value)} />
@@ -483,6 +522,13 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
           </NativeSelect>
         </Field>
       </>}
+      {valueType === 'json' && (
+        <Field label="JSON Schema" hint={typedSchema.error || mismatch ? <span className="text-live">{typedSchema.error ?? mismatch}</span>
+          : 'Optional. Every value of this flag must match it, so a field can’t go missing.'}>
+          <textarea rows={6} spellCheck={false} value={schema} placeholder={'{ "type": "object", "required": ["model"] }'} aria-invalid={!!typedSchema.error || !!mismatch}
+            onChange={(e) => setSchema(e.target.value)} className={cn(textareaField, 'rounded-none font-mono text-13')} />
+        </Field>
+      )}
 
       <div className="grid gap-1.5" role="group" aria-label="Services">
         <span className={monoLabel}>Services</span>

@@ -12,6 +12,7 @@ import { needsRemoveBy, cleanTags, flagNameProblem, isVersionFlag, reservedKeyPr
 import { newVersionProblem, releaseVersionProblem } from './semver.ts';
 import { mayMoveEntities, needsReview, type EnvFacts } from './policy.ts';
 import { capital, chainOrder, checkDimensions, cleanDimension, count, type Dimension } from './dimensions.ts';
+import { firstMismatch, schemaProblem, type JsonSchema } from './jsonSchema.ts';
 
 type EnvRow = { id: number; key: string };
 const envs = (q: Db | Tx) => all<EnvRow>(q, `select id, key from environment order by id`);
@@ -19,6 +20,37 @@ const envFacts = (q: Db | Tx) => all<EnvRow & EnvFacts>(q, `select id, key, min_
 // A protected environment (policy.ts needsReview): changes that alter what it serves go through a reviewed request there.
 const protectedEnvs = async (q: Db | Tx) => (await envFacts(q)).filter(needsReview);
 const projects = (q: Db | Tx) => all<{ id: number; key: string; kind: string }>(q, `select id, key, kind from project order by id`);
+
+// ---------------------------------------------------------------- a JSON flag's JSON Schema (jsonSchema.ts)
+
+/** A value as a 422 names it: a variant by its key, a typed (free) value by the value itself. */
+const valueName = (v: { key: string; value: unknown }) => {
+  if (!v.key.startsWith(HIDDEN_PREFIX)) return v.key;
+  const text = JSON.stringify(v.value);
+  return `the value ${text.length > 60 ? `${text.slice(0, 59)}…` : text}`;
+};
+/** The schema as given (undefined: not given, null: none), checked: only JSON flags have one, and it must be valid. */
+function cleanSchema(schema: unknown, valueType: string): JsonSchema | null | undefined {
+  if (schema === undefined) return undefined;
+  if (schema === null) return null;
+  if (valueType !== 'json') throw new HttpError(422, 'Only JSON flags have a JSON Schema');
+  const problem = schemaProblem(schema);
+  if (problem) throw new HttpError(422, `JSON Schema: ${problem}`);
+  return schema as JsonSchema;
+}
+/** Refuses (422) the first value that doesn't match the schema: "fast: model is required". */
+function mustMatch(schema: JsonSchema | null | undefined, values: readonly { key: string; value: unknown }[]) {
+  if (!schema) return;
+  const problem = firstMismatch(schema, values, valueName);
+  if (problem) throw new HttpError(422, problem, { schema: true });
+}
+/** A flag's values that can be served: its named variants, and the typed values a default or rule uses anywhere. */
+const servableValues = (q: Tx, flagId: string) => all<{ key: string; value: unknown }>(q, `select v.key, v.value from flag_variation v
+  where v.flag_id = $1 and not v.is_code_default and (v.key not like '${HIDDEN_PREFIX}%'
+    or exists (select 1 from flag_layer l where l.flag_id = v.flag_id and (l.default_variation_id = v.id or l.variation_when_off_id = v.id))
+    or exists (select 1 from flag_rule r where r.flag_id = v.flag_id and r.serve_variation_id = v.id)
+    or exists (select 1 from flag_rule_split s where s.flag_id = v.flag_id and s.variation_id = v.id))
+  order by v.id`, [flagId]);
 
 export type NewFlag = {
   key: string;
@@ -33,6 +65,8 @@ export type NewFlag = {
   /** free values: any value typed into the rules and the default, each a hidden variant (evaluator.ts hiddenKey), and
    *  no named variants. Not for on/off flags; always for a version release. */
   freeValues?: boolean;
+  /** a JSON flag's JSON Schema (jsonSchema.ts): every value it serves must match it. null or missing: none. */
+  jsonSchema?: JsonSchema | null;
   delivery: Record<string, string[]>;               // env -> project keys
   base: Record<string, LayerDoc> | LayerDoc;        // per env, or one doc for all envs
 };
@@ -53,12 +87,14 @@ export async function createFlag(db: Db, f: NewFlag, actor: Actor) {
     const named = (f.variations ?? []).find((v) => !v.key.startsWith(HIDDEN_PREFIX));
     if (named) throw new HttpError(422, `${named.key}: a flag with free values has no named variants (its values are typed in)`);
   }
+  const schema = cleanSchema(f.jsonSchema, f.valueType) ?? null;
+  mustMatch(schema, f.variations ?? []);
   return db.transaction(async (tx) => {
     if (!(await envs(tx)).length) throw new HttpError(422, 'add an environment in Settings before creating flags');
     const reviewed = new Set((await protectedEnvs(tx)).map((e) => e.id));
-    const row = await one<{ id: string }>(tx, `insert into flag (key, name, tags, value_type, kind, description, owner, remove_by, free_values)
-      values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
-      [f.key, name, tags.tags, f.valueType, f.kind, f.description ?? null, f.owner ?? null, f.removeBy ?? null, free]);
+    const row = await one<{ id: string }>(tx, `insert into flag (key, name, tags, value_type, kind, description, owner, remove_by, free_values, json_schema)
+      values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
+      [f.key, name, tags.tags, f.valueType, f.kind, f.description ?? null, f.owner ?? null, f.removeBy ?? null, free, schema === null ? null : JSON.stringify(schema)]);
     const flagId = row!.id;
     if (f.variations.length < 1) throw new HttpError(422, free ? 'a flag needs at least one value' : 'a flag needs at least one variant');
     for (const v of f.variations) {
@@ -78,7 +114,7 @@ export async function createFlag(db: Db, f: NewFlag, actor: Actor) {
         if (!p) throw new HttpError(422, `unknown service ${pk}`);
         await tx.query(`insert into flag_delivery (flag_id, project_id, environment_id) values ($1,$2,$3)`, [flagId, p.id, env.id]);
       }
-      await change(tx, env, actor, { kind: 'flag.create', flag: f.key, after: { ...f, freeValues: free, base: undefined, layer } });
+      await change(tx, env, actor, { kind: 'flag.create', flag: f.key, after: { ...f, freeValues: free, jsonSchema: schema, base: undefined, layer } });
     }
     return { key: f.key };
   });
@@ -107,7 +143,7 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
     const sets = (l: string[]) => (l.length ? `services ${l.join(', ')}` : 'no service');
     const reason = opts.reason?.trim() || `Put ${flagKey} in ${sets(projects)} (now: ${sets(now)})`;
     const cs = await createChangeSet(db, envKey, [{ kind: 'delivery', flag: flagKey, entity: null, expectedLayerVersion: null, proposed: null,
-      delivery: { before: now, projects } }], actor.name, reason);
+      delivery: { before: now, projects } }], actor, reason);
     return { applied: false, changeSetId: cs.id };
   }
   return db.transaction(async (tx) => {
@@ -132,9 +168,10 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
 export async function upsertVariations(db: Db, flagKey: string, variations: { key: string; value: unknown }[], actor: Actor) {
   if (!Array.isArray(variations)) throw new HttpError(422, 'variations: a list of { key, value }');
   return db.transaction(async (tx) => {
-    const f = await one<{ id: string; kind: string; value_type: string; free_values: boolean }>(tx,
-      `select id, kind, value_type, free_values from flag where key = $1`, [flagKey]);
+    const f = await one<{ id: string; kind: string; value_type: string; free_values: boolean; json_schema: JsonSchema | null }>(tx,
+      `select id, kind, value_type, free_values, json_schema from flag where key = $1`, [flagKey]);
     if (!f) throw new HttpError(404, 'flag not found');
+    mustMatch(f.json_schema, variations);
     const before = await all<{ key: string; value: unknown }>(tx, `select key, value from flag_variation where flag_id = $1 and not is_code_default order by id for update`, [f.id]);
     const was = new Map(before.map((v) => [v.key, canonical(v.value)]));
     const named = f.free_values && variations.find((v) => !v.key.startsWith(HIDDEN_PREFIX) && !was.has(v.key));
@@ -213,13 +250,18 @@ export async function archiveFlag(db: Db, flagKey: string, actor: Actor) {
   });
 }
 
-export type FlagMeta = { name?: string | null; tags?: string[]; description?: string | null; owner?: string | null; kind?: string; removeBy?: string | null; freeValues?: boolean };
+export type FlagMeta = {
+  name?: string | null; tags?: string[]; description?: string | null; owner?: string | null; kind?: string; removeBy?: string | null; freeValues?: boolean;
+  /** a JSON flag's JSON Schema; null removes it. Every value it can serve is checked against a new one. */
+  jsonSchema?: JsonSchema | null;
+};
 
 // Edit a flag's details. Audited.
 export async function updateFlagMeta(db: Db, flagKey: string, m: FlagMeta, actor: Actor) {
   return db.transaction(async (tx) => {
-    const before = await one<{ id: string; name: string | null; tags: string[]; description: string | null; owner: string | null; kind: string; remove_by: string | null; free_values: boolean }>(tx,
-      `select id, name, tags, description, owner, kind, remove_by::text as remove_by, free_values from flag where key = $1 and archived_at is null for update`, [flagKey]);
+    const before = await one<{ id: string; name: string | null; tags: string[]; description: string | null; owner: string | null; kind: string; remove_by: string | null;
+      free_values: boolean; json_schema: JsonSchema | null }>(tx,
+      `select id, name, tags, description, owner, kind, remove_by::text as remove_by, free_values, json_schema from flag where key = $1 and archived_at is null for update`, [flagKey]);
     if (!before) throw new HttpError(404, 'flag not found');
     const tags = m.tags !== undefined ? cleanTags(m.tags) : { tags: before.tags, problem: null };
     if (tags.problem) throw new HttpError(422, tags.problem);
@@ -233,8 +275,14 @@ export async function updateFlagMeta(db: Db, flagKey: string, m: FlagMeta, actor
       kind: m.kind ?? before.kind,
       remove_by: m.removeBy !== undefined ? (m.removeBy || null) : before.remove_by,
       free_values: m.freeValues !== undefined ? !!m.freeValues : before.free_values,
+      json_schema: before.json_schema,
     };
     const facts = await one<{ value_type: string }>(tx, `select value_type from flag where id = $1`, [before.id]);
+    const schema = cleanSchema(m.jsonSchema, facts!.value_type);
+    if (schema !== undefined && canonical(schema) !== canonical(before.json_schema)) {
+      mustMatch(schema, await servableValues(tx, before.id));
+      next.json_schema = schema;
+    }
     const variants = await all<{ key: string; value: unknown }>(tx, `select key, value from flag_variation where flag_id = $1 and not is_code_default`, [before.id]);
     if (needsRemoveBy(next.kind, { valueType: facts!.value_type, variants }) && !next.remove_by) throw new HttpError(422, 'Release and experiment flags need a remove-by date');
     // free values: any value typed into the rules (its named variants, if it has some, still work)
@@ -246,8 +294,9 @@ export async function updateFlagMeta(db: Db, flagKey: string, m: FlagMeta, actor
       const errors = await flagSetupProblems(tx, { id: before.id, key: flagKey }, next.kind);
       if (errors.length) throw new HttpError(422, `These rules don’t fit a ${next.kind.replace('_', ' ')} flag — change them first`, { errors });
     }
-    await tx.query(`update flag set name = $2, tags = $3, description = $4, owner = $5, kind = $6, remove_by = $7, free_values = $8 where id = $1`,
-      [before.id, next.name, next.tags, next.description, next.owner, next.kind, next.remove_by, next.free_values]);
+    await tx.query(`update flag set name = $2, tags = $3, description = $4, owner = $5, kind = $6, remove_by = $7, free_values = $8, json_schema = $9 where id = $1`,
+      [before.id, next.name, next.tags, next.description, next.owner, next.kind, next.remove_by, next.free_values,
+        next.json_schema === null ? null : JSON.stringify(next.json_schema)]);
     await changeEverywhere(tx, actor, { kind: 'flag.update', flag: flagKey, before: { ...before, id: undefined }, after: next });
     return next;
   });

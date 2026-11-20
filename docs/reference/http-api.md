@@ -246,6 +246,13 @@ Admins add, change and delete services at `/api/services` (`POST`, then `PUT` an
 with `{ "key": "web", "kind": "client" }`: the kind is `client` for an App and `server` for a Backend. Keys are made
 at `POST /api/api-keys`. In the console's API a service is a `project`, as in the database.
 
+Scripts, the CLI and MCP clients send an [access token](/guide/security#access-tokens) instead of the cookie:
+`Authorization: Bearer cfp_…`. A token needs no `X-Requested-With` header, and is refused from a browser (`403` with
+an `Origin` header). `401` means it is unknown, expired or revoked. Tokens are listed at `GET /api/tokens` (an admin
+adds `?all=1` for everyone's), made at `POST /api/tokens` with `{ "name": "CI", "role": "editor", "agent": false,
+"days": 90 }` and revoked at `DELETE /api/tokens/<id>`, all from the signed-in console only. A request an agent made
+says so in `/api/change-sets` (`"byAgent": true`).
+
 The rest needs a signed-in session (the cookie). Every change (any method but `GET`, `HEAD` and `OPTIONS`) also
 needs the header `X-Requested-With: companyflags` and a JSON body. A request without the header, or one the browser
 marks `Sec-Fetch-Site: cross-site`, gets `403`. See [Security model](/guide/security#changes-from-the-console).

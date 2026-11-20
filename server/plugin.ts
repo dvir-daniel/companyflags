@@ -1,10 +1,10 @@
 // Plugins: the parts of CompanyFlags an installation turns on in companyflags.config.ts, the way Better Auth's
 // plugins are. The core is the console and its API, sign-in, the evaluator, the change journal, publishing and app
 // links. A plugin adds a way to read flags (OFREP, flagd JSON, app files), work to do after a publish (a CDN purge),
-// or work of its own in the background (sending webhooks). The built-in ones are in plugins/; each is a function that
+// work of its own in the background (sending webhooks), or another way into the console's API (MCP, for agents). The built-in ones are in plugins/; each is a function that
 // takes its options and returns a Plugin.
 //
-//   export default defineConfig({ plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()] });
+//   export default defineConfig({ plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks(), mcp()] });
 //
 // A plugin's setup runs once, when the server starts, with what the core shares (PluginContext). What it returns is
 // mounted by createApp (index.ts): its routes at the root, its console routes under /api behind the console's sign-in
@@ -53,6 +53,12 @@ export type PluginContext = {
   /** The console's address (BETTER_AUTH_URL), for links in what a plugin sends; unknown when it isn't set. */
   baseURL?: string | null;
   log: (m: string) => void;
+  /** The core app's own fetch: a request to the console's API (`/api/...`) answered in this process, with no network
+   *  in between, exactly as a script's request would be. Send the caller's own `Authorization: Bearer cfp_…` (an
+   *  access token, tokens.ts) and every role, approval and History entry holds as for them: a plugin that changes flags
+   *  goes through it, never around it (the mcp plugin). It works once the server is built, so call it from a
+   *  request, not from setup. */
+  request: (input: string, init?: RequestInit) => Promise<Response>;
   /** @internal, for the built-in plugins: API keys, app-link secrets and services, kept in memory and cleared when
    *  they change (journal.ts). */
   keys: KeyCache;

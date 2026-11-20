@@ -35,6 +35,8 @@ import { searchHit } from '../../../server/listing.ts';
 import type { Section } from '../../../server/evaluator.ts';
 import { EntityPicker, DeliveryPanel, GetsText, PowerSwitch, ValueChip, ValueSelect, ValuesPanel } from './flagParts.tsx';
 import { useEnvs } from './envs.ts';
+import { readSchemaText, schemaText } from './flagTemplates.ts';
+import { firstMismatch } from '../../../server/jsonSchema.ts';
 import { ReviewDraft } from './draftReview.tsx';
 import { releaseState, stepText } from '../../../server/release.ts';
 import { useDraft, useDraftFlag } from '../useDraft.ts';
@@ -659,11 +661,13 @@ function SettingRow({ name, desc, children, top }: { name: ReactNode; desc?: Rea
 }
 const settingField = 'w-[320px] max-sm:w-full';
 
-type SettingsForm = { name: string; tags: string[]; description: string; owner: string; kind: string; removeBy: string; freeValues: boolean };
+/** jsonSchema: as typed in its textarea (empty: none) */
+type SettingsForm = { name: string; tags: string[]; description: string; owner: string; kind: string; removeBy: string; freeValues: boolean; jsonSchema: string };
 
 function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promise<unknown> }) {
   const { toast, ask, reload, setDirty } = useApp();
-  const init: SettingsForm = { name: flag.name ?? '', tags: flag.tags, description: flag.description ?? '', owner: flag.owner ?? '', kind: flag.kind, removeBy: flag.removeBy ?? '', freeValues: !!flag.freeValues };
+  const init: SettingsForm = { name: flag.name ?? '', tags: flag.tags, description: flag.description ?? '', owner: flag.owner ?? '', kind: flag.kind, removeBy: flag.removeBy ?? '', freeValues: !!flag.freeValues,
+    jsonSchema: schemaText(flag.jsonSchema) };
   // a version release's values are its versions: always typed in
   const versionRelease = flag.kind === 'release' && isVersionFlag({ valueType: flag.valueType, variants: flag.variations });
   // only what you changed is kept: the rest always shows the saved settings (someone else's save too), and after a
@@ -678,10 +682,15 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
   const removeByRequired = needsRemoveBy(f.kind, { valueType: flag.valueType, variants: flag.variations });
   const nameError = flagNameProblem(f.name);
   const tagError = cleanTags(f.tags).problem;
+  const isJson = flag.valueType === 'json';
+  const typedSchema = readSchemaText(isJson ? f.jsonSchema : '');
+  // the named variants that don't match (the server also checks the typed values the rules serve)
+  const schemaError = typedSchema.error ?? (typedSchema.schema ? firstMismatch(typedSchema.schema, flag.variations.filter((v) => !isHidden(v.key))) : null);
   const save = async () => {
     // the reload is part of saving: the edits are dropped once the saved settings are back, so nothing flickers
     const saved = await run(async () => {
-      await api('PUT', `/flags/${flag.key}/meta`, { ...f, tags: cleanTags(f.tags).tags, removeBy: f.removeBy || null });
+      await api('PUT', `/flags/${flag.key}/meta`, { ...f, tags: cleanTags(f.tags).tags, removeBy: f.removeBy || null,
+        jsonSchema: isJson && f.jsonSchema !== init.jsonSchema ? typedSchema.schema : undefined });
       await onSaved();
       return true;
     });
@@ -739,10 +748,18 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
         <input type="date" aria-label="Remove by" value={f.removeBy} onChange={(e) => setF({ removeBy: e.target.value })} aria-invalid={removeByRequired && !f.removeBy}
           className={cn(dense, 'font-mono', settingField)} />
       </SettingRow>
+      {isJson && (
+        <SettingRow top name="JSON Schema" desc="Every value must match it: the variants, and the values typed into the rules. Empty: no schema.">
+          <textarea rows={8} spellCheck={false} aria-label="JSON Schema" value={f.jsonSchema} onChange={(e) => setF({ jsonSchema: e.target.value })}
+            placeholder={'{ "type": "object", "required": ["model"] }'} aria-invalid={!!schemaError}
+            className={cn(textareaField, 'rounded-none font-mono text-13', settingField)} />
+          {schemaError && <span className="mt-1 block text-13 text-live">{schemaError}</span>}
+        </SettingRow>
+      )}
       <div className="grid gap-3 pt-4">
         <ErrorList error={error} />
         <Actions className="justify-start">
-          <Button disabled={!dirty || busy || !!nameError || !!tagError || (removeByRequired && !f.removeBy)} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
+          <Button disabled={!dirty || busy || !!nameError || !!tagError || !!schemaError || (removeByRequired && !f.removeBy)} onClick={save}>{busy ? 'Saving…' : 'Save'}</Button>
           {dirty && <Button variant="secondary" onClick={() => setEdits({})}>Cancel</Button>}
         </Actions>
       </div>

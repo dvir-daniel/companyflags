@@ -59,7 +59,7 @@ Light or Dark (two choices, no System) with `ThemeToggle` in the title bar; `src
 | Destructive and stop actions in a red outline | `Button variant="stop"` |
 | Underlined tabs | `Tabs` |
 | Pick one of a few: mono cells, the chosen one inverted | `Segmented` |
-| Labels in a 1px box (kinds, states, environments) | `Badge` |
+| Labels in a 1px box (kinds, states, environments; purple `agent` for what an AI agent did) | `Badge` |
 | A note set off by a line on its left | `Callout` |
 | Search with the magnifier | `SearchField` |
 | Rounded pills only for announcements and phase tags | `Pill` |

@@ -46,6 +46,39 @@ On/off flags always have `true` and `false`. Version releases always use free va
 In a protected environment, a value that environment serves can't be changed in place. Add a new value and point the
 rules at it: that change is reviewed.
 
+## A JSON Schema
+
+A JSON flag can have a **JSON Schema**: set it in New flag or in the flag's Settings tab. Every value the flag can
+serve must match it: each variant, and each value typed into a rule or a default. A save that doesn't is refused, and
+the error names the value and the field:
+
+```
+fast: model is required
+strong: temperature must be at most 2
+```
+
+Changing the schema checks every value the flag has. Leave it empty for no schema.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "model": { "type": "string", "minLength": 1 },
+    "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+    "tools": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["model"],
+  "additionalProperties": false
+}
+```
+
+It supports a practical part of JSON Schema: `type` (`object`, `array`, `string`, `number`, `integer`, `boolean`,
+`null`, or a list of them), `properties`, `required`, `additionalProperties: false`, `items`, `enum`, `minimum`,
+`maximum`, `minLength` and `maxLength`. `title`, `description`, `$schema`, `$comment`, `default` and `examples` are
+kept as notes. Any other keyword is refused, so a schema never seems to check something it doesn't.
+
+In [flags as code](/guide/flags-as-code) it is the flag's `jsonSchema`.
+
 ## Rules
 
 A rule has a list of checks and what to serve when they **all** pass: one value, or a % of devices. A rule with no

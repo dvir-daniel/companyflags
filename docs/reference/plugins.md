@@ -7,7 +7,7 @@ Better Auth's plugins:
 
 ```ts
 import { defineConfig } from 'companyflags/config';
-import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyflags/plugins';
+import { appFiles, cloudflare, flagd, mcp, ofrep, webhooks } from 'companyflags/plugins';
 
 export default defineConfig({
   plugins: [
@@ -16,11 +16,12 @@ export default defineConfig({
     appFiles(),
     cloudflare(),
     webhooks(),
+    mcp(),
   ],
 });
 ```
 
-With no config file, or a config without `plugins`, all five built-in plugins run. With a list, only the plugins on it
+With no config file, or a config without `plugins`, all six built-in plugins run. With a list, only the plugins on it
 run. The server says which ones when it starts, and the console hides what belongs to a plugin that's off: the CDN
 settings without `cloudflare()`, for example, the app file's address without `appFiles()`, or the webhooks without
 `webhooks()`.
@@ -34,6 +35,7 @@ settings without `cloudflare()`, for example, the app file's address without `ap
 | `appFiles()` | `app-files` | [App files](/sdk/app-file): one values-only file per environment, service and entity, made to sit behind a CDN. `GET /client/v1/flags/…`. |
 | `cloudflare(options?)` | `cloudflare` | [Purges Cloudflare's cache](/self-hosting/cdn#purge-on-publish) after each publish, and adds **Settings → CDN** to the console. |
 | `webhooks(options?)` | `webhooks` | [Webhooks](/guide/webhooks): out, after each change (signed JSON, Slack, or your own shape), and in, `POST /hooks/v1/<token>`. Adds them to the console's **Migration** page. |
+| `mcp()` | `mcp` | An MCP server for AI agents at `POST /mcp` (Streamable HTTP, stateless), with an access token (`Authorization: Bearer cfp_…`). Its tools read, explain and change flags through the console's API, so roles and approvals hold: where an environment needs approval, a change is a request. For clients that only start local servers: `companyflags mcp`. |
 
 App links stay in the core: `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` always answers with the OFREP
 token, and with the app file's `path` when `appFiles()` runs.
@@ -103,6 +105,7 @@ shows when), or `'off'` when it had nothing to do.
 | `env` | The server's environment variables. |
 | `baseURL` | The console's address (`BETTER_AUTH_URL`), for links in what the plugin sends; unset when it isn't known. |
 | `log` | Writes a line to the server's log. |
+| `request` | The server's own fetch for its console API: `request('/api/flags', { headers: { authorization } })`. It is answered in the same process. Send the caller's own access token, so their role and the approvals hold. Call it from a request, not from `setup`. |
 
 `entity` left out (or `null`) asks as no entity: what every device gets before sign-in. `attrs` are what the device
 says about itself, flat (`{ "app.version": "6.0.0" }`); only the attributes an app may report are used.

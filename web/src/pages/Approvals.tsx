@@ -16,7 +16,7 @@ import { CHANGE_SETS_PATH } from '../paths.ts';
 import { go, useApp } from '../app.ts';
 import { downloadCsv } from '../csv.ts';
 import { plural } from '../text.ts';
-import { Badge, Collapsible, Empty, RuleSummary, When } from '../ui.tsx';
+import { AgentBadge, Badge, Collapsible, Empty, RuleSummary, When } from '../ui.tsx';
 import { denseField, monoLabel, usePersistentState, useSlashFocus } from '../uiKit.ts';
 import { useEnvs } from './envs.ts';
 import { approvalsLeft, approvalsNeeded, approvalsOf, mayApprove, mayReview, maySchedule, openForReview, roleInfo } from '../../../server/policy.ts';
@@ -34,6 +34,7 @@ type ItemKind = 'layer' | 'delivery';
 type Delivery = { projects: string[] };
 type CsSummary = {
   id: number; environment: string; status: string; author: string; reason: string | null; createdAt: string;
+  byAgent?: boolean;                  // proposed by an agent, with its person's access token (server/tokens.ts)
   scheduledAt: string | null; appliedRevision: number | null; lastError: string | null;
   items: { flag: string; entity: string | null; kind?: ItemKind }[]; reviews: { reviewer: string; decision: string; current: boolean }[] | null;
 };
@@ -51,7 +52,7 @@ const isDelivery = (i: { kind?: ItemKind }) => i.kind === 'delivery';
 type Sort = 'id' | 'status' | 'author' | 'when';
 type Dir = 'asc' | 'desc';
 /** What a saved view keeps: the filters and the sort (not the search text). */
-type Filters = { status: string; env: string; author: string; sort: { by: Sort; dir: Dir } };
+type Filters = { status: string; env: string; author: string; agent?: string; sort: { by: Sort; dir: Dir } };
 
 const STATUSES = ['in_review', 'approved', 'scheduled', 'applied', 'conflict', 'rejected', 'all'];
 const STATUS_LABEL: Record<string, string> = { in_review: 'Waiting', approved: 'Approved', scheduled: 'Scheduled', applied: 'Applied', conflict: 'Conflict', rejected: 'Rejected', all: 'All' };
@@ -170,6 +171,7 @@ function Queue() {
   const [savedStatus, setStatus] = usePersistentState('approvals.status', 'in_review');
   const [env, setEnv] = usePersistentState('approvals.environment', '');
   const [author, setAuthor] = usePersistentState('approvals.author', '');
+  const [agent, setAgent] = usePersistentState('approvals.agent', '');      // 'agent': only requests an agent proposed
   const [savedSort, setSort] = usePersistentState<{ by: Sort; dir: Dir }>('approvals.sort', { by: 'when', dir: 'desc' });
   const [views, setViews] = usePersistentState<SavedView<Filters>[]>('approvals.views', []);
   const status = STATUSES.includes(savedStatus) ? savedStatus : 'in_review';
@@ -196,7 +198,7 @@ function Queue() {
   useEffect(() => { load(); }, [load, revisionTick]);
 
   const needle = q.trim().toLowerCase();
-  const matches = (c: CsSummary) => (!env || c.environment === env) && (!author || c.author === author) && (!needle
+  const matches = (c: CsSummary) => (!env || c.environment === env) && (!author || c.author === author) && (!agent || !!c.byAgent) && (!needle
     || needle.replace(/^#/, '') === String(c.id)
     || c.author.toLowerCase().includes(needle)
     || (c.reason ?? '').toLowerCase().includes(needle)
@@ -227,11 +229,13 @@ function Queue() {
   const openRow = (i: number, id: number) => { keys.setActive(i); setOpen(id); };
 
   const onSort = (by: Sort, dir: Dir) => setSort({ by, dir });
-  const filters: Filters = { status, env, author, sort: { by: sort, dir } };
-  const applyView = (f: Filters) => { setStatus(f.status); setEnv(f.env); setAuthor(f.author); setSort(f.sort); };
-  const narrowed = !!(needle || env || author);
+  const filters: Filters = { status, env, author, agent, sort: { by: sort, dir } };
+  const applyView = (f: Filters) => { setStatus(f.status); setEnv(f.env); setAuthor(f.author); setAgent(f.agent ?? ''); setSort(f.sort); };
+  const narrowed = !!(needle || env || author || agent);
   const filtered = narrowed || status !== 'in_review';
-  const reset = () => { setQ(''); setStatus('in_review'); setEnv(''); setAuthor(''); };
+  const reset = () => { setQ(''); setStatus('in_review'); setEnv(''); setAuthor(''); setAgent(''); };
+  // the agent filter only once an agent has asked for something (or while it's on)
+  const agents = agent !== '' || !!all?.some((c) => c.byAgent);
   const isApprover = roleInfo(meta.me.role).reviews;
   const chosen = rows.filter((r) => sel.isSelected(String(r.id)));
   // what this person may approve (policy.ts): open, someone else's, and not already approved by them
@@ -281,7 +285,7 @@ function Queue() {
   const empty = !all ? null
     : loadError && all.length === 0 ? { why: 'The requests couldn’t be loaded.', action: <Button variant="secondary" onClick={() => { load(); }}>Try again</Button> }
     : all.length === 0 ? { why: 'No requests yet. Changes to a protected environment come here for an approval before they go out.', action: <Button variant="secondary" onClick={() => go('flags')}>Open flags</Button> }
-    : narrowed ? { why: needle ? `No ${status === 'all' ? '' : `${STATUS_LABEL[status].toLowerCase()} `}requests match “${q.trim()}”${env || author ? ' with these filters' : ''}.` : 'No requests match these filters.', action: <Button variant="secondary" onClick={reset}>Clear filters</Button> }
+    : narrowed ? { why: needle ? `No ${status === 'all' ? '' : `${STATUS_LABEL[status].toLowerCase()} `}requests match “${q.trim()}”${env || author || agent ? ' with these filters' : ''}.` : 'No requests match these filters.', action: <Button variant="secondary" onClick={reset}>Clear filters</Button> }
     : { why: status === 'in_review' && isApprover ? 'Nothing is waiting for you: every request has been decided.' : NONE_LABEL[status] ?? 'No requests.', action: <Button variant="secondary" onClick={() => setStatus('all')}>Show all {plural(all.length, 'request')}</Button> };
 
   return (
@@ -292,6 +296,7 @@ function Queue() {
           options={STATUSES.map((f) => [f, all ? `${STATUS_LABEL[f]} · ${count(f).toLocaleString()}` : STATUS_LABEL[f]] as [string, string])} />
         <FilterSelect label="Environment" value={env} onChange={setEnv} options={[['', 'All'], ...meta.environments.map((e) => [e.key, envName(e.key)] as [string, string])]} />
         <FilterSelect label="Requested by" value={author} onChange={setAuthor} options={[['', 'All'], ...authors.map((a) => [a, a] as [string, string])]} />
+        {agents && <FilterSelect label="Agent" value={agent} onChange={setAgent} options={[['', 'All'], ['agent', 'By an agent']]} />}
         <ViewMenu views={views} current={filters} onApply={applyView} onChange={setViews} />
         {filtered && <button type="button" onClick={reset} className={barTextButton}>Reset</button>}
       </PageBar>
@@ -332,7 +337,7 @@ function Queue() {
                 <span role="cell" className="min-w-0">
                   <button type="button" aria-label={`Open request #${cs.id}`} onClick={(e) => { e.stopPropagation(); openRow(i, cs.id); }}
                     className={cn(cellButton, 'font-mono text-13 font-medium')}>#{cs.id}</button>
-                  <span className={cn(when, 'block truncate xl:hidden')}>{envName(cs.environment)}<span className="md:hidden"> · {cs.author} · <When iso={cs.createdAt} /></span></span>
+                  <span className={cn(when, 'block truncate xl:hidden')}>{envName(cs.environment)}<span className="md:hidden"> · {cs.author}{cs.byAgent && ' (agent)'} · <When iso={cs.createdAt} /></span></span>
                   <span className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden md:hidden">{tags}</span>
                 </span>
                 <span role="cell" className="max-md:flex max-md:flex-col max-md:items-end max-md:gap-1.5">
@@ -344,7 +349,7 @@ function Queue() {
                 <span role="cell" className={cn(XL, 'flex items-center gap-1.5 text-ink-2')}>
                   {envName(cs.environment)}{protectedEnv && <LockSimpleIcon aria-label="Protected" className="size-3.5 text-ink-3" />}
                 </span>
-                <span role="cell" className={cn(MD, 'truncate font-medium')}>{cs.author}</span>
+                <span role="cell" className={cn(MD, 'flex min-w-0 items-center gap-1.5')}><span className="truncate font-medium">{cs.author}</span>{cs.byAgent && <AgentBadge />}</span>
                 <span role="cell" className={cn(XL, 'truncate text-ink-2')}>{firstLine(cs.reason) ?? <span className="text-ink-3">No reason given</span>}</span>
                 <span role="cell" className={MD}><When iso={cs.createdAt} className={when} /></span>
               </div>
@@ -502,7 +507,7 @@ function RequestFacts({ cs, approvals, needed, withReason }: { cs: CsDetail; app
       <DrawerRow label="Environment">
         <span className="inline-flex items-center gap-1.5">{envName(cs.environment)}{protectedEnv && <LockSimpleIcon aria-label="Protected environment" className="size-3.5 text-ink-3" />}</span>
       </DrawerRow>
-      <DrawerRow label="Requested by"><span className="font-medium">{cs.author}</span> <span className="text-ink-3">·</span> <When iso={cs.createdAt} className="text-ink-2" /></DrawerRow>
+      <DrawerRow label="Requested by"><span className="font-medium">{cs.author}</span>{cs.byAgent && <> <AgentBadge title="An agent asked for this, with its person’s access token: someone else approves it" /></>} <span className="text-ink-3">·</span> <When iso={cs.createdAt} className="text-ink-2" /></DrawerRow>
       <DrawerRow label="Approvals">
         <span className="inline-flex items-center gap-1.5">
           <ApprovalProgress status={cs.status} approvals={approvals} needed={needed} long revision={cs.appliedRevision}

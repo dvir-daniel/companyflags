@@ -12,6 +12,7 @@
 //   canBreakGlassRollback(kind, role)         may this person roll a version release back without review
 //   ROLES, roleInfo(role)                     the roles: their labels, who changes, who reviews, who may break-glass,
 //                                             who changes settings (the server asks through access.ts `may`)
+//   tokenRoles(person, agent)                 the roles a person may give an access token (tokens.ts)
 //
 // The approval policy is the environment's `min_approvals` (README: not per flag kind or tag). An environment with
 // min_approvals above 0 is a protected environment: a change there is a change set, and it applies only after
@@ -51,6 +52,15 @@ export const roleInfo = (role: string): RoleInfo =>
   (isRole(role) ? ROLE[role] : { label: role, does: '', changes: false, reviews: false, breaksGlass: false, changesSettings: false });
 
 export type Person = { key: string; role: string };
+
+/** The roles an agent's access token may have: an agent never approves, breaks glass or manages (tokens.ts). */
+export const AGENT_ROLES: readonly Role[] = ['viewer', 'editor'];
+/** The roles a person may give an access token: Viewer, Editor, or their own; an agent's token only Viewer or Editor. */
+export function tokenRoles(person: Pick<Person, 'role'>, agent: boolean): Role[] {
+  const own: Role[] = person.role === 'viewer' ? ['viewer'] : ['viewer', 'editor'];
+  if (!agent && isRole(person.role) && !own.includes(person.role)) own.push(person.role);
+  return own.filter((r) => !agent || AGENT_ROLES.includes(r));
+}
 
 // ---------------------------------------------------------------- environments
 

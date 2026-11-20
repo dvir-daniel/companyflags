@@ -80,6 +80,12 @@ export function Settings({ section }: { section?: string }) {
           <PeopleSummary users={meta.users} />
         </section>
 
+        <section aria-labelledby="s-tokens" className="grid gap-3">
+          <Heading id="s-tokens" title="Access tokens" action={<Button variant="secondary" onClick={() => go('tokens')}>{admin ? 'Manage tokens' : 'Your tokens'}</Button>}>
+            A token acts as you, with a role up to yours, for scripts, the CLI and MCP clients. Everyone makes their own{admin ? '; you can see and revoke everyone’s' : ''}.
+          </Heading>
+        </section>
+
         <SingleSignOn />
 
         {/* the Cloudflare plugin's settings (server/plugins/cloudflare.ts), when this server runs it */}

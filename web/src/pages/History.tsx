@@ -14,7 +14,7 @@ import { Bone, CountSlot, SkeletonRows } from '../loading.tsx';
 import { pagerRow } from '../loadingKit.ts';
 import { go, useApp } from '../app.ts';
 import { plural } from '../text.ts';
-import { Badge, Empty, JsonView, When } from '../ui.tsx';
+import { AgentBadge, Badge, Empty, JsonView, When } from '../ui.tsx';
 import { denseField, monoLabel, usePersistentState, useSlashFocus } from '../uiKit.ts';
 import { LayerDiff } from './Approvals.tsx';
 import { useEnvs } from './envs.ts';
@@ -46,6 +46,7 @@ const CHANGE_LABEL: Record<string, string> = {
   'webhook.create': 'added a webhook out', 'webhook.update': 'changed a webhook out', 'webhook.delete': 'deleted a webhook out',
   'webhook.secret': 'made a webhook’s new secret', 'webhook_in.create': 'added a webhook in', 'webhook_in.update': 'changed a webhook in',
   'webhook_in.delete': 'deleted a webhook in', 'webhook_in.token': 'made a webhook’s new address',
+  'token.create': 'made an access token', 'token.revoke': 'revoked an access token',
 };
 const changeName = (t: string) => { const s = CHANGE_LABEL[t] ?? t; return `${s[0].toUpperCase()}${s.slice(1)}`; };
 
@@ -228,11 +229,12 @@ export function FlagHistory({ flagKey }: { flagKey: string }) {
   );
 }
 
-/** Who made a change; an emergency bypass is marked red, a script or system by its kind. */
+/** Who made a change; an emergency bypass is marked red, an agent purple, a script or system by its kind. */
 function Actor({ r }: { r: Row }) {
   return <>
     <span className="truncate font-medium">{r.changedBy}</span>
     {r.actorType === 'bypass' ? <Badge kind="danger">emergency</Badge>
+      : r.actorType === 'agent' ? <AgentBadge />
       : r.actorType !== 'user' ? <span className="font-mono text-11 tracking-[0.55px] text-ink-3 uppercase">{r.actorType}</span> : null}
   </>;
 }
@@ -313,6 +315,7 @@ function ChangeTable({ rows, busy, onRetry, hideFlag, store, csvName, filtered, 
                 <span className="flex min-w-0 items-center gap-1.5 text-ink-3 md:hidden">
                   <span className="truncate">{[r.changedBy, !hideFlag && r.flag, r.environment && envName(r.environment)].filter(Boolean).join(' · ')}</span>
                   {r.actorType === 'bypass' && <Badge kind="danger">emergency</Badge>}
+                  {r.actorType === 'agent' && <AgentBadge />}
                 </span>
               </button>
             </span>

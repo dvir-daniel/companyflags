@@ -21,7 +21,7 @@ const ids = (plugins: { id: string }[]) => plugins.map((p) => p.id);
 test('without a list, every built-in plugin runs, and the console is told which', async () => {
   const t = await boot();
   try {
-    assert.deepEqual((await t.as('alice').get('/meta')).json.plugins, ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks']);
+    assert.deepEqual((await t.as('alice').get('/meta')).json.plugins, ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks', 'mcp']);
     assert.equal((await t.as('alice').get('/cdn')).status, 200, 'the Cloudflare plugin’s console routes');
   } finally { await t.stop(); }
 });
@@ -174,7 +174,7 @@ test('the config: the file’s settings, else the environment’s, else the defa
   const env = { DATABASE_URL: 'postgres://env/db', PORT: '9000', BETTER_AUTH_URL: 'https://env.example.com', CF_ZONE_ID: 'z', CF_API_TOKEN: 't' };
   const none = resolveConfig({}, {});
   assert.deepEqual([none.databaseUrl, none.dataDir, none.port, none.host], [undefined, './data', 8787, '0.0.0.0']);
-  assert.deepEqual(ids(none.plugins), ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks']);
+  assert.deepEqual(ids(none.plugins), ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks', 'mcp']);
   const fromEnv = resolveConfig({}, env);
   assert.deepEqual([fromEnv.databaseUrl, fromEnv.port], ['postgres://env/db', 9000]);
   assert.equal(fromEnv.signIn.kind === 'better-auth' && fromEnv.signIn.settings.baseURL, 'https://env.example.com');
@@ -188,7 +188,7 @@ test('the config: the file’s settings, else the environment’s, else the defa
   // production is NODE_ENV's alone: a file can't turn off the production checks
   const prod = resolveConfig({ auth: { production: false } } as Config, { NODE_ENV: 'production' });
   assert.equal(prod.signIn.kind === 'better-auth' && prod.signIn.settings.production, true);
-  assert.deepEqual(ids(defaultPlugins()), ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks']);
+  assert.deepEqual(ids(defaultPlugins()), ['ofrep', 'flagd', 'app-files', 'cloudflare', 'webhooks', 'mcp']);
   assert.equal(cloudflare().id, 'cloudflare');
 });
 

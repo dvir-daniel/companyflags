@@ -7,6 +7,11 @@
 //         "name": "New checkout", "kind": "release", "type": "bool", "removeBy": "2027-02-17",
 //         "variants": { "on": true, "off": false }, "default": "off",
 //         "services": { "dev": ["web", "ios"], "prod": ["web"] }
+//       },
+//       "support_bot_model": {
+//         "kind": "config", "type": "json",
+//         "variants": { "fast": { "model": "small-model" }, "strong": { "model": "large-model" } }, "default": "fast",
+//         "jsonSchema": { "type": "object", "properties": { "model": { "type": "string" } }, "required": ["model"] }
 //       }
 //     }
 //   }
@@ -22,6 +27,7 @@ import { HIDDEN_PREFIX } from './evaluator.ts';
 import { createFlag, setDelivery, updateFlagMeta, upsertVariations, type NewFlag } from './control.ts';
 import { canonical, type Actor } from './layers.ts';
 import { needsReview } from './policy.ts';
+import { schemaProblem, type JsonSchema } from './jsonSchema.ts';
 
 export type ValueType = 'bool' | 'string' | 'number' | 'json';
 export const FLAG_KINDS = ['release', 'kill_switch', 'ops', 'experiment', 'config', 'permission'] as const;
@@ -40,6 +46,8 @@ export type FlagSpec = {
   variants?: Record<string, unknown>;
   /** values typed into the rules instead of named variants (not for on/off flags) */
   freeValues?: boolean;
+  /** a JSON flag's JSON Schema (jsonSchema.ts): every variant must match it. null removes it. */
+  jsonSchema?: JsonSchema | null;
   /** the variant everyone gets when the flag is made (later, the console's rules decide) */
   default?: string;
   /** environment → the services it is in */
@@ -63,14 +71,14 @@ export type Plan = {
 
 type Here = {
   key: string; name: string | null; description: string | null; owner: string | null; kind: string; type: ValueType;
-  tags: string[]; removeBy: string | null; freeValues: boolean; variants: Record<string, unknown>; services: Record<string, string[]>;
+  tags: string[]; removeBy: string | null; freeValues: boolean; jsonSchema: JsonSchema | null; variants: Record<string, unknown>; services: Record<string, string[]>;
 };
 
 /** Every flag that isn't archived, as the file writes it. */
 export async function readFlags(db: Db): Promise<Here[]> {
   const flags = await all<{ id: string; key: string; name: string | null; description: string | null; owner: string | null; kind: string;
-    value_type: ValueType; tags: string[]; remove_by: string | null; free_values: boolean }>(db,
-    `select id, key, name, description, owner, kind, value_type, tags, remove_by::text as remove_by, free_values
+    value_type: ValueType; tags: string[]; remove_by: string | null; free_values: boolean; json_schema: JsonSchema | null }>(db,
+    `select id, key, name, description, owner, kind, value_type, tags, remove_by::text as remove_by, free_values, json_schema
        from flag where archived_at is null order by key`);
   const variants = await all<{ flag_id: string; key: string; value: unknown }>(db,
     `select flag_id, key, value from flag_variation where not is_code_default order by id`);
@@ -80,7 +88,7 @@ export async function readFlags(db: Db): Promise<Here[]> {
   const envs = (await all<{ key: string }>(db, `select key from environment order by id`)).map((e) => e.key);
   return flags.map((f) => ({
     key: f.key, name: f.name, description: f.description, owner: f.owner, kind: f.kind, type: f.value_type,
-    tags: f.tags ?? [], removeBy: f.remove_by, freeValues: f.free_values,
+    tags: f.tags ?? [], removeBy: f.remove_by, freeValues: f.free_values, jsonSchema: f.json_schema ?? null,
     variants: Object.fromEntries(variants.filter((v) => v.flag_id === f.id && !v.key.startsWith(HIDDEN_PREFIX)).map((v) => [v.key, v.value])),
     services: Object.fromEntries(envs.map((e) => [e, delivery.filter((d) => d.flag_id === f.id && d.env === e).map((d) => d.set)])),
   }));
@@ -99,6 +107,7 @@ export async function pullFlags(db: Db): Promise<FlagsFile> {
       ...(f.tags.length ? { tags: f.tags } : {}),
       ...(f.removeBy ? { removeBy: f.removeBy } : {}),
       ...(f.freeValues ? { freeValues: true } : {}),
+      ...(f.jsonSchema ? { jsonSchema: f.jsonSchema } : {}),
       ...(Object.keys(f.variants).length && !(f.type === 'bool' && isOnOff(f.variants)) ? { variants: f.variants } : {}),
       services: f.services,
     };
@@ -137,6 +146,7 @@ export async function planFlags(db: Db, file: unknown): Promise<Plan> {
     const fields = (['name', 'description', 'owner', 'kind', 'removeBy', 'freeValues'] as const)
       .filter((f) => s[f] !== undefined && (s[f] ?? null) !== (f === 'freeValues' ? h.freeValues : h[f] ?? null));
     if (s.tags !== undefined && canonical([...s.tags].sort()) !== canonical([...h.tags].sort())) fields.push('tags' as never);
+    if (s.jsonSchema !== undefined && canonical(s.jsonSchema ?? null) !== canonical(h.jsonSchema)) fields.push('jsonSchema' as never);
     if (fields.length) steps.push({ do: 'details', flag: key, fields, spec: s });
     const want = variantsOf(s);
     const gone = Object.keys(h.variants).filter((v) => !(v in want));
@@ -177,6 +187,13 @@ function readFile(file: unknown, problems: string[]): Record<string, FlagSpec> {
       problems.push(`${key}: services is an object, environment → a list of service keys`);
     }
     if (s.default !== undefined && !(s.default in variantsOf(s))) problems.push(`${key}: default "${s.default}" isn’t one of its variants`);
+    if (s.jsonSchema !== undefined && s.jsonSchema !== null) {
+      if (s.type !== 'json') problems.push(`${key}: only JSON flags have a jsonSchema`);
+      else {
+        const p = schemaProblem(s.jsonSchema);
+        if (p) problems.push(`${key}: jsonSchema: ${p}`);
+      }
+    }
   }
   return flags;
 }
@@ -193,7 +210,7 @@ export async function pushFlags(db: Db, plan: Plan, actor: Actor): Promise<Done[
     try {
       done.push(await apply(db, step, envs, actor));
     } catch (e) {
-      const err = new Error(`${describe(step)}: ${(e as Error).message}`) as Error & { done: Done[] };
+      const err = new Error(`${describe(step)}: ${(e as Error).message}`, { cause: e }) as Error & { done: Done[] };
       err.done = done;
       throw err;
     }
@@ -209,7 +226,7 @@ async function apply(db: Db, step: Step, envs: string[], actor: Actor): Promise<
       const first = s.default ?? (s.type === 'bool' && 'off' in variants ? 'off' : Object.keys(variants)[0]);
       const f: NewFlag = {
         key: step.flag, name: s.name ?? null, description: s.description ?? undefined, owner: s.owner ?? undefined, kind: s.kind,
-        valueType: s.type, tags: s.tags ?? [], removeBy: s.removeBy ?? null,
+        valueType: s.type, tags: s.tags ?? [], removeBy: s.removeBy ?? null, jsonSchema: s.jsonSchema ?? null,
         variations: Object.entries(variants).map(([key, value]) => ({ key, value })),
         delivery: Object.fromEntries(envs.map((e) => [e, s.services?.[e] ?? []])),
         // everyone gets the default until the console's rules say otherwise (off where changes need approval: createFlag)
@@ -225,6 +242,7 @@ async function apply(db: Db, step: Step, envs: string[], actor: Actor): Promise<
         ...(s.owner !== undefined ? { owner: s.owner } : {}), ...(s.kind !== undefined ? { kind: s.kind } : {}),
         ...(s.removeBy !== undefined ? { removeBy: s.removeBy } : {}), ...(s.freeValues !== undefined ? { freeValues: s.freeValues } : {}),
         ...(s.tags !== undefined ? { tags: s.tags } : {}),
+        ...(step.fields.includes('jsonSchema') ? { jsonSchema: s.jsonSchema ?? null } : {}),
       }, actor);
       return { step, result: 'done' };
     }

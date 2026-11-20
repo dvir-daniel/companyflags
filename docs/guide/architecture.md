@@ -20,8 +20,8 @@ are read by many apps and backends at once, so they need one place that decides,
 
 ## Plugins
 
-Everything that reads flags besides the console is a plugin, and so is anything that runs after a publish. The five
-built-in ones (`ofrep()`, `flagd()`, `appFiles()`, `cloudflare()`, `webhooks()`) run unless the config lists
+Everything that reads flags besides the console is a plugin, and so is anything that runs after a publish. The six
+built-in ones (`ofrep()`, `flagd()`, `appFiles()`, `cloudflare()`, `webhooks()`, `mcp()`) run unless the config lists
 others: see [Plugins](/reference/plugins), and how to write your own. Each one is answered by the same evaluator, so
 an app reading OFREP, a backend reading flagd JSON and a device reading its app file all get the same answer for the
 same entity and context.

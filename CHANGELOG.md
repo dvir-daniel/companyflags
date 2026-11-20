@@ -4,6 +4,27 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+## 0.4.0 (2026-11-20)
+
+For AI agents and AI features ([plan](https://github.com/dvir-daniel/companyflags/blob/main/docs/design/ai.md)).
+
+- **An MCP server**, the `mcp()` plugin at `/mcp`: tools to read, explain, change and clean up flags through the
+  console's API, with an access token; changes where approval is needed are requests. `companyflags mcp` bridges
+  clients that start local servers. See [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources).
+- **The CLI over HTTP:** `flags pull|plan|push --url --token` (or `COMPANYFLAGS_URL`, `COMPANYFLAGS_TOKEN`), so CI
+  needs no database access; `/api/flags-as-code` routes. `companyflags flags unused` finds flags no code reads.
+- **Access tokens** in the console (your name → Access tokens): a token for `/api` as `Authorization: Bearer cfp_…`,
+  for scripts, the CLI and MCP clients, with a role up to yours and 30, 90 or 365 days. A token for an agent is Viewer
+  or Editor; its changes show with an **agent** badge in History, and its requests in Approvals, with a "By an agent"
+  filter. See [Access tokens](https://dvir-daniel.github.io/companyflags/guide/security#access-tokens).
+- A JSON flag can have a [JSON Schema](https://dvir-daniel.github.io/companyflags/guide/flags-and-rules#a-json-schema):
+  every variant and every typed value must match it, or the save is refused with the variant and the field ("fast:
+  model is required"). In New flag, the flag's Settings tab and flags as code (`jsonSchema`). Migration 0016.
+- New flag has an **AI config** template: a Config JSON flag with `fast` and `strong` variants (model, temperature,
+  prompt, tools) and a schema they match.
+- [An alert turns a kill switch off](https://dvir-daniel.github.io/companyflags/guide/ai#an-alert-turns-a-kill-switch-off):
+  `POST /api/alerts/kill` with an On call or Admin token, at once and recorded as break-glass, with examples for
+  Grafana and Datadog.
 - Docs for agents: `/llms.txt`, `/llms-full.txt` and a Markdown copy of every page; a skill
   (`skills/companyflags/SKILL.md`); [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources) with
   an `AGENTS.md` note and OpenFeature's MCP server set up for CompanyFlags.

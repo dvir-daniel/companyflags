@@ -51,6 +51,78 @@ const answer = await llm.generate({ model: config.model, temperature: config.tem
 
 The value never leaves the server as a rule: apps get only the value meant for them.
 
+### Start from the AI config template
+
+In **New flag**, pick **Start from: AI config**. It fills in a JSON flag with the *Config* purpose, named as you
+typed, with two variants, `fast` and `strong`, and a JSON Schema they match:
+
+- `model`: a string, required
+- `temperature`: a number from 0 to 2
+- `prompt`: a string
+- `tools`: a list of strings, optional
+
+Change any of it before you create the flag. The schema keeps a config whole: a variant or a typed value without a
+`model`, or with a `temperature` of 5, is refused when it's saved, with the variant and the field in the error
+([A JSON Schema](/guide/flags-and-rules#a-json-schema)).
+
+## An alert turns a kill switch off
+
+When an alert fires, it can turn a kill switch off at once: `POST /api/alerts/kill`, with the access token of
+an *On call* or *Admin* person ([Access tokens](/guide/security#access-tokens): your name → Access tokens in the
+console).
+
+```bash
+curl -X POST https://flags.example.com/api/alerts/kill \
+  -H "Authorization: Bearer cfp_…" -H "Content-Type: application/json" \
+  -d '{ "flag": "payments_enabled", "environment": "prod", "alert": "Payments error rate" }'
+```
+
+- **Only kill switches.** A flag with another purpose is refused (422).
+- **At once, without a review.** It is break-glass, as when on call presses *Turn off now*: only the flag's On/Off
+  switch, only off. History shows it as break-glass, under the token's person, with the comment
+  *Turned off by the alert “Payments error rate”*.
+- **Off already?** Nothing changes, and the answer says `"alreadyOff": true`. An alert that fires twice is fine.
+- **Not for agents, editors or browsers.** An agent's token is Viewer or Editor, so it is refused (403), and so is
+  any token sent from a browser.
+
+Turning it back on is a person's choice, in the console (a reviewed change where the environment needs one).
+
+`flag`, `environment` and `alert` go in the JSON body, or in the address
+(`/api/alerts/kill?flag=payments_enabled&environment=prod&alert=Payments%20error%20rate`) when the alert tool
+sends a body of its own.
+
+**Grafana.** Add a contact point of type *Webhook*:
+
+- URL: `https://flags.example.com/api/alerts/kill?flag=payments_enabled&environment=prod&alert=Payments%20error%20rate`
+- HTTP method: `POST`
+- Authorization header: scheme `Bearer`, credentials `cfp_…`
+
+Grafana sends its own JSON body; the address says what to turn off. A resolved alert calls again, which changes
+nothing.
+
+**Datadog.** In the Webhooks integration, add a webhook:
+
+- URL: `https://flags.example.com/api/alerts/kill`
+- Payload:
+
+  ```json
+  { "flag": "payments_enabled", "environment": "prod", "alert": "$EVENT_TITLE" }
+  ```
+
+- Custom headers:
+
+  ```json
+  { "Authorization": "Bearer cfp_…" }
+  ```
+
+Then mention it in the monitor's message, only for the alert (not the recovery):
+
+```text
+{{#is_alert}}@webhook-companyflags-kill{{/is_alert}}
+```
+
+Make the token for this alone (your name → Access tokens), and keep it in the alert tool's secrets.
+
 ## Agents can manage flags too
 
 [Flags as code](/guide/flags-as-code) keeps every flag's details, variants and services in a file next to the code.

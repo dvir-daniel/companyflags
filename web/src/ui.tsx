@@ -29,8 +29,13 @@ export { PAGE_SIZE, readPersistent };
 const LIVE_KINDS = /^(danger|status-(conflict|rejected|failed)|reason-ERROR)$/;
 const WAIT_KINDS = /^(warn|status-(in_review|scheduled))$/;
 export function Badge({ kind, children, title }: { kind?: string; children: ReactNode; title?: string }) {
-  const variant = kind && LIVE_KINDS.test(kind) ? 'live' : kind && WAIT_KINDS.test(kind) ? 'warn' : 'default';
+  const variant = kind && LIVE_KINDS.test(kind) ? 'live' : kind && WAIT_KINDS.test(kind) ? 'warn' : kind === 'agent' ? 'agent' : 'default';
   return <UIBadge variant={variant} title={title}>{children}</UIBadge>;
+}
+
+/** Done or asked for by an AI agent, with its person's access token (server/tokens.ts): purple, as agents are. */
+export function AgentBadge({ title = 'By an agent, with its person’s access token' }: { title?: string }) {
+  return <Badge kind="agent" title={title}>agent</Badge>;
 }
 
 export function KindBadge({ kind }: { kind: string }) {

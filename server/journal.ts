@@ -100,6 +100,8 @@ export const KINDS = {
 
   // nothing served changes: history only
   'api_key.create': { serves: null, restore: false },
+  'token.create': { serves: null, restore: false },
+  'token.revoke': { serves: null, restore: false },
   'api_key.revoke': { serves: null, restore: false, then: ['forgetApiKeys'] },
   'environment.update': { serves: null, restore: false },
   'app.create': { serves: null, restore: false, then: ['forgetClientApps'] },
