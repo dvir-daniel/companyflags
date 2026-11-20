@@ -3,12 +3,12 @@
 // configuration.md), then the defaults, so a server with no file runs as before and the Docker image needs none.
 //
 //   import { defineConfig } from 'companyfeatures/config';
-//   import { appFiles, cloudflare, flagd, ofrep } from 'companyfeatures/plugins';
+//   import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
 //
 //   export default defineConfig({
 //     database: { url: process.env.DATABASE_URL },
 //     auth: { baseURL: 'https://flags.example.com' },
-//     plugins: [ofrep(), flagd(), appFiles(), cloudflare()],
+//     plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()],
 //   });
 //
 // The server (index.ts) and the CLI (cli.ts) read it from the folder they run in, or from FF_CONFIG.

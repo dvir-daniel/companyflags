@@ -42,6 +42,9 @@ const CHANGE_LABEL: Record<string, string> = {
   'person.remove': 'removed someone’s access', 'sso.add': 'added single sign-on', 'sso.update': 'changed single sign-on',
   'sso.remove': 'removed single sign-on', 'cdn.update': 'set up the Cloudflare purge', 'cdn.remove': 'removed the Cloudflare purge',
   'cdn.purge': 'purged Cloudflare by hand',
+  'webhook.create': 'added a webhook out', 'webhook.update': 'changed a webhook out', 'webhook.delete': 'deleted a webhook out',
+  'webhook.secret': 'made a webhook’s new secret', 'webhook_in.create': 'added a webhook in', 'webhook_in.update': 'changed a webhook in',
+  'webhook_in.delete': 'deleted a webhook in', 'webhook_in.token': 'made a webhook’s new address',
 };
 const changeName = (t: string) => { const s = CHANGE_LABEL[t] ?? t; return `${s[0].toUpperCase()}${s.slice(1)}`; };
 
@@ -60,7 +63,7 @@ const options = (values: string[], current: string, name: (v: string) => string 
 const subjects = (dims: Dimensions): [string, string][] => [
   ['layer', 'Rules and defaults'], ['flag', 'Flag details'], ['variations', 'Variants'], ['delivery', 'Flag sets of a flag'],
   ['entity,customer', capital(listWords(dims, 'and', true)) || 'Entries'], ['dimensions', 'Dimensions'], ['change_set', 'Requests and reviews'],
-  ['environment', 'Environments'], ['app', 'Flag sets'], ['api_key', 'API keys'], ['person', 'People'], ['sso', 'Single sign-on'], ['cdn', 'CDN'],
+  ['environment', 'Environments'], ['app', 'Flag sets'], ['api_key', 'API keys'], ['person', 'People'], ['sso', 'Single sign-on'], ['cdn', 'CDN'], ['webhook,webhook_in', 'Webhooks'],
 ];
 const WHEN: [string, string][] = [['', 'Any time'], ['today', 'Today'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'],
   ['365', 'Last 12 months'], ['custom', 'Between dates']];

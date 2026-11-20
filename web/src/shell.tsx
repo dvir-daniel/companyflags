@@ -39,6 +39,7 @@ const PATHS = {
   approvals: <><rect x="3" y="3" width="12" height="12" /><path d="m6 9.2 2.1 2.1L12.2 7" /></>,
   keys: <><circle cx="6" cy="9" r="3.2" /><path d="M9.2 9H16M13.5 9v2.6M15.6 9v2" /></>,
   history: <><circle cx="9" cy="9" r="6.3" /><path d="M9 5.4V9l2.6 1.6" /></>,
+  migration: <><path d="M2.5 6h11M10.5 3l3 3-3 3" /><path d="M15.5 12h-11M7.5 9l-3 3 3 3" /></>,
   settings: <><circle cx="9" cy="9" r="2.4" /><path d="M9 2.5v2.2M9 13.3v2.2M2.5 9h2.2M13.3 9h2.2M4.4 4.4l1.6 1.6M12 12l1.6 1.6M4.4 13.6 6 12M12 6l1.6-1.6" /></>,
   search: <><circle cx="8" cy="8" r="4.5" /><path d="m11.4 11.4 3.6 3.6" /></>,
   more: <><path d="M3 5h12M3 9h12M3 13h12" /></>,
@@ -77,6 +78,7 @@ function navOf(meta: Meta | null): { group: string; items: NavItem[] }[] {
     { group: 'Admin', items: [
       { ...plainPage('history'), label: 'History', icon: 'history' },
       { ...plainPage('keys'), label: 'API keys', icon: 'keys' },
+      { ...plainPage('migration'), label: 'Migration', icon: 'migration' },
       { key: 'settings', label: 'Settings', icon: 'settings', current: (p, sub) => p === 'settings' && sub !== 'dimensions' },
     ] },
   ];

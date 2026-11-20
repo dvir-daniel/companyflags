@@ -23,6 +23,9 @@ importers:
       hono:
         specifier: ^4.13.17
         version: 4.13.17
+      jsonata:
+        specifier: 2.1.0
+        version: 2.1.0
       kysely:
         specifier: ^0.29.9
         version: 0.29.9
@@ -2309,6 +2312,10 @@ packages:
     resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
     engines: {node: '>=6'}
     hasBin: true
+
+  jsonata@2.1.0:
+    resolution: {integrity: sha512-OCzaRMK8HobtX8fp37uIVmL8CY1IGc/a6gLsDqz3quExFR09/U78HUzWYr7T31UEB6+Eu0/8dkVD5fFDOl9a8w==}
+    engines: {node: '>= 8'}
 
   jsonfile@6.2.1:
     resolution: {integrity: sha512-zwOTdL3rFQ/lRdBnntKVOX6k5cKJwEc1HdilT71BWEu7J41gXIB2MRp+vxduPSwZJPWBxEzv4yH1wYLJGUHX4Q==}
@@ -5011,6 +5018,8 @@ snapshots:
   json-schema-typed@7.0.3: {}
 
   json5@2.2.3: {}
+
+  jsonata@2.1.0: {}
 
   jsonfile@6.2.1:
     dependencies:

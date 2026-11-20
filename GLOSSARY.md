@@ -177,7 +177,7 @@ _Avoid_: restore user, reactivate
 _Avoid_: settings file, .env (CompanyFeatures doesn't read one)
 
 **Plugin**:
-A part of the server an installation turns on in its config file: a way to read flags (`ofrep()`, `flagd()`, `appFiles()`) or something that runs after a publish (`cloudflare()`). Made with `definePlugin`; all the built-in ones run when the config doesn't list any.
+A part of the server an installation turns on in its config file: a way to read flags (`ofrep()`, `flagd()`, `appFiles()`) or something that runs after a publish or a change (`cloudflare()`, `webhooks()`). Made with `definePlugin`; all the built-in ones run when the config doesn't list any.
 _Avoid_: extension, add-on, integration
 
 **Core**:

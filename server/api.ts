@@ -11,6 +11,7 @@ import type { Identity } from './identity.ts';
 import { may, mustBeAllowed, type Access, type Person } from './access.ts';
 import { serviceProvider, type SingleSignOn } from './sso.ts';
 import type { PluginParts } from './plugin.ts';
+import { applyImport, fromValues, planImport, toValues } from './values.ts';
 import { appToken, clientLink } from './delivery.ts';
 import { notRolledBack, RESTORABLE } from './journal.ts';
 import { HISTORY_CSV_HEADER, historyBatches, historyCsv, historyFilter, historyPage } from './history.ts';
@@ -836,6 +837,39 @@ export function consoleApi({ db, plane, hub, identity, access, sso, plugins }: D
 
   // ------------------------------------------------------------ the plugins' console routes (plugin.ts), signed in as above
   for (const p of plugins) if (p.parts.console) app.route('/', p.parts.console({ actor, adminOnly }));
+
+  // ------------------------------------------------------------ migration (values.ts): import and export in another
+  // system's formats (webhooks out and in are a plugin: plugins/webhooks.ts). Everyone can export; only admins
+  // import. An import goes through the same saves as the console: a request for review where approval is needed.
+  type ImportBody = { environment?: string; format?: unknown; text?: unknown; input?: unknown; expression?: unknown; createFlags?: unknown; flagSets?: unknown; reason?: unknown };
+  const readImport = async (b: ImportBody) => {
+    let input = b.input;
+    if (typeof b.text === 'string') {
+      try { input = JSON.parse(b.text); } catch { throw new HttpError(422, 'That isn’t JSON: check the file or the text pasted in.'); }
+    }
+    const read = await toValues(b.format, input, typeof b.expression === 'string' ? b.expression : null);
+    const o = { environment: String(b.environment ?? ''), createFlags: b.createFlags === true,
+      flagSets: Array.isArray(b.flagSets) ? b.flagSets.filter((a): a is string => typeof a === 'string') : [], reason: typeof b.reason === 'string' ? b.reason : null };
+    return { read, o };
+  };
+  app.post('/migration/preview', async (c) => {
+    adminOnly(c.get('user'));
+    const { read, o } = await readImport(await c.req.json<ImportBody>());
+    // what it can read is planned too: the preview shows the changes and every problem together
+    const { plan } = await planImport(db, read.doc, o);
+    return c.json({ plan: { ...plan, problems: [...read.problems, ...plan.problems], warnings: [...read.warnings, ...plan.warnings] } });
+  });
+  app.post('/migration/import', async (c) => {
+    adminOnly(c.get('user'));
+    const { read, o } = await readImport(await c.req.json<ImportBody>());
+    if (read.problems.length) throw new HttpError(422, 'Nothing was imported: fix these first.', { errors: read.problems });
+    const r = await applyImport(db, read.doc, o, actor(c.get('user')));
+    return c.json({ ...r, warnings: [...read.warnings, ...r.warnings] });
+  });
+  app.post('/migration/export', async (c) => {
+    const b = await c.req.json<{ environment?: string; format?: unknown; flagSet?: string | null; expression?: string | null }>();
+    return c.json({ output: await fromValues(snapshot(String(b.environment ?? '')), b.format, { flagSet: b.flagSet, expression: b.expression }) });
+  });
 
   // ------------------------------------------------------------ trace / playground (S9: runs the real evaluator)
   app.post('/trace', async (c) => {

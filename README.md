@@ -56,6 +56,9 @@ get the same answer. CompanyFeatures covers all of it in one place, and your cod
   call, an append-only history, restore, and side-by-side compare.
 - **Releases and version releases.** Give early access to a few, then 1% → 5% → 25% → 50% of devices,
   then everyone, then clean it up; or move devices from version 1.0.0 to 1.0.1 the same way, with rollback.
+- **Move over one flag at a time.** Run it next to the config system you have now: import its values (key-value
+  JSON, flagd, or any shape through JSONata), apps read the old system for what hasn't moved, and webhooks out and in
+  keep both the same until the last flag is here.
 - **Your sign-in.** Email and password, Google, GitHub or Microsoft, and single sign-on with SAML or OIDC, through
   [Better Auth](https://www.better-auth.com).
 - **Cheap at any scale.** Every entity's values are also one file your CDN caches, rebuilt once per publish, for
@@ -127,12 +130,12 @@ Everything is optional: without a file, environment variables decide. With one, 
 ```ts
 // companyfeatures.config.ts (companyfeatures init writes one)
 import { defineConfig } from 'companyfeatures/config';
-import { appFiles, cloudflare, flagd, ofrep } from 'companyfeatures/plugins';
+import { appFiles, cloudflare, flagd, ofrep, webhooks } from 'companyfeatures/plugins';
 
 export default defineConfig({
   database: { url: process.env.DATABASE_URL },
   auth: { baseURL: 'https://flags.example.com' },
-  plugins: [ofrep(), flagd(), appFiles(), cloudflare()],
+  plugins: [ofrep(), flagd(), appFiles(), cloudflare(), webhooks()],
 });
 ```
 
@@ -168,6 +171,7 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 | [Introduction](https://dvir-daniel.github.io/companyfeatures/guide/introduction) | What it is, who it's for, what it doesn't do yet |
 | [Concepts](https://dvir-daniel.github.io/companyfeatures/guide/concepts) | Environments, flag sets, dimensions, flags, rules |
 | [OpenFeature](https://dvir-daniel.github.io/companyfeatures/sdk/openfeature) | Web, React, Android, iOS and backends |
+| [Migration](https://dvir-daniel.github.io/companyfeatures/guide/migration) | Moving from another system, import, export, webhooks |
 | [Self-hosting](https://dvir-daniel.github.io/companyfeatures/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
 | [Plugins](https://dvir-daniel.github.io/companyfeatures/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyfeatures/reference/cli) | The built-in plugins, writing your own, and the `companyfeatures` command |
 | [HTTP API](https://dvir-daniel.github.io/companyfeatures/reference/http-api) | OFREP, app files, flagd JSON, links, health |
