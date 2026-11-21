@@ -24,7 +24,7 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-import { connectDb, FolderInUseError, FolderVersionError, type Db } from './db.ts';
+import { connectDb, DatabaseCaError, FolderInUseError, FolderVersionError, type Db } from './db.ts';
 import { BackupError, backupName, copyDataDir, copyDatabase, dumpPostgres, isEmpty, sizeOf } from './backup.ts';
 import { VERSION } from './packageFolder.ts';
 import { migrate, MigrationError, pendingMigrations, readMigrations } from './migrate.ts';
@@ -176,7 +176,7 @@ export async function main(argv: string[], o: {
         try {
           const pending = await pendingMigrations(source);
           if (pending.length) throw new UsageError(`the embedded database is missing migrations (${pending.join(', ')}): run companyflags migrate first`);
-          const target = await connectDb({ url });
+          const target = await connectDb({ url, caFile: r.databaseCaFile });
           try {
             if (!(await isEmpty(target))) throw new UsageError('that Postgres database has tables already: copy into a new, empty one');
             await migrate(target);
@@ -331,7 +331,7 @@ export async function main(argv: string[], o: {
         throw new UsageError(`unknown command "${command}": see companyflags help`);
     }
   } catch (e) {
-    if (e instanceof UsageError || e instanceof ServerError || e instanceof ConfigError || e instanceof FolderInUseError || e instanceof FolderVersionError
+    if (e instanceof UsageError || e instanceof ServerError || e instanceof ConfigError || e instanceof FolderInUseError || e instanceof FolderVersionError || e instanceof DatabaseCaError
       || e instanceof MigrationError || e instanceof BackupError) {
       err(`companyflags: ${e.message}`);
       return 1;
@@ -398,7 +398,7 @@ async function withDb(cwd: string, env: NodeJS.ProcessEnv, current: boolean, run
     throw new UsageError('no server to work on: set COMPANYFLAGS_URL and COMPANYFLAGS_TOKEN (or DATABASE_URL). In CI the flags commands '
       + 'don’t open an embedded database: is the secret set for this job?');
   }
-  const store = await connectDb({ url: r.databaseUrl, dataDir: r.databaseUrl ? undefined : resolve(cwd, r.dataDir) });
+  const store = await connectDb({ url: r.databaseUrl, caFile: r.databaseCaFile, dataDir: r.databaseUrl ? undefined : resolve(cwd, r.dataDir) });
   try {
     if (current) {
       const pending = await pendingMigrations(store);

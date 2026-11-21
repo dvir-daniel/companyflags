@@ -5,7 +5,9 @@
 import { PGlite } from '@electric-sql/pglite';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
 import { spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import pg from 'pg';
 import { checkSchema, migrate } from './migrate.ts';
@@ -28,6 +30,7 @@ export type DbOptions = {
   url?: string;                          // a Postgres server, e.g. postgres://user:pass@host:5432/flags?sslmode=verify-full
   dataDir?: string;                      // no url: embedded Postgres kept in this folder (nothing = in memory)
   pool?: number;                         // a Postgres server: at most this many connections (default FF_DB_POOL, else 10)
+  caFile?: string;                       // a Postgres server: a PEM file of the CAs its certificate is checked against
   log?: (m: string) => void;
   /** tests: an in-memory embedded database made from this one (embeddedTemplate), migrated already, instead of
    *  replaying every migration: it counts as new (`fresh`). */
@@ -50,7 +53,7 @@ export async function openDb(o: DbOptions & { migrate?: boolean } = {}): Promise
 
 /** Opens the database without touching its schema. */
 export async function connectDb(o: DbOptions = {}): Promise<Db> {
-  return o.url ? server(o.url, o.log ?? (() => {}), o.pool) : embedded(o.dataDir, o.template);
+  return o.url ? server(poolConfig(o.url, o), o.log ?? (() => {})) : embedded(o.dataDir, o.template);
 }
 
 /** tests: a new in-memory embedded database with every migration applied, as a template for many (DbOptions.template):
@@ -103,53 +106,112 @@ function wrap(p: PGlite): Db {
   return { ...on(p), transaction: (fn) => p.transaction((tx) => fn(on(tx))), close: () => p.close() };
 }
 
-/** The embedded database must only ever be open in one process: two writing the same folder damage it.
- *  A lock file next to the folder (data-local → data-local.lock; inside it, Postgres would take the folder for
- *  a database that already exists) names the process that has it: its PID, and its command line. A second server
- *  refuses to open the folder. A lock is stale, and taken over, when the process it names has ended (a crash), when
- *  that PID now runs another program, or when it names this process but this process never took it: a hard stop
- *  (a kill, an out-of-memory) skips the release, and in Docker the next start is PID 1 again. Returns the release. */
+/** The embedded database must only ever be open in one process: two writing the same folder damage it. It is for one
+ *  container only: a volume shared by several (two replicas, or the old and the new one during a deploy) is refused.
+ *  A lock file next to the folder (data-local → data-local.lock; inside it, Postgres would take the folder for a
+ *  database that already exists) names who has it: the host (its name, and on Linux the machine's boot ID: each
+ *  container has its own name, each VM its own boot ID), the process (its PID and command line), and when it was last
+ *  seen: the holder writes the time again every few seconds while it is open (HEARTBEAT_MS).
+ *  - Another host's lock is in use while its time is fresh (STALE_MS): a process ID means nothing across hosts. One
+ *    whose holder hasn't written for longer stopped without letting go (a hard stop, a host that went away), and is
+ *    taken over.
+ *  - This host's lock is decided by its process: stale when that process has ended (a crash), when its PID now runs
+ *    another program, or when it names this process but this process never took it: a hard stop (a kill, an
+ *    out-of-memory) skips the release, and a container that starts again is PID 1 again, with the same host name.
+ *  Returns the release. */
 export class FolderInUseError extends Error {}
 const held = new Set<string>();                               // the lock files this process holds
-export function lockFolder(dataDir: string): () => void {
+/** How often the holder writes its time into the lock, and how old that time is before another host takes it over. */
+export const HEARTBEAT_MS = 5_000;
+export const STALE_MS = 30_000;
+
+type Lock = { pid: number; command: string; host: string | null; boot: string | null; instance: string | null; seen: number | null };
+/** This host: its name, and the boot ID of the machine (Linux: the kernel's, one per VM; elsewhere none). */
+export function thisHost(): { host: string; boot: string | null } {
+  let boot: string | null = null;
+  try { boot = readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim() || null; } catch { /* not Linux */ }
+  return { host: hostname(), boot };
+}
+
+export function lockFolder(dataDir: string, o: { heartbeatMs?: number } = {}): () => void {
   const file = `${resolve(dataDir)}.lock`;
   mkdirSync(dirname(file), { recursive: true });
+  const me = { pid: process.pid, command: commandOf(process.pid) ?? '', ...thisHost(), instance: randomUUID() };
+  const text = () => `${JSON.stringify({ ...me, seen: new Date().toISOString() })}\n`;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const fd = openSync(file, 'wx');                       // fails if the file exists: only one process gets it
-      writeSync(fd, `${process.pid}\n${commandOf(process.pid) ?? ''}\n`);
+      writeSync(fd, text());
       closeSync(fd);
       held.add(file);
+      // the time, again and again while it is open: through a new file renamed over the lock, so a reader never sees
+      // half of it. Not once someone else has it (taken over after this process stalled): then it is theirs.
+      const beat = setInterval(() => {
+        try {
+          if (readLock(file).instance !== me.instance) { clearInterval(beat); return; }
+          const next = `${file}.${me.instance}`;
+          writeFileSync(next, text());
+          renameSync(next, file);
+        } catch { /* the volume is away for a moment: next time */ }
+      }, o.heartbeatMs ?? HEARTBEAT_MS);
+      beat.unref();
       let released = false;
       const release = () => {
         if (released) return;
         released = true;
+        clearInterval(beat);
         held.delete(file);
         process.off('exit', release);
-        try { if (readLock(file).pid === process.pid) unlinkSync(file); } catch { /* already gone */ }
+        try { if (readLock(file).instance === me.instance) unlinkSync(file); } catch { /* already gone */ }
       };
       process.on('exit', release);
       return release;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      const lock = readLock(file);
-      if (lockInUse(file, lock)) {
+      let was: string;
+      try { was = readFileSync(file, 'utf8'); } catch { continue; }    // let go of a moment ago: try again
+      const lock = parseLock(was);
+      if (otherHost(lock)) {
+        const age = lock.seen === null ? Infinity : Date.now() - lock.seen;
+        if (age < STALE_MS) {
+          throw new FolderInUseError(`the embedded database in ${dataDir} is open in another container (${lock.host}, seen ${Math.max(0, Math.round(age / 1000))} s ago): `
+            + 'it is for one container only; use Postgres for several (DATABASE_URL). If that container is gone, this one takes the folder over '
+            + `once its lock is ${STALE_MS / 1000} s old.`);
+        }
+      } else if (lockInUse(file, lock)) {
         throw new FolderInUseError(`another CompanyFlags server (process ${lock.pid}) is using ${dataDir}. `
           + 'Stop it first: the embedded database can only be open in one process at a time.');
       }
-      try { unlinkSync(file); } catch { /* someone else took it over: try again */ }
+      // stale: taken over, unless it changed since it was read (another server took it over first: try again)
+      try { if (readFileSync(file, 'utf8') === was) unlinkSync(file); } catch { /* gone already: try again */ }
     }
   }
   throw new FolderInUseError(`couldn't lock ${dataDir}: another server is starting with it`);
 }
 
-type Lock = { pid: number; command: string };
-function readLock(file: string): Lock {
-  const [pid = '', ...rest] = readFileSync(file, 'utf8').split('\n');
-  return { pid: Number(pid.trim()), command: rest.join('\n').trim() };
+function readLock(file: string): Lock { return parseLock(readFileSync(file, 'utf8')); }
+/** A lock as written: JSON, or the PID and command line on two lines (from before), which names no host. */
+function parseLock(text: string): Lock {
+  try {
+    const j = JSON.parse(text) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+    const seen = typeof j.seen === 'string' ? Date.parse(j.seen) : NaN;
+    return { pid: Number(j.pid), command: str(j.command) ?? '', host: str(j.host), boot: str(j.boot), instance: str(j.instance), seen: Number.isFinite(seen) ? seen : null };
+  } catch {
+    const [pid = '', ...rest] = text.split('\n');
+    return { pid: Number(pid.trim()), command: rest.join('\n').trim(), host: null, boot: null, instance: null, seen: null };
+  }
 }
 
-/** Whether the process a lock names still has the folder open. */
+/** Whether a lock was taken on another host: another host name, or another machine's boot. A lock that names no host
+ *  is judged as this host's, by its process. */
+function otherHost(lock: Lock): boolean {
+  if (!lock.host) return false;
+  const here = thisHost();
+  return lock.host !== here.host || (!!lock.boot && !!here.boot && lock.boot !== here.boot);
+}
+
+/** Whether the process a lock (of this host) names still has the folder open. */
 function lockInUse(file: string, lock: Lock): boolean {
   if (!Number.isInteger(lock.pid) || lock.pid <= 0) return false;
   if (lock.pid === process.pid) return held.has(file);       // this process: in use only if it took the lock itself
@@ -184,8 +246,41 @@ const PARSERS: Record<number, (v: string) => unknown> = {
 };
 const types = { getTypeParser: (oid: number, format?: string) => PARSERS[oid] ?? builtin(oid, format) } as pg.CustomTypesConfig;
 
-function server(url: string, log: (m: string) => void, size?: number): Db {
-  const pool = new pg.Pool({ connectionString: url, types, max: size ?? Number(process.env.FF_DB_POOL || 10) });
+export class DatabaseCaError extends Error {}
+const SSL_PARAMS = ['sslmode', 'sslrootcert', 'sslcert', 'sslkey', 'uselibpqcompat'];
+
+/** How node-postgres connects to a Postgres server. In the URL, its own rules: sslmode=require (and prefer, verify-ca)
+ *  means verify-full, the certificate checked against the system's CAs (and NODE_EXTRA_CA_CERTS), or sslrootcert's.
+ *  With `caFile` (database.caFile, FF_DATABASE_CA_FILE), e.g. Amazon RDS's global bundle, TLS is always on and the
+ *  certificate is checked against that file, its host name too (sslmode=verify-ca: the certificate only). */
+export function poolConfig(url: string, o: Pick<DbOptions, 'pool' | 'caFile'> = {}): pg.PoolConfig {
+  const base = { types, max: o.pool ?? Number(process.env.FF_DB_POOL || 10) };
+  if (!o.caFile) return { ...base, connectionString: url };
+  const read = (file: string, what: string) => {
+    try { return readFileSync(file, 'utf8'); } catch (e) { throw new DatabaseCaError(`can’t read ${what} ${file}: ${(e as Error).message}`); }
+  };
+  const ca = read(o.caFile, 'the database’s CA file (database.caFile, FF_DATABASE_CA_FILE)');
+  if (!ca.includes('-----BEGIN CERTIFICATE-----')) throw new DatabaseCaError(`${o.caFile} has no certificate in it: the database’s CA file is PEM (-----BEGIN CERTIFICATE-----)`);
+  // the URL's own TLS settings would replace these (node-postgres reads the URL last): taken out, and read here
+  const at = url.indexOf('?');
+  const params = new URLSearchParams(at < 0 ? '' : url.slice(at + 1));
+  const mode = params.get('sslmode');
+  if (mode && !['prefer', 'require', 'verify-ca', 'verify-full'].includes(mode)) {
+    throw new DatabaseCaError(`sslmode=${mode} in the database URL doesn’t check the certificate, and the CA file (FF_DATABASE_CA_FILE) is there to check it: use sslmode=verify-full, or leave it out`);
+  }
+  const ssl: NonNullable<Exclude<pg.PoolConfig['ssl'], boolean>> = { ca, rejectUnauthorized: true };
+  const cert = params.get('sslcert');
+  const key = params.get('sslkey');
+  if (cert) ssl.cert = read(cert, 'sslcert');
+  if (key) ssl.key = read(key, 'sslkey');
+  if (mode === 'verify-ca') ssl.checkServerIdentity = () => undefined;
+  for (const p of SSL_PARAMS) params.delete(p);
+  const rest = params.toString();
+  return { ...base, connectionString: `${at < 0 ? url : url.slice(0, at)}${rest ? `?${rest}` : ''}`, ssl };
+}
+
+function server(config: pg.PoolConfig, log: (m: string) => void): Db {
+  const pool = new pg.Pool(config);
   // A connection that drops while idle (a failover, a restart) is replaced on the next query.
   // Without this listener the error would end the process.
   pool.on('error', (e) => log(`database connection lost: ${e.message}`));

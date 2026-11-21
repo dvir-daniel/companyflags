@@ -3,10 +3,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { connectDb, FolderInUseError, one, type Db } from '../server/db.ts';
+import { connectDb, FolderInUseError, lockFolder, one, STALE_MS, thisHost, type Db } from '../server/db.ts';
 import { checksum, migrate, MigrationError, readMigrations, type Migration } from '../server/migrate.ts';
 import { createApp } from '../server/index.ts';
 import { CSRF, testDatabase } from './helpers.ts';
@@ -14,6 +14,9 @@ import { fixtures } from './fixtures.ts';
 
 const m = (name: string, sql: string): Migration => ({ name, sql, checksum: checksum(sql) });
 const SHIPPED = readMigrations();
+
+/** A lock file as a server writes it (db.ts lockFolder), by default this host's. */
+const lockText = (o: Record<string, unknown>) => `${JSON.stringify({ pid: 1, command: 'node server/index.ts', ...thisHost(), instance: crypto.randomUUID(), seen: new Date().toISOString(), ...o })}\n`;
 
 async function withDb(fn: (open: () => Promise<Db>) => Promise<void>) {
   const t = await testDatabase();
@@ -161,6 +164,11 @@ test('a stale lock is taken over: its PID is this process (PID 1 again in Docker
     assert.ok(await one(own, `select 1 as ok`));
     await assert.rejects(connectDb({ dataDir: dir }), FolderInUseError, 'once this process has it, a second open is refused');
     await own.close();
+    // the same, as a lock is written now: this host's name and boot, this PID, seen a moment ago (the container
+    // restarted at once): still this host's, so decided by its process
+    writeFileSync(`${dir}.lock`, lockText({ pid: process.pid, seen: new Date().toISOString() }));
+    const restarted = await connectDb({ dataDir: dir });
+    await restarted.close();
 
     // the PID runs, but another program now (the PID was reused after a crash)
     const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'], { stdio: 'ignore' });
@@ -196,6 +204,52 @@ test('another server process holds the lock until it ends; after a hard stop (SI
     await next.close();
   } finally {
     server.kill('SIGKILL');
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(`${dir}.lock`, { force: true });
+  }
+});
+
+test('the embedded database is for one container: a lock another container still writes is refused, one it stopped writing is taken over', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-lock-'));
+  try {
+    // another container on the shared volume: PID 1 there too, which means nothing here. Its time is fresh: in use.
+    writeFileSync(`${dir}.lock`, lockText({ pid: process.pid, host: 'web-7f9c2', boot: 'another-machine', seen: new Date(Date.now() - 4000).toISOString() }));
+    await assert.rejects(connectDb({ dataDir: dir }), (e: Error) => e instanceof FolderInUseError
+      && /open in another container \(web-7f9c2, seen 4 s ago\)/.test(e.message) && /for one container only; use Postgres for several/.test(e.message));
+    // the same host name on another machine (a VM's own boot): another host as well
+    writeFileSync(`${dir}.lock`, lockText({ boot: 'another-machine' }));
+    if (thisHost().boot) await assert.rejects(connectDb({ dataDir: dir }), /another container/);
+    // its holder stopped writing (a hard stop, a host that went away): taken over
+    writeFileSync(`${dir}.lock`, lockText({ host: 'web-7f9c2', seen: new Date(Date.now() - STALE_MS - 1000).toISOString() }));
+    const next = await connectDb({ dataDir: dir });
+    assert.ok(await one(next, `select 1 as ok`));
+    const lock = JSON.parse(readFileSync(`${dir}.lock`, 'utf8'));
+    assert.deepEqual([lock.pid, lock.host, lock.boot], [process.pid, thisHost().host, thisHost().boot], 'it names this host and process now');
+    await next.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(`${dir}.lock`, { force: true });
+  }
+});
+
+test('the holder writes its time into the lock while it is open, and stops once another server took the lock over', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-lock-'));
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  try {
+    const release = lockFolder(dir, { heartbeatMs: 20 });
+    const first = JSON.parse(readFileSync(`${dir}.lock`, 'utf8'));
+    await wait(80);
+    const later = JSON.parse(readFileSync(`${dir}.lock`, 'utf8'));
+    assert.equal(later.instance, first.instance);
+    assert.ok(Date.parse(later.seen) > Date.parse(first.seen), 'seen again');
+    // another server took it over (this one stalled for longer than STALE_MS): it is theirs, never written over
+    const theirs = lockText({ host: 'web-7f9c2' });
+    writeFileSync(`${dir}.lock`, theirs);
+    await wait(80);
+    assert.equal(readFileSync(`${dir}.lock`, 'utf8'), theirs);
+    release();
+    assert.equal(readFileSync(`${dir}.lock`, 'utf8'), theirs, 'and the release leaves their lock in place');
+  } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(`${dir}.lock`, { force: true });
   }

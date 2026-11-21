@@ -45,8 +45,10 @@ that says where it can go.
 | `database.dataDir` | `FF_DATA_DIR` | Without a server: where embedded Postgres keeps its files. |
 | `database.migrate` | `FF_MIGRATE` | `false` (`FF_MIGRATE=off`): the server doesn't apply migrations at the start, it only checks the schema has them ([Upgrading](/self-hosting/upgrading)). Default `true`. |
 | `database.pool` | `FF_DB_POOL` | The most connections to a Postgres server, per instance. Default 10. |
+| `database.caFile` | `FF_DATABASE_CA_FILE` | A PEM file of the certificate authorities the Postgres server's certificate is checked against, e.g. Amazon RDS's global bundle. A relative path starts from the config file's folder. |
 | `retention.publishLogDays` | `FF_PUBLISH_LOG_DAYS` | Days the publish log keeps a publish (and its CDN purge). Default 30; each environment's newest stays. History is kept forever. |
 | `server.port`, `server.host` | `PORT`, `HOST` | Where the server listens. |
+| `server.keepAliveSeconds` | `FF_KEEPALIVE_SECONDS` | Seconds an idle connection stays open. Default 65. |
 | `auth` | `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, the providers' variables, … | Sign-in with Better Auth: `secret`, `baseURL`, `google`, `github`, `microsoft`, `signupDomains`, `trustedOrigins`, `clientIp`, `rateLimit` ([below](#auth)). Each one left out comes from its variable. |
 | `plugins` | — | What reads flags besides the console, and what runs after a publish. Left out: all of them. See [Plugins](/reference/plugins). |
 | `appearance` | Settings → Appearance | The console's name, logo, icon, accent color, default look, notice, sign-in note and links. Set here, they can't be changed in the console. See [Appearance](/self-hosting/appearance). |
@@ -102,19 +104,46 @@ secret shorter than 32 characters, and says which one is wrong.
 |---|---|---|
 | `DATABASE_URL` | none | A Postgres 15 or later server, e.g. `postgres://user:pass@db.example.com:5432/flags?sslmode=verify-full`. When it is set, `FF_DATA_DIR` is ignored. |
 | `FF_DB_POOL` | `10` | The most connections this server opens to Postgres. Each instance has its own pool. |
+| `FF_DATABASE_CA_FILE` | none | A PEM file of the certificate authorities the server's certificate is checked against ([TLS](#tls-to-postgres)). |
 | `FF_MIGRATE` | `on` | `off`: don't apply migrations at the start, only check the schema has them (as `companyflags start --no-migrate`). |
 | `FF_PUBLISH_LOG_DAYS` | `30` | Days the publish log keeps a publish. |
 | `FF_DATA_DIR` | `./data` | Without `DATABASE_URL`: the folder of the embedded database (PGlite, Postgres compiled to run inside the process). The Docker image sets `/data/db`. |
 
+- The embedded database is for one container only. Use Postgres for several, and on any platform that may start a new
+  container before the old one stops (a rolling deploy on ECS, Cloud Run or Container Apps).
 - Only one process may open an embedded database folder. The server writes a lock file next to the folder (`./data`
-  gets `./data.lock`) with its process ID and command. A second server on the same folder refuses to start. A lock
-  left behind is taken over: by a process that has ended, by a hard stop (in Docker the next start is PID 1 again),
-  or with a process ID that now runs another program.
+  gets `./data.lock`) with its host name, the machine's boot ID, its process ID and command, and the time. It writes
+  the time again every 5 seconds while it runs. A second server on the same folder refuses to start:
+  - on the same host, while the process in the lock runs. A lock left behind is taken over: by a process that has
+    ended, by a hard stop (a restarted container is PID 1 again), or with a process ID that now runs another program;
+  - from another container (a volume shared by two: EFS, Azure Files, a Cloud Storage mount), while that container
+    wrote the time in the last 30 seconds. It says the database "is open in another container". After 30 seconds
+    without a new time, the lock is taken over: the other container stopped without letting go.
 - The first start creates the `btree_gist` extension. On a managed Postgres server the database user needs the right
   to create it, or create it once yourself.
 - The embedded database is PGlite, pinned to one version, which embeds Postgres 18. A folder made by another Postgres
   major version isn't opened: the server says so and stops. [Backups](/self-hosting/backups) has the commands to back
   it up and to move to a Postgres server.
+
+### TLS to Postgres
+
+The server connects with node-postgres, which reads `sslmode` in `DATABASE_URL` its own way: `require`, `prefer` and
+`verify-ca` all mean `verify-full`. The server's certificate is checked against the system's certificate authorities,
+and its name must match the host in the URL. Write `sslmode=verify-full`, so the URL says what happens.
+
+A managed server whose certificate comes from its cloud's own authority (Amazon RDS, Azure, Cloud SQL) needs that
+authority's certificates. Put them in a file and name it in `FF_DATABASE_CA_FILE` (or `database.caFile`): the server
+then always connects with TLS and checks the certificate against that file, and its name too (with `sslmode=verify-ca`,
+only the certificate). For Amazon RDS, use the global bundle, which has every region's authorities:
+
+```bash
+curl -fsSo /etc/ssl/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+FF_DATABASE_CA_FILE=/etc/ssl/rds-global-bundle.pem
+DATABASE_URL=postgres://flags:secret@flags.xxxx.eu-west-1.rds.amazonaws.com:5432/flags?sslmode=verify-full
+```
+
+With the file set, a `sslmode` that doesn't check the certificate (`disable`, `no-verify`) stops the start. A file that
+can't be read, or has no certificate in it, does too. `companyflags migrate` and `copy-to-postgres` use the same file.
 
 ### Migrations
 
@@ -145,6 +174,7 @@ See [Upgrading](/self-hosting/upgrading).
 | `PORT` | `8787` | The port the server listens on. If something already listens there, the server stops with a message. |
 | `FF_PORT_FILE` | none | A file the server writes the port it listens on to, once it listens (the Docker image's health check reads `/tmp/companyflags.port`, so it follows `server.port` in a config file). |
 | `HOST` | `0.0.0.0` | The address it listens on. `127.0.0.1` keeps it to this machine, e.g. behind a proxy on the same host. |
+| `FF_KEEPALIVE_SECONDS` | `65` | Seconds an idle connection stays open, from 1 to 3600. Keep it above your load balancer's idle timeout (60 seconds on AWS's Application Load Balancer and Google's load balancers): otherwise the server may close a connection just as the load balancer sends a request on it, and the device gets a 502. A stop still closes idle connections at once. |
 | `NODE_ENV` | none | `production` for real use (see above). Anything else is development mode. `development` and `test` also turn off sign-in rate limits. |
 | `FF_TRUSTED_PROXIES` | none | Your proxies' addresses or ranges, comma-separated (`10.0.0.0/8`). For sign-in rate limits and the change-event streams' per-client limit, a connection from one of them is believed about the client's address: `X-Forwarded-For`, read from the right past the proxies, or `FF_CLIENT_IP_HEADER`. Any other connection counts as its own address. Behind a load balancer, set it: without it, every device counts as the load balancer's address. |
 | `FF_CLIENT_IP_HEADER` | none | A header your proxy or CDN sets to the client's address (`cf-connecting-ip`, `x-real-ip`), read instead of `X-Forwarded-For`. Needs `FF_TRUSTED_PROXIES`: without it the server refuses to start. |
@@ -201,6 +231,15 @@ At start the server logs the ways to sign in it has, e.g.
 Both are needed. When they are set they win over what an admin saved in **Settings → CDN**, which then shows them
 read-only. Without them an admin can set the zone and token in the console instead. `cloudflare({ zoneId, token })`
 in the config file wins over the variables. See [CDN](/self-hosting/cdn).
+
+For CloudFront or Cloud CDN, list `cloudfront()` or `cloudCdn()` in the config file
+([Plugins](/reference/plugins#cloudfrontoptions)). Their options win over these:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `FF_CLOUDFRONT_DISTRIBUTION_ID` | none | With `cloudfront()`: the distribution to invalidate after each publish. AWS's usual credentials sign the calls. |
+| `FF_CLOUD_CDN_PROJECT`, `FF_CLOUD_CDN_URL_MAP` | none | With `cloudCdn()`: the Google Cloud project and the URL map to invalidate after each publish. |
+| `FF_CLOUD_CDN_HOST` | every host | With `cloudCdn()`: only this host's files. |
 
 Each publish purges twice: at once, and again about 11 seconds later. With several servers, one still a round behind
 may refill the CDN with the old file right after the first purge; the second one drops it.

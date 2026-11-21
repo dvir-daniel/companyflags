@@ -1,15 +1,21 @@
-// The built-in plugins (../plugin.ts). Without a config file, or with one that doesn't list plugins, all of them are on.
+// The built-in plugins (../plugin.ts). Without a config file, or with one that doesn't list plugins, defaultPlugins()
+// are on; metrics(), cloudfront() and cloudCdn() run only when listed.
 
 import type { Plugin } from '../plugin.ts';
 import { cdnFiles } from './cdnFiles.ts';
+import { cloudCdn, type CloudCdnOptions } from './cloudCdn.ts';
 import { cloudflare, type CloudflareOptions } from './cloudflare.ts';
+import { cloudfront, type CloudFrontOptions } from './cloudfront.ts';
 import { flagd } from './flagd.ts';
 import { mcp } from './mcp.ts';
 import { metrics, type MetricsOptions } from './metrics.ts';
 import { ofrep } from './ofrep.ts';
 import { webhooks, type WebhooksOptions } from './webhooks.ts';
 
-export { cdnFiles, cloudflare, flagd, mcp, metrics, ofrep, webhooks, type CloudflareOptions, type MetricsOptions, type WebhooksOptions };
+export {
+  cdnFiles, cloudCdn, cloudflare, cloudfront, flagd, mcp, metrics, ofrep, webhooks,
+  type CloudCdnOptions, type CloudflareOptions, type CloudFrontOptions, type MetricsOptions, type WebhooksOptions,
+};
 export {
   definePlugin, consoleRoutes, pluginRoutes, PluginError, CORE_PREFIXES,
   type Plugin, type PluginContext, type PluginParts, type ConsoleHelpers, type ConsoleRoutes, type OnPublish, type Evaluate, type Asking, type Snapshots,

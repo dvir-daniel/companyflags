@@ -4,7 +4,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './helpers.ts';
-import { purgeTags, PURGE_TIMEOUT_MS } from '../server/purge.ts';
+import { entityTag, envTag, fileTags, linkTag, purgeTags, PURGE_TIMEOUT_MS, setTagSecret } from '../server/purge.ts';
 import { PURGE_AGAIN_MS, ROUND_MS, startWorkers } from '../server/workers.ts';
 import { joinScopes, type PublishScope } from '../server/events.ts';
 import { purgeTagsFor } from '../server/cdn.ts';
@@ -218,7 +218,7 @@ test('scopes join: anyone’s wins; and the tags a purge sends for each', () => 
   assert.equal(joinScopes({ entities: ['acme'], links: [] }, null), null);
   assert.deepEqual(purgeTagsFor('dev', null), ['env-dev']);
   assert.deepEqual(purgeTagsFor('dev', { entities: [], links: [] }), [], 'nobody’s: nothing');
-  assert.deepEqual(purgeTagsFor('dev', { entities: ['globex'], links: ['acme'] }), ['env-dev/globex', 'link-dev/acme']);
+  assert.deepEqual(purgeTagsFor('dev', { entities: ['globex'], links: ['acme'] }), [entityTag('dev', 'globex'), linkTag('dev', 'acme')]);
   assert.deepEqual(purgeTagsFor('dev', { entities: Array.from({ length: 40 }, (_, i) => `e${i}`), links: [] }), ['env-dev'], 'too many tags: the environment’s');
 });
 
@@ -237,4 +237,28 @@ test('the purge once more, later, covers every publish of the burst, not only th
   // dev: the defaults (null), the new entity (nobody); prod: the new entity; then once more for each environment
   assert.deepEqual(calls.slice(0, 3), [null, { entities: [], links: [] }, { entities: [], links: [] }]);
   assert.ok(calls.slice(3).includes(null), 'once more for dev: the defaults’ change too, though the new entity came after');
+});
+
+test('cache tags name no entity: keyed hashes, the same on every server with the secret, within the CDNs’ limits', () => {
+  setTagSecret('one-better-auth-secret-0123456789abcdef');
+  const tags = fileTags('prod', ['lumen', 'globex']);
+  assert.equal(tags[0], 'env-prod', 'the environment’s stays readable: the address names it already');
+  for (const tag of tags.slice(1)) {
+    assert.match(tag, /^[el]-[0-9a-f]{16}$/);
+    assert.ok(!/lumen|globex/.test(tag), `${tag} names no entity`);
+  }
+  assert.equal(new Set(tags).size, tags.length, 'each its own');
+  assert.notEqual(entityTag('prod', 'lumen'), entityTag('dev', 'lumen'), 'per environment');
+  assert.notEqual(entityTag('prod', 'lumen'), linkTag('prod', 'lumen'), 'an entity’s tag isn’t its link’s');
+  // what a purge sends matches what the files carry: the same key gives the same tags
+  assert.deepEqual(purgeTagsFor('prod', { entities: ['globex'], links: ['lumen'] }), [tags[2], tags[3]]);
+  setTagSecret('one-better-auth-secret-0123456789abcdef');
+  assert.deepEqual(fileTags('prod', ['lumen', 'globex']), tags, 'another server with the same secret: the same tags');
+  setTagSecret('another-better-auth-secret-0123456789abcdef');
+  assert.notDeepEqual(fileTags('prod', ['lumen', 'globex']), tags, 'without the secret, a guess can’t be checked');
+  // Cloud CDN: up to 120 bytes a tag, ASCII 0x21–0x7E without commas; CloudFront: 256 characters; both: 50 a file
+  const long = 'e'.repeat(200);
+  for (const tag of [...fileTags(long, Array.from({ length: 10 }, (_, i) => `entity-${i}`)), envTag('prod')]) {
+    assert.ok(tag.length <= 120 && /^[\x21-\x7e]+$/.test(tag) && !tag.includes(','), tag);
+  }
 });

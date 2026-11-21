@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { boot, builtIns } from './helpers.ts';
 import { cloudflare as cloudflarePlugin, metrics as metricsPlugin } from '../server/plugins/index.ts';
 import { sealer } from '../server/sealed.ts';
+import { entityTag, linkTag } from '../server/purge.ts';
 
 const ZONE = '0123456789abcdef0123456789abcdef';
 const TOKEN = 'cf-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1234';
@@ -30,6 +31,8 @@ const lastPublish = async () => {
   }
   return { purged: null, error: null };
 };
+/** How long the CDN may serve an old copy of a CDN file while it asks again (CDN-Cache-Control). */
+const staleFor = async () => (await t.cdnFile('dev', 'web', 'acme')).headers.get('cdn-cache-control')?.match(/stale-while-revalidate=(\d+)/)?.[1];
 const change = (n: number) => t.editBase('max_upload_mb', 'dev', (layer) => ({ ...layer, defaultVariation: n % 2 ? 'enterprise' : 'standard' }));
 
 test('nothing set up: publishes don’t purge, and the page says so', async () => {
@@ -39,6 +42,7 @@ test('nothing set up: publishes don’t purge, and the page says so', async () =
   assert.equal((await change(1)).status, 200);
   await new Promise((r) => setTimeout(r, 30));
   assert.deepEqual(calls, [], 'no CDN, no call');
+  assert.equal(await staleFor(), '600', 'no purge: the CDN may serve an old copy 10 minutes while it asks again');
 });
 
 test('only admins change it; a bad zone ID or a missing token is refused before asking Cloudflare', async () => {
@@ -84,6 +88,9 @@ test('saved: the token never comes back, History names only its end, and publish
   const s = (await t.as('alice').get('/cdn')).json;
   assert.equal(s.publishes[0].environment, 'dev');
   assert.ok(s.publishes[0].purgedAt);
+  // a purge drops a changed file at once, so the CDN may keep the old one a day: its cover while this server is down,
+  // for CDNs that don't read stale-if-error (Google Cloud CDN)
+  assert.equal(await staleFor(), '86400');
 });
 
 test('a new zone ID keeps the saved token; purge now; a failed purge shows on the publish', async () => {
@@ -123,12 +130,12 @@ test('a purge drops only what changed: nothing for a new entity or a description
   const { version, updatedAt: _u, updatedBy: _b, ...layer } = j.layers.dev.entities.find((e: any) => e.entity === 'soylent').layer;
   assert.equal((await t.as('alice').put('/flags/ds_backend_config/layers/dev/soylent', { layer: { ...layer, rules: [] }, expectedVersion: version })).status, 200);
   await settled();
-  assert.deepEqual(calls.map((c) => c.tags), [['env-dev/soylent']], 'its files and those under it');
+  assert.deepEqual(calls.map((c) => c.tags), [[entityTag('dev', 'soylent')]], 'its files and those under it');
 
   calls.length = 0;
   assert.equal((await t.as('dana').post(`${await t.entityPath('acme')}/link/rotate?environment=dev`)).status, 200);
   await settled();
-  assert.deepEqual(calls.map((c) => c.tags).sort(), [['link-dev/acme'], ['link-prod/acme']], 'a replaced link: its own files, in each environment');
+  assert.deepEqual(calls.map((c) => c.tags).sort(), [[linkTag('dev', 'acme')], [linkTag('prod', 'acme')]].sort(), 'a replaced link: its own files, in each environment');
 });
 
 test('a token that can’t be read (BETTER_AUTH_SECRET changed): the purge fails on the publish, and /readyz warns but answers 200', async () => {
@@ -191,6 +198,7 @@ test('removed: publishes stop purging; removing again says there’s nothing', a
   assert.equal((await change(4)).status, 200);
   await new Promise((r) => setTimeout(r, 30));
   assert.deepEqual(calls, []);
+  assert.equal(await staleFor(), '600', 'no purge any more: 10 minutes again');
 });
 
 test('set on the server (cloudflare()’s options): it wins, shows as the server’s, and can’t be changed in the console', async () => {

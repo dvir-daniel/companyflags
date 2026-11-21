@@ -17,11 +17,14 @@ export type CloudflareOptions = {
 
 export const cloudflare = (o: CloudflareOptions = {}) => definePlugin({
   id: 'cloudflare',
-  setup: ({ db, env, log, secrets }) => {
+  setup: async ({ db, env, log, secrets }) => {
     const server = { zoneId: o.zoneId ?? (env.CF_ZONE_ID || undefined), token: o.token ?? (env.CF_API_TOKEN || undefined) };
     const cdn = createCdn(db, { fetch: 'fetch' in o ? o.fetch : globalThis.fetch, server, log, secrets });
+    await cdn.lookAgain();
     return {
       onPublish: cdn.purge,
+      // while a zone and token are set: CDN files let the CDN keep an old copy longer during an outage (plugin.ts)
+      purges: cdn.purges,
       warnings: cdn.warnings,
       // admins set the zone and token; everyone can see whether it's set up (never the token) and how the last
       // publishes' purges went

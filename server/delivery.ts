@@ -9,10 +9,11 @@
 // Everything the server knows is settled in the file (the environment, the service, the entity and those above it),
 // so it names no other entity and holds none of their values. The CDN caches by path, so this server only builds a
 // file when the CDN doesn't have it, and keeps it in memory until the next publish. Each response is tagged (Cache-Tag)
-// with its environment, its entity and each one above it, and its own link (purge.ts fileTags), so a publish purges
-// only the files it changed (cdn.ts). Browsers ask again every time (max-age=0, usually a 304 from the CDN), and the
-// CDN keeps a file a minute (s-maxage, CDN-Cache-Control), so a change shows within that minute even when a purge
-// fails. The device checks the rest itself, in
+// with its environment, its entity and each one above it, and its own link (purge.ts fileTags, opaque hashes), so a
+// publish purges only the files it changed (cdn.ts). Browsers ask again every time (max-age=0, usually a 304 from the
+// CDN), and the CDN keeps a file a minute (s-maxage, CDN-Cache-Control), so a change shows within that minute even
+// when a purge fails. It revalidates with the ETag, or Last-Modified for a CDN that ignores ETags (Azure Front Door).
+// The device checks the rest itself, in
 // the flagd JSON's rules: its model, OS, browser, app version, the country (the CDN's cf-ipcountry response header),
 // and its own id for a % of devices.
 //
@@ -45,7 +46,8 @@ import type { Actor } from './layers.ts';
 const gzipAsync = promisify(gzip);
 /** A short sha256 of an answer, for its ETag (CDN files, flagd JSON, OFREP): 22 base64url characters. */
 export const shortHash = (s: string) => createHash('sha256').update(s).digest('base64url').slice(0, 22);
-type Download = { json: string; gz: Uint8Array<ArrayBuffer>; etag: string };
+/** `modified`: when its content last changed, as far as this server knows (ms; CDN files' Last-Modified). */
+type Download = { json: string; gz: Uint8Array<ArrayBuffer>; etag: string; modified: number };
 // gzipped once per file and sent as is (a view of the same bytes, not a copy per response)
 const gzipped = async (json: string) => { const b = await gzipAsync(json); return new Uint8Array(b.buffer as ArrayBuffer, b.byteOffset, b.byteLength); };
 /** Keeps a built file until the next publish, unless building it failed: then the next request tries again. */
@@ -60,16 +62,34 @@ function remember(perKey: Map<string, Promise<Download>>, id: string, d: Promise
 // nothing in a file is a 304. Weak: the gzipped and the plain response are the same content in different bytes
 // (RFC 9110 §8.8.1), and a CDN that compresses again keeps a weak ETag as it is.
 type Files = WeakMap<Snapshot, Map<string, Promise<Download>>>;
-function download(files: Files, snap: Snapshot, id: string, build: () => { content: string; json: string }): Promise<Download> {
+function download(files: Files, snap: Snapshot, id: string, build: () => { content: string; json: string }, seen?: Seen): Promise<Download> {
   let perKey = files.get(snap);
   if (!perKey) files.set(snap, (perKey = new Map()));
   const d = perKey.get(id);
   if (d) return d;
   return remember(perKey, id, (async () => {
     const { content, json } = build();
-    return { json, gz: await gzipped(json), etag: `W/"${shortHash(content)}"` };
+    const etag = `W/"${shortHash(content)}"`;
+    return { json, gz: await gzipped(json), etag, modified: seen ? modifiedAt(seen, snap, id, etag) : Date.parse(snap.builtAt) };
   })());
 }
+
+// When a file's content last changed, for its Last-Modified (CDN files: Azure Front Door revalidates with
+// If-Modified-Since only, never with the ETag). It is the time this server built the snapshot where the file's ETag
+// first showed, so never before the change. It carries over from one revision to the next only when this server
+// built the file in both: it can't know what a revision it never built the file in held (the content may have gone
+// A, B, A). Otherwise it is this snapshot's time: later than the change, so at worst a full answer, never a wrong 304.
+type Seen = LruCache<string, { etag: string; revision: number; at: number }>;
+function modifiedAt(seen: Seen, snap: Snapshot, id: string, etag: string): number {
+  const key = `${snap.environment}|${id}`;
+  const was = seen.get(key);
+  let at = Date.parse(snap.builtAt);
+  if (was && was.revision > snap.revision) return at;             // an older snapshot, built late: leave the newer be
+  if (was && was.etag === etag && snap.revision - was.revision <= 1) at = Math.min(at, was.at);
+  seen.set(key, { etag, revision: snap.revision, at });
+  return at;
+}
+const cdnFilesSeen: Seen = new LruCache(100_000);
 
 // flagd JSON (flagd.ts) for one service and entity (null: what it gets with no entity). The same document goes to
 // backends (flagdDownload, for a backend service) and to apps as their CDN file (cdnDownload, for an app service).
@@ -80,7 +100,7 @@ const flagdJson = (snap: Snapshot, service: string, entity: string | null) => {
 };
 const cdnFileCache: Files = new WeakMap();
 const cdnDownload = (snap: Snapshot, service: string, entity: string | null) =>
-  download(cdnFileCache, snap, `${service}|${entity ?? ''}`, () => flagdJson(snap, service, entity));
+  download(cdnFileCache, snap, `${service}|${entity ?? ''}`, () => flagdJson(snap, service, entity), cdnFilesSeen);
 const flagdDocs: Files = new WeakMap();
 const flagdDownload = (snap: Snapshot, service: string, entity: string) =>
   download(flagdDocs, snap, `${service}|${entity}`, () => flagdJson(snap, service, entity));
@@ -165,14 +185,24 @@ export function readAppToken(token: string): { environment: string; app: string;
   return { environment, app, entity, secret };
 }
 
-function send(c: Context, d: Download, cacheControl: string, tags?: string[]) {
+/** A CDN file's own headers: its tags, whether a purge runs after a publish (the CDN's stale-while-revalidate), and
+ *  its Last-Modified once that is settled (lastModified). */
+type CdnHeaders = { tags: string[]; purging: boolean };
+
+function send(c: Context, d: Download, cacheControl: string, cdn?: CdnHeaders) {
   c.header('Cache-Control', cacheControl);
-  if (tags) {
-    c.header('CDN-Cache-Control', CDN_ONLY_CACHE);
-    c.header('Cache-Tag', tags.join(','));
-  }
   c.header('ETag', d.etag);
   c.header('Vary', 'Accept-Encoding');
+  if (cdn) {
+    c.header('CDN-Cache-Control', cdnOnlyCache(cdn.purging));
+    c.header('Cache-Tag', cdn.tags.join(','));
+    const modified = lastModified(d.modified, Date.now());
+    if (modified !== null) {
+      c.header('Last-Modified', new Date(modified).toUTCString());
+      // If-None-Match wins when both are sent (RFC 9110 §13.1.3): the ETag middleware answers it
+      if (!c.req.header('if-none-match') && notModifiedSince(c.req.header('if-modified-since'), modified)) return c.body(null, 304);
+    }
+  }
   if (/\bgzip\b/.test(c.req.header('accept-encoding') ?? '')) {
     return c.body(d.gz, 200, { 'Content-Type': 'application/json', 'Content-Encoding': 'gzip' });
   }
@@ -180,12 +210,32 @@ function send(c: Context, d: Download, cacheControl: string, tags?: string[]) {
 }
 
 // Browsers ask every time (max-age=0: the CDN answers, usually with a 304), so a kill switch reaches them as soon as
-// it reaches the CDN. A minute in the CDN (s-maxage, and CDN-Cache-Control for CDNs that read it, Cloudflare among
-// them), then it asks this server again; meanwhile it may answer with the old file for up to 10 minutes while it does
+// it reaches the CDN. A minute in the CDN (s-maxage, and CDN-Cache-Control for CDNs that read it, Cloudflare and
+// Google Cloud CDN among them), then it asks this server again; meanwhile it may answer with the old file while it does
 // (stale-while-revalidate, the CDN only). If this server can't be reached, the CDN keeps serving the last file for a
-// day. A publish purges the files it changed (purge.ts tags), so changes show in seconds.
+// day (stale-if-error). A publish purges the files it changed (purge.ts tags), so changes show in seconds.
+//
+// The old file while the CDN asks again: 10 minutes without a purge, as a change then only reaches the CDN when it
+// asks. With a purge (a plugin's `purges`, plugin.ts) a changed file is dropped at once, so the CDN may keep the old
+// one a day: the cover during an outage for CDNs that don't read stale-if-error but serve a stale copy while the
+// origin is down for as long as stale-while-revalidate allows (Google Cloud CDN).
 const CDN_CACHE = 'public, max-age=0, s-maxage=60, stale-if-error=86400';
-const CDN_ONLY_CACHE = 'public, max-age=60, stale-while-revalidate=600, stale-if-error=86400';
+export const cdnOnlyCache = (purging: boolean) => `public, max-age=60, stale-while-revalidate=${purging ? 86400 : 600}, stale-if-error=86400`;
+
+/** A CDN file's Last-Modified (ms, a whole second), or null while it isn't settled yet. HTTP dates count whole
+ *  seconds, so two changes within one second would share a date, and a CDN holding the first would get a 304 for the
+ *  second. So the date is the second after the change, and only sent once a second more has passed: a copy dated D
+ *  was served after D, and any later change is dated after D. */
+export function lastModified(modified: number, now: number): number | null {
+  const date = Math.ceil(modified / 1000) * 1000;
+  return now >= date + 1000 ? date : null;
+}
+/** Whether If-Modified-Since says the copy is as new as the file (a date it can't read: no). */
+function notModifiedSince(since: string | undefined, modified: number): boolean {
+  if (!since) return false;
+  const t = Date.parse(since);
+  return Number.isFinite(t) && modified <= t;
+}
 
 /** A snapshot without this entity may be behind a publish another server made (an entity added there a moment ago):
  *  one look at the environment's revision, shared by the requests waiting on it, and a rebuild only when the database
@@ -226,7 +276,7 @@ const snapshotIn = (plane: Parts['plane'], env: string) => {
 };
 
 /** CDN files (the cdn-files plugin): GET /cdn/v1/flags/…, flagd JSON for apps and the CDN in front of them. */
-export function cdnFileRoutes({ db, plane, links, services: apps }: Parts) {
+export function cdnFileRoutes({ db, plane, links, services: apps, purging = () => false }: Parts & { purging?: () => boolean }) {
   const app = new Hono();
   // If-None-Match → 304 the standard way (weak comparison, a list of ETags, *), keeping the headers a 304 must carry.
   // It uses the ETag each response already has, so nothing is hashed per request. Only on these paths: this app is
@@ -242,7 +292,7 @@ export function cdnFileRoutes({ db, plane, links, services: apps }: Parts) {
     if (c.res.status >= 400) c.res.headers.set('Cache-Control', 'no-store');
   });
   // A 304 keeps the CORS headers too: a browser reading the file from another origin checks them on every answer.
-  const retainedHeaders = [...RETAINED_304_HEADERS, 'access-control-allow-origin', 'access-control-expose-headers', 'cache-tag', 'cdn-cache-control'];
+  const retainedHeaders = [...RETAINED_304_HEADERS, 'access-control-allow-origin', 'access-control-expose-headers', 'cache-tag', 'cdn-cache-control', 'last-modified'];
   app.use('/cdn/v1/flags/*', etag({ retainedHeaders }));
   const snapshotFor = (env: string) => snapshotIn(plane, env);
 
@@ -250,7 +300,7 @@ export function cdnFileRoutes({ db, plane, links, services: apps }: Parts) {
     const { env, app: appKey } = c.req.param();
     const snap = snapshotFor(env);
     await ensureClientApp(db, apps, appKey);
-    return send(c, await cdnDownload(snap, appKey, null), CDN_CACHE, fileTags(env, null));
+    return send(c, await cdnDownload(snap, appKey, null), CDN_CACHE, { tags: fileTags(env, null), purging: purging() });
   });
 
   app.get('/cdn/v1/flags/:env/:app/:entity/:secret', async (c) => {
@@ -270,7 +320,7 @@ export function cdnFileRoutes({ db, plane, links, services: apps }: Parts) {
     const right = sameSecret(secret, clientSecret(envSecret ?? '', entity, v ?? 0));
     if (!snap || !Object.hasOwn(snap.entities, entity) || !envSecret || v === undefined || !right) throw noFile();
     try { await ensureClientApp(db, apps, appKey); } catch { throw noFile(); }
-    return send(c, await cdnDownload(snap, appKey, entity), CDN_CACHE, fileTags(env, snap.entities[entity].path));
+    return send(c, await cdnDownload(snap, appKey, entity), CDN_CACHE, { tags: fileTags(env, snap.entities[entity].path), purging: purging() });
   });
 
   return app;

@@ -125,14 +125,15 @@ Headers:
 | Header | Value |
 |---|---|
 | `Cache-Control` | `public, max-age=0, s-maxage=60, stale-if-error=86400` |
-| `CDN-Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400` |
+| `CDN-Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400`; `stale-while-revalidate=86400` while a plugin purges the CDN after each publish |
 | `ETag` | weak, over the flags' values (not the revision) |
-| `Cache-Tag` | `env-<env>`; an entity's file also `env-<env>/<entity>` for it and each entity above it, and `link-<env>/<entity>` |
+| `Last-Modified` | when the file last changed, as this server knows it; sent from a second after the change |
+| `Cache-Tag` | `env-<env>`; an entity's file also `e-<hash>` for it and each entity above it, and `l-<hash>` for its own link: keyed hashes that name no entity |
 | `Vary` | `Accept-Encoding` |
 | `Content-Encoding` | `gzip` when the request accepts it |
 | `Access-Control-Allow-Origin` | `*`, with `Access-Control-Expose-Headers: ETag, CF-IPCountry` |
 
-`If-None-Match` with the current ETag → `304`. `OPTIONS` (a CORS preflight) → `204`, allowing `GET` and `HEAD`,
+`If-None-Match` with the current ETag → `304`. Without `If-None-Match`, `If-Modified-Since` no earlier than `Last-Modified` → `304`. `OPTIONS` (a CORS preflight) → `204`, allowing `GET` and `HEAD`,
 kept for a day. See [CDN](/self-hosting/cdn) for caching them.
 
 | Status | When |

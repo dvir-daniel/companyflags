@@ -30,6 +30,10 @@ export type Config = {
     migrate?: boolean;
     /** At most this many connections to the Postgres server (FF_DB_POOL; default 10). */
     pool?: number;
+    /** A PEM file with the certificate authorities the Postgres server's certificate is checked against
+     *  (FF_DATABASE_CA_FILE), e.g. Amazon RDS's global bundle. The certificate is always checked with it. A relative
+     *  path starts from the config file's folder. */
+    caFile?: string;
   };
   /** How long the server keeps what it no longer needs. History is kept forever: it's the record of every change. */
   retention?: {
@@ -41,6 +45,9 @@ export type Config = {
     /** PORT (default 8787) and HOST (default 0.0.0.0). */
     port?: number;
     host?: string;
+    /** Seconds an idle connection is kept open (FF_KEEPALIVE_SECONDS; default 65): more than the load balancer in
+     *  front keeps one (60 on AWS's and Google's), or it gets a 502 now and then. */
+    keepAliveSeconds?: number;
   };
   /** Sign-in with Better Auth: the secret, the console's address, the providers and the rest (betterAuth.ts
    *  AuthSettings). Each setting left out comes from its environment variable (BETTER_AUTH_SECRET, …). Whether the

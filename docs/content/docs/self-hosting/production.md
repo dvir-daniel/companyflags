@@ -17,11 +17,17 @@ description: "Go through this list before people and apps depend on your install
   doesn't give them away. Protect the backups all the same.
 - `FF_DB_POOL` (`database.pool`, default 10) is per instance. Make sure the server allows that many connections for
   every instance.
+- Check the database's certificate. In node-postgres, `sslmode=require` already means `verify-full`, so a certificate
+  from your cloud's own authority (Amazon RDS, Azure, Cloud SQL) fails to connect until the server trusts that
+  authority: name its certificates in `FF_DATABASE_CA_FILE` (`database.caFile`), e.g. RDS's global bundle
+  ([TLS to Postgres](/self-hosting/configuration#tls-to-postgres)).
 
 The embedded database (no `DATABASE_URL`) is for trying CompanyFlags and for small setups. It lives in one folder
-(`FF_DATA_DIR`, `/data/db` in the Docker image), and only one process may open it: the server keeps a lock file next
-to the folder (`/data/db.lock`) and a second server refuses to start. Keep the folder on a persistent volume and back
-it up with `companyflags backup` while the server is stopped. To move to Postgres later, `companyflags
+(`FF_DATA_DIR`, `/data/db` in the Docker image), and only one process in one container may open it: the server keeps
+a lock file next to the folder (`/data/db.lock`) and a second server refuses to start, also from another container on
+a shared volume. Don't run it where a deploy starts the new container before the old one stops (ECS, Cloud Run,
+Container Apps): use Postgres there. Keep the folder on a persistent volume and back it up with `companyflags backup`
+while the server is stopped. To move to Postgres later, `companyflags
 copy-to-postgres` copies everything over ([Backups](/self-hosting/backups#moving-to-postgres)).
 
 ## 2. Production mode, secret and address
@@ -59,6 +65,9 @@ console only over `https`.
 - `BETTER_AUTH_URL` must be the address people type. Sign-in from another address is refused.
 - Each request body has a size limit: 64 KB for OFREP, 256 KB for sign-in, 1 MB for webhooks in and the console's
   API, 4 MB for imports. A larger one gets `413`, also when it's sent in chunks. Let your proxy pass bodies that big.
+- The server keeps an idle connection open 65 seconds (`FF_KEEPALIVE_SECONDS`). That is longer than AWS's Application
+  Load Balancer and Google's load balancers keep one (60 seconds), so the server never closes a connection the load
+  balancer is about to use (a 502). If you raise the load balancer's idle timeout, raise this above it too.
 
 ## 4. A CDN in front of the CDN files
 
@@ -121,7 +130,8 @@ A plugin can add middleware of its own (an access log, OpenTelemetry): see [Plug
 
 On `SIGTERM` (or `SIGINT`) the server:
 
-1. stops taking new requests and lets the open ones finish;
+1. stops taking new requests and lets the open ones finish, closing each idle connection at once (not after the
+   65 seconds of keep-alive);
 2. closes the console's live-update streams after 5 seconds;
 3. lets the background worker finish its round (a publish or a scheduled change);
 4. closes the database and exits.
@@ -172,8 +182,8 @@ If your proxy adds headers of its own, don't loosen these.
 ## 10. Running more than one instance
 
 Several instances on one Postgres server are supported: each picks up a publish within about a second by watching the
-environments' revision numbers; API keys, links and services are cached for up to a minute per instance. With the
-embedded database, run one.
+environments' revision numbers; API keys, links and services are cached for up to a minute per instance. The embedded
+database is for one container only: a second one on the same volume refuses to start.
 
 When you run several:
 

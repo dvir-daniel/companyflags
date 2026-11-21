@@ -68,9 +68,12 @@ export type Resolved = {
   /** false: only check the schema at the start (database.migrate, FF_MIGRATE=off) */
   migrate: boolean;
   pool: number;
+  /** database.caFile, FF_DATABASE_CA_FILE: an absolute path */
+  databaseCaFile: string | undefined;
   publishLogDays: number;
   port: number;
   host: string;
+  keepAliveSeconds: number;
   signIn: SignIn;
   plugins: Plugin[];
   /** The config file's appearance, with its images read into data URLs (null: set in the console). */
@@ -85,6 +88,11 @@ export function resolveConfig(config: Config, env: NodeJS.ProcessEnv = process.e
   const fromEnv = authSettingsFromEnv(env);
   const pool = config.database?.pool ?? Number(env.FF_DB_POOL || 10);
   if (!Number.isInteger(pool) || pool < 1 || pool > 1000) throw new ConfigError(`database.pool (or FF_DB_POOL) must be a whole number from 1 to 1000, not ${pool}`);
+  const keepAliveSeconds = config.server?.keepAliveSeconds ?? Number(env.FF_KEEPALIVE_SECONDS || 65);
+  if (!Number.isInteger(keepAliveSeconds) || keepAliveSeconds < 1 || keepAliveSeconds > 3600) {
+    throw new ConfigError(`server.keepAliveSeconds (or FF_KEEPALIVE_SECONDS) must be a whole number of seconds from 1 to 3600, not ${keepAliveSeconds}`);
+  }
+  const caFile = config.database?.caFile || env.FF_DATABASE_CA_FILE || undefined;
   const days = config.retention?.publishLogDays ?? Number(env.FF_PUBLISH_LOG_DAYS || 30);
   if (!Number.isInteger(days) || days < 1) throw new ConfigError(`retention.publishLogDays (or FF_PUBLISH_LOG_DAYS) must be a whole number of days, at least 1, not ${days}`);
   const migrateEnv = env.FF_MIGRATE?.trim().toLowerCase();
@@ -94,9 +102,11 @@ export function resolveConfig(config: Config, env: NodeJS.ProcessEnv = process.e
     dataDir: config.database?.dataDir || env.FF_DATA_DIR || './data',
     migrate: config.database?.migrate ?? migrateEnv !== 'off',
     pool,
+    databaseCaFile: caFile ? resolve(config.database?.caFile ? dir : process.cwd(), caFile) : undefined,
     publishLogDays: days,
     port,
     host: config.server?.host || env.HOST || '0.0.0.0',
+    keepAliveSeconds,
     signIn: { kind: 'better-auth', settings: { ...fromEnv, ...stripUndefined(config.auth ?? {}), production: fromEnv.production } },
     plugins: config.plugins ?? defaultPlugins(),
     appearance: config.appearance ? withImages(config.appearance, dir) : null,

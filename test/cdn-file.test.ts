@@ -6,9 +6,10 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import { boot, cdnAnswer } from './helpers.ts';
-import { fileTags } from '../server/purge.ts';
+import { entityTag, fileTags, linkTag } from '../server/purge.ts';
 import { flagdCore, nest, ours, same } from './flagdReference.ts';
 import { buildFlagdDoc } from '../server/flagd.ts';
+import { lastModified } from '../server/delivery.ts';
 import { DIMENSION_GROUP, FIELDS, groupFields, type FieldInfo } from '../server/fields.ts';
 
 let t: Awaited<ReturnType<typeof boot>>;
@@ -119,8 +120,9 @@ test('the link: cacheable for a CDN (browsers ask every time), tagged with its e
   assert.match(ok.headers.get('cache-control')!, /stale-if-error=86400/);
   assert.ok(!/stale-while-revalidate/.test(ok.headers.get('cache-control')!), 'no stale copy in browsers');
   assert.equal(ok.headers.get('cdn-cache-control'), 'public, max-age=60, stale-while-revalidate=600, stale-if-error=86400');
-  assert.equal(ok.headers.get('cache-tag'), 'env-dev,env-dev/acme,link-dev/acme');
-  assert.deepEqual(fileTags('dev', ['lumen', 'globex']), ['env-dev', 'env-dev/lumen', 'env-dev/globex', 'link-dev/lumen'], 'an entity’s file carries the tags of those above it');
+  assert.equal(ok.headers.get('cache-tag'), `env-dev,${entityTag('dev', 'acme')},${linkTag('dev', 'acme')}`);
+  assert.ok(!ok.headers.get('cache-tag')!.includes('acme'), 'the tags name no entity: some CDNs pass them on to the device');
+  assert.deepEqual(fileTags('dev', ['lumen', 'globex']), ['env-dev', entityTag('dev', 'lumen'), entityTag('dev', 'globex'), linkTag('dev', 'lumen')], 'an entity’s file carries the tags of those above it');
   const anon = await t.app.request('/cdn/v1/flags/dev/web');
   assert.equal(anon.headers.get('cache-tag'), 'env-dev', 'the file for everyone: its environment only');
   const wrong = await t.app.request('/cdn/v1/flags/dev/web/acme/not-the-secret');
@@ -183,6 +185,48 @@ test('a publish that changes values changes the file and its ETag', async () => 
   assert.equal(after_.headers.get('etag') === before_.headers.get('etag'), false);
   assert.equal(after_.json.flags.android_quick_share.state, 'DISABLED', 'off → flagd’s DISABLED');
   assert.ok(cdnAnswer(after_.json, 'android_quick_share', {}).codeDefault, 'the default in the app’s code');
+});
+
+test('Last-Modified beside the ETag, for CDNs that revalidate only with If-Modified-Since (Azure Front Door)', async () => {
+  // whole seconds: the date is the second after the change, sent once a second more has passed, so two changes in one
+  // second never share a date
+  assert.equal(lastModified(1_500, 2_400), null, 'changed at 1.5 s: no date yet at 2.4 s');
+  assert.equal(lastModified(1_500, 2_999), null);
+  assert.equal(lastModified(1_500, 3_000), 2_000);
+  assert.equal(lastModified(2_000, 3_000), 2_000);
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
+  const settled = () => wait(Math.ceil(Date.parse(t.plane.get('dev').builtAt) / 1000) * 1000 + 1000 - Date.now() + 20);
+  await settled();
+  const ok = await t.cdnFile('dev', 'ios', 'wonka');
+  const date = ok.headers.get('last-modified')!;
+  assert.ok(date && Date.parse(date) <= Date.now(), `a date in the past: ${date}`);
+  const since = (d: string, headers: Record<string, string> = {}) => t.cdnFile('dev', 'ios', 'wonka', { 'if-modified-since': d, ...headers });
+  const notModified = await since(date);
+  assert.equal(notModified.status, 304);
+  for (const h of ['etag', 'last-modified', 'cache-control', 'cdn-cache-control', 'cache-tag']) assert.equal(notModified.headers.get(h), ok.headers.get(h), `a 304 keeps ${h}`);
+  assert.equal((await since(date, { origin: 'https://app.example.com' })).headers.get('access-control-allow-origin'), '*', 'and CORS, for a browser');
+  assert.equal((await since(new Date(Date.parse(date) - 1000).toUTCString())).status, 200, 'an older copy');
+  assert.equal((await since('not a date')).status, 200);
+  assert.equal((await since(date, { 'if-none-match': 'W/"other"' })).status, 200, 'the ETag wins when both are sent');
+  assert.equal((await t.cdnFile('dev', 'ios', 'wonka', { 'if-none-match': ok.headers.get('etag')! })).headers.get('last-modified'), date, 'the ETag’s 304 keeps it too');
+
+  // a publish that leaves the file as it was keeps its date; one that changes it moves the date later
+  const snap = t.plane.get('dev');
+  const notIos = Object.keys(snap.flags).find((k) => !snap.flags[k].delivery.includes('ios'))!;
+  const ios = Object.keys(snap.flags).find((k) => snap.flags[k].delivery.includes('ios') && ok.json.flags[k]?.state === 'ENABLED')!;
+  assert.equal((await t.editBase(notIos, 'dev', (l) => ({ ...l, enabled: !l.enabled }))).status, 200);
+  const same = await t.cdnFile('dev', 'ios', 'wonka');
+  assert.equal(t.plane.get('dev').revision, snap.revision + 1);
+  assert.deepEqual([same.headers.get('etag'), same.headers.get('last-modified')], [ok.headers.get('etag'), date]);
+  assert.equal((await since(date)).status, 304);
+  assert.equal((await t.editBase(ios, 'dev', (l) => ({ ...l, enabled: false }))).status, 200);
+  const changed = await since(date);
+  assert.equal(changed.status, 200, 'changed: the copy from before is old');
+  assert.equal(changed.headers.get('last-modified'), null, 'no date until it is settled');
+  await settled();
+  const later = await t.cdnFile('dev', 'ios', 'wonka');
+  assert.ok(Date.parse(later.headers.get('last-modified')!) > Date.parse(date), 'a later date');
+  assert.equal((await since(date)).status, 200);
 });
 
 test('the console gets every attribute in fields.ts and one per dimension, with its group, label and known values', async () => {

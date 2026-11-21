@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
@@ -12,7 +13,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { consoleApi } from './api.ts';
 import { createTokens } from './tokens.ts';
 import { OAUTH_PREFIXES, oauthRoutes } from './oauth.ts';
-import { codeOf, FolderInUseError, FolderVersionError, HttpError, openDb, type Db, type ErrorCode } from './db.ts';
+import { codeOf, DatabaseCaError, FolderInUseError, FolderVersionError, HttpError, openDb, type Db, type ErrorCode } from './db.ts';
 import { MigrationError } from './migrate.ts';
 import { createIdentity, signInFromEnv, type SignIn } from './identity.ts';
 import { configDir, loadConfig, resolveConfig, type Resolved } from './configFile.ts';
@@ -25,7 +26,8 @@ import { EventHub } from './events.ts';
 import { AppCache, LinkCache, linkRoutes } from './delivery.ts';
 import { KeyCache } from './auth.ts';
 import { journaled } from './journal.ts';
-import { evaluatorFor, PluginError, publishHooks, setUpPlugins, type OnPublish, type Plugin, type PluginParts } from './plugin.ts';
+import { anyPurges, evaluatorFor, PluginError, publishHooks, setUpPlugins, type OnPublish, type Plugin, type PluginParts } from './plugin.ts';
+import { setTagSecret } from './purge.ts';
 import { defaultPlugins } from './plugins/index.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
@@ -55,6 +57,9 @@ export type AppOptions = {
   migrate?: boolean;
   /** At most this many connections to a Postgres server (database.pool, FF_DB_POOL). */
   pool?: number;
+  /** A PEM file of the certificate authorities a Postgres server's certificate is checked against (database.caFile,
+   *  FF_DATABASE_CA_FILE). */
+  databaseCaFile?: string;
   /** Days the publish log is kept (retention.publishLogDays). */
   publishLogDays?: number;
   /** tests: a migrated in-memory database to start from (db.ts embeddedTemplate) */
@@ -63,7 +68,7 @@ export type AppOptions = {
 
 export async function createApp(opts: AppOptions = {}) {
   const log = opts.log ?? (() => {});
-  const { db: store, fresh, applied, newer } = await openDb({ url: opts.databaseUrl, dataDir: opts.dataDir, log, migrate: opts.migrate, pool: opts.pool, template: opts.template });
+  const { db: store, fresh, applied, newer } = await openDb({ url: opts.databaseUrl, dataDir: opts.dataDir, log, migrate: opts.migrate, pool: opts.pool, caFile: opts.databaseCaFile, template: opts.template });
   if (applied.length) log(`database: applied ${applied.join(', ')}`);
   if (newer.length) log(`warning: the database has migrations of a newer version (${newer.join(', ')}): this server keeps running, but upgrade it soon`);
   await syncFields(store);
@@ -99,6 +104,7 @@ export async function createApp(opts: AppOptions = {}) {
   const secret = await (settings ? authSecret(store, settings) : localSecret(store)).catch(async (e) => { await store.close(); throw e; });
   const setupToken = settings ? setupTokenFor(secret) : undefined;
   const secrets = sealer(secret);
+  setTagSecret(secret);                                   // the CDN files' cache tags (purge.ts): the same on every server
   const sealedNow = await sealStoredSecrets(store, secrets).catch(async (e) => { await store.close(); throw e; });
   if (sealedNow) log(`sealed the secrets of ${sealedNow} saved settings (the CDN token, webhooks) with a key from BETTER_AUTH_SECRET`);
   const access = createAccess(db, {
@@ -130,7 +136,7 @@ export async function createApp(opts: AppOptions = {}) {
   };
   const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: { fetch: undefined }, webhooks: { fetch: undefined } }), {
     db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, request, secrets,
-    publishState: () => publishState(store, plane), warnings: () => warningsOf(), keys, links, services: apps,
+    publishState: () => publishState(store, plane), warnings: () => warningsOf(), purging: () => anyPurges(pluginsSetUp), keys, links, services: apps,
   }).catch(async (e) => { await store.close(); throw e; });
   pluginsSetUp = plugins;
   const on = new Set(plugins.map((p) => p.id));
@@ -320,6 +326,27 @@ function loggedPath(c: Context): string {
   return path.replace(/^(\/[^/]+\/[^/]+)\/.+/, '$1/…');
 }
 
+/** Keeps an idle connection open this long (server.keepAliveSeconds, FF_KEEPALIVE_SECONDS; default 65): longer than
+ *  the load balancer in front keeps one (60 seconds on AWS's and Google's), so the server never closes a connection
+ *  just as the load balancer sends a request on it (a 502). Headers may take a second more (Node's own advice). */
+export function keepAlive(server: HttpServer, seconds: number) {
+  server.keepAliveTimeout = seconds * 1000;
+  server.headersTimeout = seconds * 1000 + 1000;
+}
+
+/** Stops taking requests and lets the open ones finish. Idle keep-alive connections are closed at once, and so is each
+ *  one that falls idle meanwhile (its request done), rather than after the keep-alive time; whatever is still open
+ *  after `forceMs` (live-update streams) is cut. */
+export async function stopHttp(server: HttpServer, forceMs = 5000) {
+  const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+  server.closeIdleConnections();
+  const idle = setInterval(() => server.closeIdleConnections(), 100);
+  const force = setTimeout(() => server.closeAllConnections(), forceMs);
+  await closed;
+  clearInterval(idle);
+  clearTimeout(force);
+}
+
 /** Whether nothing is listening on this port yet. */
 function portFree(port: number, host: string) {
   return new Promise<boolean>((resolve) => {
@@ -364,9 +391,9 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv; migrate?
   if (!migrate) log('migrations: not applied at the start (--no-migrate or FF_MIGRATE=off): checking the schema has them');
   const ctx = await createApp({
     databaseUrl: resolved.databaseUrl, dataDir: resolved.dataDir, signIn, plugins: resolved.plugins, appearance: resolved.appearance ?? undefined, env, log,
-    migrate, pool: resolved.pool, publishLogDays: resolved.publishLogDays,
+    migrate, pool: resolved.pool, databaseCaFile: resolved.databaseCaFile, publishLogDays: resolved.publishLogDays,
   })
-    .catch((e: Error) => (e instanceof FolderInUseError || e instanceof FolderVersionError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError || e instanceof AppearanceError ? fail(e.message) : Promise.reject(e)));
+    .catch((e: Error) => (e instanceof FolderInUseError || e instanceof FolderVersionError || e instanceof DatabaseCaError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError || e instanceof AppearanceError ? fail(e.message) : Promise.reject(e)));
   log(`plugins: ${ctx.plugins.join(', ') || 'none'}`);
   const local = `http://${host === '0.0.0.0' || host === '::' ? 'localhost' : host}:${port}`;
   // without web/dist (a clone running pnpm dev), the console is Vite's, which passes /api on to this server
@@ -394,6 +421,7 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv; migrate?
     }).catch(() => {});
   });
   server.on('error', (e: NodeJS.ErrnoException) => fail(e.code === 'EADDRINUSE' ? `port ${port} was taken while starting` : e.message));
+  keepAlive(server as HttpServer, resolved.keepAliveSeconds);
 
   // Ctrl-C or a platform stop: stop taking requests and let the open ones finish, let the worker finish its round
   // (a publish or a scheduled apply), then close the database properly (it writes its files on close), instead of
@@ -404,12 +432,7 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv; migrate?
     if (stopping) process.exit(1);
     stopping = true;
     log(`${signal}: stopping`);
-    const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-    const http = server as { closeIdleConnections?: () => void; closeAllConnections?: () => void };
-    http.closeIdleConnections?.();
-    const force = setTimeout(() => http.closeAllConnections?.(), 5000);
-    await closed;
-    clearTimeout(force);
+    await stopHttp(server as HttpServer);
     await ctx.workers.stop();
     await ctx.db.close().catch((e) => console.error(`[companyflags] closing the database: ${e.message}`));
     process.exit(0);

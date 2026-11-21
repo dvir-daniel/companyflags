@@ -75,6 +75,9 @@ export type PluginContext = {
   publishState: () => Promise<PublishState[]>;
   /** What /readyz warns about without failing: purges that didn't go through, and the plugins' own `warnings`. */
   warnings: () => Promise<string[]>;
+  /** Whether a plugin drops changed CDN files from the CDN's cache after each publish, now (PluginParts.purges): the
+   *  CDN files' caching depends on it (delivery.ts). Ask it from a request, not from setup. */
+  purging: () => boolean;
   /** @internal, for the built-in plugins: API keys, app-link secrets and services, kept in memory and cleared when
    *  they change (journal.ts). */
   keys: KeyCache;
@@ -118,6 +121,12 @@ export type PluginParts = {
   /** After an environment publishes, once per publish. A failure is logged with the plugin's name and kept on the
    *  publish; it never undoes the publish, and the other plugins' onPublish still run. */
   onPublish?: OnPublish;
+  /** Whether its onPublish drops changed CDN files from a CDN's cache, now: true, or a function that says so from
+   *  memory (it runs on every CDN file's answer), e.g. only once a token is saved. While one plugin says so, CDN files
+   *  let the CDN serve an old copy for a day while it asks this server again (stale-while-revalidate=86400 in
+   *  CDN-Cache-Control): cover during an outage for CDNs that don't read stale-if-error (Google Cloud CDN). Without a
+   *  purge it is 10 minutes, as a change then reaches the CDN only when it asks again. */
+  purges?: boolean | (() => boolean);
   /** What an operator should know, though the server serves (a CDN purge that can't run): /readyz lists them under
    *  `warnings`, still answering 200, and the metrics plugin counts them. */
   warnings?: () => Promise<string[]> | string[];
@@ -136,6 +145,13 @@ export type Plugin = {
 export const definePlugin = (p: Plugin): Plugin => p;
 
 export class PluginError extends Error {}
+
+/** Whether one of the plugins purges a CDN now (PluginParts.purges). One that can't say counts as not purging. */
+export function anyPurges(set: readonly { parts: PluginParts }[]): boolean {
+  return set.some(({ parts: { purges } }) => {
+    try { return typeof purges === 'function' ? purges() === true : purges === true; } catch { return false; }
+  });
+}
 
 /** The address prefixes of the core: the console's API, the app links for backends, OAuth sign-in for MCP clients
  *  (oauth.ts), the health checks and the console's own files. A plugin can claim none of them, nor anything under
@@ -189,6 +205,9 @@ export async function setUpPlugins(plugins: readonly Plugin[], ctx: PluginContex
       }
       if (parts.middleware !== undefined && typeof parts.middleware !== 'function') {
         throw new PluginError(`the plugin "${p.id}": middleware is a function (c, next) => …`);
+      }
+      if (parts.purges !== undefined && typeof parts.purges !== 'boolean' && typeof parts.purges !== 'function') {
+        throw new PluginError(`the plugin "${p.id}": purges is true, false or a function () => boolean`);
       }
     }
   } catch (e) {

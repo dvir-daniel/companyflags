@@ -80,11 +80,27 @@ docker run -d --name companyflags -p 8787:8787 -v companyflags:/data \
 `docker logs companyflags` shows the setup link for the admin account.
 
 :::warning[The embedded database is for trying it and small setups]
-It is one process's: run one container with it, never several on one volume. For production use Postgres, with
-backups (see the [production checklist](/self-hosting/production)).
+It is for one container only: never run several on one volume. A second container on it refuses to start, with
+"the embedded database is open in another container", while the first one runs (the lock file, `/data/db.lock`, says
+which container has it, and when it was last seen). For several containers, or a platform that starts the new one
+before the old one stops, use Postgres, with backups (see the [production checklist](/self-hosting/production)).
 :::
 
 Keep the same `BETTER_AUTH_SECRET` across restarts and upgrades: it signs sessions, so a new one signs everyone out.
+
+A managed Postgres whose certificate comes from its cloud's own authority (Amazon RDS) needs that authority's
+certificates in the container. Mount them and name the file:
+
+```bash
+curl -fsSo rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+docker run -d --name companyflags -p 8787:8787 \
+  -v ./rds-global-bundle.pem:/etc/ssl/rds-global-bundle.pem:ro \
+  -e FF_DATABASE_CA_FILE=/etc/ssl/rds-global-bundle.pem \
+  -e DATABASE_URL="postgres://user:password@flags.xxxx.eu-west-1.rds.amazonaws.com:5432/flags?sslmode=verify-full" \
+  -e BETTER_AUTH_SECRET="$(openssl rand -base64 32)" \
+  -e BETTER_AUTH_URL=https://flags.example.com \
+  ghcr.io/dvir-daniel/companyflags:0.9
+```
 
 ## Upgrading
 

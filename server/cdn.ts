@@ -36,6 +36,8 @@ export type CdnOptions = { fetch?: typeof fetch; server?: Partial<CloudflareZone
 const asIs: Sealer = { seal: (v) => v, open: (v) => v };
 
 const ZONE_ID = /^[0-9a-f]{32}$/;
+/** How long this server trusts what it knows about whether a purge can run (Settings → CDN may change on another). */
+const PURGING_TTL_MS = 30_000;
 /** A tag no CDN file carries: purging it checks the zone and the token's permission without dropping anything. */
 const CHECK_TAG = 'companyflags-check';
 /** Said when the token saved in the console was sealed with another BETTER_AUTH_SECRET: nothing is purged until then. */
@@ -70,6 +72,20 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
     if (token === null) throw new Error(UNREADABLE_TOKEN);
     return { zoneId: row.zone_id, token, source: 'console' };
   }
+
+  // Whether a purge can run (a zone and a token this server can read, and a way to reach Cloudflare), for the CDN
+  // files' caching (plugin.ts purges): kept in memory, looked at again once it is 30 seconds old, and at once after a
+  // change here (another server's change shows within those 30 seconds).
+  let purging = { on: !!fromServer && !!o.fetch, at: 0 };
+  let looking: Promise<boolean> | null = null;
+  const lookAgain = (): Promise<boolean> => (looking ??= zone().then((z) => !!z && !!o.fetch, () => false)
+    .then((on) => { purging = { on, at: Date.now() }; return on; })
+    .finally(() => { looking = null; }));
+  /** Whether a purge runs after a publish, from memory (it is asked on every CDN file's answer). */
+  const purges = (): boolean => {
+    if (Date.now() - purging.at > PURGING_TTL_MS) void lookAgain();
+    return purging.on;
+  };
 
   /** The worker's purger, after a publish: the files it changed (purgeTagsFor). 'off' when there is nothing to purge
    *  or no CDN is set up. */
@@ -108,6 +124,9 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
   return {
     purge,
     warnings,
+    purges,
+    /** Looks now whether a purge can run (the plugin's setup, before the first answer). */
+    lookAgain,
 
     async state(): Promise<CdnState> {
       const row = fromServer ? undefined : await one<{ zone_id: string; api_token: string; updated_at: string; updated_by: string }>(db,
@@ -149,6 +168,7 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
         await journal.audit(tx, actor, { kind: 'cdn.update', before: saved ? { zoneId: saved.zone_id, tokenEnd: saved.api_token.slice(-4) } : null,
           after: { zoneId, tokenEnd: token.slice(-4) } });
       });
+      await lookAgain();
     },
 
     /** Stops purging: apps then get a change within the CDN's minute. */
@@ -161,6 +181,7 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
         await tx.query(`update publish_queue set last_error = null where last_error like 'purge:%'`);
         await journal.audit(tx, actor, { kind: 'cdn.remove', before: { zoneId: gone.zone_id } });
       });
+      await lookAgain();
     },
 
     /** Purges one environment now, outside a publish (to check the setup, or after a problem). */

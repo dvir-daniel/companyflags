@@ -4,6 +4,36 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **No more 502s behind a load balancer.** The server keeps an idle connection open 65 seconds, longer than AWS's and
+  Google's load balancers do (60), so it never closes one as a request arrives on it. `FF_KEEPALIVE_SECONDS`
+  (`server.keepAliveSeconds`) changes it. A stop still closes idle connections at once.
+- **The embedded database is for one container, and says so.** Its lock now names the host and is written again every
+  5 seconds. A second container on a shared volume refuses to start while the first one runs ("the embedded database is
+  open in another container"); before, a process ID from another container looked dead, and both opened the folder. A
+  lock not written for 30 seconds is taken over. Use Postgres for several containers.
+- **CDN files send `Last-Modified`, and answer `If-Modified-Since` with `304`.** For CDNs that ignore ETags (Azure
+  Front Door). The ETag still wins when both are sent.
+- **Cache tags name no entity.** An entity's and a link's tag are now keyed hashes (`e-…`, `l-…`, from
+  `BETTER_AUTH_SECRET`), as some CDNs (Google Cloud CDN) pass `Cache-Tag` on to devices. The environment's stays
+  `env-<env>`. After the upgrade the CDN holds files with the old tags for at most a minute.
+- **A day of outage cover on CDNs that ignore `stale-if-error`.** While a purge runs after each publish (Cloudflare with
+  a token, or a plugin that says `purges`), `CDN-Cache-Control` has `stale-while-revalidate=86400`, which Google Cloud
+  CDN also serves during an outage. Without a purge it stays 600.
+- **`FF_DATABASE_CA_FILE` for managed Postgres.** Name a PEM file (`database.caFile`), e.g. Amazon RDS's global
+  bundle, and the server checks the database's certificate against it. Note that `sslmode=require` in node-postgres
+  already means `verify-full`.
+
+- **`cloudfront()` purges CloudFront after a publish.** It invalidates the publish's cache tags in your distribution
+  (`FF_CLOUDFRONT_DISTRIBUTION_ID`), with AWS's usual credentials (keys, a task role, a pod identity or an instance
+  profile) and no stored key. It needs `cloudfront:CreateInvalidation` on the distribution.
+- **`cloudCdn()` purges Google Cloud CDN after a publish.** It invalidates the publish's cache tags on your URL map
+  (`FF_CLOUD_CDN_PROJECT`, `FF_CLOUD_CDN_URL_MAP`, `FF_CLOUD_CDN_HOST`), with the service account's token from the
+  metadata server and no stored key. It needs a role with `compute.urlMaps.invalidateCache`.
+
+- **Guides for AWS, Google Cloud and Azure.** Each one sets up the compute (ECS on Fargate, Cloud Run, Container
+  Apps), the managed Postgres with TLS and its connection budget, pinned secrets, the load balancer's trusted proxies,
+  health checks, migrations as a one-off job, and a CDN for the CDN files only. The CDN page now covers Cloudflare,
+  CloudFront, Cloud CDN and Azure Front Door: what each honours and how each is purged (Front Door by hand only).
 - **The console's sidebar works like better-auth.com's.** Every item is a short noun in Title Case, and it is the
   page's title and its tab's title, word for word. The groups: Flags, Releases, Approvals, History and Compare; then
   **Audience** (your dimensions); then **Developers** (Services, API Keys, Webhooks); then Settings. Migration is in

@@ -25,8 +25,8 @@ export default defineConfig({
 ```
 
 With no config file, or a config without `plugins`, these six built-in plugins run (`defaultPlugins()` is that
-list). With a list, only the plugins on it run. `metrics()` runs only when it's listed:
-`plugins: [...defaultPlugins(), metrics()]`. The server says which ones when it starts, and the console hides what belongs to a plugin that's off: the CDN
+list). With a list, only the plugins on it run. `metrics()`, `cloudfront()` and `cloudCdn()` run only when they're
+listed: `plugins: [...defaultPlugins(), metrics()]`. The server says which ones when it starts, and the console hides what belongs to a plugin that's off: the CDN
 settings without `cloudflare()`, for example, the CDN file's address without `cdnFiles()`, or the webhooks without
 `webhooks()`.
 
@@ -40,8 +40,9 @@ settings without `cloudflare()`, for example, the CDN file's address without `cd
 | `cloudflare(options?)` | `cloudflare` | [Purges Cloudflare's cache](/self-hosting/cdn#purge-on-publish) after each publish, and adds **Settings → CDN** to the console. |
 | `webhooks(options?)` | `webhooks` | [Webhooks](/guide/webhooks): out, after each change (signed JSON, Slack, or your own shape), and in, `POST /hooks/v1/<token>`. Adds them to the console's **Settings → Migration** page. |
 | `mcp()` | `mcp` | An MCP server for AI agents at `POST /mcp` (Streamable HTTP, stateless), with an access token (`Authorization: Bearer cfp_…`). Its tools read, explain and compare flags, and change them through the console's API (flags, services, defaults, rules, an entity's own default, release steps), so roles and approvals hold: where an environment needs approval, a change is a request, and `request_status` follows it. For clients that only start local servers: `companyflags mcp`. |
-
 | `metrics(options?)` | `metrics` | Prometheus's text format at `GET /metrics`: requests by route, apps' and backends' reads, publish lag, open event streams ([Production](/self-hosting/production#metrics)). Not in `defaultPlugins()`. |
+| `cloudfront(options?)` | `cloudfront` | Invalidates the CDN files a publish changed in an AWS CloudFront distribution, by cache tag. Not in `defaultPlugins()`. |
+| `cloudCdn(options?)` | `cloud-cdn` | Invalidates the CDN files a publish changed in Google Cloud CDN, by cache tag. Not in `defaultPlugins()`. |
 
 App links stay in the core: `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` always answers with the OFREP
 token, and with the CDN file's `path` when `cdnFiles()` runs.
@@ -52,6 +53,76 @@ token, and with the CDN file's `path` when `cdnFiles()` runs.
 |---|---|
 | `zoneId`, `token` | The zone the CDN files are served through, and an API token with **Zone → Cache Purge → Purge** on it. Each one left out comes from `CF_ZONE_ID` or `CF_API_TOKEN`. With both, they win over the console's; with neither, an admin sets them in the console. |
 | `fetch` | How the server reaches Cloudflare. Leave it out. |
+
+### `cloudfront(options)`
+
+After each publish, it sends one `CreateInvalidation` to the distribution, with the publish's cache tags as `#tag`
+paths. More than 100 tags invalidate the environment's tag instead. Apps get the change in seconds instead of within
+a minute.
+
+```ts
+plugins: [...defaultPlugins(), cloudfront({ distributionId: 'E2QWRUHAPOMQZL' })]
+```
+
+| Option | What it does |
+|---|---|
+| `distributionId` | The distribution the CDN files are served through. Left out: `FF_CLOUDFRONT_DISTRIBUTION_ID`. Without either, `/readyz` warns and nothing is purged. |
+| `fetch` | How the server reaches AWS. Leave it out. |
+
+- **The distribution** needs cache tags turned on when you create it: `CacheTagConfig` with the header `Cache-Tag`.
+  Files cached before that carry no tags.
+- **No key is stored.** The server finds AWS credentials as AWS's SDKs do: `AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY` (with `AWS_SESSION_TOKEN`), then a web identity token (EKS IRSA:
+  `AWS_WEB_IDENTITY_TOKEN_FILE`, `AWS_ROLE_ARN`), then the container's credentials (an ECS task role, EKS Pod
+  Identity), then the instance's profile (EC2, IMDSv2). Credentials that expire are fetched again shortly before they
+  do.
+- **The permission:** `cloudfront:CreateInvalidation` on the distribution, and nothing else:
+
+  ```json
+  {
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": "cloudfront:CreateInvalidation",
+      "Resource": "arn:aws:cloudfront::123456789012:distribution/E2QWRUHAPOMQZL"
+    }]
+  }
+  ```
+
+- **A purge that fails** (`TooManyInvalidationsInProgress`, a missing permission) is kept on the publish, and
+  `/readyz` warns of it. The server purges each publish again about 11 seconds later, which tries again.
+
+### `cloudCdn(options)`
+
+After each publish, it calls `invalidateCache` on the load balancer's URL map with the publish's cache tags. Cloud CDN
+takes 10 tags a call, so it sends up to 3 calls; more tags than that invalidate the environment's tag instead. An
+invalidation takes effect in about 10 seconds.
+
+```ts
+plugins: [...defaultPlugins(), cloudCdn({ project: 'acme-flags', urlMap: 'flags-lb', host: 'cdn.flags.example.com' })]
+```
+
+| Option | What it does |
+|---|---|
+| `project`, `urlMap` | The Google Cloud project, and the URL map the CDN files go through. Left out: `FF_CLOUD_CDN_PROJECT` and `FF_CLOUD_CDN_URL_MAP`. Without them, `/readyz` warns and nothing is purged. |
+| `host` | Only this host's files. Left out: `FF_CLOUD_CDN_HOST`, else every host of the URL map. |
+| `fetch` | How the server reaches Google Cloud. Leave it out. |
+
+- **No key is stored.** The token is the service account's, from the metadata server (Cloud Run, GKE, Compute
+  Engine), kept until shortly before it expires. To try it from your own machine, set `GOOGLE_OAUTH_ACCESS_TOKEN`
+  (`gcloud auth print-access-token`).
+- **The permission:** give the service account a custom role with only `compute.urlMaps.invalidateCache`, not
+  Compute Network Admin:
+
+  ```bash
+  gcloud iam roles create cdnInvalidator --project=acme-flags \
+    --title="CDN invalidator" --permissions=compute.urlMaps.invalidateCache
+  gcloud projects add-iam-policy-binding acme-flags \
+    --member=serviceAccount:flags@acme-flags.iam.gserviceaccount.com --role=projects/acme-flags/roles/cdnInvalidator
+  ```
+
+- **A purge that fails** (a missing permission, too many invalidations a minute) is kept on the publish, and `/readyz`
+  warns of it. The server purges each publish again about 11 seconds later.
 
 ### `metrics(options)`
 
@@ -137,6 +208,7 @@ All are optional.
 | `prefixes` | Its address prefixes. Its routes live under them, and an unknown address under one answers a JSON 404 instead of the console's page. Each starts with `/` and doesn't end with one. None may be, sit under or hold the core's (`/api`, `/sdk/v1/links`, `/oauth`, `/.well-known`, `/healthz`, `/readyz`, `/assets`, `/index.html`), or overlap another plugin's (the built-ins have `/ofrep`, `/sdk/v1/flagd`, `/cdn`, `/hooks`, `/mcp` and `/metrics`): the server checks at start. |
 | `middleware` | Hono middleware, `async (c, next) => { …; await next(); … }`: it runs on every request, before any route, and sees every answer after `await next()`. For an access log, tracing or metrics (`metrics()` uses it). It may add headers; it must not change who may do what. |
 | `console` | A function that gets `{ actor, adminOnly, body }` and returns routes made with `consoleRoutes()`. `await body(c)` is the request's JSON object (an empty body is a `400 bad_json`; `body(c, true)` makes it `{}`). They're mounted under `/api`, behind the console's sign-in, after the core's own routes, so a core route always answers first. `c.get('user')` is the person asking. A change needs the console's `X-Requested-With: companyflags` header. |
+| `purges` | `true` when its `onPublish` purges a CDN's cache (`cloudflare()`, `cloudfront()`, `cloudCdn()`). |
 | `onPublish` | Runs after each publish of an environment, once per publish, with its key and the publish's `scope` (as `hub` gives it), so a cache drops only what changed. Each plugin's runs whatever the others do. A failure is logged and kept on the publish, with the plugin's name, and never undoes the publish. |
 | `warnings` | `() => string[]` (or a promise of them): what an operator should know though the server serves. `/readyz` lists them under `warnings` and still answers `200`; `cloudflare()` warns when its saved token can't be read. |
 | `worker` | Work it does on its own, in the background: `{ wake, stop, drain }`. It runs from `setup`; `stop` is called before the database closes. `webhooks()` sends with one. |
@@ -170,7 +242,7 @@ app.get('/audit-feed/check/:entity', (c) => {
 
 | | |
 |---|---|
-| The built-in plugins | `ofrep`, `flagd`, `cdnFiles`, `cloudflare`, `webhooks`, `mcp`, `metrics`, `defaultPlugins` (the six that run without a list), and the types `CloudflareOptions`, `WebhooksOptions`, `MetricsOptions` |
+| The built-in plugins | `ofrep`, `flagd`, `cdnFiles`, `cloudflare`, `webhooks`, `mcp`, `metrics`, `cloudfront`, `cloudCdn`, `defaultPlugins` (the six that run without a list), and the types `CloudflareOptions`, `WebhooksOptions`, `MetricsOptions`, `CloudFrontOptions`, `CloudCdnOptions` |
 | For writing one | `definePlugin`, `pluginRoutes`, `consoleRoutes`, `HttpError`, `ERROR_CODES`, `PluginError`, `SealError`, `CORE_PREFIXES` |
 | Types | `Plugin`, `PluginContext`, `PluginParts`, `ConsoleHelpers`, `ConsoleRoutes`, `OnPublish`, `Evaluate`, `Asking`, `Snapshots`, `Sealer`, `PublishState`, `ErrorCode`, `Db`, `Queryable`, `Snapshot`, `EvalResult`, `Person`, `Actor` |
 

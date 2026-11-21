@@ -185,6 +185,13 @@ test('the config: the file’s settings, else the environment’s, else the defa
   assert.deepEqual([fromFile.databaseUrl, fromFile.port, ids(fromFile.plugins)], ['postgres://file/db', 9100, ['ofrep', 'flagd']]);
   assert.equal(fromFile.signIn.kind === 'better-auth' && fromFile.signIn.settings.baseURL, 'https://file.example.com');
   assert.throws(() => resolveConfig({ server: { port: 70000 } }, {}), ConfigError);
+  // keep-alive: longer than a load balancer's 60 s; the database's CA file, from the config file's folder or the cwd
+  assert.deepEqual([none.keepAliveSeconds, none.databaseCaFile], [65, undefined]);
+  assert.equal(resolveConfig({}, { FF_KEEPALIVE_SECONDS: '120' }).keepAliveSeconds, 120);
+  assert.equal(resolveConfig({ server: { keepAliveSeconds: 75 } }, { FF_KEEPALIVE_SECONDS: '120' }).keepAliveSeconds, 75);
+  assert.throws(() => resolveConfig({}, { FF_KEEPALIVE_SECONDS: 'soon' }), /FF_KEEPALIVE_SECONDS/);
+  assert.equal(resolveConfig({ database: { caFile: 'certs/rds.pem' } }, {}, '/srv/flags').databaseCaFile, '/srv/flags/certs/rds.pem');
+  assert.equal(resolveConfig({}, { FF_DATABASE_CA_FILE: '/etc/ssl/rds-global-bundle.pem' }).databaseCaFile, '/etc/ssl/rds-global-bundle.pem');
   // production is NODE_ENV's alone: a file can't turn off the production checks
   const prod = resolveConfig({ auth: { production: false } } as Config, { NODE_ENV: 'production' });
   assert.equal(prod.signIn.kind === 'better-auth' && prod.signIn.settings.production, true);
@@ -222,4 +229,26 @@ test('a config file where companyflags isn’t installed: the error says to inst
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('a plugin that purges a CDN says so (purges): CDN files then let the CDN keep an old copy a day while it asks again', async () => {
+  let on = true;
+  const purger = definePlugin({ id: 'my-cdn', setup: () => ({ onPublish: async () => 'purged' as const, purges: () => on }) });
+  const own = await boot({ plugins: [cdnFiles(), purger] });
+  try {
+    const stale = async () => (await own.cdnFile('dev', 'web', 'acme')).headers.get('cdn-cache-control');
+    assert.equal(await stale(), 'public, max-age=60, stale-while-revalidate=86400, stale-if-error=86400');
+    on = false;
+    assert.equal(await stale(), 'public, max-age=60, stale-while-revalidate=600, stale-if-error=86400', 'asked on every answer');
+  } finally {
+    await own.stop();
+  }
+  const always = await boot({ plugins: [cdnFiles(), definePlugin({ id: 'always', setup: () => ({ purges: true }) })] });
+  try {
+    assert.match((await always.cdnFile('dev', 'web', 'acme')).headers.get('cdn-cache-control')!, /stale-while-revalidate=86400/);
+  } finally {
+    await always.stop();
+  }
+  await assert.rejects(boot({ plugins: [definePlugin({ id: 'odd', setup: () => ({ purges: 'yes' as unknown as boolean }) })] }),
+    (e: Error) => e instanceof PluginError && /purges is true, false or a function/.test(e.message));
 });

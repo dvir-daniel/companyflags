@@ -18,6 +18,11 @@ import { isSealed, sealer, SealError, sealStoredSecrets } from '../server/sealed
 import { resolveConfig } from '../server/configFile.ts';
 import { ConfigError } from '../server/config.ts';
 import { main } from '../server/cli.ts';
+import { keepAlive, stopHttp } from '../server/index.ts';
+import { DatabaseCaError, poolConfig } from '../server/db.ts';
+import { serve } from '@hono/node-server';
+import { Hono } from 'hono';
+import { Agent, request as httpRequest, type Server } from 'node:http';
 
 const SERVER = new URL('../server/', import.meta.url).pathname;
 const tmp = () => mkdtempSync(join(tmpdir(), 'cf-ops-'));
@@ -366,8 +371,9 @@ test('companyflags version, and start: the version on its first line, and the po
       for (let i = 0; i < 200 && !existsSync(portFile); i++) await new Promise((r) => setTimeout(r, 100));
       const port = Number(readFileSync(portFile, 'utf8'));
       assert.ok(port > 0);
-      const health = await (await fetch(`http://127.0.0.1:${port}/healthz`)).json();
-      assert.deepEqual(health, { ok: true, version: VERSION });
+      const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+      assert.deepEqual(await res.json(), { ok: true, version: VERSION });
+      assert.equal(res.headers.get('keep-alive'), 'timeout=65', 'idle connections outlast a load balancer’s 60 s (FF_KEEPALIVE_SECONDS)');
     } finally {
       again.kill('SIGTERM');
       await new Promise((r) => again.on('exit', r));
@@ -395,3 +401,70 @@ test('server/schema.sql is the schema the migrations make (pnpm schema writes it
 });
 
 void CSRF;
+
+test('keep-alive outlasts a load balancer’s 60 s, and a stop still closes idle connections at once', async () => {
+  const app = new Hono();
+  app.get('/quick', (c) => c.text('ok'));
+  app.get('/slow', async (c) => { await new Promise((r) => setTimeout(r, 300)); return c.text('done'); });
+  const server = await new Promise<Server>((resolve) => { const s = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' }, () => resolve(s as Server)); });
+  keepAlive(server, 65);
+  assert.deepEqual([server.keepAliveTimeout, server.headersTimeout], [65_000, 66_000], 'headers may take a second more');
+  const port = (server.address() as { port: number }).port;
+  const agent = new Agent({ keepAlive: true, maxSockets: 2 });
+  const get = (path: string) => new Promise<{ status: number; body: string; socket: import('node:net').Socket }>((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, path, agent }, (res) => {
+      let body = '';
+      res.on('data', (d) => { body += d; });
+      res.on('end', () => resolve({ status: res.statusCode!, body, socket: req.socket! }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  try {
+    const idle = await get('/quick');
+    assert.equal(idle.status, 200);
+    assert.equal((await get('/quick')).socket, idle.socket, 'the connection is kept for the next request');
+    const idleClosed = new Promise((r) => idle.socket.once('close', r));
+    const slow = get('/slow');                                   // a second connection, with a request under way
+    await new Promise((r) => setTimeout(r, 50));
+    const started = Date.now();
+    const stopped = stopHttp(server, 5000);
+    await idleClosed;
+    assert.ok(Date.now() - started < 500, 'the idle connection is closed at once, not after 65 s');
+    assert.equal((await slow).body, 'done', 'the request under way finishes');
+    await stopped;
+    assert.ok(Date.now() - started < 1500, `then its connection closes too, and the server stops (${Date.now() - started} ms)`);
+  } finally {
+    agent.destroy();
+    server.closeAllConnections();
+  }
+});
+
+test('the database’s CA file (FF_DATABASE_CA_FILE): read into the pool’s TLS settings, the certificate always checked', () => {
+  const dir = tmp();
+  try {
+    const pem = '-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----\n';
+    const ca = join(dir, 'rds-global-bundle.pem');
+    writeFileSync(ca, pem);
+    const url = 'postgres://flags:secret@db.example.com:5432/flags';
+    assert.deepEqual(poolConfig(`${url}?sslmode=verify-full`).ssl, undefined, 'without one, the URL says it all (node-postgres reads it)');
+    assert.equal(poolConfig(`${url}?sslmode=verify-full`).connectionString, `${url}?sslmode=verify-full`);
+    for (const query of ['', '?sslmode=require', '?sslmode=verify-full&sslrootcert=/elsewhere.pem&application_name=flags']) {
+      const config = poolConfig(`${url}${query}`, { caFile: ca, pool: 4 });
+      const ssl = config.ssl as { ca: string; rejectUnauthorized: boolean; checkServerIdentity?: unknown };
+      assert.equal(ssl.ca, pem, query);
+      assert.equal(ssl.rejectUnauthorized, true, `${query}: checked`);
+      assert.equal(ssl.checkServerIdentity, undefined, `${query}: its host name too`);
+      assert.equal(config.max, 4);
+      assert.ok(!/ssl/.test(config.connectionString!), `${query}: the URL's own TLS settings would win over these, so they're out: ${config.connectionString}`);
+    }
+    assert.equal(poolConfig(`${url}?sslmode=require&application_name=flags`, { caFile: ca }).connectionString, `${url}?application_name=flags`);
+    assert.equal(typeof (poolConfig(`${url}?sslmode=verify-ca`, { caFile: ca }).ssl as { checkServerIdentity?: unknown }).checkServerIdentity, 'function', 'verify-ca: the certificate, not the name');
+    assert.throws(() => poolConfig(`${url}?sslmode=disable`, { caFile: ca }), (e: Error) => e instanceof DatabaseCaError && /sslmode=verify-full/.test(e.message));
+    assert.throws(() => poolConfig(url, { caFile: join(dir, 'missing.pem') }), (e: Error) => e instanceof DatabaseCaError && /can’t read the database’s CA file/.test(e.message));
+    writeFileSync(join(dir, 'empty.pem'), 'not a certificate');
+    assert.throws(() => poolConfig(url, { caFile: join(dir, 'empty.pem') }), /no certificate in it/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
