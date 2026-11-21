@@ -53,7 +53,8 @@ export type Config = {
    *  AuthSettings). Each setting left out comes from its environment variable (BETTER_AUTH_SECRET, …). Whether the
    *  server runs as production comes from NODE_ENV only. */
   auth?: Partial<Omit<AuthSettings, 'production'>>;
-  /** What reads flags besides the console, and what runs after a publish (plugins/). Left out: all the built-in ones. */
+  /** What reads flags besides the console, and what runs after a publish (plugins/). Left out: the default ones
+   *  (defaultPlugins() in plugins/index.ts); cloudfront(), cloudCdn() and metrics() run only when listed here. */
   plugins?: Plugin[];
   /** How the console looks: its name, logo, accent color and the rest (Settings → Appearance). Set here, it can't be
    *  changed in the console. Images are a file next to the config file ('./logo.svg') or a data URL. */

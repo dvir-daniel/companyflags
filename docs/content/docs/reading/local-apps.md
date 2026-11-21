@@ -97,11 +97,30 @@ const context = { targetingKey: installId, app: { version: '6.2.0' } };
 core.resolveBooleanEvaluation('dark_mode_v2', false, context).value;
 ```
 
+## The country
+
+Rules can check `geo.country`, a two-letter country code. The file never varies by country: the server doesn't know
+where a device is. The CDN adds a `CF-IPCountry` response header next to the file, and the app reads it and puts it in
+the context as `geo.country`. The file's country lines are then checked on the device. Each CDN sets the header its
+own way: see [CDN → The country header](/self-hosting/cdn#the-country-header).
+
+- Browsers may read the header from another origin: the server lists it in `Access-Control-Expose-Headers`.
+- Without the header, `geo.country` is unknown: a rule that checks it doesn't match, except a locked rule, which
+  applies when the value is missing (it fails closed).
+- OpenFeature remote evaluation doesn't read the country from a CDN: if your rules check `geo.country`, send it in
+  the evaluation context.
+
+## From another origin
+
+Every answer under `/cdn/v1/` has `Access-Control-Allow-Origin: *`, allows `GET` and `HEAD`, exposes `ETag` and
+`CF-IPCountry`, and caches the preflight for a day. A file is public to whoever has its link and needs no cookie, so
+a web app on any origin may read it.
+
 ## Android and iOS
 
 OpenFeature has no provider or evaluator that reads flagd JSON on an Android or iOS device. Native apps read
 remotely, with OpenFeature's OFREP providers for Kotlin and Swift: see
-[Remote evaluation in apps](/reading/remote-apps#android-and-ios).
+[Remote evaluation in apps](/reading/remote-apps#mobile-apps).
 
 ## Attributes to report
 

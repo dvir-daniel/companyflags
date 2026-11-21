@@ -58,6 +58,9 @@ export type PluginContext = {
   evaluate: Evaluate;
   /** The server's environment variables (a test passes its own). */
   env: Readonly<Record<string, string | undefined>>;
+  /** Where the client's address is read behind proxies (auth.clientIp in the config file, or FF_TRUSTED_PROXIES and
+   *  FF_CLIENT_IP_HEADER): the same setting sign-in uses. Left out: from `env`. */
+  clientIp?: { header?: string; trustedProxies?: string[] };
   /** The console's address (BETTER_AUTH_URL), for links in what a plugin sends; unknown when it isn't set. */
   baseURL?: string | null;
   log: (m: string) => void;

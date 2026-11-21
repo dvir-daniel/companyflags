@@ -73,7 +73,7 @@ companyflags copy-to-postgres postgres://user:pass@db.example.com:5432/flags
 Copies everything in the embedded database (flags, history, people, keys, links, settings) into a new, empty Postgres
 database, in one transaction: all of it, or nothing. Stop the server first. The embedded folder isn't changed. Then
 set `DATABASE_URL` to the new database and start the server. See
-[Backups → Moving to Postgres](/self-hosting/backups#moving-to-postgres).
+[Database → Moving to Postgres](/self-hosting/database#moving-to-postgres).
 
 ### `version`
 

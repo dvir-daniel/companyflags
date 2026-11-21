@@ -3,8 +3,9 @@ title: "Appearance"
 description: "Give the console and the sign-in page your own name, logo and colors."
 ---
 
-Each server can show its own name, logo and colors, in the console and on the sign-in page. An admin sets them in
-**Settings → Appearance**. You can also set them in the config file, where they can't be changed from the console.
+This page is optional. Each server can show its own name, logo and colors, in the console and on the sign-in page.
+An admin sets them in **Settings → Appearance**. You can also set them in the config file, where they can't be
+changed from the console.
 
 ## What you can set
 
@@ -64,12 +65,13 @@ The server checks the settings when it starts. If one is wrong, the server stops
 
 ## How it works
 
-- `GET /api/appearance` gives the name, the image addresses, the accent, the look, the sign-in note and the links. It
-  is open before sign-in, because the sign-in page needs it. The notice is in `/api/meta`, for people signed in only.
-- The images are served at `/api/appearance/images/logo`, `logo-dark` and `icon`. Each address carries the image's
-  hash, so browsers can cache it for good. They're served with a policy that runs nothing (`sandbox`), so an SVG
-  opened on its own can't run a script.
 - The server puts the name, the icon, the accent's colors and the default look into the console's page before it
   sends it. So the first paint already looks right, with no flash of the default look.
-- Admins change it with `PUT /api/appearance`, and `DELETE /api/appearance` goes back to the default. An admin's
-  [access token](/guide/security#access-tokens) works too.
+- The images are served with a policy that runs nothing (`sandbox`), so an SVG opened on its own can't run a script.
+  Each image's address carries its hash, so browsers can cache it for good.
+- Its endpoints are in [HTTP API → The console's API](/reference/http-api#the-consoles-api).
+
+## Next
+
+Deploy to a cloud, if you use one: [AWS](/self-hosting/aws), [Google Cloud](/self-hosting/google-cloud) or
+[Azure](/self-hosting/azure). On one server: [Production Checklist](/self-hosting/production).

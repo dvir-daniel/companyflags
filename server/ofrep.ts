@@ -278,14 +278,16 @@ type Asker = Pick<Principal, 'environment' | 'project' | 'scope' | 'entity' | 'k
  *  streams had a scope, for the whole environment (service null). */
 type Stream = { write: (text: string) => void; close: () => void; service: string | null; entity: string | null };
 
-export function ofrepApi({ db, plane, keys, links, apps, hub, env = process.env }: {
+export function ofrepApi({ db, plane, keys, links, apps, hub, env = process.env, clientIp }: {
   db: Db; plane: Snapshots; keys: KeyCache; links: LinkCache; apps: AppCache; hub: Pick<EventHub, 'subscribe'>;
   /** FF_EVENT_STREAMS_PER_ENVIRONMENT, FF_EVENT_STREAMS_PER_CLIENT, and the proxies (FF_TRUSTED_PROXIES, FF_CLIENT_IP_HEADER) */
   env?: Readonly<Record<string, string | undefined>>;
+  /** The proxies' setting from the config file (auth.clientIp); left out, it comes from `env`. */
+  clientIp?: { header?: string; trustedProxies?: string[] };
 }) {
   const app = new Hono();
   const limits = streamLimitsFrom(env);
-  const clientAddress = clientAddressFor(authSettingsFromEnv(env as NodeJS.ProcessEnv));
+  const clientAddress = clientAddressFor(clientIp ? { clientIp } : authSettingsFromEnv(env as NodeJS.ProcessEnv));
   // Browsers call it from the app's own origin, with the key in a header and no cookies.
   app.use('/ofrep/*', cors({
     origin: '*', allowMethods: ['GET', 'POST', 'OPTIONS'], allowHeaders: ['Authorization', 'Content-Type', 'If-None-Match', 'X-API-Key'],

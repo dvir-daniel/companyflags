@@ -116,5 +116,5 @@ a signed [app link](/guide/services#signed-app-links) at sign-in. That is option
 - [Services](/guide/services): apps and backends, their keys, and signed app links.
 - [Moving from another system](/guide/migration): already have flags somewhere else? Bring them over one at a time,
   with both running meanwhile.
-- [Docker](/self-hosting/docker) and the [production checklist](/self-hosting/production) when you're ready to run it
-  for real.
+- [Self-Hosting Overview](/self-hosting/overview) when you're ready to run it for real: which path fits you, and what
+  every install needs.

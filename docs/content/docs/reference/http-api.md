@@ -18,7 +18,7 @@ JSON. The examples use `https://flags.example.com`.
 | `GET /ofrep/v1/events/<env>/<service>[/<entity>]/<signature>` | OpenFeature OFREP providers (change events) | the signature from an answer |
 | [`POST /hooks/v1/<token>`](/guide/webhooks#in) | another system (webhook in) | the address itself |
 | `GET /healthz`, `GET /readyz` | load balancers, orchestrators | none |
-| [`GET /metrics`](/self-hosting/production#metrics) | Prometheus, with the `metrics()` plugin | none, or its token |
+| [`GET /metrics`](/self-hosting/monitoring#metrics) | Prometheus, with the `metrics()` plugin | none, or its token |
 | [`/api/v1/…`](#the-stable-api-apiv1) | scripts, CI, integrations | an access token |
 
 ## Credentials
@@ -120,21 +120,11 @@ entity (or for no entity, before sign-in):
 `metadata.revision` is the environment's publish number. What's in it, and how an app reads it, are in
 [The CDN file](/reading/local-apps).
 
-Headers:
-
-| Header | Value |
-|---|---|
-| `Cache-Control` | `public, max-age=0, s-maxage=60, stale-if-error=86400` |
-| `CDN-Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400`; `stale-while-revalidate=86400` while a plugin purges the CDN after each publish |
-| `ETag` | weak, over the flags' values (not the revision) |
-| `Last-Modified` | when the file last changed, as this server knows it; sent from a second after the change |
-| `Cache-Tag` | `env-<env>`; an entity's file also `e-<hash>` for it and each entity above it, and `l-<hash>` for its own link: keyed hashes that name no entity |
-| `Vary` | `Accept-Encoding` |
-| `Content-Encoding` | `gzip` when the request accepts it |
-| `Access-Control-Allow-Origin` | `*`, with `Access-Control-Expose-Headers: ETag, CF-IPCountry` |
+Its headers (`Cache-Control`, `CDN-Cache-Control`, `ETag`, `Last-Modified`, `Cache-Tag`, `Vary`, CORS) are listed
+in [CDN → What a CDN can cache](/self-hosting/cdn#what-a-cdn-can-cache).
 
 `If-None-Match` with the current ETag → `304`. Without `If-None-Match`, `If-Modified-Since` no earlier than `Last-Modified` → `304`. `OPTIONS` (a CORS preflight) → `204`, allowing `GET` and `HEAD`,
-kept for a day. See [CDN](/self-hosting/cdn) for caching them.
+kept for a day.
 
 | Status | When |
 |---|---|
@@ -324,8 +314,8 @@ server serves, in words:
 ```
 
 An environment whose new snapshot can't be built keeps serving the one before. It is listed in `failing`, and the
-answer is still `200`: alert on `failing`, and the server's log says why. See
-[Production](/self-hosting/production#5-health-checks).
+answer is still `200`: alert on `failing`, and the server's log says why. Which probe uses which address is in
+[Monitoring → Health checks](/self-hosting/monitoring#health-checks).
 
 ## The stable API (`/api/v1`)
 
@@ -398,6 +388,14 @@ Some of it needs no session: the sign-in (`/api/auth/*` and `GET /api/sign-in`),
   `404`. A script can send the secret in an `X-Setup` header with its sign-up request instead.
 - `POST /api/invites` with `{"token": "…"}` says who an invite link is for. The token goes in the body, so it stays
   out of access logs.
+
+The appearance's endpoints ([Appearance](/self-hosting/appearance)):
+
+- `GET /api/appearance` gives the name, the image addresses, the accent, the look, the sign-in note and the links. It
+  is open before sign-in, because the sign-in page needs it. The notice is in `/api/meta`, for people signed in only.
+- The images are served at `/api/appearance/images/logo`, `logo-dark` and `icon`, each address with the image's hash.
+- An admin changes it with `PUT /api/appearance`, and `DELETE /api/appearance` goes back to the default. Both need
+  the admin signed in: access tokens are refused.
 
 Admins add, change and delete services at `/api/services` (`POST`, then `PUT` and `DELETE /api/services/<key>`),
 with `{ "key": "web", "kind": "client" }`: the kind is `client` for an App and `server` for a Backend. Keys are made

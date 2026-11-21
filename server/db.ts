@@ -79,7 +79,7 @@ async function embedded(dataDir?: string, template?: Blob): Promise<Db> {
   const made = dataDir && existsSync(join(dataDir, 'PG_VERSION')) ? readFileSync(join(dataDir, 'PG_VERSION'), 'utf8').trim() : null;
   if (made && made !== EMBEDDED_PG_MAJOR) {
     throw new FolderVersionError(`${dataDir} was made by Postgres ${made}, and this version of CompanyFlags embeds Postgres ${EMBEDDED_PG_MAJOR}: `
-      + 'run the version that made it, and move to a Postgres server with companyflags copy-to-postgres (docs: self-hosting/backups)');
+      + 'run the version that made it, and move to a Postgres server with companyflags copy-to-postgres (docs: self-hosting/database)');
   }
   const unlock = dataDir ? lockFolder(dataDir) : () => {};
   try {

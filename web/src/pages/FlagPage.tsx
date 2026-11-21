@@ -1301,13 +1301,26 @@ function DebugTab({ flag, env, draft, dirty, initial }: {
   const won = result.decidedBy.ruleKey ? tested.draft.lines.find((l) => l.id === result.decidedBy.ruleKey) : undefined;
   const from = sourceText(result.decidedBy, { entity: entityWordsOf(meta.entities, entity), nameOf: (k) => entityIndex(meta.entities).get(k)?.name, project, byDevice: result.reason === 'SPLIT' })
     + (won?.conditions.length ? `: ${whenText(won.conditions, { vocab: vocabOf(meta) })}` : '');
+  // the title heads the result box, like a hero; on a wide screen the inputs sit beside it and the trace below it, on a
+  // narrow one the box comes first
   return (
-    <div className="mt-6 grid grid-cols-[300px_minmax(0,1fr)] items-start gap-10 max-lg:grid-cols-1 max-lg:gap-8">
-      <section aria-label="Test a device" className="grid gap-4">
-        <div>
-          <h2 className="m-0 text-15 font-medium tracking-normal text-ink">Test a device</h2>
-          <p className="m-0 text-13 text-ink-2">Pick who’s asking. {dirty ? 'Your unpublished changes are included.' : 'Uses the rules on this page.'}</p>
+    <div className="mt-6 grid grid-cols-[300px_minmax(0,1fr)] grid-rows-[auto_1fr] items-start gap-x-10 gap-y-5 max-lg:grid-cols-1 max-lg:grid-rows-none max-lg:gap-y-8">
+      <section aria-labelledby="test-a-device" className="grid min-w-0 gap-5 border border-rule bg-panel p-6 lg:col-start-2 lg:row-start-1 max-sm:p-5">
+        <div className="grid gap-1.5">
+          <h2 id="test-a-device" className="m-0 text-22 leading-8 font-semibold tracking-[-0.01em] text-ink">Test a device</h2>
+          <p className="m-0 text-sm text-ink-2">Pick who’s asking. {dirty ? 'Your unpublished changes are included.' : 'Uses the rules on this page.'}</p>
         </div>
+        <div className="grid gap-2 border-t border-grid pt-5">
+          <p className="m-0 text-13 text-ink-2">{entity ? entName(entity) : 'Before sign-in, everyone'} on <span className="font-mono text-ink">{project}</span> gets</p>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {result.errorCode || result.codeDefault ? <InAppDefault className="px-2 text-15 leading-7" /> : <Val className="px-2 text-15 leading-7">{fmtValue(result.value)}</Val>}
+            <ReasonBadge reason={result.errorCode ?? result.reason} />
+          </div>
+          <p className="m-0 text-13 text-ink-2">{from}</p>
+          {result.group && <p className="m-0 text-13 text-ink-3">Group sent to the app: <span className="font-mono text-ink">{result.group}</span></p>}
+        </div>
+      </section>
+      <section aria-label="Who’s asking" className="grid gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
         {meta.dimensions.length > 0 && <Field label={listWords(meta.dimensions) ? capital(listWords(meta.dimensions)) : 'Who'}><EntityPicker value={entity} onChange={setEntity} allowNone /></Field>}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Service">
@@ -1329,20 +1342,9 @@ function DebugTab({ flag, env, draft, dirty, initial }: {
           ))}
         </div>
       </section>
-      <section aria-label="Result" className="grid min-w-0 gap-5">
-        <div className="grid gap-2 border border-rule bg-panel p-5">
-          <p className="m-0 text-13 text-ink-2">{entity ? entName(entity) : 'Before sign-in, everyone'} on <span className="font-mono text-ink">{project}</span> gets</p>
-          <div className="flex flex-wrap items-center gap-2.5">
-            {result.errorCode || result.codeDefault ? <InAppDefault className="px-2 text-15 leading-7" /> : <Val className="px-2 text-15 leading-7">{fmtValue(result.value)}</Val>}
-            <ReasonBadge reason={result.errorCode ?? result.reason} />
-          </div>
-          <p className="m-0 text-13 text-ink-2">{from}</p>
-          {result.group && <p className="m-0 text-13 text-ink-3">Group sent to the app: <span className="font-mono text-ink">{result.group}</span></p>}
-        </div>
-        <div className="grid gap-2">
-          <span className={monoLabel}>How it was decided</span>
-          <Suspense fallback={<LinesSkeleton className="border-t border-rule" />}><TraceView result={result} showHead={false} /></Suspense>
-        </div>
+      <section aria-label="How it was decided" className="grid min-w-0 gap-2 lg:col-start-2 lg:row-start-2">
+        <span className={monoLabel}>How it was decided</span>
+        <Suspense fallback={<LinesSkeleton className="border-t border-rule" />}><TraceView result={result} showHead={false} /></Suspense>
       </section>
     </div>
   );

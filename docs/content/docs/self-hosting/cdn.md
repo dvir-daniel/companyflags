@@ -1,13 +1,18 @@
 ---
 title: "CDN"
-description: "Put a CDN in front of the CDN files so it answers almost every app request: Cloudflare, CloudFront, Cloud CDN or Azure Front Door, and how each one is purged on publish."
+description: "Only if apps read CDN files: put a CDN in front so it answers almost every request, and purge it on publish."
 ---
 
-Apps read one file per environment, service and entity. Every device of an entity reads the same file, so a CDN in
-front of CompanyFlags can answer almost all of those requests. This page says what the files ask of a CDN, what
-Cloudflare, CloudFront, Cloud CDN and Azure Front Door each do with it, and how each is purged on publish. It sets up
-Cloudflare; the cloud pages set up the others: [AWS](/self-hosting/aws), [Google Cloud](/self-hosting/google-cloud),
-[Azure](/self-hosting/azure).
+This page is optional. It is only for installs where apps read CDN files. Apps that read flags with OFREP need no
+CDN.
+
+## When you need one
+
+Apps that evaluate flags on the device read one file per environment, service and entity
+([Local evaluation in apps](/reading/local-apps)). Every device of an entity reads the same file, so a CDN in front of
+CompanyFlags can answer almost all of those requests. This page says what the files ask of a CDN, what Cloudflare,
+CloudFront, Cloud CDN and Azure Front Door each do with them, and how each is purged on publish. It sets up
+Cloudflare; each cloud guide sets up its own CDN.
 
 ## What a CDN can cache
 
@@ -25,11 +30,12 @@ country. Each answer has these headers:
 |---|---|
 | `Cache-Control` | `public, max-age=0, s-maxage=60, stale-if-error=86400` |
 | `CDN-Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400`; `stale-while-revalidate=86400` while a purge plugin can purge |
-| `ETag` | a weak ETag of the file's values, e.g. `W/"ndXGg1FVFC0UYASWys_Wj4"` |
-| `Last-Modified` | when this file last changed, for a CDN that revalidates by date rather than by ETag (Front Door); `If-Modified-Since` gets a `304` when no `If-None-Match` is sent |
+| `ETag` | a weak ETag of the file's values (not the revision), e.g. `W/"ndXGg1FVFC0UYASWys_Wj4"` |
+| `Last-Modified` | when this file last changed, as this server knows it, sent from a second after the change; for a CDN that revalidates by date rather than by ETag (Front Door). `If-Modified-Since` gets a `304` when no `If-None-Match` is sent |
 | `Cache-Tag` | `env-<environment>`, and for an entity's file opaque tags for it, each entity above it and its link (`e-…`, `l-…`, keyed hashes made with `BETTER_AUTH_SECRET`). They don't show any entity's key |
-| `Vary` | `Accept-Encoding` (gzip when the request accepts it) |
-| `Access-Control-Allow-Origin` | `*` |
+| `Vary` | `Accept-Encoding` |
+| `Content-Encoding` | `gzip` when the request accepts it |
+| `Access-Control-Allow-Origin` | `*`, with `Access-Control-Expose-Headers: ETag, CF-IPCountry` |
 
 Browsers ask again every time (`max-age=0`), and the CDN answers them, usually with a `304`. So a change reaches a
 device as soon as it reaches the CDN. The CDN keeps a file for a minute (`s-maxage`, or `CDN-Cache-Control` for a CDN
@@ -42,7 +48,8 @@ doesn't change a file still answers `304` for it. A wrong link is a `404` with `
 
 Everything else is not for a CDN: `/sdk/v1/…` answers are `private, no-cache` or `no-store`, OpenFeature remote
 evaluation (`POST /ofrep/v1/…`) and its change-event streams are answered by the server on every request, and the
-console's `/api` needs a session. Cache only `/cdn/v1/flags/*`, and keep OFREP and its streams off the CDN.
+console's `/api` needs a session. Cache only `/cdn/v1/flags/*`, and keep OFREP and its streams off the CDN
+([Proxies and HTTPS](/self-hosting/proxies#keep-ofrep-and-streams-off-the-cdn)).
 
 ## What each CDN honours
 
@@ -57,6 +64,7 @@ console's `/api` needs a session. Cache only `/cdn/v1/flags/*`, and keep OFREP a
 | A purge takes | seconds | seconds, "under two minutes" | about 10 s | up to 10 minutes |
 | `Cache-Tag` reaches the device | no | check it | yes (opaque) | yes, unless a rule removes it |
 | Purge plugin | `cloudflare()` | `cloudfront()` | `cloudCdn()` | none |
+| Set it up | [below](#set-up-cloudflare) | [AWS → CDN](/self-hosting/aws#cdn) | [Google Cloud → CDN](/self-hosting/google-cloud#cdn) | [Azure → CDN](/self-hosting/azure#cdn) |
 
 ## Purge on publish
 
@@ -80,26 +88,36 @@ How a purge runs, with every plugin:
 - it gives up after 5 seconds. A failure is recorded on that publish, and the change still reaches apps within the
   cache's minute;
 - a purge that fails shows in `/readyz` under `warnings` (it still answers `200`) and in the metrics as
-  `companyflags_purge_failing` and `companyflags_warnings` ([Production](/self-hosting/production#5-health-checks));
+  `companyflags_purge_failing` and `companyflags_warnings` ([Monitoring → Alerts](/self-hosting/monitoring#alerts));
 - replacing an entity's app link publishes every environment again, so the old link's file is purged too; replacing
   every link in an environment publishes that environment again.
 
 The purge plugins:
 
-| CDN | Plugin | Set it up with | Credentials |
+| CDN | Plugin | How it runs | Credentials |
 |---|---|---|---|
-| Cloudflare | [`cloudflare()`](/reference/plugins#cloudflareoptions) | **Settings → CDN**, or `CF_ZONE_ID` and `CF_API_TOKEN` (below) | an API token with **Cache Purge** |
-| CloudFront | [`cloudfront({ distributionId })`](/reference/plugins#cloudfrontoptions) | `FF_CLOUDFRONT_DISTRIBUTION_ID` | the task's IAM role: `cloudfront:CreateInvalidation` ([AWS](/self-hosting/aws#cdn-cloudfront-for-the-cdn-files)) |
-| Cloud CDN | [`cloudCdn({ project, urlMap, host })`](/reference/plugins#cloudcdnoptions) | `FF_CLOUD_CDN_PROJECT`, `FF_CLOUD_CDN_URL_MAP`, `FF_CLOUD_CDN_HOST` | the service account: a custom role with `compute.urlMaps.invalidateCache` ([Google Cloud](/self-hosting/google-cloud#cdn-cloud-cdn-on-the-cdn-files)) |
+| Cloudflare | [`cloudflare()`](/reference/plugins#cloudflareoptions) | In `defaultPlugins()`: it runs unless a config file lists plugins without it. Set it up in **Settings → CDN**, or with `CF_ZONE_ID` and `CF_API_TOKEN` ([below](#purge-with-cloudflare)) | an API token with **Cache Purge** |
+| CloudFront | [`cloudfront({ distributionId })`](/reference/plugins#cloudfrontoptions) | Only when listed in a config file. `FF_CLOUDFRONT_DISTRIBUTION_ID` fills in `distributionId`; it doesn't turn the plugin on | the task's IAM role: `cloudfront:CreateInvalidation` ([AWS → CDN](/self-hosting/aws#cdn)) |
+| Cloud CDN | [`cloudCdn({ project, urlMap, host })`](/reference/plugins#cloudcdnoptions) | Only when listed in a config file. `FF_CLOUD_CDN_PROJECT`, `FF_CLOUD_CDN_URL_MAP` and `FF_CLOUD_CDN_HOST` fill in its options; they don't turn the plugin on | the service account: a custom role with `compute.urlMaps.invalidateCache` ([Google Cloud → CDN](/self-hosting/google-cloud#cdn)) |
+
+To list one, keep the default plugins and add it:
+
+```ts
+// companyflags.config.ts
+import { defineConfig } from 'companyflags/config';
+import { cloudfront, defaultPlugins } from 'companyflags/plugins';
+
+export default defineConfig({ plugins: [...defaultPlugins(), cloudfront()] });
+```
 
 **Front Door gets no purge plugin.** It purges by path only, a purge takes up to 10 minutes (longer than the
 minute a file is kept), and a purge sent while another runs may be refused. A change reaches apps within about a
-minute; purge by hand for an incident ([Azure](/self-hosting/azure#no-purge-on-publish)).
+minute; purge by hand for an incident ([Azure → No purge on publish](/self-hosting/azure#no-purge-on-publish)).
 
 The CloudFront and Cloud CDN purges use the platform's own identity, so no token is stored and `BETTER_AUTH_SECRET`
 plays no part in them.
 
-## Cloudflare
+## Set up Cloudflare
 
 ### Cache the CDN files
 
@@ -148,33 +166,23 @@ The purge has not been tested against a real Cloudflare zone by the project. Che
 then see that **Settings → CDN** shows the purge went through and that the next request is a cache miss
 (`cf-cache-status: MISS` or `EXPIRED`).
 
-## The country
+### Client addresses behind Cloudflare
 
-Rules can check `geo.country`, a two-letter country code. The file never varies by country: the server doesn't know
-where a device is. The app reads the country from a `CF-IPCountry` response header next to the file, and checks the
-file's country lines itself (see [The CDN file](/reading/local-apps)). Each CDN sets it its own way:
+If Cloudflare is in front of the whole host, not only the CDN files, set `FF_TRUSTED_PROXIES` to Cloudflare's
+published ranges and `FF_CLIENT_IP_HEADER=cf-connecting-ip`
+([Proxies and HTTPS → Client addresses](/self-hosting/proxies#client-addresses)).
 
-- **Cloudflare:** **Rules → Transform Rules → Modify Response Header**, a rule for **URI Path** starts with
-  `/cdn/v1/flags/` that sets the dynamic header `CF-IPCountry` to `ip.src.country`.
-- **CloudFront:** a viewer-response CloudFront Function that copies `CloudFront-Viewer-Country` into `CF-IPCountry`.
-- **Cloud CDN:** a custom response header on the CDN backend, `CF-IPCountry` set to `{client_region}`.
-- **Front Door:** a rule set on the CDN route that overwrites the response header `CF-IPCountry` with `{geo_country}`.
+### The country header
 
-> **Check this on your setup:** the CloudFront and Cloud CDN ways haven't been tried. Request a file and look for the
-> header.
+Rules can check `geo.country`. The file never varies by country, so the app reads the country from a `CF-IPCountry`
+response header next to the file ([Local evaluation in apps → The country](/reading/local-apps#the-country)). In
+Cloudflare, add **Rules → Transform Rules → Modify Response Header**: a rule for **URI Path** starts with
+`/cdn/v1/flags/` that sets the dynamic header `CF-IPCountry` to `ip.src.country`. Each cloud guide sets the header on
+its own CDN.
 
-Browsers may read the header from another origin: the server lists it in `Access-Control-Expose-Headers`. Without the
-header, `geo.country` is unknown: a rule that checks it doesn't match, except a locked rule, which applies when the
-value is missing (it fails closed).
-
-OpenFeature remote evaluation doesn't read the country from a CDN: if your rules check `geo.country`, send it in the
-evaluation context.
-
-## Web apps on another origin
-
-Every answer under `/cdn/v1/` has `Access-Control-Allow-Origin: *`, allows `GET` and `HEAD`, exposes `ETag` and
-`CF-IPCountry`, and caches the preflight for a day. A file is public to whoever has its link and needs no cookie, so
-any origin may read it. Keep these headers when the CDN caches the answers, and let it pass `OPTIONS` to the server.
+The server lists `CF-IPCountry` in `Access-Control-Expose-Headers`, and every answer under `/cdn/v1/` allows any
+origin. Keep these headers when the CDN caches the answers, and let it pass `OPTIONS` to the server
+([Local evaluation in apps → From another origin](/reading/local-apps#from-another-origin)).
 
 ## When the server is down
 
@@ -188,8 +196,12 @@ any origin may read it. Keep these headers when the CDN caches the answers, and 
 ## Checking it
 
 ```bash
-curl -sI https://flags.example.com/cdn/v1/flags/prod/web | grep -iE 'cache-control|etag|last-modified|age|cache-status|x-cache|cf-ipcountry'
+curl -sI https://<your CDN host>/cdn/v1/flags/prod/web | grep -iE 'cache-control|etag|last-modified|age|cache-status|x-cache|cf-ipcountry'
 ```
 
 Run it twice: the second answer should come from the cache (`cf-cache-status: HIT` on Cloudflare,
 `x-cache: Hit from cloudfront` on CloudFront, an `Age` header on Cloud CDN and Front Door).
+
+## Next
+
+Give the console your own look: [Appearance](/self-hosting/appearance).

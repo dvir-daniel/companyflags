@@ -4,6 +4,16 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+- **`auth.clientIp` in the config file reaches the change-event streams too.** Before, the stream limits read only
+  `FF_TRUSTED_PROXIES` and `FF_CLIENT_IP_HEADER`, so a proxy set in the file counted every device as the proxy.
+
+- **The Debug tab leads with its answer.** "Test a device" now heads the result box, like a hero, with the inputs
+  beside it. On a narrow screen the box comes first.
+
+- **Self-hosting docs in the order you do the job.** An Overview with the paths to choose from, then Docker, the set-up
+  pages (Database, Proxies and HTTPS, Secrets, Sign-In, Single Sign-On, CDN, Appearance) and the cloud guides on one
+  template; then Operations: the Production Checklist as a go-live list, Monitoring, Backups and Upgrading.
+  Configuration is a reference of every setting, in Reference. No page changed address.
 - **No more 502s behind a load balancer.** The server keeps an idle connection open 65 seconds, longer than AWS's and
   Google's load balancers do (60), so it never closes one as a request arrives on it. `FF_KEEPALIVE_SECONDS`
   (`server.keepAliveSeconds`) changes it. A stop still closes idle connections at once.

@@ -10,18 +10,27 @@ covers who may do what, how a change goes through, the emergency path for on cal
 
 Each person has one role, set by an admin in **Settings → People**:
 
-| Role | Changes flags and entities | Reviews requests | Break-glass | Changes Settings |
-|---|---|---|---|---|
-| Viewer | | | | |
-| Editor | yes | | | |
-| Approver | yes | yes | | |
-| On call | yes | yes | yes | |
-| Admin | yes | yes | yes | yes |
+| Role | In the API | Changes flags and entities | Reviews requests | Break-glass | Changes Settings |
+|---|---|---|---|---|---|
+| Viewer | `viewer` | | | | |
+| Editor | `editor` | yes | | | |
+| Approver | `approver` | yes | yes | | |
+| On call | `oncall` | yes | yes | yes | |
+| Admin | `admin` | yes | yes | yes | yes |
 
-Viewers can look (app links aside), run the Debug tab and Compare, and change nothing. Settings (environments,
-services, dimensions, people, single sign-on, the CDN) are for admins. Beyond that, roles only decide who reviews and
-who may use break-glass. The rules live in one module the server and the console share,
-[`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts).
+- **Viewers** look at everything, run the Debug tab and Compare, and change nothing. They can't see app links.
+- **Editors** change flags and entities, and see and replace app links.
+- **Approvers** do what an editor does, and review other people's requests. Nobody approves their own request.
+- **On call** does what an approver does, and uses [break-glass](#break-glass) in a protected environment: turn any
+  flag off, serve a kill switch's safe value, pause a release, or roll a version release back, without review and
+  with a reason.
+- **Admins** do everything, including Settings (environments, services, dimensions, people, single sign-on, the CDN)
+  and API keys. An admin's access token is On call at most.
+
+Beyond that, roles only decide who reviews and who may use break-glass. The rules live in one module the server and
+the console share, [`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts).
+People get their role from an admin, or from their identity provider's groups
+([Single Sign-On → Group roles](/self-hosting/single-sign-on#group-roles)).
 
 ## Protected environments
 

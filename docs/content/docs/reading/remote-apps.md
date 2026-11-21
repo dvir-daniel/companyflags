@@ -44,7 +44,7 @@ is 0) the provider never polls, and retries a stream it can't open about once a 
 streams open at once, per environment and per client address (see [Configuration](/self-hosting/configuration#server)).
 At a limit the answer lists no stream, so the provider polls; a stream asked for anyway gets `429`. Behind a load
 balancer, set `FF_TRUSTED_PROXIES`, or every device counts as the load balancer's one address
-([Production](/self-hosting/production#3-https-in-front)).
+([Proxies and HTTPS → Client addresses](/self-hosting/proxies#client-addresses)).
 Changing the context (`OpenFeature.setContext`) asks again. When answers change it emits `ConfigurationChanged`.
 
 Before sign-in, leave the entity out of the context: a key that asks about any entity then gets what everyone gets.

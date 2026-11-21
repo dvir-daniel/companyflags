@@ -1,12 +1,13 @@
 ---
-title: "Sign-in and single sign-on"
-description: "Email and password, Google, GitHub, Microsoft, and single sign-on over OIDC or SAML, through Better Auth."
+title: "Sign-In"
+description: "The first account, who can join, passwords, two-factor, and sign-in with Google, GitHub or Microsoft."
 ---
 
-People sign in to the console with [Better Auth](https://www.better-auth.com): with an email and password, with
-Google, GitHub or Microsoft when you set them up, or with your organization's identity provider over OIDC or SAML.
-The session is a cookie. Accounts, sessions and password hashes are kept in your database; each person's role is kept
-next to them, and the two meet on the email.
+Every install needs this page: it makes the first account and decides who else gets in. People sign in to the
+console with [Better Auth](https://www.better-auth.com): with an email and password, with Google, GitHub or
+Microsoft when you set them up, or with your organization's identity provider
+([Single Sign-On](/self-hosting/single-sign-on)). The session is a cookie. Accounts, sessions and password hashes are
+kept in your database; each person's role is kept next to them, and the two meet on the email.
 
 Who may join, what each role may do and what removing access takes away are decided in one place,
 [`server/access.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/access.ts).
@@ -23,6 +24,12 @@ has an account, the server prints the link at every start:
 Opening it keeps its secret in a cookie for an hour and opens the console, where you create the admin account. Then
 invite everyone else from **Settings → People**.
 
+:::warning[Make the account right after the first start]
+Until the admin account exists, whoever has the link can make it, and the link is in the server's log at every
+start. On every platform, make the account as soon as the server first starts, and limit who can read the logs until
+then. Keep the link as you keep the secret: don't paste it anywhere others can read.
+:::
+
 - The link is built on `BETTER_AUTH_URL` (or the server's own address without it). Its secret is made from
   `BETTER_AUTH_SECRET`, so it stays the same across restarts, and every instance on one database prints the same one.
   Nothing about it is stored.
@@ -30,10 +37,6 @@ invite everyone else from **Settings → People**.
 - Until then nobody else can join at all: not with Google, GitHub or Microsoft at a domain in `FF_SIGNUP_DOMAINS`,
   and not with single sign-on.
 - Scripts can send the secret in an `X-Setup` header instead of opening the link.
-
-:::warning[Keep the setup link secret]
-Until the admin account exists, whoever has the link can make it. Don't paste it anywhere others can read.
-:::
 
 ## Who can join
 
@@ -50,7 +53,7 @@ After the first account, nobody makes an account on their own. A person can join
 
 People who join without an invite get the **join role**: Viewer, unless an admin chose another in **Settings → Single
 sign-on → New people join as** (never Admin). Viewers can see every flag and entity, and change nothing. An admin
-gives them a role in People, or the identity provider's groups do (see [Group roles](#group-roles)). People an admin
+gives them a role in People, or the identity provider's groups do (see [Single Sign-On → Group roles](/self-hosting/single-sign-on#group-roles)). People an admin
 added keep the role the admin chose, however they sign in, unless they sign in with a connection that gives roles
 from groups: then their groups decide, at each sign-in with it.
 
@@ -60,8 +63,8 @@ claim an address they weren't invited as. Passwords have at least 10 characters.
 ## Email and password
 
 Always on. An invited person opens their link, chooses a name and a password, and is signed in. Later they sign in
-with the same email and password, unless a single sign-on connection for their domain requires single sign-on (see
-below).
+with the same email and password, unless a single sign-on connection for their domain requires single sign-on
+([Single Sign-On → Require single sign-on](/self-hosting/single-sign-on#require-single-sign-on)).
 
 ## Forgotten passwords
 
@@ -72,7 +75,7 @@ characters) and are signed out everywhere. The link is shown once, and History r
 It also gives a **first password** to someone who signed in only with single sign-on or a provider. That is how
 people get back in when they have no other way: their connection was removed, or their identity provider is down.
 History marks it `first: true`. Where single sign-on is still required at their domain, the password works only for
-the break-glass admin, and the link says so; see [When the identity provider is down](#when-the-identity-provider-is-down).
+the break-glass admin, and the link says so; see [Single Sign-On → When the identity provider is down](/self-hosting/single-sign-on#when-the-identity-provider-is-down).
 Someone with no account yet gets an invite link instead. Asking for a reset by email is switched off.
 
 A reset link also turns off the person's two-factor sign-in, for someone who lost their phone and their recovery
@@ -86,13 +89,15 @@ password, then the app's setup key, then a code from the app. They also get ten 
 signs in once, for a lost phone. **New recovery codes** replaces them.
 
 Then signing in with a password asks for the code next. Ten wrong codes in a row lock the second step for 15 minutes.
-The secret and the recovery codes are kept encrypted with `BETTER_AUTH_SECRET`.
+The secret and the recovery codes are kept encrypted with `BETTER_AUTH_SECRET`. After that secret changes, the codes
+can't be read, and everyone who uses two-factor needs a reset link
+([Secrets → Changing a secret](/self-hosting/secrets#changing-a-secret)).
 
 To require it of admins, turn on **Settings → Single Sign-On → Admins with a password use two-factor sign-in**. An
 admin with a password and no second factor then sees only the setup page until they set it up; the API refuses them
 everything else. Their access tokens are refused too, even ones made before, and their MCP clients can't sign in over
-OAuth or renew a sign-in, until they set it up. Turn it on after you set up your own. Admins who sign in only with single sign-on or a provider have
-no password here: your identity provider asks for its own second factor.
+OAuth or renew a sign-in, until they set it up. Turn it on after you set up your own. Admins who sign in only with
+single sign-on or a provider have no password here: your identity provider asks for its own second factor.
 
 Codes by email or text message are off: the server sends neither.
 
@@ -109,151 +114,16 @@ Register this redirect URL with the provider:
 
 For example `https://flags.example.com/api/auth/callback/microsoft`. For Microsoft, set `MICROSOFT_TENANT_ID` to your
 directory's tenant ID to allow only your organization (the default, `common`, allows any Microsoft account; who may
-join is still decided as above).
+join is still decided as above). When `FF_SIGNUP_DOMAINS` includes a domain your Entra directory owns, set
+`MICROSOFT_TENANT_ID`: then only your directory's accounts at that domain join by themselves.
 
 Someone with a password account who later signs in with a provider for the same email is the same person.
 
-## Single sign-on (OIDC and SAML)
-
-An admin adds a connection in **Settings → Single Sign-On**: a connection ID (lowercase letters, digits and dashes,
-e.g. `okta`), the email domains it signs in, and the identity provider's details. The drawer shows what to enter on
-the identity provider's side before you save.
-
-### OIDC
-
-On your side: the issuer URL, client ID and client secret of an app you make for CompanyFlags in the identity
-provider (Okta, Entra ID, Google Workspace, Auth0, Keycloak and others).
-
-On the identity provider's side, the sign-in redirect URI:
-
-```text
-<console>/api/auth/sso/callback/<connection id>
-```
-
-When you save, the server reads the issuer's `/.well-known/openid-configuration` and checks that it names the same
-issuer. The issuer must be on the public internet unless its origin is in `BETTER_AUTH_TRUSTED_ORIGINS`: the address
-is checked as the connection is made, and redirects aren't followed. So must the token, keys (JWKS) and user info
-addresses it gives (`https` in production): at each sign-in, the server reaches them through the same checked
-connection, so a name that later points at your network is refused. If something is wrong, the message says so
-without repeating what the address answered. It asks for the `openid`, `email` and `profile` scopes and uses PKCE. In production the issuer must be
-`https`. The client secret stays on the server and is never shown again.
-
-### SAML 2.0
-
-On your side: the identity provider's metadata XML, or its sign-in (SSO) URL, entity ID and signing certificate.
-
-On the identity provider's side:
-
-| Setting | Value |
-|---|---|
-| ACS URL (reply URL) | `<console>/api/auth/sso/saml2/sp/acs/<connection id>` |
-| Entity ID (audience) | `<console>/api/auth/sso/saml2/sp/metadata?providerId=<connection id>` |
-| SP metadata URL | the same address as the entity ID |
-| Name ID | the person's email address (`emailAddress` format) |
-
-SAML answers must be signed. They are checked against the request they answer, and each works once.
-
-`<console>` is `BETTER_AUTH_URL` when it is set, otherwise the address of the admin's own request.
-
-### Signing in
-
-People type their work email on the sign-in page and choose **Sign in with SSO**. Everyone at the connection's
-domains can sign in and joins with the join role. Someone with a password account at that email becomes the same
-person. Nobody at another domain joins through it, even someone an admin added.
-
-A domain can belong to only one connection. Only admins add, change or remove connections, signed in (never with an
-access token): Better Auth's own endpoints for managing them are switched off.
-
-### Test sign-in and editing
-
-**Test sign-in** on a connection's row sends you to the identity provider and back. You come back signed in as
-whoever signed in there, so sign in as yourself, or test as someone else in a private window. The row then says when
-someone last signed in with it.
-
-**Edit** changes a connection's domains, its identity provider's details and its group roles. A client secret, a
-certificate or metadata left empty stays as it was. Its protocol and its ID stay: for another, add a new connection.
-History records each change, never the secret.
-
-On a connection that requires single sign-on:
-
-- **A change to the identity provider's details** (OIDC: issuer, client ID or client secret; SAML: metadata, sign-in
-  URL, entity ID or certificate) turns the requirement off and forgets the last test sign-in. Passwords work there
-  again until you use **Test sign-in** and require it again. A typo then can't lock everyone out. The drawer says so
-  before you save.
-- **A new domain** signs out the people at that domain only. Everyone else stays signed in.
-- Changing only the group roles changes nothing else.
-
-### Require single sign-on
-
-Turn on **Require single sign-on** on a connection's row. It can be turned on only once someone has signed in with
-the connection, so a connection that doesn't work can't lock people out, and it asks you to confirm first. Then nobody
-at its domains (and their subdomains) signs in with a password, Google, GitHub or Microsoft, or makes a password
-account.
-
-One admin keeps their password there: the **break-glass admin**, chosen in **Settings → Single Sign-On → Break-glass
-admin**, in case the identity provider is down. They must have a password: give an admin who signs in only with single
-sign-on one first, with a password link (People → Reset password). Every other admin uses single sign-on too. With
-nobody chosen, nobody keeps a password. The break-glass admin counts only while they are an admin with a password;
-choosing another one signs the old one out where single sign-on is required.
-
-Turning it on signs out everyone at its domains but the break-glass admin, at once. They sign in again with single
-sign-on.
-
-### When the identity provider is down
-
-1. The break-glass admin signs in with their password.
-2. If others need in before it's back, they turn **Require single sign-on** off on the connection.
-3. They make each person a password link (People → Reset password). It sets a first password for someone who had
-   only single sign-on.
-4. When the identity provider is back, turn the requirement on again: everyone at its domains signs in with it
-   again.
-
-If the connection was removed, step 3 is all it takes: nothing requires single sign-on there any more.
-
-### What leaving the identity provider does
-
-Where single sign-on is required, each session lasts **12 hours** at most (`FF_SSO_SESSION_HOURS`, from 1 to 720).
-Then it ends, and signing in again asks the identity provider whether the person still works there. So someone
-removed from your identity provider is out of the console within 12 hours, without anyone doing anything here.
-
-**Access tokens** aren't sessions: a token keeps working until it expires (90 days by default, a year at most) or is
-revoked. When someone leaves, **Remove** them in Settings → People: that ends their sessions and tokens at once.
-
-Where single sign-on isn't required, a session lasts 7 days and renews while it's used, so leaving the identity
-provider ends nothing by itself: remove the person in People.
-
-### Group roles
-
-A connection can give roles from the identity provider's groups. In its drawer, under **Roles from your identity
-provider's groups**, name the OIDC claim or SAML attribute that lists the person's groups (often `groups`), and give
-groups their roles, one per line:
-
-```text
-flag-admins = admin
-flag-approvers = approver
-flag-editors = editor
-```
-
-Each time someone signs in with the connection, they get the highest role of their groups that are named, and the
-join role when the claim lists none of them. A role set in People is replaced at their next sign-in with it. A
-sign-in without the claim at all leaves the role as it is, so a claim named wrong demotes nobody. The break-glass
-admin's role is left alone, and the last admin is never made anything else. History records each change, by
-`sso:<connection id>`.
-
-Make sure the identity provider sends the groups: in the ID token or the user info for OIDC (Okta: a groups claim on
-the app; Entra ID: "Groups claim" in Token configuration), or as an attribute of the SAML answer. Groups give one role
-for everything; roles per environment or per entity aren't built.
-
-### An identity provider on a private network
-
-The server refuses to read an issuer's settings from this machine, a private network or a cloud metadata address. If
-your identity provider is on your private network, add its origin to `BETTER_AUTH_TRUSTED_ORIGINS`, e.g.
-`BETTER_AUTH_TRUSTED_ORIGINS=https://idp.internal.example.com`.
-
 ## Sessions
 
-A session lasts 7 days and is renewed while it is used. Where single sign-on is required, it lasts 12 hours at most
-(`FF_SSO_SESSION_HOURS`). Changing `BETTER_AUTH_SECRET` signs everyone out.
+A session lasts **7 days** and is renewed while it is used. Where a single sign-on connection requires single
+sign-on, it lasts **12 hours** at most (`FF_SSO_SESSION_HOURS`, from 1 to 720). Then it ends, and signing in again
+asks the identity provider whether the person still works there. Changing `BETTER_AUTH_SECRET` signs everyone out.
 
 - Turning on **Require single sign-on** ends the sessions of everyone at its domains but the break-glass admin, at
   once, single sign-on sessions too. They sign in again with single sign-on.
@@ -275,25 +145,18 @@ in to the console: access tokens are refused there.
 
 ## Roles
 
-| Role | In the API | What it may do |
-|---|---|---|
-| Viewer | `viewer` | Look at everything, use the Debug tab and Compare. Changes nothing, and can't see app links. |
-| Editor | `editor` | Change flags and entities, see and replace app links. |
-| Approver | `approver` | What an editor does, and review other people's requests. |
-| On call | `oncall` | What an approver does, and break-glass in a protected environment: turn any flag off, serve a kill switch's safe value, pause a release, or roll a version release back, without review and with a reason. |
-| Admin | `admin` | Everything, including Settings (environments, services, dimensions, people, single sign-on, the CDN) and API keys. An admin's access token is On call at most. |
-
-Nobody approves their own request. The roles are defined in
-[`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts); see
-[Approvals and history](/guide/approvals).
+Each person has one role: Viewer, Editor, Approver, On call or Admin. An admin sets it in **Settings → People**, or
+an identity provider's groups do. What each may do is in [Approvals and history → Roles](/guide/approvals#roles).
 
 ## Not built yet
 
 - **Email.** The server sends none: invite links and password reset links are made by an admin and sent by hand, and
   email addresses aren't verified by a code (invites only work for the address they were made for).
-- **SCIM provisioning.** People are added on their first single sign-on, not ahead of it, and leaving your identity
-  provider doesn't remove them here. Where single sign-on is required, their sessions end within 12 hours; their
-  access tokens don't, so remove them in Settings → People when they leave.
-- **Single logout.** Signing out of the identity provider doesn't end the console session.
-- **Roles per environment or entity.** A person, and a group, has one role everywhere.
 - **Passkeys.** Two-factor sign-in is an authenticator app's code or a recovery code.
+- **Roles per environment or entity.** A person, and a group, has one role everywhere.
+- SCIM provisioning and single logout: see [Single Sign-On → Not built yet](/self-hosting/single-sign-on#not-built-yet).
+
+## Next
+
+Sign in with your identity provider: [Single Sign-On](/self-hosting/single-sign-on). Without one:
+[CDN](/self-hosting/cdn), only if apps read CDN files.

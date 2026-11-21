@@ -63,6 +63,8 @@ For `pnpm test:pg`, start a Postgres server first:
 docker run -d -p 55432:5432 -e POSTGRES_PASSWORD=postgres postgres:18
 ```
 
+`FF_TEST_PG` points `pnpm test:pg` at another Postgres server for the test suite. The server itself never reads it.
+
 CI runs all of these on every pull request.
 
 ## How we build

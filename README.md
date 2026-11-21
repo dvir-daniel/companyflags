@@ -235,7 +235,7 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 | [Concepts](https://dvir-daniel.github.io/companyflags/guide/concepts) | Environments, services, dimensions, flags, rules |
 | [Reading flags](https://dvir-daniel.github.io/companyflags/reading/overview) | OFREP and flagd JSON, in apps and backends |
 | [Migration](https://dvir-daniel.github.io/companyflags/guide/migration) | Moving from another system, import, export, webhooks |
-| [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/docker) | Docker, configuration, sign-in, CDN, production |
+| [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/overview) | Which path fits you, Docker, the database, HTTPS, secrets, sign-in, CDN, and running it |
 | [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources) | `llms.txt`, a skill for your agents, and OpenFeature's MCP server |
 | [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyflags/reference/cli) | The built-in plugins, writing your own, and the `companyflags` command |
 | [HTTP API](https://dvir-daniel.github.io/companyflags/reference/http-api) | Keys, OFREP, CDN files, flagd JSON, links, health |

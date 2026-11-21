@@ -191,7 +191,7 @@ Accepted, and why:
 
 ## Sign-in
 
-Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single sign-on](/self-hosting/sign-in)):
+Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-In](/self-hosting/sign-in) and [Single Sign-On](/self-hosting/single-sign-on)):
 
 - sessions are a cookie, signed with `BETTER_AUTH_SECRET`, lasting 7 days and renewed while used; where single
   sign-on is required, 12 hours at most (`FF_SSO_SESSION_HOURS`), so the identity provider is asked again;
@@ -229,7 +229,7 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
   required, that password works only for the break-glass admin;
 - people who join without an invite get the join role: Viewer unless an admin chose another (never Admin). Viewers
   read every flag and entity. A connection can give roles from the identity provider's groups instead
-  ([Sign-in → Group roles](/self-hosting/sign-in#group-roles)).
+  ([Single Sign-On → Group roles](/self-hosting/single-sign-on#group-roles)).
 
 ## Changes from the console
 
@@ -289,21 +289,31 @@ What admins and others send stays within limits, so it can't take the server dow
 ## Roles
 
 Viewer, editor, approver, on call and admin. Viewers change nothing; only admins change Settings (environments,
-services, dimensions, people, single sign-on, the CDN) and make API keys. The table is in [Sign-in → Roles](/self-hosting/sign-in#roles).
+services, dimensions, people, single sign-on, the CDN) and make API keys. The table is in [Approvals and history → Roles](/guide/approvals#roles).
 
 ## The console page
 
-The console's page has a Content-Security-Policy that runs scripts only from the server itself (plus its own inline
-script, by hash) and refuses to be framed. Every response has `X-Frame-Options: DENY` and
-`X-Content-Type-Options: nosniff`. The server sends no HSTS: add it where TLS ends. See
-[Production checklist](/self-hosting/production).
+Every response has `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin` and `Cross-Origin-Opener-Policy: same-origin`. The console's page
+also has a Content-Security-Policy, which runs scripts only from the server itself (plus the page's own inline
+script, by its hash) and refuses to be framed:
+
+```text
+default-src 'self'; script-src 'self' 'sha256-…'; style-src 'self' 'unsafe-inline';
+img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none';
+base-uri 'self'; frame-ancestors 'none'
+```
+
+The page is never cached (`no-cache, no-store, must-revalidate`); the files under `/assets/` have hashed names and
+are cached for a year. If your proxy adds headers of its own, don't loosen these. The server sends no HSTS: add it
+where TLS ends ([Proxies and HTTPS](/self-hosting/proxies)).
 
 ## What the database holds
 
-Besides your flags and history, the database keeps password hashes and the secrets the server needs: each
-environment's link secret (from which every link can be made), single sign-on client secrets, the Cloudflare
-token, and webhooks' addresses, headers and signing secrets. Anyone who can read the database or its backups can
-read every entity's file. Restrict access to it, and protect its backups the same way.
+Besides your flags and history, the database keeps password hashes and the secrets the server needs, among them each
+environment's link secret, from which every link can be made. Anyone who can read the database or its backups can
+read every entity's file. Restrict access to it, and protect its backups the same way. Which secrets are stored
+sealed, hashed or as they are is in [Secrets → What the database holds](/self-hosting/secrets#what-the-database-holds).
 
 ## Don't put secrets in flag values
 

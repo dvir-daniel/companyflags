@@ -135,7 +135,7 @@ export async function createApp(opts: AppOptions = {}) {
     return [...purges, ...own.flat()];
   };
   const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: { fetch: undefined }, webhooks: { fetch: undefined } }), {
-    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, request, secrets,
+    db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, clientIp: settings?.clientIp, baseURL: settings?.baseURL, log, request, secrets,
     publishState: () => publishState(store, plane), warnings: () => warningsOf(), purging: () => anyPurges(pluginsSetUp), keys, links, services: apps,
   }).catch(async (e) => { await store.close(); throw e; });
   pluginsSetUp = plugins;

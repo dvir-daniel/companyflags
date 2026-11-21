@@ -14,7 +14,7 @@ Workspace, JumpCloud and others). People at your email domains can join by thems
 (Viewer by default), or the role their identity provider groups give. Require single sign-on, and someone removed
 from the identity provider is out of the console within 12 hours; one break-glass admin keeps a password. Email and
 password (with two-factor sign-in, which you can require of admins), Google, GitHub and Microsoft sign-in work too.
-Sign-ins and other security events can go to your SIEM. See [Sign-in and single sign-on](/self-hosting/sign-in).
+Sign-ins and other security events can go to your SIEM. See [Single Sign-On](/self-hosting/single-sign-on) and [Sign-In](/self-hosting/sign-in).
 
 ## Roles and approvals
 
@@ -55,7 +55,7 @@ page. You can set it in the console, or in the config file so it's kept in Git. 
   Cloudflare set up, each publish clears it within seconds.
 - **Operations:** health checks and graceful shutdown. Upgrades migrate the database when the server starts.
 
-See the [Production checklist](/self-hosting/production) and [CDN](/self-hosting/cdn).
+See the [Self-Hosting Overview](/self-hosting/overview), [Monitoring](/self-hosting/monitoring) and [CDN](/self-hosting/cdn).
 
 ## Moving over from another system
 
