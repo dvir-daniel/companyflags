@@ -1,4 +1,4 @@
-// What an installation serves config per (docs/design/dimensions.md): its dimensions, one chain from the top down, at
+// What an installation serves config per (docs/content/docs/guide/dimensions.mdx): its dimensions, one chain from the top down, at
 // most four ("region › chain › store", "company › brand", or just "customer"). Each dimension has a key (a rule
 // attribute, stored in rules, fixed once used) and the words people read. Its entries are entities (`acme-12`).
 // Pure: the server checks the chain with it before saving, and the console builds its sentences with it.

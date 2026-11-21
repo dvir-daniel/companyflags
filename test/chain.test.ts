@@ -1,4 +1,4 @@
-// The entity chain for 1 to 4 dimensions (docs/design/dimensions.md "The order a request is decided in"), with hand-built
+// The entity chain for 1 to 4 dimensions (docs/content/docs/guide/dimensions.mdx), with hand-built
 // snapshots. Every combination of the four states per level (no settings, Rules only, Rules + own default, Own settings
 // only: 4^4 at 4 levels) is checked against a small model of the documented order written here, not against
 // entityChain(). Then the four ways of answering agree for every entity at every level and none: evaluate(), the entity

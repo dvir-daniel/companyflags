@@ -11,7 +11,7 @@ import { copyText, useAsync } from '../uiKit.ts';
 import { codeOf, isAppCode, setupKey, twoFactorCall, type Account, type Enabled } from './twoFactorKit.ts';
 
 /*
- * Two-factor sign-in for a password account (server/betterAuth.ts, Better Auth's twoFactor plugin): after the
+ * Two-factor sign-in for a password account (server/accounts.ts, the sign-in's twoFactor plugin): after the
  * password, a code from an authenticator app (1Password, Google Authenticator, Authy…), or one of ten recovery codes,
  * each good once. Set up on the Access tokens page; an admin whose organization asks it of admins sets it up first
  * (TwoFactorGate) before anything else in the console. People who sign in with single sign-on or a provider have no
@@ -30,7 +30,7 @@ export function TwoFactorSection() {
   const { meta, toast } = useApp();
   const { account, load } = useAccount();
   const [open, setOpen] = useState<'setup' | 'off' | 'codes' | null>(null);
-  if (meta.signIn !== 'better-auth' || !account) return null;
+  if (meta.signIn !== 'accounts' || !account) return null;
   if (!account.password) {
     return <p className="m-0 border-b border-grid px-6 py-3 text-13 text-ink-2 max-sm:px-4">Two-factor sign-in: you sign in with single sign-on or a provider, so your identity provider asks for any second factor.</p>;
   }

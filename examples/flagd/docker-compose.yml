@@ -1,5 +1,5 @@
 # CompanyFlags, and flagd syncing Acme's flags from it as flagd JSON (see README.md).
-#   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+#   echo "FF_SECRET=$(openssl rand -base64 32)" > .env
 #   docker compose up -d companyflags        # then set it up, seed it, and add FLAGS_API_KEY to .env
 #   docker compose up -d flagd
 services:
@@ -9,8 +9,8 @@ services:
     ports:
       - "127.0.0.1:8787:8787"
     environment:
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (openssl rand -base64 32)}
-      BETTER_AUTH_URL: http://localhost:8787
+      FF_SECRET: ${FF_SECRET:?Set FF_SECRET in .env (openssl rand -base64 32)}
+      FF_PUBLIC_URL: http://localhost:8787
     volumes:
       - companyflags:/data
 

@@ -1,4 +1,4 @@
-// The version these docs are for, at the top of the sidebar (better-auth.com's "Latest Version"): from the server's
+// The version these docs are for, at the top of the sidebar: from the server's
 // package.json, so a release updates it.
 import pkg from '../../package.json' with { type: 'json' };
 import { REPO } from '@/lib/source';

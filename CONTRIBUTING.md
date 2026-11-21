@@ -35,7 +35,7 @@ http://localhost:8787 itself just says where the console is.
 | `packages/ui` | The console's design system (tokens, components); [DESIGN.md](packages/ui/DESIGN.md) has the rules |
 | `packages/companyflags` | The npm package, built from `server/` and `web/dist` by `build.ts` (`pnpm pack:npm`; `pnpm test:npm` installs it and tries it). Not a workspace project: its version and dependencies are the root's |
 | `test/` | The server's and console's tests (`node --test`) |
-| `docs/` | The documentation site (Next.js and Fumadocs, like better-auth.com): pages in `docs/content/docs/`, the landing page and illustrations in `docs/components/`; `docs/design/` holds design notes and decision records |
+| `docs/` | The documentation site (Next.js and Fumadocs): pages in `docs/content/docs/`, the landing page and illustrations in `docs/components/` |
 | `examples/` | Example apps (React, Node, flagd), each its own package with its own `pnpm build`; not in the root's typecheck or lint. `seed.ts` sets up a server for them |
 | `GLOSSARY.md` | Words we use, and the ones we avoid |
 
@@ -97,7 +97,7 @@ CI runs all of these on every pull request.
 1. Add `server/migrations/00NN_what_it_does.sql`, the next number, starting with `-- Migration 00NN: …` and what it
    does and why.
 2. Make it work with the version before it still running (a rolling upgrade,
-   [docs/self-hosting/upgrading.md](docs/content/docs/self-hosting/upgrading.md)): add before you remove, and split a
+   [docs/operate/upgrading.md](docs/content/docs/operate/upgrading.md)): add before you remove, and split a
    rename over two releases.
 3. Run `pnpm schema` and commit `server/schema.sql`: the schema as the migrations leave it, to read in one place.
    `test/ops.test.ts` fails while it's out of date, and while two files share a number (someone else took yours:

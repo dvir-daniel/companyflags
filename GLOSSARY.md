@@ -164,7 +164,7 @@ Whoever makes the first account with the setup link: on a new install, whoever o
 _Avoid_: owner, superuser
 
 **Setup link**:
-The link a new server prints at every start while nobody has an account (`/api/setup/<secret>`); only it can make the first account, the admin's. Its secret is made from `BETTER_AUTH_SECRET`, and it stops working once the first account exists.
+The link a new server prints at every start while nobody has an account (`/api/setup/<secret>`); only it can make the first account, the admin's. Its secret is made from `FF_SECRET`, and it stops working once the first account exists.
 _Avoid_: bootstrap token, claim link
 
 **Signup domain**:
@@ -193,15 +193,19 @@ _Avoid_: restore user, reactivate
 ## Running it
 
 **Config file**:
-`companyflags.config.ts`, the optional typed file (`defineConfig`) that says which database, sign-in and plugins a server runs with; what it leaves out comes from environment variables, then the defaults. The server and the CLI read it.
+`companyflags.config.ts`, the optional typed file (`defineConfig`) that says which database, sign-in and integrations a server runs with; what it leaves out comes from environment variables, then the defaults. The server and the CLI read it.
 _Avoid_: settings file, .env (CompanyFlags doesn't read one)
 
+**Integration**:
+What people turn on and off around the core: a way to read flags (OFREP, flagd, CDN files) or something that runs after a publish or a change (a CDN purge, webhooks, metrics, the MCP server). Six are on by default; environment variables turn the rest on (`FF_METRICS=on`, `FF_CLOUDFRONT_DISTRIBUTION_ID`, …) and defaults off (`FF_INTEGRATIONS_OFF`), or a config file lists them. The word in the docs and the console.
+_Avoid_: plugin (except for people writing their own), extension, add-on
+
 **Plugin**:
-A part of the server an installation turns on in its config file: a way to read flags (`ofrep()`, `flagd()`, `cdnFiles()`) or something that runs after a publish or a change (`cloudflare()`, `webhooks()`). Made with `definePlugin`; all the built-in ones run when the config doesn't list any.
-_Avoid_: extension, add-on, integration
+How an integration is built, for people writing their own: an object made with `definePlugin`, listed in a config file's `plugins`. Every built-in integration is one (`ofrep()`, `flagd()`, `cdnFiles()`, `cloudflare()`, `webhooks()`, …). Say it only on Writing a Plugin and in code.
+_Avoid_: extension, add-on
 
 **Core**:
-What every server runs, plugins or not: the console and its API, sign-in, the evaluator, approvals, the change journal, publishing, API keys and app links.
+What every server runs, whatever integrations are on: the console and its API, sign-in, the evaluator, approvals, the change journal, publishing, API keys and app links.
 
 **CLI**:
 The `companyflags` command: `start`, `init`, `secret`, `migrate`, and `flags pull`, `plan` and `push`.
@@ -214,7 +218,7 @@ _Avoid_: cut-over, big-bang switch
 One environment's values in or out of CompanyFlags: CompanyFlags values, key-value JSON, flagd, or any JSON through a JSONata expression. An import shows every change first and goes through the console's checks and approvals.
 
 **Webhook**:
-Out: a message after each change (signed JSON, a Slack message, or JSONata's shape), in order, once each. In: an address another system posts its values to, which are imported. Both are the `webhooks()` plugin's.
+Out: a message after each change (signed JSON, a Slack message, or JSONata's shape), in order, once each. In: an address another system posts its values to, which are imported. Both are the Webhooks integration's.
 _Avoid_: callback, hook (alone)
 
 **Flags file**:

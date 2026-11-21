@@ -21,7 +21,7 @@ same answer as for an entity that doesn't exist.
 
 A backend service's key is secret. A request that carries one and an `Origin` header, which browsers send, gets
 `403`: a backend's key in a web page doesn't work. Apps use their app service's own key, which is public
-and reads values only. See [Security model](/guide/security#api-keys).
+and reads values only. See [Security model](/reference/security#api-keys).
 
 ## Ask with OFREP
 

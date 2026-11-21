@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// The companyflags command, like Better Auth's CLI: it reads companyflags.config.ts (configFile.ts) and works on the
+// The companyflags command: it reads companyflags.config.ts (configFile.ts) and works on the
 // database the server uses. With embedded Postgres (no DATABASE_URL) the server must be stopped first: its files can
 // be open in one process at a time.
 //
 //   companyflags start [--no-migrate]  run the server (--no-migrate: only check the schema has every migration)
 //   companyflags version               print the version
 //   companyflags init                  write companyflags.config.ts
-//   companyflags secret                print a secret for BETTER_AUTH_SECRET
+//   companyflags secret                print a secret for FF_SECRET
 //   companyflags migrate [--check]     apply the database migrations (or list what's pending)
 //   companyflags backup [path]         pg_dump of a Postgres server, or a copy of the embedded database's folder
 //   companyflags copy-to-postgres <url> copy the embedded database into a new, empty Postgres database
@@ -46,7 +46,7 @@ Usage:
                                      [--no-migrate]: don't apply migrations, only check they are applied
   companyflags version               Print the version (also --version)
   companyflags init                  Write ${CONFIG_FILE} in this folder
-  companyflags secret                Print a random secret for BETTER_AUTH_SECRET
+  companyflags secret                Print a random secret for FF_SECRET
   companyflags migrate [--check]     Apply the database's migrations; --check only lists them (exit 1 if any)
   companyflags backup [path]         Back up the database: pg_dump of a Postgres server (a .dump file), or a
                                      copy of the embedded database's folder (stop the server first)
@@ -75,8 +75,8 @@ outright): an empty secret fails the job.
 Docs: https://dvir-daniel.github.io/companyflags/reference/cli`;
 
 const CONFIG_TEMPLATE = `// How this CompanyFlags server runs. Every setting is optional: what isn't set here comes from the environment
-// variables (DATABASE_URL, BETTER_AUTH_SECRET, …), then the defaults.
-// Docs: https://dvir-daniel.github.io/companyflags/self-hosting/configuration
+// variables (DATABASE_URL, FF_SECRET, …), then the defaults.
+// Docs: https://dvir-daniel.github.io/companyflags/reference/configuration
 import { defineConfig } from 'companyflags/config';
 import { cdnFiles, cloudflare, flagd, mcp, ofrep, webhooks } from 'companyflags/plugins';
 
@@ -86,7 +86,7 @@ export default defineConfig({
     // dataDir: './data',
   },
   auth: {
-    // baseURL: 'https://flags.example.com',   // where the console is (BETTER_AUTH_URL)
+    // baseURL: 'https://flags.example.com',   // where the console is (FF_PUBLIC_URL)
   },
   plugins: [
     ofrep(),                                   // OpenFeature's OFREP providers, for apps and backends
@@ -204,7 +204,7 @@ export async function main(argv: string[], o: {
         // a folder made by npm i: Node reads the file as a module either way, but warns unless package.json says so
         const pkg = resolve(cwd, 'package.json');
         if (existsSync(pkg) && !/"type"\s*:\s*"module"/.test(readFileSync(pkg, 'utf8'))) out('tip: add "type": "module" to package.json, so Node loads the file without a warning');
-        out('next: set BETTER_AUTH_SECRET (companyflags secret makes one), then companyflags start');
+        out('next: set FF_SECRET (companyflags secret makes one), then companyflags start');
         return 0;
       }
       case 'secret':

@@ -2,7 +2,7 @@
 // cache (purge.ts: the environment's tag, or only the tags of the entities whose answers or links changed), so apps
 // get a change in seconds instead of within the cache's minute. A publish that changed nobody's answers (a new
 // entity, a flag's description) purges nothing. Without it nothing breaks: the CDN asks this server again after a
-// minute. A purge that can't run (Cloudflare says no, or the saved token can't be read after BETTER_AUTH_SECRET
+// minute. A purge that can't run (Cloudflare says no, or the saved token can't be read after FF_SECRET
 // changed) is kept on the publish and shown in /readyz's warnings and the metrics (workers.ts publishState).
 //
 // Which zone and token, first found:
@@ -40,8 +40,8 @@ const ZONE_ID = /^[0-9a-f]{32}$/;
 const PURGING_TTL_MS = 30_000;
 /** A tag no CDN file carries: purging it checks the zone and the token's permission without dropping anything. */
 const CHECK_TAG = 'companyflags-check';
-/** Said when the token saved in the console was sealed with another BETTER_AUTH_SECRET: nothing is purged until then. */
-export const UNREADABLE_TOKEN = 'The CDN’s API token can’t be read (BETTER_AUTH_SECRET changed), so nothing is purged: save it again in Settings → CDN';
+/** Said when the token saved in the console was sealed with another FF_SECRET: nothing is purged until then. */
+export const UNREADABLE_TOKEN = 'The CDN’s API token can’t be read (FF_SECRET changed), so nothing is purged: save it again in Settings → CDN';
 
 /** The tags a publish purges: the environment's, or only those of what it changed; none when it changed nobody's answers. */
 export function purgeTagsFor(environment: string, scope: PublishScope): string[] {
@@ -54,7 +54,7 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
   const log = o.log ?? (() => {});
   const fromServer = o.server?.zoneId && o.server.token ? { zoneId: o.server.zoneId, token: o.server.token } : null;
   const box = o.secrets ?? asIs;
-  /** The saved token, unsealed; null when it was sealed with another BETTER_AUTH_SECRET (it has to be saved again). */
+  /** The saved token, unsealed; null when it was sealed with another FF_SECRET (it has to be saved again). */
   const tokenOf = (stored: string): string | null => {
     try { return box.open(stored); } catch (e) {
       if (e instanceof SealError) return null;

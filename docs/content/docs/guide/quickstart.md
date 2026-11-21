@@ -6,14 +6,14 @@ description: "Run CompanyFlags, set up your first flag, then read it the way an 
 ## 1. Start it
 
 ```bash tab="Docker"
-echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+echo "FF_SECRET=$(openssl rand -base64 32)" > .env
 docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \
-  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9
+  -e FF_PUBLIC_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9
 ```
 
 ```bash tab="Docker Compose"
 curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
-echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+echo "FF_SECRET=$(openssl rand -base64 32)" > .env
 echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
 docker compose up -d
 ```
@@ -28,7 +28,7 @@ pnpm serve               # builds the console and serves it on http://localhost:
 
 The secret signs sign-in sessions and makes the setup link, so keep `.env`: start the server again with the same
 file, or everyone is signed out. Docker keeps the data in the `companyflags` volume. Compose runs Postgres beside it,
-and answers on `127.0.0.1:8787` only. See [Docker](/self-hosting/docker).
+and answers on `127.0.0.1:8787` only. See [Docker Compose](/deploy/docker-compose).
 
 ## 2. Set it up
 
@@ -116,5 +116,5 @@ a signed [app link](/guide/services#signed-app-links) at sign-in. That is option
 - [Services](/guide/services): apps and backends, their keys, and signed app links.
 - [Moving from another system](/guide/migration): already have flags somewhere else? Bring them over one at a time,
   with both running meanwhile.
-- [Self-Hosting Overview](/self-hosting/overview) when you're ready to run it for real: which path fits you, and what
-  every install needs.
+- [Installation](/guide/installation) when you're ready to run it for real: four steps, then a
+  complete [deploy recipe](/deploy/builder) for your platform.

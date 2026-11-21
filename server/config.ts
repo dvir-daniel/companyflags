@@ -1,5 +1,5 @@
-// companyflags.config.ts: one typed file for how a server runs, the way Better Auth has its auth.ts. Every
-// setting is optional. What the file doesn't set comes from the environment variables (docs/self-hosting/
+// companyflags.config.ts: one typed file for how a server runs. Every
+// setting is optional. What the file doesn't set comes from the environment variables (docs/reference/
 // configuration.md), then the defaults, so a server with no file runs as before and the Docker image needs none.
 //
 //   import { defineConfig } from 'companyflags/config';
@@ -14,7 +14,7 @@
 // This module is what `companyflags/config` gives a config file: its type and defineConfig. The server (index.ts) and
 // the CLI (cli.ts) read the file with configFile.ts, from the folder they run in, or from FF_CONFIG.
 
-import type { AuthSettings } from './betterAuth.ts';
+import type { AuthSettings } from './accounts.ts';
 import type { Plugin } from './plugin.ts';
 import type { Appearance } from './appearance.ts';
 
@@ -49,12 +49,13 @@ export type Config = {
      *  front keeps one (60 on AWS's and Google's), or it gets a 502 now and then. */
     keepAliveSeconds?: number;
   };
-  /** Sign-in with Better Auth: the secret, the console's address, the providers and the rest (betterAuth.ts
-   *  AuthSettings). Each setting left out comes from its environment variable (BETTER_AUTH_SECRET, …). Whether the
+  /** Sign-in: the secret, the console's address, the providers and the rest (accounts.ts
+   *  AuthSettings). Each setting left out comes from its environment variable (FF_SECRET, …). Whether the
    *  server runs as production comes from NODE_ENV only. */
   auth?: Partial<Omit<AuthSettings, 'production'>>;
-  /** What reads flags besides the console, and what runs after a publish (plugins/). Left out: the default ones
-   *  (defaultPlugins() in plugins/index.ts); cloudfront(), cloudCdn() and metrics() run only when listed here. */
+  /** What reads flags besides the console, and what runs after a publish (plugins/). Listed, only these run, whatever
+   *  the environment says. Left out: the integrations the environment turns on (integrations.ts): the default ones
+   *  (defaultPlugins()) less FF_INTEGRATIONS_OFF, and metrics(), cloudfront() and cloudCdn() when their variables are set. */
   plugins?: Plugin[];
   /** How the console looks: its name, logo, accent color and the rest (Settings → Appearance). Set here, it can't be
    *  changed in the console. Images are a file next to the config file ('./logo.svg') or a data URL. */

@@ -1,5 +1,5 @@
 // The metrics plugin: Prometheus's text format at /metrics, for an operator's Prometheus, Grafana Agent or
-// OpenTelemetry Collector to scrape. Not on unless listed:
+// OpenTelemetry Collector to scrape. Off unless FF_METRICS=on (without a list of plugins), or listed:
 //
 //   plugins: [...defaultPlugins(), metrics()]          // or metrics({ token: process.env.METRICS_TOKEN })
 //

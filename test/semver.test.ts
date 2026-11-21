@@ -23,7 +23,7 @@ test('a version in a rule is read once and compared the same every time', () => 
   assert.equal(testCondition({ field: 'app.version', op: 'semver_gte', values: ['not-a-version'] }, '1.0.0'), null, 'a rule version that isn’t one');
 });
 
-// Release versions (docs/design/release-versions.md): a version release's values, stricter than what rules compare.
+// Release versions (docs/content/docs/guide/releases.md): a version release's values, stricter than what rules compare.
 test('a release version is SemVer 2.0.0 with one spelling: three numbers, a lowercase prerelease, no v, no +build', () => {
   for (const ok of ['0.0.0', '1.0.1', '10.20.30', '1.0.1-beta.2', '1.0.0-0.3.7', '1.0.0-x-y-z.--', '2.0.0-rc.1']) {
     assert.equal(releaseVersionProblem(ok), null, ok);

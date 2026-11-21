@@ -106,7 +106,7 @@ export function SingleSignOn() {
       </Heading>
       <ErrorList error={error} />
       {!state ? (error ? null : <div aria-hidden className="flex h-[46px] items-center border border-grid px-4"><Bone className="w-2/3" /></div>) : !state.available ? (
-        <Callout>Single sign-on needs the Better Auth sign-in, which this server doesn’t use.</Callout>
+        <Callout>Single sign-on needs sign-in with accounts, which this server doesn’t use.</Callout>
       ) : state.connections.length === 0 ? (
         <Empty action={addButton || undefined}>No single sign-on yet. People sign in with their password, or the providers set up on the server.</Empty>
       ) : (

@@ -3,10 +3,10 @@
 How the CompanyFlags console looks and behaves. `src/styles.css` holds the values as tokens, and the components in
 `src/components` apply them. Change a rule here and in the tokens together.
 
-The console shares better-auth.com's tokens and grid: pure black and white, Geist and Geist Mono, square corners, 1px
+The console's tokens and grid: pure black and white, Geist and Geist Mono, square corners, 1px
 lines, color only for meaning. It doesn't share its marketing layout. The console is a dense work tool, like Linear or
 Stripe: a page bar over a full-width table, and a drawer for one record. The hero layouts, "+" marks and dithered
-textures of better-auth.com belong to the docs site and the landing page (`docs/`), not here.
+textures belong to the docs site and the landing page (`docs/`), not here.
 
 ## Themes
 
@@ -67,7 +67,7 @@ Components use tokens only (`bg-background`, `text-ink`, `border-rule`), never a
 | 34px mono footer with slashes | `Footer`, `FooterSlash` |
 | Phone (under 768px): a bottom tab bar with the four most-used pages and More, which opens the sidebar in a `Drawer` | the console's `MobileNav` (web/src/shell.tsx), `useBottomReserve` |
 
-**The sidebar works like better-auth.com's.** Each item is a short noun in Title Case with an icon, and it is the
+**The sidebar.** Each item is a short noun in Title Case with an icon, and it is the
 page's title and the start of its tab's title, word for word (API Keys → "API Keys" → "API Keys · CompanyFlags"). A
 small caption sits over each group, and a group holds one kind of thing:
 - no caption: Flags, Releases, Approvals, History, Compare: what the console is for, every day;

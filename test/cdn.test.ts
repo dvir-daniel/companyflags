@@ -138,8 +138,8 @@ test('a purge drops only what changed: nothing for a new entity or a description
   assert.deepEqual(calls.map((c) => c.tags).sort(), [[linkTag('dev', 'acme')], [linkTag('prod', 'acme')]].sort(), 'a replaced link: its own files, in each environment');
 });
 
-test('a token that can’t be read (BETTER_AUTH_SECRET changed): the purge fails on the publish, and /readyz warns but answers 200', async () => {
-  const sealedElsewhere = sealer('another-better-auth-secret-0123456789abcdef').seal(TOKEN);
+test('a token that can’t be read (FF_SECRET changed): the purge fails on the publish, and /readyz warns but answers 200', async () => {
+  const sealedElsewhere = sealer('another-server-secret-0123456789abcdefghij').seal(TOKEN);
   await t.db.query(`update cdn_setting set api_token = $1`, [sealedElsewhere]);
   calls.length = 0;
   let ready = await t.app.request('/readyz');

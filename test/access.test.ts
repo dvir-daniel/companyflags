@@ -1,7 +1,7 @@
 // Who may join, at the access module's interface (server/access.ts): one row per admission rule. Accounts and single
-// sign-on connections are kept in memory here (in the app, Better Auth and sso.ts keep them); people, invites and
-// removals go through the access module itself, as an admin's changes do. The sign-in flows over HTTP, through
-// Better Auth, are in setup.test.ts and sso.test.ts.
+// sign-on connections are kept in memory here (in the app, the sign-in and sso.ts keep them); people, invites and
+// removals go through the access module itself, as an admin's changes do. The sign-in flows over HTTP
+// are in setup.test.ts and sso.test.ts.
 import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createAccess, type Access, type Accounts, type Attempt, type Vouching } from '../server/access.ts';
@@ -29,7 +29,7 @@ let clock = new Date('2026-11-02T09:00:00Z');
 const opened: { db: Db; drop: () => Promise<void> }[] = [];
 after(async () => { for (const o of opened) { await o.db.close(); await o.drop(); } });
 
-/** The setup link's secret on these installs (the server makes it from its secret: betterAuth.ts setupTokenFor). */
+/** The setup link's secret on these installs (the server makes it from its secret: accounts.ts setupTokenFor). */
 const SETUP = 'the-setup-link-secret';
 
 /** A new, empty database's people. FF_SIGNUP_DOMAINS is corp.com. */

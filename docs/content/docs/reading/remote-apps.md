@@ -6,7 +6,7 @@ description: "Web, React, React Native, Android and iOS apps ask the server with
 [OFREP](https://github.com/open-feature/protocol) is OpenFeature's remote evaluation protocol. An app's provider asks
 for every flag at once (`POST /ofrep/v1/evaluate/flags`), keeps the answers, and asks again when a publish changes
 them. It sends its **app service's key**, which is public, or a [signed app link's token](/reading/context#signed-app-links).
-OFREP is the `ofrep()` plugin: it runs unless your config file lists plugins without it.
+OFREP is an [integration](/integrations/ofrep), on by default.
 
 ## Web apps
 
@@ -41,10 +41,10 @@ answers it may change: a change to Acme's own settings wakes Acme's apps, not Gl
 it asks may not have caught up with that publish yet: it does first, so the answer is never the old one. If the
 stream can't stay open, it polls every `pollInterval` instead. **Always set `pollInterval`**: without it (its default
 is 0) the provider never polls, and retries a stream it can't open about once a second. Each server keeps so many
-streams open at once, per environment and per client address (see [Configuration](/self-hosting/configuration#server)).
+streams open at once, per environment and per client address (see [Configuration](/reference/configuration#server)).
 At a limit the answer lists no stream, so the provider polls; a stream asked for anyway gets `429`. Behind a load
 balancer, set `FF_TRUSTED_PROXIES`, or every device counts as the load balancer's one address
-([Proxies and HTTPS → Client addresses](/self-hosting/proxies#client-addresses)).
+([Configuration → Client addresses](/reference/configuration#client-addresses)).
 Changing the context (`OpenFeature.setContext`) asks again. When answers change it emits `ConfigurationChanged`.
 
 Before sign-in, leave the entity out of the context: a key that asks about any entity then gets what everyone gets.

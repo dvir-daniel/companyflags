@@ -94,6 +94,6 @@ Done. Now make the two API keys, as an admin: API Keys → + New key. Each is sh
   Environment dev, service api → examples/node/.env
     FLAGS_URL=${base}
     FLAGS_API_KEY=<the api key>
-  and examples/flagd/.env (beside BETTER_AUTH_SECRET)
+  and examples/flagd/.env (beside FF_SECRET)
     FLAGS_API_KEY=<the api key>
 `);

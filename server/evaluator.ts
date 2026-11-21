@@ -306,7 +306,7 @@ const decided = (section: Section, rule: Rule | undefined, who: Asker, owner: st
 const NO_METADATA: Record<string, string | number | boolean> = Object.freeze({}) as Record<string, string | number | boolean>;
 
 // ---------------------------------------------------------------- the entity chain
-// The order the levels decide in, for one flag and one entity (README "Evaluation order", docs/design/dimensions.md):
+// The order the levels decide in, for one flag and one entity (README "Evaluation order", docs/content/docs/guide/dimensions.mdx):
 //
 //   1. overrides for everyone (the locked rules)
 //   2. the entity's own rules                 its "Own settings only" stops here, with its own default

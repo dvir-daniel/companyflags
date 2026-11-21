@@ -20,7 +20,7 @@ import { configDir, loadConfig, resolveConfig, type Resolved } from './configFil
 import { createAppearance } from './appearanceStore.ts';
 import { AppearanceError } from './appearance.ts';
 import { createAccess } from './access.ts';
-import { authSecret, betterAuthAccounts, createAuth, localSecret, rateLimitsOn, SetupError, setupTokenFor } from './betterAuth.ts';
+import { authSecret, authAccounts, createAuth, localSecret, rateLimitsOn, SetupError, setupTokenFor } from './accounts.ts';
 import { discoverOverHttp, singleSignOn, vouchingConnections, type Discover } from './sso.ts';
 import { EventHub } from './events.ts';
 import { AppCache, LinkCache, linkRoutes } from './delivery.ts';
@@ -29,6 +29,7 @@ import { journaled } from './journal.ts';
 import { anyPurges, evaluatorFor, PluginError, publishHooks, setUpPlugins, type OnPublish, type Plugin, type PluginParts } from './plugin.ts';
 import { setTagSecret } from './purge.ts';
 import { defaultPlugins } from './plugins/index.ts';
+import { integrationNames } from './integrations.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
 import { publishState, startWorkers, type PublishState } from './workers.ts';
@@ -95,10 +96,10 @@ export async function createApp(opts: AppOptions = {}) {
   }, log);
 
   // People and their access (access.ts) decide who may join; the sign-in (identity.ts) says who is asking, through
-  // Better Auth (betterAuth.ts), which keeps the accounts and asks the access module whenever someone joins.
+  // the sign-in library (accounts.ts), which keeps the accounts and asks the access module whenever someone joins.
   const signIn = opts.signIn ?? signInFromEnv();
-  const settings = signIn.kind === 'better-auth' ? signIn.settings : undefined;
-  // The server's secret (BETTER_AUTH_SECRET, or away from production one it made for itself): it makes the setup link,
+  const settings = signIn.kind === 'accounts' ? signIn.settings : undefined;
+  // The server's secret (FF_SECRET, or away from production one it made for itself): it makes the setup link,
   // whose secret the first account (the admin's) is made only with (access.ts), and seals the secrets kept for other
   // systems (sealed.ts). Those saved before they were sealed are sealed now.
   const secret = await (settings ? authSecret(store, settings) : localSecret(store)).catch(async (e) => { await store.close(); throw e; });
@@ -106,9 +107,9 @@ export async function createApp(opts: AppOptions = {}) {
   const secrets = sealer(secret);
   setTagSecret(secret);                                   // the CDN files' cache tags (purge.ts): the same on every server
   const sealedNow = await sealStoredSecrets(store, secrets).catch(async (e) => { await store.close(); throw e; });
-  if (sealedNow) log(`sealed the secrets of ${sealedNow} saved settings (the CDN token, webhooks) with a key from BETTER_AUTH_SECRET`);
+  if (sealedNow) log(`sealed the secrets of ${sealedNow} saved settings (the CDN token, webhooks) with a key from FF_SECRET`);
   const access = createAccess(db, {
-    accounts: betterAuthAccounts, connections: vouchingConnections, signupDomains: settings?.signupDomains, setupToken, ssoSessionHours: settings?.ssoSessionHours,
+    accounts: authAccounts, connections: vouchingConnections, signupDomains: settings?.signupDomains, setupToken, ssoSessionHours: settings?.ssoSessionHours,
   });
   const auth = settings ? await createAuth(store, settings, access).catch(async (e) => { await store.close(); throw e; }) : undefined;
   const identity = createIdentity(signIn, access, auth);
@@ -190,7 +191,7 @@ export async function createApp(opts: AppOptions = {}) {
     }
     return c.json({ ok: true, version: VERSION, failing, environments, warnings });
   });
-  app.route('/api', identity.routes);                    // sign-in pages and Better Auth: open to everyone
+  app.route('/api', identity.routes);                    // sign-in pages and the sign-in: open to everyone
   app.route('/api', appearance.routes());                // the name, logo and note the sign-in page shows: open too
   const tokens = createTokens(db);
   app.route('/api', consoleApi({ db, plane, hub, identity, access, sso, tokens, plugins, appearance }));
@@ -387,6 +388,9 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv; migrate?
   }
   log(`CompanyFlags ${VERSION}`);
   if (file) log(`config: ${file}`);
+  if (resolved.ignoredEnv.length) {
+    log(`warning: the config file lists plugins, so it alone says which integrations run: ${resolved.ignoredEnv.join(', ')} ${resolved.ignoredEnv.length === 1 ? 'is' : 'are'} ignored`);
+  }
   const migrate = o.migrate !== false && resolved.migrate;
   if (!migrate) log('migrations: not applied at the start (--no-migrate or FF_MIGRATE=off): checking the schema has them');
   const ctx = await createApp({
@@ -394,16 +398,16 @@ export async function start(o: { cwd?: string; env?: NodeJS.ProcessEnv; migrate?
     migrate, pool: resolved.pool, databaseCaFile: resolved.databaseCaFile, publishLogDays: resolved.publishLogDays,
   })
     .catch((e: Error) => (e instanceof FolderInUseError || e instanceof FolderVersionError || e instanceof DatabaseCaError || e instanceof MigrationError || e instanceof SetupError || e instanceof PluginError || e instanceof AppearanceError ? fail(e.message) : Promise.reject(e)));
-  log(`plugins: ${ctx.plugins.join(', ') || 'none'}`);
+  log(`integrations: ${integrationNames(ctx.plugins)}`);
   const local = `http://${host === '0.0.0.0' || host === '::' ? 'localhost' : host}:${port}`;
   // without web/dist (a clone running pnpm dev), the console is Vite's, which passes /api on to this server
   const consoleBuilt = existsSync(CONSOLE_FOLDER);
   if (!consoleBuilt) log(`the console isn’t built (web/dist): pnpm dev serves it on ${DEV_CONSOLE}; pnpm serve builds it and serves it on ${local}`);
-  const consoleAddress = (signIn.kind === 'better-auth' && signIn.settings.baseURL?.replace(/\/+$/, '')) || (consoleBuilt ? local : DEV_CONSOLE);
-  if (signIn.kind === 'better-auth') {
+  const consoleAddress = (signIn.kind === 'accounts' && signIn.settings.baseURL?.replace(/\/+$/, '')) || (consoleBuilt ? local : DEV_CONSOLE);
+  if (signIn.kind === 'accounts') {
     const settings = signIn.settings;
     const ways = ['email and password', ...(['google', 'github', 'microsoft'] as const).filter((p) => settings[p])];
-    log(`sign-in with Better Auth: ${ways.join(', ')}`);
+    log(`sign-in: ${ways.join(', ')}`);
     if (!rateLimitsOn(settings) && !LOOPBACK.has(host)) {
       log(`warning: sign-in has no rate limits (NODE_ENV is ${process.env.NODE_ENV ?? 'not set'}), and others can reach this server: set NODE_ENV=production`);
     }

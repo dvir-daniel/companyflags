@@ -1,5 +1,5 @@
-// Plugins: the parts of CompanyFlags an installation turns on in companyflags.config.ts, the way Better Auth's
-// plugins are. The core is the console and its API, sign-in, the evaluator, the change journal, publishing and app
+// Plugins: the parts of CompanyFlags an installation turns on in companyflags.config.ts.
+// The core is the console and its API, sign-in, the evaluator, the change journal, publishing and app
 // links. A plugin adds a way to read flags (OFREP, flagd JSON, CDN files), work to do after a publish (a CDN purge),
 // work of its own in the background (sending webhooks), or another way into the console's API (MCP, for agents). The built-in ones are in plugins/; each is a function that
 // takes its options and returns a Plugin.
@@ -61,7 +61,7 @@ export type PluginContext = {
   /** Where the client's address is read behind proxies (auth.clientIp in the config file, or FF_TRUSTED_PROXIES and
    *  FF_CLIENT_IP_HEADER): the same setting sign-in uses. Left out: from `env`. */
   clientIp?: { header?: string; trustedProxies?: string[] };
-  /** The console's address (BETTER_AUTH_URL), for links in what a plugin sends; unknown when it isn't set. */
+  /** The console's address (FF_PUBLIC_URL), for links in what a plugin sends; unknown when it isn't set. */
   baseURL?: string | null;
   log: (m: string) => void;
   /** The core app's own fetch: a request to the console's API (`/api/...`) answered in this process, with no network
@@ -71,7 +71,7 @@ export type PluginContext = {
    *  request, not from setup. */
   request: (input: string, init?: RequestInit) => Promise<Response>;
   /** Seals a secret a plugin keeps for another system before it goes into the database, and opens it again
-   *  (sealed.ts: AES-GCM, with a key from BETTER_AUTH_SECRET). `open` throws a SealError for a value sealed with
+   *  (sealed.ts: AES-GCM, with a key from FF_SECRET). `open` throws a SealError for a value sealed with
    *  another secret. */
   secrets: Sealer;
   /** How far each environment's publishing is behind, as /readyz reports it (workers.ts). */

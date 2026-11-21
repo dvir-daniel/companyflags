@@ -18,8 +18,8 @@ export with JSONata). The webhooks that keep both systems the same are on the **
    that isn't in the app's service is "not found", and the old system answers instead.
 3. **Move a flag** by adding it to the app's service (the flag's **Settings** tab, **Services**). From then on the
    app reads it here.
-4. **Keep both the same** meanwhile: a [webhook out](/guide/webhooks#out) tells the old system each change made here,
-   and a [webhook in](/guide/webhooks#in) takes the old system's changes.
+4. **Keep both the same** meanwhile: a [webhook out](/integrations/webhooks#out) tells the old system each change made here,
+   and a [webhook in](/integrations/webhooks#in) takes the old system's changes.
 5. When the last flag has moved, take the old system out of the Multi-Provider.
 
 ## The Multi-Provider
@@ -132,4 +132,4 @@ The console uses these, with a session or an admin's sign-in:
 | `POST /api/migration/export` | `{ environment, format, service?, expression? }` → `{ output }` |
 
 An import's body can be up to 4 MB. For another system to post changes on its own, use a
-[webhook in](/guide/webhooks#in).
+[webhook in](/integrations/webhooks#in).

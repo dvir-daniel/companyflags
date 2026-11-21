@@ -1,8 +1,8 @@
 /* @companyflags/ui: the look of the CompanyFlags console.
-   It shares better-auth.com's tokens and grid: pure black, Geist + Geist Mono, square corners,
+   Its tokens and grid: pure black, Geist + Geist Mono, square corners,
    1px lines, color only for meaning. The console itself is a dense tool: a page bar over a full-width table.
    The rules behind these values are in ../DESIGN.md.
-   Light and dark themes, both measured from better-auth.com (see "Two themes" below).
+   Light and dark themes (see "Two themes" below).
 
    Use it from an app's entry stylesheet, after Tailwind:
      @import "tailwindcss";
@@ -16,7 +16,7 @@
 /* Tailwind only scans the app by default; this adds the classes the shared components use. */
 @source "./components";
 
-/* Two themes, light and dark, measured from better-auth.com. <html data-theme="light|dark"> picks one;
+/* Two themes, light and dark. <html data-theme="light|dark"> picks one;
    src/lib/theme.ts sets it from the person's choice (light, dark, or as the device is set) before the first paint. */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 

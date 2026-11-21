@@ -1,10 +1,10 @@
 // Secrets this server keeps for other systems (the CDN's API token, the headers and signing secrets of webhooks) are
-// stored sealed: AES-256-GCM with a key derived from the server's secret (BETTER_AUTH_SECRET, or the one it made for
-// itself, betterAuth.ts serverSecret). A copy of the database, or a backup, without that secret can't read them.
+// stored sealed: AES-256-GCM with a key derived from the server's secret (FF_SECRET, or the one it made for
+// itself, accounts.ts serverSecret). A copy of the database, or a backup, without that secret can't read them.
 //
 //   enc:v1:<12-byte nonce, base64url>:<ciphertext and 16-byte tag, base64url>
 //
-// A new BETTER_AUTH_SECRET makes the sealed values unreadable: they are set again (the CDN token, a webhook's
+// A new FF_SECRET makes the sealed values unreadable: they are set again (the CDN token, a webhook's
 // headers) or made again (a webhook's signing secret), as after any leak of the old secret.
 
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
@@ -43,7 +43,7 @@ export function sealer(secret: string): Sealer {
         decipher.setAuthTag(sealed.subarray(sealed.length - 16));
         return Buffer.concat([decipher.update(sealed.subarray(0, sealed.length - 16)), decipher.final()]).toString('utf8');
       } catch {
-        throw new SealError('a stored secret was sealed with another BETTER_AUTH_SECRET: set it again');
+        throw new SealError('a stored secret was sealed with another FF_SECRET: set it again');
       }
     },
   };

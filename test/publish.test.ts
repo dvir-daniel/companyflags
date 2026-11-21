@@ -240,7 +240,7 @@ test('the purge once more, later, covers every publish of the burst, not only th
 });
 
 test('cache tags name no entity: keyed hashes, the same on every server with the secret, within the CDNs’ limits', () => {
-  setTagSecret('one-better-auth-secret-0123456789abcdef');
+  setTagSecret('one-server-secret-0123456789abcdefghij');
   const tags = fileTags('prod', ['lumen', 'globex']);
   assert.equal(tags[0], 'env-prod', 'the environment’s stays readable: the address names it already');
   for (const tag of tags.slice(1)) {
@@ -252,9 +252,9 @@ test('cache tags name no entity: keyed hashes, the same on every server with the
   assert.notEqual(entityTag('prod', 'lumen'), linkTag('prod', 'lumen'), 'an entity’s tag isn’t its link’s');
   // what a purge sends matches what the files carry: the same key gives the same tags
   assert.deepEqual(purgeTagsFor('prod', { entities: ['globex'], links: ['lumen'] }), [tags[2], tags[3]]);
-  setTagSecret('one-better-auth-secret-0123456789abcdef');
+  setTagSecret('one-server-secret-0123456789abcdefghij');
   assert.deepEqual(fileTags('prod', ['lumen', 'globex']), tags, 'another server with the same secret: the same tags');
-  setTagSecret('another-better-auth-secret-0123456789abcdef');
+  setTagSecret('another-server-secret-0123456789abcdefghij');
   assert.notDeepEqual(fileTags('prod', ['lumen', 'globex']), tags, 'without the secret, a guess can’t be checked');
   // Cloud CDN: up to 120 bytes a tag, ASCII 0x21–0x7E without commas; CloudFront: 256 characters; both: 50 a file
   const long = 'e'.repeat(200);

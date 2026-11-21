@@ -1,5 +1,5 @@
 'use client';
-// The site's bar on a wide screen, as better-auth.com's: in the root layout, so it stays while you move between the
+// The site's bar on a wide screen: in the root layout, so it stays while you move between the
 // landing page and the docs. The logo's cell on the left is as wide as the column under it (the hero's 40% on the
 // landing page, the sidebar's width in the docs) and eases from one to the other; the parts of the site share the
 // rest in equal cells, the open one underlined. It comes in once, when the site opens. (On a phone each page keeps its

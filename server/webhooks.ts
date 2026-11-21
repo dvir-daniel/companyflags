@@ -1,4 +1,4 @@
-// Webhooks, out and in (the console's Migration page; docs/guide/webhooks.md, docs/guide/migration.md).
+// Webhooks, out and in (the console's Migration page; docs/integrations/webhooks.md, docs/guide/migration.md).
 //
 // Out: after each change, this server sends each webhook what changed, read from the history (journal.ts):
 //   changes  what an environment serves: one message per save, with every entry of it, and `values`: what those flags
@@ -291,7 +291,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
       headers = Object.fromEntries(Object.entries(isObject(h.headers) ? h.headers : {}).map(([k, v]) => [k, box.open(String(v))]));
     } catch (e) {
       if (!(e instanceof SealError)) throw e;
-      return { ok: false, status: null, error: 'Its secret and headers were saved with another BETTER_AUTH_SECRET: make a new signing secret and set its headers again.' };
+      return { ok: false, status: null, error: 'Its secret and headers were saved with another FF_SECRET: make a new signing secret and set its headers again.' };
     }
     const timestamp = Math.floor(Date.now() / 1000);
     try {

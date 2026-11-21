@@ -1,0 +1,25 @@
+---
+title: "Choose Your Setup"
+description: "Answer a few questions, and get the steps and files for your own installation, ready to copy."
+---
+
+Pick where CompanyFlags runs, its database, its address and what goes in front. The steps below follow your
+answers: each one has its files and commands, with a copy button. Every secret is made by a command, never written
+out. The page's address keeps your answers, so you can share a setup as a link.
+
+<SetupBuilder />
+
+## Every path, written out
+
+Each platform also has its full recipe, with the reasons for each setting, the upgrades and the pitfalls:
+
+- [Docker Compose](/deploy/docker-compose): one server, with Postgres in Compose or your own, and Caddy for HTTPS.
+- [Kubernetes](/deploy/kubernetes): a migrate Job, then the servers with `FF_MIGRATE=off`, `/readyz` for startup and
+  `/healthz` for liveness and readiness.
+- [AWS](/deploy/aws): ECS on Fargate behind an ALB, RDS for PostgreSQL, Secrets Manager, and CloudFront.
+- [Google Cloud](/deploy/google-cloud): Cloud Run behind a global load balancer, Cloud SQL, Secret Manager, and
+  Cloud CDN.
+- [Azure](/deploy/azure): Container Apps, Flexible Server, Key Vault, and Front Door with no purge.
+
+The settings are in [Configuration](/reference/configuration). Before people depend on it, go through the
+[Production Checklist](/operate/production).

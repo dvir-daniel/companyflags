@@ -1,6 +1,6 @@
 // Drafts and versions (Wonka style): a draft that spans flags is published as one version, every version is
 // listed with what it changed, and any earlier version can be restored. Restore undoes flag settings only
-// (docs/design/adr/0001-restore-undoes-flag-settings-only.md).
+//.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot } from './helpers.ts';

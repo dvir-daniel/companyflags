@@ -1,16 +1,16 @@
-// Where sign-in rate limits read the client's address (server/betterAuth.ts clientAddressFor): the connection's own
+// Where sign-in rate limits read the client's address (server/accounts.ts clientAddressFor): the connection's own
 // address by default, which a client can't fake. Behind a proxy, the header it sets, or X-Forwarded-For past the
 // proxies, but only on a connection from one of the proxies: a client that reaches the server directly is its own
 // address, whatever headers it sends, so it can't get a new allowance of sign-in tries with each request.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { authSettingsFromEnv, CLIENT_IP_HEADER, clientAddressFor, clientIpProblem, ipAddressFor, rateLimitsOn, SetupError } from '../server/betterAuth.ts';
+import { authSettingsFromEnv, CLIENT_IP_HEADER, clientAddressFor, clientIpProblem, ipAddressFor, rateLimitsOn, SetupError } from '../server/accounts.ts';
 import { startApp } from './helpers.ts';
 
 const ask = (env: Record<string, string>) => clientAddressFor(authSettingsFromEnv(env));
 const headers = (h: Record<string, string>) => new Headers(h);
 
-test('Better Auth reads only the address this server sets', () => {
+test('the sign-in reads only the address this server sets', () => {
   assert.deepEqual(ipAddressFor(), { ipAddressHeaders: [CLIENT_IP_HEADER] });
 });
 
@@ -50,7 +50,7 @@ test('a header without the proxies’ addresses, or a range that isn’t one, do
   assert.match(clientIpProblem(authSettingsFromEnv({ FF_CLIENT_IP_HEADER: 'cf-connecting-ip' })) ?? '', /needs FF_TRUSTED_PROXIES/);
   assert.match(clientIpProblem(authSettingsFromEnv({ FF_TRUSTED_PROXIES: '10.0.0.0/99' })) ?? '', /isn’t an address or a range/);
   assert.equal(clientIpProblem(authSettingsFromEnv({ FF_TRUSTED_PROXIES: '10.0.0.0/8, fd00::/8, 192.168.1.4' })), null);
-  await assert.rejects(startApp({ signIn: { kind: 'better-auth', settings: authSettingsFromEnv({ FF_CLIENT_IP_HEADER: 'cf-connecting-ip' }) } }), SetupError);
+  await assert.rejects(startApp({ signIn: { kind: 'accounts', settings: authSettingsFromEnv({ FF_CLIENT_IP_HEADER: 'cf-connecting-ip' }) } }), SetupError);
 });
 
 test('the change-event streams read the same proxy setting as sign-in, from the config file too (auth.clientIp)', async (c) => {
@@ -58,7 +58,7 @@ test('the change-event streams read the same proxy setting as sign-in, from the 
   let seen: unknown = 'not set up';
   const probe = definePlugin({ id: 'probe', setup: (ctx) => { seen = ctx.clientIp; return {}; } });
   const clientIp = { trustedProxies: ['10.0.0.0/8'], header: 'x-real-ip' };
-  const app = await startApp({ signIn: { kind: 'better-auth', settings: { clientIp } }, plugins: [probe] });
+  const app = await startApp({ signIn: { kind: 'accounts', settings: { clientIp } }, plugins: [probe] });
   c.after(() => app.stop());
   assert.deepEqual(seen, clientIp, 'the plugins get the setting sign-in uses (server/ofrep.ts builds the stream limits from it)');
 });

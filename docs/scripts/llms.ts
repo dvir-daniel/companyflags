@@ -37,6 +37,7 @@ const pages: Page[] = files(content).sort().map((file) => {
   let body = fm ? raw.slice(fm[0].length) : raw;
   body = body
     .replace(/^<Illus[A-Za-z]+ \/>\n?/gm, '')                                  // drawings: the words around them say it
+    .replace(/^<SetupBuilder \/>\n?/gm, '')                                     // the setup builder: its recipes are linked below it
     .replace(/^:::(warning|tip|info|danger)(?:\[(.*)\])?\n([\s\S]*?)^:::\n?/gm, (_m, kind: string, label: string | undefined, text: string) =>
       `> **${label || kind[0].toUpperCase() + kind.slice(1)}**\n>\n${text.trimEnd().split('\n').map((l) => `> ${l}`.trimEnd()).join('\n')}\n`)
     .replace(/^(```[a-z]*) tab="([^"]+)"$/gm, '$1 title="$2"');

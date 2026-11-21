@@ -4,7 +4,7 @@
 // (policy.ts approvalsShortfall).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8').replace(/\s+/g, ' ');
 const releases = read('docs/content/docs/guide/releases.md');
@@ -32,4 +32,23 @@ test('the quickstart starts Production at 0 approvals, and says when to raise it
   assert.doesNotMatch(quickstart, /Production with 1 approval/);
   assert.match(quickstart, /Leave \*\*Approvals needed\*\* at 0 for both while you are the only person/);
   assert.match(quickstart, /Once you invite a second person who reviews .* raise Production to 1/);
+});
+
+test('the Integrations pages say "integration", never "plugin", outside code and the link to Writing a Plugin', () => {
+  const dir = 'docs/content/docs/integrations';
+  for (const file of readdirSync(new URL(`../${dir}`, import.meta.url))) {
+    const prose = readFileSync(new URL(`../${dir}/${file}`, import.meta.url), 'utf8')
+      .replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '').replace(/\]\([^)]*\)/g, ']').replace(/\[Writing a Plugin\]/g, '');
+    assert.doesNotMatch(prose, /plugin/i, `${dir}/${file}`);
+  }
+});
+
+test('the integrations turn on with environment variables, as server/integrations.ts reads them', () => {
+  const overview = read('docs/content/docs/integrations/overview.md');
+  for (const v of ['FF_INTEGRATIONS_OFF', 'FF_METRICS=on', 'FF_METRICS_TOKEN', 'FF_CLOUDFRONT_DISTRIBUTION_ID', 'FF_CLOUD_CDN_PROJECT', 'FF_CLOUD_CDN_URL_MAP']) {
+    assert.ok(overview.includes(v), `integrations/overview.md names ${v}`);
+  }
+  for (const page of ['deploy/aws.md', 'deploy/google-cloud.md', 'deploy/azure.md', 'deploy/kubernetes.md', 'deploy/docker-compose.md']) {
+    assert.doesNotMatch(read(`docs/content/docs/${page}`), /without it, the purge never runs/, page);
+  }
 });

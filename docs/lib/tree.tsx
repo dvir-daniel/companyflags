@@ -1,4 +1,4 @@
-// The sidebar: each group with its icon. Getting started and Reading flags are open; the others open for the page
+// The sidebar: each group with its icon. Get Started and Reading Flags are open; the others open for the page
 // you're on. Its order is the pages' previous/next order too, so the quickstart leads on to reading flags.
 // Pages are found by address in the loaded source, so a page that's renamed or removed fails the build here, and so
 // does a page with no description.
@@ -15,14 +15,14 @@ const ICONS = {
   concepts: icon(<><path d="M3 5.5h6a3 3 0 0 1 3 3V20a2.5 2.5 0 0 0-2.5-2.5H3z" /><path d="M21 5.5h-6a3 3 0 0 0-3 3V20a2.5 2.5 0 0 1 2.5-2.5H21z" /></>),
   reading: icon(<path d="M8 3v5M16 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4" />),
   changing: icon(<><rect x="2.5" y="7" width="19" height="10" rx="5" /><circle cx="16.5" cy="12" r="2.5" /></>),
-  plugins: icon(<path d="M9 3.5h6v3a1.5 1.5 0 1 0 3 0h2.5v6h-3a1.5 1.5 0 1 0 0 3h3v5h-17v-5h3a1.5 1.5 0 1 0 0-3h-3v-6h3a1.5 1.5 0 1 0 0-3z" />),
+  integrations: icon(<path d="M9 3.5h6v3a1.5 1.5 0 1 0 3 0h2.5v6h-3a1.5 1.5 0 1 0 0 3h3v5h-17v-5h3a1.5 1.5 0 1 0 0-3h-3v-6h3a1.5 1.5 0 1 0 0-3z" />),
   migration: icon(<path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4" />),
-  hosting: icon(<><rect x="3" y="4" width="18" height="7" /><rect x="3" y="13" width="18" height="7" /><path d="M7 7.5h.01M7 16.5h.01" /></>),
-  operations: icon(<path d="M3 12h4l3-7 4 14 3-7h4" />),
+  deploy: icon(<><rect x="3" y="4" width="18" height="7" /><rect x="3" y="13" width="18" height="7" /><path d="M7 7.5h.01M7 16.5h.01" /></>),
+  operate: icon(<path d="M3 12h4l3-7 4 14 3-7h4" />),
   reference: icon(<path d="M4 4v16M8 4v16M12 4l4 16M17 4h3v16h-3z" />),
 };
 
-// A caption between pages of one group (Set Up, Cloud Guides): small capitals, as the site's other labels.
+// A caption between pages of one group (Clouds, The Console): small capitals, as the site's other labels.
 const caption = (name: string) => (
   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.6px', textTransform: 'uppercase', color: 'var(--color-fd-muted-foreground)' }}>{name}</span>
 );
@@ -30,27 +30,47 @@ const caption = (name: string) => (
 type Entry = [label: string, url: string] | { caption: string };
 
 const GROUPS: { name: string; icon: keyof typeof ICONS; open?: boolean; pages: Entry[] }[] = [
-  { name: 'Getting started', icon: 'start', open: true, pages: [['Introduction', '/guide/introduction'], ['Quickstart', '/guide/quickstart']] },
-  { name: 'Reading flags', icon: 'reading', open: true, pages: [['Overview', '/reading/overview'], ['Evaluation context', '/reading/context'], ['Remote evaluation in apps', '/reading/remote-apps'], ['Remote evaluation in backends', '/reading/remote-backends'], ['Local evaluation in apps', '/reading/local-apps'], ['Local evaluation in backends', '/reading/local-backends'], ['Testing', '/reading/testing'], ['Examples', '/guide/examples']] },
-  { name: 'Concepts', icon: 'concepts', pages: [['How it fits together', '/guide/concepts'], ['Architecture', '/guide/architecture'], ['Dimensions', '/guide/dimensions'], ['Flags and rules', '/guide/flags-and-rules'], ['Services', '/guide/services']] },
-  { name: 'Changing flags', icon: 'changing', pages: [['Releases', '/guide/releases'], ['Approvals and history', '/guide/approvals'], ['Flags as code', '/guide/flags-as-code'], ['Flags in the age of AI', '/guide/ai'], ['AI resources', '/guide/ai-resources']] },
-  { name: 'Plugins', icon: 'plugins', pages: [['Plugins', '/reference/plugins'], ['Webhooks', '/guide/webhooks']] },
-  { name: 'Self-Hosting', icon: 'hosting', pages: [
-    ['Overview', '/self-hosting/overview'], ['Docker', '/self-hosting/docker'],
-    { caption: 'Set Up' },
-    ['Database', '/self-hosting/database'], ['Proxies and HTTPS', '/self-hosting/proxies'], ['Secrets', '/self-hosting/secrets'],
-    ['Sign-In', '/self-hosting/sign-in'], ['Single Sign-On', '/self-hosting/single-sign-on'], ['CDN', '/self-hosting/cdn'],
-    ['Appearance', '/self-hosting/appearance'],
-    { caption: 'Cloud Guides' },
-    ['AWS', '/self-hosting/aws'], ['Google Cloud', '/self-hosting/google-cloud'], ['Azure', '/self-hosting/azure'],
+  { name: 'Get Started', icon: 'start', open: true, pages: [
+    ['Introduction', '/guide/introduction'], ['Quickstart', '/guide/quickstart'], ['Installation', '/guide/installation'],
   ] },
-  { name: 'Operations', icon: 'operations', pages: [
-    ['Production Checklist', '/self-hosting/production'], ['Monitoring', '/self-hosting/monitoring'],
-    ['Backups', '/self-hosting/backups'], ['Upgrading', '/self-hosting/upgrading'],
+  { name: 'Reading Flags', icon: 'reading', open: true, pages: [
+    ['Overview', '/reading/overview'], ['Evaluation Context', '/reading/context'], ['Remote Evaluation in Apps', '/reading/remote-apps'],
+    ['Remote Evaluation in Backends', '/reading/remote-backends'], ['Local Evaluation in Apps', '/reading/local-apps'],
+    ['Local Evaluation in Backends', '/reading/local-backends'], ['Testing', '/reading/testing'], ['Examples', '/guide/examples'],
   ] },
-  { name: 'Reference', icon: 'reference', pages: [['HTTP API', '/reference/http-api'], ['CLI', '/reference/cli'],
-    ['Configuration', '/self-hosting/configuration'], ['Attributes', '/reference/attributes'], ['Security model', '/guide/security']] },
-  { name: 'More', icon: 'migration', pages: [['Moving from another system', '/guide/migration'], ['Compared with others', '/guide/comparison'], ['Enterprise', '/guide/enterprise']] },
+  { name: 'Concepts', icon: 'concepts', pages: [
+    ['How It Fits Together', '/guide/concepts'], ['Architecture', '/guide/architecture'], ['Dimensions', '/guide/dimensions'],
+    ['Flags and Rules', '/guide/flags-and-rules'], ['Services', '/guide/services'],
+  ] },
+  { name: 'Changing Flags', icon: 'changing', pages: [
+    ['Releases', '/guide/releases'], ['Approvals and History', '/guide/approvals'], ['Flags as Code', '/guide/flags-as-code'],
+    ['Flags in the Age of AI', '/guide/ai'], ['AI Resources', '/guide/ai-resources'],
+  ] },
+  // Each Deploy page is a whole recipe, top to bottom; Choose Your Setup picks one.
+  { name: 'Deploy', icon: 'deploy', pages: [
+    ['Choose Your Setup', '/deploy/builder'], ['Docker Compose', '/deploy/docker-compose'], ['Kubernetes', '/deploy/kubernetes'],
+    { caption: 'Clouds' },
+    ['AWS', '/deploy/aws'], ['Google Cloud', '/deploy/google-cloud'], ['Azure', '/deploy/azure'],
+  ] },
+  { name: 'Operate', icon: 'operate', pages: [
+    ['Production Checklist', '/operate/production'], ['Monitoring', '/operate/monitoring'], ['Backups', '/operate/backups'],
+    ['Upgrading', '/operate/upgrading'],
+    { caption: 'The Console' },
+    ['Sign-In and People', '/operate/sign-in'], ['Single Sign-On', '/operate/single-sign-on'], ['Appearance', '/operate/appearance'],
+  ] },
+  // What users turn on and off. "Plugin" is only for people writing their own (Reference → Writing a Plugin).
+  { name: 'Integrations', icon: 'integrations', pages: [
+    ['Overview', '/integrations/overview'], ['OFREP', '/integrations/ofrep'], ['flagd', '/integrations/flagd'],
+    ['CDN Files', '/integrations/cdn-files'], ['CDN Purge', '/integrations/cdn-purge'], ['Webhooks', '/integrations/webhooks'],
+    ['Metrics', '/integrations/metrics'], ['AI Agents (MCP)', '/integrations/mcp'],
+  ] },
+  { name: 'Reference', icon: 'reference', pages: [
+    ['Configuration', '/reference/configuration'], ['CLI', '/reference/cli'], ['HTTP API', '/reference/http-api'],
+    ['Attributes', '/reference/attributes'], ['Security Model', '/reference/security'], ['Writing a Plugin', '/reference/writing-a-plugin'],
+  ] },
+  { name: 'More', icon: 'migration', pages: [
+    ['Moving from Another System', '/guide/migration'], ['Compared with Others', '/guide/comparison'], ['Enterprise', '/guide/enterprise'],
+  ] },
 ];
 
 export function sidebarTree(): PageTree.Root {

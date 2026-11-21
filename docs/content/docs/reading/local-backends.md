@@ -9,7 +9,7 @@ backend service's secret key: see [Create a service and an API key](/reading/rem
 
 ## Get the flagd JSON
 
-flagd JSON is the `flagd()` plugin. It runs unless your config file lists plugins without it. See [Plugins](/reference/plugins).
+flagd JSON is an [integration](/integrations/flagd), on by default.
 
 ```http
 GET /sdk/v1/flagd/<dimension>/<entity>

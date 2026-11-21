@@ -1,4 +1,4 @@
-// Free values (docs/design/release-versions.md): a flag picks its values from named variants (the default), or takes any
+// Free values (docs/content/docs/guide/releases.md): a flag picks its values from named variants (the default), or takes any
 // value typed into its rules and default, each stored as a hidden, content-addressed variant, like a value typed in for
 // one customer. An on/off flag always uses variants; a version release always takes free values.
 import { after, before, test } from 'node:test';

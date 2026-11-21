@@ -1,6 +1,5 @@
 'use client';
-// The right end of the hero's footer, as better-auth.com's: GitHub, then light or dark (the landing page's bar has no
-// switch of its own, as theirs doesn't).
+// The right end of the hero's footer: GitHub, then light or dark (the landing page's bar has no switch of its own).
 import { useTheme } from 'next-themes';
 import { useEffect, useState } from 'react';
 

@@ -12,7 +12,7 @@ import { Empty, ErrorList, Heading } from '../ui.tsx';
 import { useAsync } from '../uiKit.ts';
 
 /*
- * Settings → Dimensions (docs/design/dimensions.md): what this installation serves config per, one chain from the top
+ * Settings → Dimensions (docs/content/docs/guide/dimensions.mdx): what this installation serves config per, one chain from the top
  * down, at most four. Each dimension has the words people read (singular and plural) and a key, which rules store as an
  * attribute ("Store is …"), so it's fixed once the dimension has entries. A dimension is added at the top or the bottom
  * and removed while it's empty and no rule uses it; the server says so when it refuses. Admins change it, no approval,

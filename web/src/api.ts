@@ -42,7 +42,7 @@ export type FlagDetail = {
   safeVariant?: string | null;
   variations: Variation[]; delivery: Record<string, string[]>;
   layers: Record<string, { base: Layer; entities: { entity: string; layer: Layer }[] }>;
-  /** a version release (docs/design/release-versions.md): per environment, the version it was on before its current one,
+  /** a version release (docs/content/docs/guide/releases.md): per environment, the version it was on before its current one,
    *  since when it's been on the current one, and the versions it has served while on (from its history) */
   versions?: Record<string, { previous: string | null; since: string | null; served: string[] }>;
 };
@@ -97,7 +97,7 @@ export type User = {
 };
 export type Meta = {
   me: User;                                                   // who is signed in
-  signIn: 'better-auth' | 'test-header';
+  signIn: 'accounts' | 'test-header';
   environments: { key: string; name: string; minApprovals: number; revision: number }[];
   services: { key: string; kind: 'client' | 'server' }[];
   /** what config is served per, top to bottom (server/dimensions.ts) */

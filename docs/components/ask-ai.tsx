@@ -1,5 +1,5 @@
 'use client';
-// "Ask AI" in the corner of the docs' pages, as on better-auth.com (⌘I or Ctrl+I): it opens Claude in a new tab, told to
+// "Ask AI" in the corner of the docs' pages (⌘I or Ctrl+I): it opens Claude in a new tab, told to
 // read these docs (/llms-full.txt) and the page you're on. No AI service of our own: the site stays static files.
 import { useEffect } from 'react';
 import { BASE } from '@/lib/source';

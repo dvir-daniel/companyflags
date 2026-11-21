@@ -497,7 +497,7 @@ export async function versionsServed(q: Queryable, flagKey: string): Promise<Map
   return served;
 }
 
-// Break-glass on a release (docs/design/release-versions.md): only the safe direction. Mid-way: paused, the release's own
+// Break-glass on a release (docs/content/docs/guide/releases.md): only the safe direction. Mid-way: paused, the release's own
 // rules switched off (everyone back on the old value, or the version everyone else is on, the % kept for resume). A
 // version release also: everyone on an older version this environment served while it was on. The saved layer must be
 // exactly that step (release.ts applyChange), with nothing else changed. `proposed`: the saved layer, canonical.
@@ -628,7 +628,7 @@ export async function summarizeLayers(q: Queryable, where: { flagIds: string[] }
 }
 
 // ---------------------------------------------------------------- versions: restore
-// Restore undoes flag settings only (docs/design/adr/0001-restore-undoes-flag-settings-only.md). Restoring version N
+// Restore undoes flag settings only. Restoring version N
 // puts every flag setting changed after N back to how it was at N: the "before" of its first change after N.
 // Settings already back in that state, archived flags and entities, and the defaults of flags created after N
 // are left alone. Changes of other kinds after N (an entity moved to another parent, delivery, variants: the

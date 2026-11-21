@@ -16,9 +16,9 @@ JSON. The examples use `https://flags.example.com`.
 | `GET /sdk/v1/links/<dimension>/<entity>?service=<key>` | backends | a backend service's key |
 | `POST /ofrep/v1/evaluate/flags`, `POST /ofrep/v1/evaluate/flags/<key>` | OpenFeature OFREP providers | an app service's key, an app token, or a backend service's key |
 | `GET /ofrep/v1/events/<env>/<service>[/<entity>]/<signature>` | OpenFeature OFREP providers (change events) | the signature from an answer |
-| [`POST /hooks/v1/<token>`](/guide/webhooks#in) | another system (webhook in) | the address itself |
+| [`POST /hooks/v1/<token>`](/integrations/webhooks#in) | another system (webhook in) | the address itself |
 | `GET /healthz`, `GET /readyz` | load balancers, orchestrators | none |
-| [`GET /metrics`](/self-hosting/monitoring#metrics) | Prometheus, with the `metrics()` plugin | none, or its token |
+| [`GET /metrics`](/integrations/metrics) | Prometheus, with the Metrics integration on | none, or its token |
 | [`/api/v1/…`](#the-stable-api-apiv1) | scripts, CI, integrations | an access token |
 
 ## Credentials
@@ -77,7 +77,7 @@ refuse is `422 invalid`, and the server's log has the database's message.
 An address the server doesn't know under `/api`, `/sdk`, `/cdn`, `/ofrep`, `/hooks` or `/mcp` (and a plugin's
 own prefixes) is a `404` with `{"error":"no such endpoint: GET /cdn/v1/nope","code":"not_found"}`, never the
 console's page. (Under `/api`, a request that isn't signed in gets `401` first.) OFREP endpoints answer their own
-errors the OFREP way (below), and `/api/auth/*` (Better Auth) and `/mcp` (JSON-RPC) theirs.
+errors the OFREP way (below), and `/api/auth/*` (sign-in) and `/mcp` (JSON-RPC) theirs.
 
 ### Request size
 
@@ -121,7 +121,7 @@ entity (or for no entity, before sign-in):
 [The CDN file](/reading/local-apps).
 
 Its headers (`Cache-Control`, `CDN-Cache-Control`, `ETag`, `Last-Modified`, `Cache-Tag`, `Vary`, CORS) are listed
-in [CDN → What a CDN can cache](/self-hosting/cdn#what-a-cdn-can-cache).
+in [CDN Files → What a CDN can cache](/integrations/cdn-files#what-a-cdn-can-cache).
 
 `If-None-Match` with the current ETag → `304`. Without `If-None-Match`, `If-Modified-Since` no earlier than `Last-Modified` → `304`. `OPTIONS` (a CORS preflight) → `204`, allowing `GET` and `HEAD`,
 kept for a day.
@@ -209,7 +209,7 @@ GET /sdk/v1/links/<dimension>/<entity>?service=<key>
 ```
 
 `service` names the app service the link is for. `path` is the
-entity's CDN file, only when the `cdnFiles()` plugin runs. `token` is made from the same link, with a secret of its
+entity's CDN file, only when the CDN Files integration is on. `token` is made from the same link, with a secret of its
 own for this service: an app's signed credential for OFREP (below). Both are for the key's environment.
 `Cache-Control: no-store`.
 
@@ -295,7 +295,7 @@ stream (`"eventStreams": []`), so the provider polls instead, every `pollInterva
 
 **CORS** is open on `/ofrep/*`: any origin may `POST` with `Authorization`, `Content-Type`, `If-None-Match` and
 `X-API-Key`, and read `ETag`, with an app service's key or an app token. A backend's key is refused from a browser.
-See [Security model](/guide/security#api-keys).
+See [Security model](/reference/security#api-keys).
 
 ## Health
 
@@ -315,7 +315,7 @@ server serves, in words:
 
 An environment whose new snapshot can't be built keeps serving the one before. It is listed in `failing`, and the
 answer is still `200`: alert on `failing`, and the server's log says why. Which probe uses which address is in
-[Monitoring → Health checks](/self-hosting/monitoring#health-checks).
+[Monitoring → Health checks](/operate/monitoring#health-checks).
 
 ## The stable API (`/api/v1`)
 
@@ -323,7 +323,7 @@ For scripts, CI and other systems. **What is here is stable**: within `/api/v1` 
 code is never removed or renamed, and a change that would break a caller comes as `/api/v2`. New fields and new
 endpoints may be added. Everything else under `/api` is the console's own (below) and may change in any release.
 
-Send an [access token](/guide/security#access-tokens): `Authorization: Bearer cfp_…`. It acts as its person, with
+Send an [access token](/reference/security#access-tokens): `Authorization: Bearer cfp_…`. It acts as its person, with
 their role: viewers read, editors and above change flags, and where an environment needs approvals a change is a
 request for review, as in the console. Every change is in History. The signed-in console's session works too (with
 `X-Requested-With: companyflags` on changes).
@@ -372,7 +372,7 @@ curl -s -X PUT https://flags.example.com/api/v1/environments/dev/flags/new_check
 
 ## The console's API
 
-The console talks to the server under `/api`: `/api/auth/*` is the sign-in (Better Auth), `/api/v1` is the
+The console talks to the server under `/api`: `/api/auth/*` is the sign-in, `/api/v1` is the
 stable API (above), and the rest is the console's own API. **The console's own API isn't stable**: its addresses and
 answers may change in any release, so a script uses `/api/v1` where it can. It keeps the same error shape and codes,
 says "service" too, and never picks an environment: a request about one environment names it (`?environment=prod`,
@@ -381,15 +381,15 @@ and the alert endpoint (`POST /api/alerts/kill`, [Alerts](/guide/ai)) are the co
 with the CLI and the docs.
 
 Some of it needs no session: the sign-in (`/api/auth/*` and `GET /api/sign-in`), the console's
-[appearance](/self-hosting/appearance) (`GET /api/appearance` and its images), and these two.
+[appearance](/operate/appearance) (`GET /api/appearance` and its images), and these two.
 
-- `GET /api/setup/<secret>` is the [setup link](/self-hosting/sign-in#the-first-account) a new server prints. It
+- `GET /api/setup/<secret>` is the [setup link](/operate/sign-in#the-first-account) a new server prints. It
   keeps the secret in a cookie and redirects to the console. A wrong secret, or a server that has accounts, gets
   `404`. A script can send the secret in an `X-Setup` header with its sign-up request instead.
 - `POST /api/invites` with `{"token": "…"}` says who an invite link is for. The token goes in the body, so it stays
   out of access logs.
 
-The appearance's endpoints ([Appearance](/self-hosting/appearance)):
+The appearance's endpoints ([Appearance](/operate/appearance)):
 
 - `GET /api/appearance` gives the name, the image addresses, the accent, the look, the sign-in note and the links. It
   is open before sign-in, because the sign-in page needs it. The notice is in `/api/meta`, for people signed in only.
@@ -401,7 +401,7 @@ Admins add, change and delete services at `/api/services` (`POST`, then `PUT` an
 with `{ "key": "web", "kind": "client" }`: the kind is `client` for an App and `server` for a Backend. Keys are made
 at `POST /api/api-keys` with `{ "environment", "service", "scope", "entity" }`.
 
-Scripts, the CLI and MCP clients send an [access token](/guide/security#access-tokens) instead of the cookie:
+Scripts, the CLI and MCP clients send an [access token](/reference/security#access-tokens) instead of the cookie:
 `Authorization: Bearer cfp_…`. A token needs no `X-Requested-With` header, and is refused from a browser (`403` with
 an `Origin` header). `401` means it is unknown, expired or revoked. Tokens are listed at `GET /api/tokens` (an admin
 adds `?all=1` for everyone's), made at `POST /api/tokens` with `{ "name": "CI", "role": "editor", "agent": false,
@@ -414,4 +414,4 @@ the signed-in console only. A token is On call at most, and gets `403` on people
 The rest needs a signed-in session (the cookie). Every change (any method but `GET`, `HEAD` and `OPTIONS`) also
 needs the header `X-Requested-With: companyflags`, and a body, when it sends one, must be a JSON object
 (`400 bad_json` otherwise). A request without the header, or one the browser
-marks `Sec-Fetch-Site: cross-site`, gets `403`. See [Security model](/guide/security#changes-from-the-console).
+marks `Sec-Fetch-Site: cross-site`, gets `403`. See [Security model](/reference/security#changes-from-the-console).

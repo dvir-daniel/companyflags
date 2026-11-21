@@ -1,0 +1,114 @@
+---
+title: "Installation"
+description: "Install CompanyFlags for your team in four steps: run it, make the admin account, connect an app, and go live."
+---
+
+This page takes you from nothing to an app reading flags from your own server, in four steps. Each step links to the
+deploy recipe that has every detail. Just looking? The [Quickstart](/guide/quickstart) runs it on your own machine.
+Not sure which setup fits? [Choose Your Setup](/deploy/builder).
+
+## 1. Run it
+
+<Tabs items={['Docker Compose', 'Docker', 'A cloud']}>
+<Tab value="Docker Compose">
+
+One server, with Postgres beside it. The way to start for a team.
+
+```bash
+curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
+echo "FF_SECRET=$(openssl rand -base64 32)" > .env
+echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
+echo "FF_PUBLIC_URL=https://flags.example.com" >> .env
+chmod 600 .env
+docker compose up -d
+```
+
+It answers on `127.0.0.1:8787` only. Put Caddy or nginx in front for HTTPS:
+[Docker Compose → HTTPS](/deploy/docker-compose#https-with-caddy-or-nginx).
+
+</Tab>
+<Tab value="Docker">
+
+One container, on a Postgres server you already run.
+
+```bash
+echo "FF_SECRET=$(openssl rand -base64 32)" > .env
+echo "FF_PUBLIC_URL=https://flags.example.com" >> .env
+echo "DATABASE_URL=postgres://user:password@db.example.com:5432/flags?sslmode=verify-full" >> .env
+chmod 600 .env
+docker run -d --name companyflags -p 127.0.0.1:8787:8787 --env-file .env ghcr.io/dvir-daniel/companyflags:0.9
+```
+
+Leave out `DATABASE_URL` to try it with the embedded database, in one container only:
+[Docker Compose → One container](/deploy/docker-compose#one-container).
+
+</Tab>
+<Tab value="A cloud">
+
+Each recipe runs two or more instances, with the platform's own Postgres, secrets and load balancer:
+
+- [Kubernetes](/deploy/kubernetes): a cluster you already run.
+- [AWS](/deploy/aws): ECS on Fargate, RDS and CloudFront.
+- [Google Cloud](/deploy/google-cloud): Cloud Run, Cloud SQL and Cloud CDN.
+- [Azure](/deploy/azure): Container Apps, Flexible Server and Front Door.
+
+</Tab>
+</Tabs>
+
+Every install needs the same five things. The image sets `NODE_ENV=production`, so the server refuses to start
+without the first three:
+
+- **`FF_SECRET`**, made once and never changed. It signs sessions and seals the secrets kept in the database.
+- **`FF_PUBLIC_URL`**, the `https` address people open the console at. Sign-in works only from it.
+- **Postgres 15 or later.** The embedded database is for trying it.
+- **HTTPS in front.** The server speaks plain HTTP on port 8787.
+- **The admin account**, made with the setup link (next).
+
+## 2. Make the admin account
+
+A new server has no accounts. It prints a **setup link** in its log at every start until the admin account exists:
+see `docker compose logs companyflags`, `docker logs companyflags`, or your platform's logs.
+
+```text
+[companyflags] nobody has an account yet: make the admin account at https://flags.example.com/api/setup/<secret>
+```
+
+Open it and create the admin account. Then invite your team from **Settings → People**.
+
+:::warning[Make the account right after the first start]
+Until the admin account exists, whoever has the link can make it. Make the account as soon as the server first
+starts, and limit who can read the logs until then. See [Sign-In → The first account](/operate/sign-in#the-first-account).
+:::
+
+## 3. Connect an app
+
+The console walks you through its first steps: environments (`dev`, `prod`), a service (`web`, an app) and your first
+flag (`new_checkout`). Then **API Keys → + New key**: the environment and the service `web`. Copy the key: it is shown
+once.
+
+An app reads its flags with OpenFeature's own OFREP provider, and nothing of ours:
+
+```ts
+import { OpenFeature } from '@openfeature/web-sdk';
+import { OFREPWebProvider } from '@openfeature/ofrep-web-provider';
+
+await OpenFeature.setProviderAndWait(new OFREPWebProvider({
+  baseUrl: 'https://flags.example.com', headers: [['Authorization', 'Bearer ff_prod_web_…']] }));
+const newCheckout = OpenFeature.getClient().getBooleanValue('new_checkout', false);
+```
+
+An app's key is public: it reads that service's values only. For backends, mobile apps and the other ways to read
+flags, see [Reading flags](/reading/overview).
+
+## 4. Go live
+
+Go through your recipe's own checklist, top to bottom:
+[Docker Compose](/deploy/docker-compose#checklist), [Kubernetes](/deploy/kubernetes#checklist),
+[AWS](/deploy/aws#checklist), [Google Cloud](/deploy/google-cloud#checklist) or [Azure](/deploy/azure#checklist).
+Then the [Production Checklist](/operate/production), before people and apps depend on it.
+
+## Next
+
+- [Sign-In and People](/operate/sign-in): who can join, and two-factor.
+- [Single Sign-On](/operate/single-sign-on): sign in with your identity provider.
+- [Integrations](/integrations/overview): what's on by default, and how to turn on the rest.

@@ -72,7 +72,7 @@ Change any of it before you create the flag. The schema keeps a config whole: a 
 
 When an alert fires, it can turn a kill switch off at once: `POST /api/alerts/kill`, with an **alerts token**.
 An *On call* or *Admin* person makes one: your name → **Account** → **+ New token**, and tick **For alerts only**
-([Access tokens](/guide/security#access-tokens)).
+([Access tokens](/reference/security#access-tokens)).
 
 An alerts token is On call, since turning a flag off without a review is break-glass, but it does nothing else: it
 reads, changes and approves nothing, and every other address refuses it (403). So the secret in your alert tool can't

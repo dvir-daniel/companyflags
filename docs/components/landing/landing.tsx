@@ -1,5 +1,5 @@
 'use client';
-// The landing page, in the look of the console and of better-auth.com: a fixed hero on the left, README-style
+// The landing page, in the look of the console: a fixed hero on the left, README-style
 // sections on the right, 1px rules, mono uppercase labels, square corners.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
@@ -11,13 +11,13 @@ const repo = 'https://github.com/dvir-daniel/companyflags';
 
 const install = {
   Docker: [
-    'echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env',
+    'echo "FF_SECRET=$(openssl rand -base64 32)" > .env',
     'docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \\',
-    '  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9',
+    '  -e FF_PUBLIC_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9',
   ],
   'Docker Compose': [
     'curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml',
-    'echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env',
+    'echo "FF_SECRET=$(openssl rand -base64 32)" > .env',
     'echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env',
     'docker compose up -d',
   ],
@@ -133,7 +133,7 @@ const features: { title: string; text: string; chips: string[] }[] = [
   { title: 'Made for AI.', text: 'AI-written code ships off, then to a few, with a kill switch. Models and prompts are JSON flags you roll out and roll back.', chips: ['kill switch', 'model', 'prompt'] },
   { title: 'Reviewed changes.', text: 'Where an environment requires approval, every change there is reviewed, with scheduling and break-glass for on call.', chips: ['approve', 'schedule', 'break-glass'] },
   { title: 'History and restore.', text: 'An append-only history, versions of every environment, restore, and two entities compared flag by flag.', chips: ['history', 'restore', 'compare'] },
-  { title: 'Your sign-in.', text: 'Email and password, Google, GitHub, Microsoft, and single sign-on with SAML or OIDC, through Better Auth.', chips: ['SAML', 'OIDC', 'invites'] },
+  { title: 'Your sign-in.', text: 'Email and password, Google, GitHub, Microsoft, and single sign-on with SAML or OIDC.', chips: ['SAML', 'OIDC', 'invites'] },
   { title: 'Webhooks out and in.', text: 'Each change to Slack, CI or the old system, signed; and the old system’s changes in, while both run.', chips: ['Slack', 'signed', 'JSONata'] },
   { title: 'Flags as code, and plugins.', text: 'Keep flags in a file reviewed with your code; where an environment requires approval, a push makes requests there. Run only the plugins you need.', chips: ['pull', 'plan', 'push'] },
 ];
@@ -242,7 +242,7 @@ export function Landing() {
         <footer className="hero-foot">
           <Link href="/guide/introduction">Docs</Link><span>/</span>
           <a href={`${repo}/blob/main/CHANGELOG.md`}>Changelog</a><span>/</span>
-          <Link href="/guide/security">Security</Link>
+          <Link href="/reference/security">Security</Link>
           <HeroIcons repo={repo} />
         </footer>
       </aside>
@@ -338,9 +338,10 @@ export function Landing() {
             ))}
           </div>
           <div className="links">
-            <Link href="/self-hosting/docker">Docker →</Link>
-            <Link href="/self-hosting/production">Production checklist →</Link>
-            <Link href="/guide/security">Security model →</Link>
+            <Link href="/guide/installation">Installation →</Link>
+            <Link href="/deploy/builder">Deploy →</Link>
+            <Link href="/operate/production">Production checklist →</Link>
+            <Link href="/reference/security">Security model →</Link>
           </div>
         </section>
 

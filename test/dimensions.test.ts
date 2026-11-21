@@ -1,4 +1,4 @@
-// What an installation serves config per (server/dimensions.ts, docs/design/dimensions.md): the chain of dimensions,
+// What an installation serves config per (server/dimensions.ts, docs/content/docs/guide/dimensions.mdx): the chain of dimensions,
 // checked before it's saved, and saved as a whole by an admin. Words change any time; a dimension is added at the top or
 // the bottom (in between only while the one below has no entity with a parent), removed only while it has no entities
 // and no rule checks it, and keeps its key. In History as "dimensions.update"; nothing served changes.

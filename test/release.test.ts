@@ -1,4 +1,4 @@
-// Releases (server/release.ts, docs/design/releases.md): where a release is, read from its defaults; each step's
+// Releases (server/release.ts, docs/content/docs/guide/releases.md): where a release is, read from its defaults; each step's
 // defaults pass the server's own checks without a reshuffle; the devices that had it keep it as it grows; and end to
 // end, the steps through the real API in an environment without review and in one with it, then cleaning up.
 import { after, before, describe, test } from 'node:test';
@@ -284,7 +284,7 @@ describe('releases end to end', () => {
   });
 });
 
-// ---- version releases (docs/design/release-versions.md) ------------------------------------------------------------
+// ---- version releases (docs/content/docs/guide/releases.md) ------------------------------------------------------------
 // a version release's values are free values: each version is a hidden, content-addressed variant (evaluator.ts hiddenKey)
 const k = (version: string) => hiddenKey(version);
 const versionsOf = (...list: string[]): Variant[] => list.map((v) => ({ key: k(v), value: v }));

@@ -1,5 +1,5 @@
-// What two-factor sign-in needs besides its components (twoFactor.tsx, signin.tsx): Better Auth's two-factor endpoints
-// (server/betterAuth.ts, its twoFactor plugin), and the setup key an authenticator app takes. Apart from the
+// What two-factor sign-in needs besides its components (twoFactor.tsx, signin.tsx): the sign-in's two-factor endpoints
+// (server/accounts.ts, its twoFactor plugin), and the setup key an authenticator app takes. Apart from the
 // components so an edit to them swaps in place in `pnpm dev` (React Fast Refresh).
 
 /** Your own account (GET /api/account): whether you have a password, and whether two-factor sign-in is on. */
@@ -8,7 +8,7 @@ export type Account = { password: boolean; twoFactor: boolean };
 /** What turning two-factor on gives: the authenticator app's address (otpauth://) and the recovery codes, shown once. */
 export type Enabled = { totpURI: string; backupCodes: string[] };
 
-/** One of Better Auth's two-factor endpoints (/api/auth/two-factor/…). A refusal throws its message. */
+/** One of the sign-in's two-factor endpoints (/api/auth/two-factor/…). A refusal throws its message. */
 export async function twoFactorCall<T = unknown>(path: string, body: Record<string, unknown>): Promise<T> {
   const r = await fetch(`/api/auth/two-factor/${path}`, {
     method: 'POST', headers: { 'content-type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify(body),

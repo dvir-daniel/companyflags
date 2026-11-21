@@ -15,6 +15,27 @@ export const REDIRECTS: Record<string, string> = {
   '/sdk/openfeature': '/reading/overview',
   '/sdk/app-file': '/reading/local-apps',
   '/sdk/cdn-file': '/reading/local-apps',
+  // after 0.9: Installation, Deploy (a whole recipe per page), Operate, Integrations (no more Plugins group), Reference
+  '/self-hosting/overview': '/guide/installation',
+  '/self-hosting/docker': '/deploy/docker-compose',
+  '/self-hosting/aws': '/deploy/aws',
+  '/self-hosting/google-cloud': '/deploy/google-cloud',
+  '/self-hosting/azure': '/deploy/azure',
+  '/self-hosting/database': '/reference/configuration',     // its parts kept their anchors there, and in the recipes
+  '/self-hosting/proxies': '/reference/configuration',
+  '/self-hosting/secrets': '/reference/configuration',
+  '/self-hosting/configuration': '/reference/configuration',
+  '/self-hosting/cdn': '/integrations/cdn-files',           // the purge is /integrations/cdn-purge
+  '/self-hosting/production': '/operate/production',
+  '/self-hosting/monitoring': '/operate/monitoring',
+  '/self-hosting/backups': '/operate/backups',
+  '/self-hosting/upgrading': '/operate/upgrading',
+  '/self-hosting/sign-in': '/operate/sign-in',
+  '/self-hosting/single-sign-on': '/operate/single-sign-on',
+  '/self-hosting/appearance': '/operate/appearance',
+  '/reference/plugins': '/reference/writing-a-plugin',      // the built-in ones are each an /integrations/ page
+  '/guide/webhooks': '/integrations/webhooks',
+  '/guide/security': '/reference/security',
 };
 
 const page = (to: string) => `<!doctype html>

@@ -135,7 +135,7 @@ can also copy each token from the console.
 
 OFREP answers come from the server: one small request per device and check, evaluated in memory. For fleets of
 millions of devices you may prefer that no request reaches the server at all. The **CDN file** is that: one file per
-environment, service and entity, built once per publish and cached by your [CDN](/self-hosting/cdn), with the
+environment, service and entity, built once per publish and cached by your [CDN Files](/integrations/cdn-files), with the
 entity's values and the few checks only the device can make. Nothing runs per request; the CDN answers.
 
 The CDN file is flagd JSON: web apps and React Native read it with OpenFeature's flagd evaluator. See

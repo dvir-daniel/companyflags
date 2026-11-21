@@ -45,7 +45,7 @@ for an admin to reach addresses on the server's network, run code on the host, r
 the server is in scope. So is anything an editor, viewer, app, backend or someone with no account can do beyond
 their role: for example, an app service's key reading another service's flags, or the rules.
 
-Out of scope: problems that need the server's own secrets (`BETTER_AUTH_SECRET`, the database) or access to its
+Out of scope: problems that need the server's own secrets (`FF_SECRET`, the database) or access to its
 host, denial of service by sheer volume (put a CDN or rate limiter in front, as the docs describe), an app service's
 key read out of an app (it is public by design, and reads that service's values only), and reports from automated
 scanners with no shown impact.
@@ -54,12 +54,12 @@ An agent doing more than an editor, a token above its person's role, a token tha
 than the person allowed is in scope. So is getting around a sign-in rule: two-factor sign-in for admins with a token
 or OAuth, approving your own request (an incoming webhook's requests are its owner's), or an OIDC sign-in reaching a
 private address. What we accept for agents, tokens and OAuth, and why, is listed under
-[Agents, tokens and OAuth](docs/guide/security.md#agents-tokens-and-oauth): for example, an OAuth token working on
+[Agents, tokens and OAuth](docs/content/docs/reference/security.md#agents-tokens-and-oauth): for example, an OAuth token working on
 `/api` as well as `/mcp`, a client choosing its own name, and a token passed as `--token` showing in the process list.
 
 ## How CompanyFlags protects an installation
 
-The [security model](docs/guide/security.md) describes it in full. In short:
+The [security model](docs/content/docs/reference/security.md) describes it in full. In short:
 
 - **The first account is the admin's, made with a setup link.** A new server prints the link when it starts, and makes
   no account without it, so whoever reaches a new server first can't make themselves its admin. It works until the
@@ -71,7 +71,7 @@ The [security model](docs/guide/security.md) describes it in full. In short:
   and the server refuses it from a browser.
 - **App links** pin an app to one entity. An app's link (as an address or as its OpenFeature token) reads that entity
   only; replacing it stops the old one at once. An admin can replace every link in an environment at once.
-- **Sign-in** uses [Better Auth](https://www.better-auth.com): cookie sessions, password hashes, OAuth tokens stored
+- **Sign-in** has cookie sessions, password hashes, OAuth tokens stored
   encrypted, rate limits unless `NODE_ENV` is `development` or `test`, single sign-on with SAML (signed answers only)
   or OIDC. Where single sign-on is required, only admins sign in another way, and turning it on signs the others out.
 - **What admins set up stays inside its limits.** Webhooks reach public addresses only, unless an operator allows an

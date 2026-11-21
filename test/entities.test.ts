@@ -35,7 +35,7 @@ const RULE: Record<'brand' | 'company', object> = { brand: {}, company: {} };
 const MODES: (Inherit | null)[] = [null, 'base_rules_then_base_default', 'base_rules_then_customer_default', 'customer_only'];
 const LANGS = ['xx', 'fr', 'de', 'es', 'en'];
 
-/** The documented order (docs/design/dimensions.md), written out plainly for a brand and its company. */
+/** The documented order (docs/content/docs/guide/dimensions.mdx), written out plainly for a brand and its company. */
 function expected(lang: string, brand: Inherit | null, company: Inherit | null): string {
   if (lang === 'xx') return 'override';                                         // overrides for everyone always win
   const brandOwnDefault = brand === 'base_rules_then_customer_default' || brand === 'customer_only';

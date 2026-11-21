@@ -1,5 +1,5 @@
 // People and their access: the one module that decides who may join, who is asking once they are signed in, what
-// their role lets them do, and what removing their access takes away (docs/design/adr/0002-better-auth-is-an-adapter-behind-people-and-access.md).
+// their role lets them do, and what removing their access takes away.
 //
 //   createAccess(db, { accounts, connections, signupDomains })   the people of this app (app_user)
 //     .signedIn(who)              who is asking: the person behind a signed-in email, added on their first sign-in
@@ -13,7 +13,7 @@
 //   may(person, right), mustBeAllowed(person, right)    what their role lets them do (the roles are policy.ts's)
 //
 // A person's key is their email. Their role is kept here (app_user); their accounts and sessions are kept by the
-// sign-in, Better Auth (betterAuth.ts), behind `Accounts`, and the two meet on the email. Better Auth decides
+// sign-in library (accounts.ts), behind `Accounts`, and the two meet on the email. The library decides
 // nothing about who may join: its hooks ask `admit`. Single sign-on connections are kept by sso.ts, behind `connections`.
 //
 // Who may join (`admit`):
@@ -90,7 +90,7 @@ export type Attempt = (
 
 export type Refusal = { code: 'access_removed' | 'invite_required' | 'sso_required'; message: string };
 
-/** Where accounts are kept: Better Auth's tables (betterAuth.ts `betterAuthAccounts`). */
+/** Where accounts are kept: the sign-in's tables (accounts.ts `authAccounts`). */
 export type Accounts = {
   /** whether anyone has an account yet */
   any(q: Queryable): Promise<boolean>;
@@ -117,7 +117,7 @@ export type AccessOptions = {
   connections: (q: Queryable) => Promise<Vouching[]>;
   /** provider sign-ins with a confirmed email at these domains may join without an invite (FF_SIGNUP_DOMAINS) */
   signupDomains?: string[];
-  /** The setup link's secret (betterAuth.ts setupTokenFor): the first account is made only with it, so whoever reaches
+  /** The setup link's secret (accounts.ts setupTokenFor): the first account is made only with it, so whoever reaches
    *  a new server first can't make themselves its admin. Without one, no first account can be made. */
   setupToken?: string;
   /** the time, for invites (tests set it) */
@@ -352,7 +352,7 @@ export function createAccess(db: Db, opts: AccessOptions) {
 
     /** A password link for someone with an account, made by an admin (this server sends no email): it sets a new
      *  password, or a first one for someone who signed in only with single sign-on or a provider (their connection was
-     *  removed, or their identity provider is down). `token` asks the sign-in for one (betterAuth.ts
+     *  removed, or their identity provider is down). `token` asks the sign-in for one (accounts.ts
      *  passwordResetToken). Someone with no account yet gets an invite link instead, and so does someone whose access
      *  was removed. `ssoRequired`: their domain requires single sign-on and they aren't the break-glass admin, so the
      *  password won't sign them in until it no longer does. */

@@ -1,4 +1,4 @@
-/* The docs site: Fumadocs' black-and-white theme, in better-auth.com's way (pure black or white, Geist, 1px rules,
+/* The docs site: Fumadocs' black-and-white theme (pure black or white, Geist, 1px rules,
    square corners), and the colors our illustrations and landing page use (--cf-*). Every color for text is at least
    4.5:1 (WCAG AA) on the backgrounds it's used on: muted text is #6b6b6b on light (4.9:1 on #f5f5f5) and #8a8a8a or
    lighter on dark (5.4:1 on #121212). Where we style Fumadocs, we use its props, its ids (#nd-*) and our own classes,
@@ -25,7 +25,7 @@ body { font-family: var(--font-sans); }
 code, kbd, pre { font-family: var(--font-mono); }
 ::selection { background: var(--cf-ink); color: var(--cf-page); }
 
-/* square corners everywhere, as better-auth.com */
+/* square corners everywhere */
 #nd-docs-layout *, #nd-home-layout *, [data-radix-popper-content-wrapper] *, [role='dialog'] *, .prose * { border-radius: 0 !important; }
 
 :root {
@@ -60,7 +60,7 @@ code, kbd, pre { font-family: var(--font-mono); }
   --cf-wash: rgba(250, 250, 250, 0.05);
   --cf-accent: #a78bfa;
 }
-/* ---- illustrations, in Better Auth's way: square icon tiles joined by thin lines, dashed "+" tiles, chips with a
+/* ---- illustrations: square icon tiles joined by thin lines, dashed "+" tiles, chips with a
    status dot, a one-line terminal, mono labels, dotted backgrounds (Illus*.vue) */
 .cf-ill { --ok: #15803d; --warn: #b45309; --bad: #dc2626; font-family: var(--font-sans); color: var(--cf-ink); }
 .dark .cf-ill { --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; }
@@ -111,7 +111,7 @@ code, kbd, pre { font-family: var(--font-mono); }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
 
-/* ---- the landing page's bar, as better-auth.com's: 48px, the name on the left, the parts of the site on the right as
+/* ---- the landing page's bar: 48px, the name on the left, the parts of the site on the right as
    small-capital cells divided by 1px lines, GitHub inverted, then light or dark */
 #nd-home-layout { --fd-layout-width: 100vw; }
 #nd-home-layout #nd-nav, #nd-home-layout #nd-nav nav { height: var(--cf-nav-height); }
@@ -130,7 +130,7 @@ code, kbd, pre { font-family: var(--font-mono); }
 #nd-home-layout #nd-nav nav > ul > li > a[href^='https://github.com'] { background: var(--cf-ink); color: var(--cf-page); }
 #nd-home-layout #nd-nav nav > ul > li > a[href^='https://github.com']:hover { background: var(--cf-ink-1); }
 
-/* ---- the docs' pages, as better-auth.com's */
+/* ---- the docs' pages */
 /* the version, at the top of the sidebar */
 .cf-version { display: grid; gap: 2px; padding: 8px 10px; border: 1px solid var(--color-fd-border); transition: background-color 150ms; }
 .cf-version:hover { background: var(--cf-wash); }
@@ -145,7 +145,7 @@ code, kbd, pre { font-family: var(--font-mono); }
 }
 .cf-page-actions > button:hover { color: var(--color-fd-foreground); background: var(--cf-wash) !important; }
 .cf-page-actions > button svg { width: 13px; height: 13px; }
-/* "On this page" is Fumadocs' block style (page.tsx): the open section shaded, as better-auth.com's */
+/* "On this page" is Fumadocs' block style (page.tsx): the open section shaded */
 /* the site's links at the foot of the sidebar, below 1024px (components/site-links.tsx) */
 .cf-site-links { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-top: 10px; border-top: 1px solid var(--color-fd-border); }
 .cf-site-links a { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; line-height: 24px; color: var(--color-fd-muted-foreground); }
@@ -161,7 +161,7 @@ code, kbd, pre { font-family: var(--font-mono); }
 .cf-ask-rule { width: 1px; height: 16px; background: var(--color-fd-border); }
 .cf-ask kbd { font-family: var(--font-mono); font-size: 10px; }
 @media (max-width: 767px) { .cf-ask { display: none; } }
-/* the phone's menu button on the landing page: three lines, as better-auth.com's, instead of an arrow */
+/* the phone's menu button on the landing page: three lines, instead of an arrow */
 #nd-home-layout #nd-nav button[aria-label='Toggle Menu'] svg { display: none; }
 #nd-home-layout #nd-nav button[aria-label='Toggle Menu']::before {
   content: ''; width: 18px; height: 18px; background: currentColor; color: var(--cf-ink-1);
@@ -177,7 +177,7 @@ code, kbd, pre { font-family: var(--font-mono); }
 #nd-home-layout #nd-nav nav > ul > li > button:hover, #nd-home-layout #nd-nav nav > ul > li > button[data-state='open'] { color: var(--cf-ink); background: var(--cf-wash); }
 
 
-/* ---- the site's bar on a wide screen (components/site-bar.tsx), as better-auth.com's: it stays in place between pages.
+/* ---- the site's bar on a wide screen (components/site-bar.tsx): it stays in place between pages.
    The logo's cell is as wide as the column under it and eases from the hero's 40% to the sidebar's width; the parts of
    the site share the rest in equal cells; it comes in once, when the site opens. */
 :root { --cf-left: 40%; }

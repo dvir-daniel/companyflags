@@ -81,8 +81,8 @@ const DEAD = 'http://127.0.0.1:1';
 type App = Awaited<ReturnType<typeof startApp>>;
 /** A new app whose first account, ann@corp.example, is the admin; admin() signs her in again (a new session). */
 async function appWithAdmin(opts: Pick<AppOptions, 'discover'> = {}) {
-  // the fake provider is on this machine: Better Auth only talks to private addresses it is told to trust
-  const ctx = await startApp({ signIn: { kind: 'better-auth', settings: { trustedOrigins: [IDP, DEAD] } }, ...opts });
+  // the fake provider is on this machine: the sign-in only talks to private addresses it is told to trust
+  const ctx = await startApp({ signIn: { kind: 'accounts', settings: { trustedOrigins: [IDP, DEAD] } }, ...opts });
   const call = browser(ctx, ORIGIN);
   const first = await call('POST', '/api/auth/sign-up/email', { body: { email: 'ann@corp.example', name: 'Ann', password: PASSWORD },
     headers: { 'x-setup': ctx.setupToken! } });
@@ -133,7 +133,7 @@ describe('OIDC, start to finish (in order)', () => {
   const meta = (cookie: string) => call('GET', '/api/meta', { cookie });
   const okta = () => ({ type: 'oidc', id: 'okta', issuer: IDP, clientId: 'console-app', clientSecret: 'idp-secret', domains: 'corp.example, @Corp-Labs.example' });
 
-  test('only admins add connections, through the console (Better Auth’s own endpoints are off)', async () => {
+  test('only admins add connections, through the console (the SSO plugin’s own endpoints are off)', async () => {
     const admin = await app.admin();
     assert.equal((await call('POST', '/api/auth/sso/register', { cookie: admin, body: { providerId: 'x', issuer: IDP, domain: 'corp.example' } })).status, 404);
     assert.equal((await call('POST', '/api/sso', { body: okta() })).status, 401, 'signed in');
@@ -384,9 +384,9 @@ test('the issuer must be on the public internet unless trusted; what went wrong 
   for (const issuer of ['http://10.1.2.3', 'http://169.254.169.254', `http://localhost:${new URL(IDP).port}`, 'http://[::1]:8080']) {
     const r = await add(issuer);
     assert.equal(r.status, 422, issuer);
-    assert.match(r.json.error, /isn’t on the public internet: .*BETTER_AUTH_TRUSTED_ORIGINS/, issuer);
+    assert.match(r.json.error, /isn’t on the public internet: .*FF_TRUSTED_ORIGINS/, issuer);
   }
-  // trusted (BETTER_AUTH_TRUSTED_ORIGINS), but nothing answers, or not with a discovery document: the same plain words
+  // trusted (FF_TRUSTED_ORIGINS), but nothing answers, or not with a discovery document: the same plain words
   for (const issuer of [DEAD, `${IDP}/no-such-tenant`]) {
     const r = await add(issuer);
     assert.equal(r.status, 422, issuer);
@@ -413,7 +413,7 @@ test('the issuer’s address is checked by the connection’s own lookup: a name
   const local = ((_h: string, _o: unknown, cb: (e: Error | null, a: { address: string; family: number }[]) => void) =>
     cb(null, [{ address: '127.0.0.1', family: 4 }])) as unknown as typeof dnsLookup;
   await assert.rejects(discoverOverHttp([], { lookup: local })(`http://idp.acme.example:${port}/.well-known/openid-configuration`),
-    /isn’t on the public internet: .*BETTER_AUTH_TRUSTED_ORIGINS/);
+    /isn’t on the public internet: .*FF_TRUSTED_ORIGINS/);
 });
 
 test('adding an OIDC connection reads the identity provider’s settings through the discovery adapter, offline', async (t) => {
@@ -439,7 +439,7 @@ test('adding an OIDC connection reads the identity provider’s settings through
     settingsAt.set(at, { ...settings, [k]: v });
     const r = await add();
     assert.equal(r.status, 422, k);
-    assert.match(r.json.error, new RegExp(`give a ${k} that isn’t on the public internet: .*BETTER_AUTH_TRUSTED_ORIGINS`), k);
+    assert.match(r.json.error, new RegExp(`give a ${k} that isn’t on the public internet: .*FF_TRUSTED_ORIGINS`), k);
     assert.doesNotMatch(r.json.error, /10\.0\.0\.5|169\.254|localhost/, 'the address isn’t repeated back');
   }
   settingsAt.set(at, { ...settings, token_endpoint: 'ftp://login.offline.example/token' });
@@ -540,7 +540,7 @@ test('a sign-in reaches the identity provider’s token, keys and user info addr
     looked.push(host);
     cb(null, [{ address: '127.0.0.1', family: 4 }]);
   }) as unknown as typeof dnsLookup;
-  const ctx = await startApp({ signIn: { kind: 'better-auth', settings: { trustedOrigins: [IDP], lookup } }, discover });
+  const ctx = await startApp({ signIn: { kind: 'accounts', settings: { trustedOrigins: [IDP], lookup } }, discover });
   t.after(() => ctx.stop());
   const call = browser(ctx, ORIGIN);
   const first = await call('POST', '/api/auth/sign-up/email', { body: { email: 'ann@rebind.example', name: 'Ann', password: PASSWORD }, headers: { 'x-setup': ctx.setupToken! } });

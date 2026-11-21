@@ -57,7 +57,7 @@ export function Icon({ name, size = 15 }: { name: IconName; size?: number }) {
 type NavItem = { key: string; label: string; icon: IconName; href?: string; current: (page: string, sub?: string) => boolean };
 const plainPage = (key: string, also?: string): Pick<NavItem, 'key' | 'current'> => ({ key, current: (p) => p === key || p === also });
 
-// The sidebar as better-auth.com draws its own: each item a short noun in Title Case, the same words as the page's title
+// The sidebar: each item a short noun in Title Case, the same words as the page's title
 // and the tab's, an icon on each, and a small caption over each group that holds one kind of thing.
 //   (no caption)  what the console is for, every day: the flags, their releases, what waits for review, what happened,
 //                 and Compare (who gets what, side by side)
@@ -222,7 +222,7 @@ function AccountMenu({ meta, me }: { meta: Meta; me: User }) {
         <a href="#/tokens" onClick={() => setOpen(false)} className="border-t border-rule pt-3 text-13 text-ink underline decoration-ink-4 underline-offset-4 hover:decoration-ink">Account: two-factor and access tokens</a>
         <HelpLink />
         <ShortcutsChoice />
-        {meta.signIn === 'better-auth' ? (
+        {meta.signIn === 'accounts' ? (
           <Button variant="secondary" className="w-full" disabled={busy} onClick={() => { setBusy(true); void signOut(); }}>{busy ? 'Signing out…' : 'Sign out'}</Button>
         ) : (
           <p className="m-0 border-t border-rule pt-3 text-ink-3">This server signs people in itself, so there’s nothing to sign out of here.</p>
@@ -243,7 +243,7 @@ export function Footer({ meta }: { meta: Meta | null }) {
       </span>
       <span className="flex-1" />
       <LookLinks />
-      {meta?.signIn === 'better-auth' && <button type="button" onClick={() => void signOut()} className="cursor-pointer text-ink hover:underline">Sign out</button>}
+      {meta?.signIn === 'accounts' && <button type="button" onClick={() => void signOut()} className="cursor-pointer text-ink hover:underline">Sign out</button>}
     </Bar>
   );
 }
@@ -305,7 +305,7 @@ export function MobileNav({ meta, page, sub, pending, onSearch }: { meta: Meta |
         </button>
       </nav>
       {meta && <Drawer open={open} onClose={() => setOpen(false)} title="Menu" subtitle={`Signed in as ${meta.me.key}`}
-        footer={meta.signIn === 'better-auth' ? <Button variant="secondary" onClick={() => void signOut()}>Sign out</Button> : undefined}>
+        footer={meta.signIn === 'accounts' ? <Button variant="secondary" onClick={() => void signOut()}>Sign out</Button> : undefined}>
         {/* the whole sidebar, as on a computer: search, every page, what's published and who you are */}
         <Sidebar meta={meta} page={page} sub={sub} pending={pending} onSearch={() => { setOpen(false); onSearch(); }}
           className="-mx-1 border-r-0 bg-transparent px-0 py-0 [&_[data-slot=sidebar-item]]:py-3 [&_[data-slot=sidebar-search]]:h-11 [&_kbd]:hidden" />

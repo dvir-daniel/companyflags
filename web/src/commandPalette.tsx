@@ -112,7 +112,7 @@ export function CommandPalette({ meta, open, onOpenChange, onSearchFlags }: {
             <CommandItem value="action keyboard single-key shortcuts" onSelect={() => run(() => setShortcutsOn(!shortcutsOn()))}>
               {shortcutsOn() ? 'Turn single-key shortcuts off' : 'Turn single-key shortcuts on'}
             </CommandItem>
-            {meta.signIn === 'better-auth' && <CommandItem value="action sign out" onSelect={() => run(() => void signOut())}>Sign out</CommandItem>}
+            {meta.signIn === 'accounts' && <CommandItem value="action sign out" onSelect={() => run(() => void signOut())}>Sign out</CommandItem>}
           </CommandGroup>
         </CommandList>
       </Command>

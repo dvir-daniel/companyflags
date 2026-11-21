@@ -30,7 +30,7 @@ Each person has one role, set by an admin in **Settings → People**:
 Beyond that, roles only decide who reviews and who may use break-glass. The rules live in one module the server and
 the console share, [`server/policy.ts`](https://github.com/dvir-daniel/companyflags/blob/main/server/policy.ts).
 People get their role from an admin, or from their identity provider's groups
-([Single Sign-On → Group roles](/self-hosting/single-sign-on#group-roles)).
+([Single Sign-On → Group roles](/operate/single-sign-on#group-roles)).
 
 ## Protected environments
 

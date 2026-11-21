@@ -1,4 +1,4 @@
-// Console (control-plane) API. The sign-in (identity.ts: a Better Auth session cookie) says which email is asking;
+// Console (control-plane) API. The sign-in (identity.ts: a session cookie) says which email is asking;
 // the access module (access.ts) says who that person is and what their role lets them do: viewers can look but not
 // change anything, and settings (environments, services, people, single sign-on) are for admins.
 // Every change (any method but GET) must carry X-Requested-With: companyflags, which a page on another site can't
@@ -108,7 +108,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
       await checkBody(c);
     }
     const u = await access.signedIn(who);
-    // an admin the sign-in rules ask to set up two-factor sign-in does that first (with Better Auth, at /api/auth)
+    // an admin the sign-in rules ask to set up two-factor sign-in does that first (with the sign-in, at /api/auth)
     if (u.needsTwoFactor && c.req.path !== '/api/meta' && c.req.path !== '/api/account') {
       throw new HttpError(403, 'set up two-factor sign-in first: your organization asks it of admins who sign in with a password');
     }
@@ -294,7 +294,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
           .sort((a, b) => a.entity!.localeCompare(b.entity!)),
       };
     }
-    // a version release (docs/design/release-versions.md): the version each environment was on before the one it's on,
+    // a version release (docs/content/docs/guide/releases.md): the version each environment was on before the one it's on,
     // for rolling back from everyone. Read from its history: the newest change of the defaults' version there.
     const versions = f.kind === 'release' && isVersionFlag({ valueType: f.valueType, variants: variations as { key: string; value: unknown }[] })
       ? await versionsBefore(f.key, envs, layers as Record<string, { base: { defaultVariation: string | null } | null }>, variations as { key: string; value: unknown }[]) : undefined;
@@ -899,7 +899,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     return c.json(await access.invite(c.req.param('key'), actor(c.get('user'))));
   });
 
-  // a password link (`#/reset/<token>`), shown to the admin once: works once, for a day (betterAuth.ts). It sets a new
+  // a password link (`#/reset/<token>`), shown to the admin once: works once, for a day (accounts.ts). It sets a new
   // password, or a first one for someone who signed in only with single sign-on or a provider (access.ts)
   app.post('/people/:key/password-reset', async (c) => {
     peopleOnly(c.get('user'));

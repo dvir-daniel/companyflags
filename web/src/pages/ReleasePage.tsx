@@ -1,11 +1,11 @@
-// A release (docs/design/releases.md) has one page: its flag's page (FlagPage.tsx), which opens on the Rollout tab
+// A release (docs/content/docs/guide/releases.md) has one page: its flag's page (FlagPage.tsx), which opens on the Rollout tab
 // drawn here. #/release/<key>/<env> lands on that tab. Rollout: a card with where the release is in the picked
 // environment, who has it, the % stages and the next step (as Firebase's rollouts and LaunchDarkly's progressive
 // rollouts show it), then cleaning up once everyone has it. The rules themselves are on the flag's Rules tab.
 // Every step saves the flag's defaults (PUT /flags/:key/layers/:env/base), built by server/release.ts applyChange:
 // at once where the environment needs no review (with Undo), as a request where it does. The Rules tab changes the
 // same rules through a draft; the card reads whatever results (or says the rules are custom).
-// A version release (docs/design/release-versions.md) gets its own card (VersionCard): the version everyone is on, the
+// A version release (docs/content/docs/guide/releases.md) gets its own card (VersionCard): the version everyone is on, the
 // one moving to it, and rollback, with + New version (NewVersion); it's never cleaned up.
 import { useEffect, useState } from 'react';
 import { LockSimpleIcon } from '@phosphor-icons/react';
@@ -350,7 +350,7 @@ function RolloutCard({ flag, env, state, waiting, disabled, onChange, name, onEd
 
 /**
  * A version release's card: the version everyone is on, the one moving to it and how far, who that is, and the next
- * step (docs/design/release-versions.md). Rolling back mid-way keeps the % (the release's rules, switched off), so resume
+ * step (docs/content/docs/guide/releases.md). Rolling back mid-way keeps the % (the release's rules, switched off), so resume
  * puts the same devices back; from everyone it goes back to the version this environment had before (its history).
  */
 function VersionCard({ flag, env, state, waiting, disabled, onChange, name, onEditRules, onNewVersion, elsewhere, rollsBackNow }: {

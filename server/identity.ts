@@ -1,6 +1,6 @@
 // Who is signed in to the console: the email a request comes with. Who that person is, whether they may join and
 // what they may do is the access module's (access.ts).
-// - People sign in with Better Auth (betterAuth.ts): an email and password, single sign-on, or Google, GitHub or
+// - People sign in with an account (accounts.ts): an email and password, single sign-on, or Google, GitHub or
 //   Microsoft when they are set up. The session is a cookie; the server reads the person's email from it.
 // - Tests can name the person in an X-User header (test-header).
 // - A new server makes its first account, the admin's, with the setup link it prints when it starts (index.ts):
@@ -9,15 +9,15 @@
 import { Hono } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { Access, Who } from './access.ts';
-import { authSettingsFromEnv, CLIENT_IP_HEADER, clientAddressFor, providersOf, SETUP_COOKIE, setupOf, type AuthSettings, type BetterAuth } from './betterAuth.ts';
+import { authSettingsFromEnv, CLIENT_IP_HEADER, clientAddressFor, providersOf, SETUP_COOKIE, setupOf, type AuthSettings, type AuthService } from './accounts.ts';
 import { HttpError } from './db.ts';
 
 export type SignIn =
-  | { kind: 'better-auth'; settings: AuthSettings }
+  | { kind: 'accounts'; settings: AuthSettings }
   | { kind: 'test-header' };                                                           // tests only: X-User names the person
 
 export function signInFromEnv(env: NodeJS.ProcessEnv = process.env): SignIn {
-  return { kind: 'better-auth', settings: authSettingsFromEnv(env) };
+  return { kind: 'accounts', settings: authSettingsFromEnv(env) };
 }
 
 export type Identity = {
@@ -33,16 +33,16 @@ export type Identity = {
 /** How long the setup link's cookie lasts: long enough to make the admin account. */
 const SETUP_COOKIE_SECONDS = 3600;
 
-/** `auth`: the Better Auth sign-in (betterAuth.ts createAuth), for `kind: 'better-auth'`. */
-export function createIdentity(signIn: SignIn, access: Access, auth?: BetterAuth): Identity {
-  if (signIn.kind === 'better-auth' && !auth) throw new Error('the Better Auth sign-in needs Better Auth (createAuth)');
+/** `auth`: the accounts sign-in (accounts.ts createAuth), for `kind: 'accounts'`. */
+export function createIdentity(signIn: SignIn, access: Access, auth?: AuthService): Identity {
+  if (signIn.kind === 'accounts' && !auth) throw new Error('the accounts sign-in needs its accounts (createAuth)');
   const who = async (h: Headers): Promise<Who | null> => {
     switch (signIn.kind) {
       case 'test-header': { const u = h.get('x-user'); return u ? { email: u } : null; }
-      case 'better-auth': return auth!.who(h);
+      case 'accounts': return auth!.who(h);
     }
   };
-  const settings = signIn.kind === 'better-auth' ? signIn.settings : undefined;
+  const settings = signIn.kind === 'accounts' ? signIn.settings : undefined;
 
   const routes = new Hono();
   // what the sign-in page shows: the ways to sign in, and, to whoever opened the setup link while nobody has an
@@ -86,9 +86,9 @@ export function createIdentity(signIn: SignIn, access: Access, auth?: BetterAuth
     const body = ((await c.req.json<{ token?: unknown } | null>().catch(() => null)) ?? {}) as { token?: unknown };
     return c.json(await invited(typeof body.token === 'string' ? body.token : ''));
   });
-  // Better Auth: sign up, sign in, sign out, provider callbacks, single sign-on, the session (betterAuth.ts)
+  // The sign-in: sign up, sign in, sign out, provider callbacks, single sign-on, the session (accounts.ts)
   // The request goes on with the client's address in CLIENT_IP_HEADER (whatever the client sent there is dropped), for
-  // Better Auth's sign-in rate limits: the connection's own address, or what a trusted proxy says (clientAddressFor).
+  // the sign-in's rate limits: the connection's own address, or what a trusted proxy says (clientAddressFor).
   const clientAddress = clientAddressFor(settings ?? {});
   if (auth) routes.on(['GET', 'POST'], '/auth/*', (c) => {
     const req = c.req.raw;

@@ -70,19 +70,19 @@ without a deploy. See [Flags in the age of AI](https://dvir-daniel.github.io/com
 - **Move over one flag at a time.** Run it next to the config system you have now: import its values (key-value
   JSON, flagd, or any shape through JSONata), apps read the old system for what hasn't moved, and webhooks out and in
   keep both the same until the last flag is here.
-- **Your sign-in.** Email and password, Google, GitHub or Microsoft, and single sign-on with SAML or OIDC, through
-  [Better Auth](https://www.better-auth.com).
+- **Your sign-in.** Email and password, Google, GitHub or Microsoft, and single sign-on with SAML or OIDC.
 - **Cheap at any scale.** Every entity's values are also one file your CDN caches, rebuilt once per publish, for
   fleets where no request should reach the server.
-- **Plugins, one config file, a CLI.** Built the way Better Auth is: a small core, plugins for each way flags are read,
-  one typed `companyflags.config.ts`, and a `companyflags` command that migrates and keeps your flags as code.
+- **Integrations, environment variables, a CLI.** A small core, an integration for each way flags are read, each
+  turned on or off with an environment variable (or one typed `companyflags.config.ts`), and a `companyflags` command
+  that migrates and keeps your flags as code.
 
 ## Quickstart
 
 ```bash
-echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env   # keep it: it signs sign-in sessions
+echo "FF_SECRET=$(openssl rand -base64 32)" > .env   # keep it: it signs sign-in sessions
 docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \
-  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9
+  -e FF_PUBLIC_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9
 docker logs companyflags   # the setup link: make the admin account at http://localhost:8787/api/setup/…
 ```
 
@@ -90,18 +90,23 @@ Open the setup link the server prints and create the admin account: only that li
 walks you through four steps: environments, services (`web`, an app), your first flag (tick its services), and
 connecting an app (**API Keys**: make the `web` service's key). Dimensions are optional.
 
-For production, run it with Postgres:
+For a team, run it with Postgres:
 
 ```bash
 curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml
-echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+echo "FF_SECRET=$(openssl rand -base64 32)" > .env
 echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
 docker compose up -d
 docker compose logs companyflags   # the setup link
 ```
 
 Both pin the 0.9 release line: `0.9` gets that line's fixes, never a new schema. In Compose, set
-`COMPANYFLAGS_VERSION` in `.env` to move. It answers on `127.0.0.1:8787` only, for a proxy in front of it. See [Docker](https://dvir-daniel.github.io/companyflags/self-hosting/docker).
+`COMPANYFLAGS_VERSION` in `.env` to move. It answers on `127.0.0.1:8787` only, for a proxy in front of it.
+
+To run it for real, follow [Installation](https://dvir-daniel.github.io/companyflags/guide/installation): run it, make the admin account, connect an app,
+go live. Each [deploy recipe](https://dvir-daniel.github.io/companyflags/deploy/builder) is complete on its own, HTTPS, backups and updates included:
+[Docker Compose](https://dvir-daniel.github.io/companyflags/deploy/docker-compose), [Kubernetes](https://dvir-daniel.github.io/companyflags/deploy/kubernetes), [AWS](https://dvir-daniel.github.io/companyflags/deploy/aws),
+[Google Cloud](https://dvir-daniel.github.io/companyflags/deploy/google-cloud) and [Azure](https://dvir-daniel.github.io/companyflags/deploy/azure).
 
 Or from source (Node.js 22.18+, pnpm 11):
 
@@ -178,8 +183,7 @@ new server for them through the console's API, with an admin's access token, and
 
 ## Configure it
 
-Everything is optional: without a file, environment variables decide. With one, it's typed, like Better Auth's
-`auth.ts`:
+Everything is optional: without a file, environment variables decide. With one, it's typed:
 
 ```ts
 // companyflags.config.ts (companyflags init writes one)
@@ -209,7 +213,7 @@ companyflags flags plan     # what would change
 companyflags flags push     # new flags, details, variants, services; reviewed where production needs it
 ```
 
-See [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins),
+See [Integrations](https://dvir-daniel.github.io/companyflags/integrations/overview),
 [CLI](https://dvir-daniel.github.io/companyflags/reference/cli) and
 [Architecture](https://dvir-daniel.github.io/companyflags/guide/architecture).
 
@@ -235,9 +239,11 @@ tests check each against it, with OpenFeature's own providers and flagd's own lo
 | [Concepts](https://dvir-daniel.github.io/companyflags/guide/concepts) | Environments, services, dimensions, flags, rules |
 | [Reading flags](https://dvir-daniel.github.io/companyflags/reading/overview) | OFREP and flagd JSON, in apps and backends |
 | [Migration](https://dvir-daniel.github.io/companyflags/guide/migration) | Moving from another system, import, export, webhooks |
-| [Self-hosting](https://dvir-daniel.github.io/companyflags/self-hosting/overview) | Which path fits you, Docker, the database, HTTPS, secrets, sign-in, CDN, and running it |
+| [Installation](https://dvir-daniel.github.io/companyflags/guide/installation) | Run it, make the admin account, connect an app, go live |
+| [Deploy](https://dvir-daniel.github.io/companyflags/deploy/builder) | Complete recipes: Docker Compose, Kubernetes, AWS, Google Cloud, Azure |
+| [Operate](https://dvir-daniel.github.io/companyflags/operate/production) | The production checklist, monitoring, backups, upgrades, sign-in and single sign-on |
 | [AI resources](https://dvir-daniel.github.io/companyflags/guide/ai-resources) | `llms.txt`, a skill for your agents, and OpenFeature's MCP server |
-| [Plugins](https://dvir-daniel.github.io/companyflags/reference/plugins) and [CLI](https://dvir-daniel.github.io/companyflags/reference/cli) | The built-in plugins, writing your own, and the `companyflags` command |
+| [Integrations](https://dvir-daniel.github.io/companyflags/integrations/overview) and [CLI](https://dvir-daniel.github.io/companyflags/reference/cli) | OFREP, flagd, CDN files and purge, webhooks, metrics and MCP; the `companyflags` command |
 | [HTTP API](https://dvir-daniel.github.io/companyflags/reference/http-api) | Keys, OFREP, CDN files, flagd JSON, links, health |
 
 The docs are in [`docs/`](docs) and run locally with `pnpm docs:dev`.

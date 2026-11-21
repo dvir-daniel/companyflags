@@ -160,10 +160,10 @@ Authorization: Bearer ff_prod_api_…
 - The link is for the key's environment. `service` is the key of an app service (`web`, `ios`, `android`); a
   backend service has no file.
 - For the CDN file, the app reads `path` from the address apps use, usually the CDN in front of your server:
-  `https://flags.example.com/cdn/v1/flags/prod/ios/lumen/…`. `path` is there only when the `cdnFiles()` plugin
-  runs.
+  `https://flags.example.com/cdn/v1/flags/prod/ios/lumen/…`. `path` is there only when the
+  [CDN Files](/integrations/cdn-files) integration is on.
 - For OFREP, the app's provider sends `Authorization: Bearer <token>`. The token asks as that entity only.
-- The answer has `Cache-Control: no-store`: both are secrets. See [Security model](/guide/security#app-tokens).
+- The answer has `Cache-Control: no-store`: both are secrets. See [Security model](/reference/security#app-tokens).
 - `401` without a valid key, `403` for an entity outside the key's scope or for an app service's key (only a
   backend's key hands out links), `400` without `?service=`, `404` for an entity, dimension or app service that
   doesn't exist.

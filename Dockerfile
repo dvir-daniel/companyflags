@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # CompanyFlags: the server, the console and the app files in one image.
 #   docker build -t companyflags .
-#   docker run -p 8787:8787 -e BETTER_AUTH_SECRET=… -e BETTER_AUTH_URL=http://localhost:8787 -v companyflags:/data companyflags
+#   docker run -p 8787:8787 -e FF_SECRET=… -e FF_PUBLIC_URL=http://localhost:8787 -v companyflags:/data companyflags
 
 ARG NODE_VERSION=24
 

@@ -1,4 +1,4 @@
-// A ready app: it starts empty, people sign in with Better Auth (server/identity.ts, server/betterAuth.ts), the first
+// A ready app: it starts empty, people sign in with accounts (server/identity.ts, server/accounts.ts), the first
 // person is the admin, others join with an admin's invite link, and the admin sets up environments, apps and roles
 // in Settings before anyone creates flags. Each admission rule on its own: access.test.ts.
 import { after, before, describe, test } from 'node:test';
@@ -7,11 +7,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/index.ts';
-import { SetupError } from '../server/betterAuth.ts';
+import { SetupError } from '../server/accounts.ts';
 import { signInFromEnv, type SignIn } from '../server/identity.ts';
 import { browser, cdnAnswer, CSRF, startApp, testDatabase } from './helpers.ts';
 
-const signIn: SignIn = { kind: 'better-auth', settings: {} };
+const signIn: SignIn = { kind: 'accounts', settings: {} };
 const PASSWORD = 'correct horse battery';
 const flag = (key: string) => ({
   key, valueType: 'bool', kind: 'ops', variations: [{ key: 'on', value: true }, { key: 'off', value: false }],
@@ -62,7 +62,7 @@ describe('a new install, start to finish (in order)', () => {
     }
     assert.ok((await ctx.db.query(`select 1 from condition_field`)).rows.length > 10, 'the rule attributes are there');
     const page = await call('GET', '/api/sign-in');
-    assert.deepEqual(page.json, { kind: 'better-auth', providers: [], firstPerson: false, sso: false }, 'the sign-in page doesn’t say the server is new');
+    assert.deepEqual(page.json, { kind: 'accounts', providers: [], firstPerson: false, sso: false }, 'the sign-in page doesn’t say the server is new');
   });
 
   test('whoever reaches a new server first can’t make the admin account: it takes the setup link the server printed', async () => {
@@ -86,9 +86,9 @@ describe('a new install, start to finish (in order)', () => {
     assert.equal((await call('GET', '/api/sign-in', { cookie: setupCookie })).json.firstPerson, true, 'where the admin account is made');
   });
 
-  test('only a Better Auth session signs someone in', async () => {
+  test('only a real session signs someone in', async () => {
     assert.equal((await call('GET', '/api/meta')).status, 401, 'no cookie');
-    assert.equal((await call('GET', '/api/meta', { cookie: 'better-auth.session_token=made-up.signature' })).status, 401, 'a made-up session');
+    assert.equal((await call('GET', '/api/meta', { cookie: 'companyflags.session_token=made-up.signature' })).status, 401, 'a made-up session');
     assert.equal((await call('GET', '/api/events')).status, 401, 'the live updates need sign-in too');
     assert.equal((await call('GET', '/api/meta', { headers: { 'x-user': 'lee@corp.com' } })).status, 401, 'the test header means nothing here');
     assert.equal((await ctx.db.query(`select 1 from app_user`)).rows.length, 0, 'nobody was added');
@@ -99,7 +99,7 @@ describe('a new install, start to finish (in order)', () => {
     assert.equal(lee.status, 200);
     const first = await (await as('lee@corp.com')).get('/meta');
     assert.equal(first.status, 200);
-    assert.deepEqual([first.json.me.key, first.json.me.name, first.json.me.role, first.json.signIn], ['lee@corp.com', 'Lee Park', 'admin', 'better-auth']);
+    assert.deepEqual([first.json.me.key, first.json.me.name, first.json.me.role, first.json.signIn], ['lee@corp.com', 'Lee Park', 'admin', 'accounts']);
     assert.equal((await call('GET', '/api/sign-in', { cookie: setupCookie })).json.firstPerson, false);
     assert.equal((await call('GET', `/api/setup/${ctx.setupToken}`)).status, 404, 'the setup link works once');
     assert.equal(await ctx.needsSetup(), false);
@@ -147,7 +147,7 @@ describe('a new install, start to finish (in order)', () => {
     assert.equal((await call('POST', '/api/auth/sign-out', { cookie, body: {} })).status, 200);
     assert.equal((await call('GET', '/api/meta', { cookie })).status, 401, 'that session has ended');
     assert.equal((await signInAs('sam@corp.com')).status, 200);
-    // from another site, a signed-in browser can't be made to act (Better Auth checks the origin)
+    // from another site, a signed-in browser can't be made to act (the sign-in checks the origin)
     assert.equal((await call('POST', '/api/auth/sign-out', { cookie: sessions.get('sam@corp.com'), body: {}, headers: { origin: 'https://evil.example' } })).status, 403);
   });
 
@@ -291,16 +291,18 @@ describe('a new install, start to finish (in order)', () => {
 
 test('how people sign in comes from the environment; production needs a secret and the console’s address', async () => {
   const env = signInFromEnv({ GOOGLE_CLIENT_ID: 'g', GOOGLE_CLIENT_SECRET: 's', FF_SIGNUP_DOMAINS: 'corp.com, @Corp.example' });
-  assert.equal(env.kind, 'better-auth');
-  if (env.kind !== 'better-auth') return;
+  assert.equal(env.kind, 'accounts');
+  if (env.kind !== 'accounts') return;
   assert.deepEqual(env.settings.google, { clientId: 'g', clientSecret: 's' });
   assert.equal(env.settings.github, undefined, 'only providers with both an id and a secret');
   assert.deepEqual(env.settings.signupDomains, ['corp.com', 'corp.example']);
-  const internal = signInFromEnv({ BETTER_AUTH_TRUSTED_ORIGINS: 'https://idp.corp.internal, http://10.0.0.5:8080' });
-  assert.deepEqual(internal.kind === 'better-auth' && internal.settings.trustedOrigins, ['https://idp.corp.internal', 'http://10.0.0.5:8080']);
-  const starting = (settings: object) => startApp({ signIn: { kind: 'better-auth', settings } });
+  const internal = signInFromEnv({ FF_TRUSTED_ORIGINS: 'https://idp.corp.internal, http://10.0.0.5:8080' });
+  assert.deepEqual(internal.kind === 'accounts' && internal.settings.trustedOrigins, ['https://idp.corp.internal', 'http://10.0.0.5:8080']);
+  const starting = (settings: object) => startApp({ signIn: { kind: 'accounts', settings } });
   await assert.rejects(starting({ production: true, baseURL: 'https://flags.example.com' }), SetupError, 'no secret');
-  await assert.rejects(starting({ production: true, secret: 'x'.repeat(40) }), SetupError, 'no address');
+  await assert.rejects(starting({ production: true, secret: 'Zq8vR2mXc5LpT9wKa3NdF7hJs1BgY4uE' }), SetupError, 'no address');
+  await assert.rejects(starting({ secret: 'too-short-0123456789' }), /FF_SECRET is too short/, 'a short secret, anywhere');
+  await assert.rejects(starting({ secret: 'ab'.repeat(20) }), /FF_SECRET repeats too few characters/, 'a secret that isn’t random');
 });
 
 test('sessions outlive a restart: the cookie secret is kept with the data', async (t) => {

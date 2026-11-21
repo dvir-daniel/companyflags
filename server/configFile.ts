@@ -6,11 +6,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { authSettingsFromEnv } from './betterAuth.ts';
+import { authSettingsFromEnv } from './accounts.ts';
 import { ConfigError, type Config } from './config.ts';
 import type { SignIn } from './identity.ts';
 import type { Plugin } from './plugin.ts';
-import { defaultPlugins } from './plugins/index.ts';
+import { ignoredEnv, integrationsFromEnv } from './integrations.ts';
 import { PACKAGE_FOLDER } from './packageFolder.ts';
 import type { Appearance } from './appearance.ts';
 
@@ -75,7 +75,10 @@ export type Resolved = {
   host: string;
   keepAliveSeconds: number;
   signIn: SignIn;
+  /** The config file's `plugins`, else the integrations the environment turns on (integrations.ts). */
   plugins: Plugin[];
+  /** The integration variables set for nothing, as the config file lists `plugins` (said at the start). */
+  ignoredEnv: string[];
   /** The config file's appearance, with its images read into data URLs (null: set in the console). */
   appearance: Partial<Appearance> | null;
 };
@@ -107,8 +110,9 @@ export function resolveConfig(config: Config, env: NodeJS.ProcessEnv = process.e
     port,
     host: config.server?.host || env.HOST || '0.0.0.0',
     keepAliveSeconds,
-    signIn: { kind: 'better-auth', settings: { ...fromEnv, ...stripUndefined(config.auth ?? {}), production: fromEnv.production } },
-    plugins: config.plugins ?? defaultPlugins(),
+    signIn: { kind: 'accounts', settings: { ...fromEnv, ...stripUndefined(config.auth ?? {}), production: fromEnv.production } },
+    plugins: config.plugins ?? integrationsFromEnv(env),
+    ignoredEnv: config.plugins ? ignoredEnv(env, config.plugins) : [],
     appearance: config.appearance ? withImages(config.appearance, dir) : null,
   };
 }

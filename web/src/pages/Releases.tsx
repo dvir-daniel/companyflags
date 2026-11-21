@@ -1,4 +1,4 @@
-// Releases (docs/design/releases.md): every release and where it is in one environment, then a new release. A release is
+// Releases (docs/content/docs/guide/releases.md): every release and where it is in one environment, then a new release. A release is
 // a flag of kind 'release': its step is read from the flag's defaults (server/release.ts), so nothing is stored for it
 // apart from the flag, and release flags are still on the Flags page too.
 //   #/releases/<env>         this list, in one environment (the last one used when none is given)
@@ -143,7 +143,7 @@ function Row({ r, env }: { r: ReleaseRow; env: string }) {
 }
 
 /** A new release: an on/off flag of kind release that starts "not started" everywhere (off where the environment
- *  needs review, server/control.ts createFlag), or a version release (docs/design/release-versions.md) that starts with
+ *  needs review, server/control.ts createFlag), or a version release (docs/content/docs/guide/releases.md) that starts with
  *  everyone on its first version and has no remove-by date. Who gets it first is chosen on its page. */
 function CreateRelease({ onClose, owners }: { onClose: () => void; owners: string[] }) {
   const { meta, toast } = useApp();

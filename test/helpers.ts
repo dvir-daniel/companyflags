@@ -9,7 +9,7 @@ import { fixtures } from './fixtures.ts';
 export { cdnAnswer } from './flagdReference.ts';
 
 // Tests never run as production (whatever the shell says): no rate limits on sign-in, no production checks.
-// (The server sets Better Auth's rate limits and Origin check itself, so this doesn't depend on import order.)
+// (The server sets the sign-in's rate limits and Origin check itself, so this doesn't depend on import order.)
 if (process.env.NODE_ENV === 'production') process.env.NODE_ENV = 'development';
 
 /** The header the console sends with every change (server/api.ts CSRF_HEADER). */

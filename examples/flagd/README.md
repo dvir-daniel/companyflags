@@ -13,7 +13,7 @@ last ETag, and usually gets a `304`. Your backends then evaluate in memory, with
 
    ```bash
    cd examples/flagd
-   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+   echo "FF_SECRET=$(openssl rand -base64 32)" > .env
    docker compose up -d companyflags
    docker compose logs companyflags     # the setup link
    ```

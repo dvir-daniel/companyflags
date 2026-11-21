@@ -9,7 +9,7 @@ import { lookName, useLook } from './appearanceKit.ts';
 import { field, INVITE_ONLY, SETUP_HINT, type Provider } from './signinKit.ts';
 
 /*
- * The sign-in pages' frame and their shapes while they load, without Better Auth's client: the console shows them
+ * The sign-in pages' frame and their shapes while they load, without the sign-in library's client: the console shows them
  * from its first download, while signin.tsx (and the client it needs) is still on its way, so the page that follows
  * draws over the same card, fields and button instead of replacing a line of text.
  *

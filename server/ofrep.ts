@@ -23,7 +23,7 @@
 // may not have caught up with that publish yet: it does first (the data plane's catch-up, workers.ts), so the answer is
 // never an old one, nor a 304 for it.
 //
-// Who is asking (docs/design/dimensions.md "Naming the entity"):
+// Who is asking (docs/content/docs/guide/dimensions.mdx):
 //   - the credential (Authorization: Bearer <credential>, or OFREP's X-API-Key) says the environment, the app, and which
 //     entities it may ask about. A backend uses its service's secret key. An app uses its service's public key (values
 //     only, for the context it sends), or an app token (delivery.ts appToken) its backend hands it at sign-in with the
@@ -50,7 +50,7 @@ import { cors } from 'hono/cors';
 import { streamSSE } from 'hono/streaming';
 import { HttpError, type Db } from './db.ts';
 import { appTokenSecret, authenticate, mayAsk, sameSecret, type KeyCache, type Principal } from './auth.ts';
-import { authSettingsFromEnv, clientAddressFor } from './betterAuth.ts';
+import { authSettingsFromEnv, clientAddressFor } from './accounts.ts';
 import { ensureClientApp, readAppToken, shortHash, type AppCache, type LinkCache } from './delivery.ts';
 import { contextFor, evaluate, HIDDEN_PREFIX, sortedFlagKeys, type EvalResult, type FlagDef, type Snapshot } from './evaluator.ts';
 import type { EventHub, PublishScope } from './events.ts';

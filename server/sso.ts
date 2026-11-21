@@ -1,5 +1,5 @@
 // Single sign-on: people sign in with the company's identity provider (Okta, Entra ID, Google Workspace, JumpCloud…)
-// over OIDC or SAML, through Better Auth's SSO plugin (betterAuth.ts). An admin adds a connection in Settings for the
+// over OIDC or SAML, through the sign-in library's SSO plugin (accounts.ts). An admin adds a connection in Settings for the
 // company's email domains, and can require single sign-on there. Who a connection lets in is the access module's
 // rule (access.ts): only people at its domains join, with the join role or the role an admin gave them, and where single
 // sign-on is required nobody but the break-glass admin uses a password. Leaving the company (being removed from the
@@ -18,9 +18,9 @@
 //
 // An OIDC identity provider's token, keys (JWKS) and user info addresses come from its settings document. They must be
 // https in production and not on this machine or a private network unless their origin is trusted, and the sign-in
-// reaches them only through the same guarded lookup as the settings (publicFetch.ts, betterAuth.ts).
+// reaches them only through the same guarded lookup as the settings (publicFetch.ts, accounts.ts).
 //
-// Better Auth's own endpoints for managing connections are switched off (any signed-in person could use them);
+// The SSO plugin's own endpoints for managing connections are switched off (any signed-in person could use them);
 // `singleSignOn` is behind the console's admin check instead. What it needs from outside comes in when the app starts
 // (index.ts): the SSO plugin that keeps the connections, and `discover`, which reads an OIDC identity provider's
 // settings (over the network in production; tests hand it the documents).
@@ -38,9 +38,9 @@ import { isRole, ROLES, type Role } from './policy.ts';
 /** Reads the JSON document at an address: an OIDC identity provider's discovery document. */
 export type Discover = (url: string) => Promise<unknown>;
 
-/** In production: fetched, by the admin's request here, not by Better Auth (which only fetches from origins it is
+/** In production: fetched, by the admin's request here, not by the sign-in library (which only fetches from origins it is
  *  configured to trust). The address must be public (not this machine, a private network or a cloud metadata
- *  address) unless its origin is trusted (`trustedOrigins`: BETTER_AUTH_TRUSTED_ORIGINS), so adding a connection
+ *  address) unless its origin is trusted (`trustedOrigins`: FF_TRUSTED_ORIGINS), so adding a connection
  *  can't be used to look around the network. It is checked by the connection's own lookup (publicFetch.ts
  *  publicRead), so the name can't resolve to a public address for the check and a private one for the connection.
  *  Redirects aren't followed. `lookup` and `timeoutMs` are for tests. */
@@ -52,7 +52,7 @@ export const discoverOverHttp = (trustedOrigins: readonly string[] = [], o: { lo
   } catch (e) {
     if (e instanceof NotPublicError) {
       throw new HttpError(422, `the identity provider at ${origin} isn’t on the public internet: if it is on your private network, `
-        + 'add its origin to BETTER_AUTH_TRUSTED_ORIGINS');
+        + 'add its origin to FF_TRUSTED_ORIGINS');
     }
     const code = (e as { code?: unknown }).code;
     if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') throw new HttpError(422, `couldn’t find the identity provider at ${origin}: check the issuer address`);
@@ -62,7 +62,7 @@ export const discoverOverHttp = (trustedOrigins: readonly string[] = [], o: { lo
   return JSON.parse(res.body);
 };
 
-/** The SSO plugin that keeps connections and signs people in with them (betterAuth.ts). */
+/** The SSO plugin that keeps connections and signs people in with them (accounts.ts). */
 export type SsoPlugin = { registerConnection: (body: Record<string, unknown>, headers: Headers) => Promise<void> };
 
 export type SsoOptions = {
@@ -70,18 +70,18 @@ export type SsoOptions = {
   /** none while the tests' header signs people in: then connections can't be added */
   plugin?: SsoPlugin;
   discover: Discover;
-  /** the console's address when it is configured (BETTER_AUTH_URL); otherwise each request's own */
+  /** the console's address when it is configured (FF_PUBLIC_URL); otherwise each request's own */
   baseURL?: string;
   /** issuers, and the addresses their settings give, must be https */
   production?: boolean;
-  /** origins on a private network an admin trusts (BETTER_AUTH_TRUSTED_ORIGINS): an identity provider may be there */
+  /** origins on a private network an admin trusts (FF_TRUSTED_ORIGINS): an identity provider may be there */
   trustedOrigins?: readonly string[];
 };
 
 /** Single sign-on connections, for the console's API (api.ts). */
 export function singleSignOn(db: Db, o: SsoOptions) {
   return {
-    /** connections can be added (the sign-in is Better Auth) */
+    /** connections can be added (the sign-in is the accounts one) */
     available: !!o.plugin,
     /** the console's address, for what the identity provider's admin enters on their side (serviceProvider) */
     base: (requestUrl: string) => o.baseURL ?? new URL(requestUrl).origin,
@@ -157,7 +157,7 @@ async function listConnections(db: Queryable): Promise<Connection[]> {
   return (await db.query<Row>(`${ROW} order by provider_id`)).rows.map(connectionOf);
 }
 
-/** Someone signed in with this connection (betterAuth.ts): it works, so it can be required. */
+/** Someone signed in with this connection (accounts.ts): it works, so it can be required. */
 export async function connectionUsed(q: Queryable, id: string) {
   await q.query(`update sso_provider set last_sign_in_at = now() where provider_id = $1`, [id]);
 }
@@ -173,7 +173,7 @@ export function roleFromGroups(g: GroupRoles | null, groups: unknown, fallback: 
   return given.length ? given.reduce((a, b) => (ROLES.indexOf(b) > ROLES.indexOf(a) ? b : a)) : fallback;
 }
 
-/** A connection's group roles, for the sign-in (betterAuth.ts). */
+/** A connection's group roles, for the sign-in (accounts.ts). */
 export async function groupRolesOf(q: Queryable, id: string): Promise<GroupRoles | null> {
   return json((await one<{ g: GroupRoles | string | null }>(q, `select group_roles as g from sso_provider where provider_id = $1`, [id]))?.g ?? null);
 }
@@ -238,7 +238,7 @@ async function oidcConfigFor(o: SsoOptions, i: { issuer: string; clientId: strin
 
 /** Why an address an OIDC identity provider's settings give can't be used, or null. It must be http or https (https in
  *  production), and not this machine or a private network unless its origin is trusted. Names are checked when the
- *  sign-in connects to them (betterAuth.ts, publicFetch.ts): here only what is written. What it is isn't repeated. */
+ *  sign-in connects to them (accounts.ts, publicFetch.ts): here only what is written. What it is isn't repeated. */
 function endpointProblem(name: string, raw: unknown, o: Pick<SsoOptions, 'production' | 'trustedOrigins'>): string | null {
   if (raw === undefined && name === 'userinfo_endpoint') return null;
   let u: URL;
@@ -248,7 +248,7 @@ function endpointProblem(name: string, raw: unknown, o: Pick<SsoOptions, 'produc
   if (u.username || u.password) return `${name} with a user or password in it`;
   const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   if (host === 'localhost' || host.endsWith('.localhost') || (isIP(host) && !isPublicAddress(host))) {
-    return `${name} that isn’t on the public internet: if it is on your private network, add its origin to BETTER_AUTH_TRUSTED_ORIGINS`;
+    return `${name} that isn’t on the public internet: if it is on your private network, add its origin to FF_TRUSTED_ORIGINS`;
   }
   return null;
 }
@@ -285,7 +285,7 @@ export async function vouchingConnections(q: Queryable): Promise<Vouching[]> {
 
 /** Adds a connection. `base` is the console's address, for the SAML service provider's entity ID. */
 async function addConnection(db: Db, o: SsoOptions, { headers, base }: { headers: Headers; base: string }, input: NewConnection, actor: Actor) {
-  if (!o.plugin) throw new HttpError(409, 'single sign-on needs the Better Auth sign-in');
+  if (!o.plugin) throw new HttpError(409, 'single sign-on needs sign-in with accounts');
   const id = str(input.id).toLowerCase();
   if (!ID.test(id)) throw new HttpError(422, 'id: lowercase letters, digits and dashes, starting with a letter, e.g. okta');
   const domains = readDomains(input.domains);
@@ -453,7 +453,7 @@ export function isPublicAddress(address: string): boolean {
   return !NOT_PUBLIC.check(address, 'ipv6');
 }
 
-/** The entity ID and sign-in URL in a SAML identity provider's metadata (Better Auth reads the certificates itself). */
+/** The entity ID and sign-in URL in a SAML identity provider's metadata (the sign-in library reads the certificates itself). */
 export function readIdpMetadata(xml: string): { entityId: string; entryPoint: string } {
   const entityId = /<(?:\w+:)?EntityDescriptor\b[^>]*\bentityID="([^"]+)"/.exec(xml)?.[1] ?? '';
   const services = [...xml.matchAll(/<(?:\w+:)?SingleSignOnService\b[^>]*>/g)].map((m) => m[0]);

@@ -365,8 +365,11 @@ test('companyflags version, and start: the version on its first line, and the po
     assert.match(said, new RegExp(`CompanyFlags ${VERSION.replace(/\./g, '\\.')}`));
     assert.match(said, /run companyflags migrate first/);
     const again = spawn(process.execPath, [join(SERVER, 'cli.ts'), 'start'], {
-      cwd: dir, env: { ...process.env, PORT: '0', HOST: '127.0.0.1', FF_DATA_DIR: join(dir, 'data'), FF_PORT_FILE: portFile, FF_CONFIG: '', NODE_ENV: 'development' },
+      cwd: dir,
+      env: { ...process.env, PORT: '0', HOST: '127.0.0.1', FF_DATA_DIR: join(dir, 'data'), FF_PORT_FILE: portFile, FF_CONFIG: '', NODE_ENV: 'development', FF_METRICS: 'on', FF_INTEGRATIONS_OFF: 'mcp' },
     });
+    let log = '';
+    again.stdout.on('data', (d) => { log += d; });
     try {
       for (let i = 0; i < 200 && !existsSync(portFile); i++) await new Promise((r) => setTimeout(r, 100));
       const port = Number(readFileSync(portFile, 'utf8'));
@@ -374,6 +377,9 @@ test('companyflags version, and start: the version on its first line, and the po
       const res = await fetch(`http://127.0.0.1:${port}/healthz`);
       assert.deepEqual(await res.json(), { ok: true, version: VERSION });
       assert.equal(res.headers.get('keep-alive'), 'timeout=65', 'idle connections outlast a load balancer’s 60 s (FF_KEEPALIVE_SECONDS)');
+      // the integrations from the environment alone, in plain words
+      assert.match(log, /\[companyflags\] integrations: OFREP, flagd, CDN files, Cloudflare purge, webhooks, metrics\n/);
+      assert.equal((await fetch(`http://127.0.0.1:${port}/metrics`)).status, 200);
     } finally {
       again.kill('SIGTERM');
       await new Promise((r) => again.on('exit', r));

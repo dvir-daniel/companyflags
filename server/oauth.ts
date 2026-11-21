@@ -20,7 +20,7 @@
 // client, and their clients' tokens aren't given or renewed until they have (access.ts twoFactorPending). Tokens and
 // codes are kept hashed. Every token is issued for this server's /mcp (the
 // `resource`, RFC 8707) and nothing else: a request for another resource is refused.
-// Better Auth's own MCP plugin (@better-auth/mcp) isn't used: it needs the jwt plugin, tables of its own and gives
+// The sign-in library's own MCP plugin isn't used: it needs the jwt plugin, tables of its own and gives
 // JWTs, where an access token row is what the console already checks, lists and revokes.
 
 import { randomBytes, createHash } from 'node:crypto';

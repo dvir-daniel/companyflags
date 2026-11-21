@@ -60,7 +60,7 @@ render(
 ## Integration tests: a local CompanyFlags
 
 To test the real path, from your code through the provider to the server's rules, run CompanyFlags next to the
-tests. The [Docker image](/self-hosting/docker) with its embedded Postgres needs nothing else.
+tests. The [Docker image](/deploy/docker-compose) with its embedded Postgres needs nothing else.
 
 1. **Set it up once.** Start it, make the admin account with the setup link, and make an access token with the role
    **Admin** (see the [Quickstart](/guide/quickstart)). Keep the data volume and the `.env` with its secret, so the

@@ -27,7 +27,7 @@ export type FieldFacts = Record<string, { valueType: string; canSplitBy: boolean
 // ---- flag purpose rules ------------------------------------------------------------------------
 
 // Releases and experiments are temporary: they need a remove-by date. A version release (a release whose values are
-// versions, docs/design/release-versions.md) stays, so it has none. `flag`: its value type and variants, where known.
+// versions, docs/content/docs/guide/releases.md) stays, so it has none. `flag`: its value type and variants, where known.
 export const needsRemoveBy = (kind: string, flag?: { valueType: string; variants: readonly { key: string; value: unknown }[] }) =>
   kind === 'experiment' || (kind === 'release' && !(flag && isVersionFlag(flag)));
 /** A version release's values: a string flag whose every value is a release version (semver.ts). */

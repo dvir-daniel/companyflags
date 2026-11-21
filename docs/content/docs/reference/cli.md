@@ -4,7 +4,7 @@ description: "Run, set up and migrate the server, and keep your flags in a file,
 ---
 
 `companyflags` runs the server, sets it up, migrates its database and keeps your flags in a file. Like Better
-Auth's CLI, it reads [`companyflags.config.ts`](/self-hosting/configuration#the-config-file) from the folder it
+Auth's CLI, it reads [`companyflags.config.ts`](/reference/configuration#the-config-file) from the folder it
 runs in (or `FF_CONFIG`), then the environment, and works on the database they name.
 
 | Where | How to run it |
@@ -23,11 +23,11 @@ Without `DATABASE_URL`, the data is in embedded Postgres, which only one process
 
 ### `start`
 
-Runs the server: the console, its API and the [plugins](/reference/plugins). The same as `node server/index.ts`.
+Runs the server: the console, its API and the [integrations](/integrations/overview). The same as `node server/index.ts`.
 `companyflags start` serves the console too. Its first line says the version.
 
 `--no-migrate` (or `FF_MIGRATE=off`): it doesn't apply migrations, only checks the schema has every one it needs,
-and stops if not. A newer version's migrations are allowed, for a [rolling upgrade](/self-hosting/upgrading).
+and stops if not. A newer version's migrations are allowed, for a [rolling upgrade](/operate/upgrading).
 
 ### `init`
 
@@ -38,7 +38,7 @@ server can't load it there.
 
 ### `secret`
 
-Prints a random secret for `BETTER_AUTH_SECRET`.
+Prints a random secret for `FF_SECRET`.
 
 ### `migrate`
 
@@ -62,7 +62,7 @@ it back. The password goes to `pg_dump` in its environment, never on its command
 
 With embedded Postgres: copies its folder to `companyflags-backup-<date>-<time>` (or the path you name). Stop the
 server first: it refuses while a server has the folder open. To put it back, stop the server and copy the folder into
-place. See [Backups](/self-hosting/backups).
+place. See [Backups](/operate/backups).
 
 ### `copy-to-postgres`
 
@@ -73,7 +73,7 @@ companyflags copy-to-postgres postgres://user:pass@db.example.com:5432/flags
 Copies everything in the embedded database (flags, history, people, keys, links, settings) into a new, empty Postgres
 database, in one transaction: all of it, or nothing. Stop the server first. The embedded folder isn't changed. Then
 set `DATABASE_URL` to the new database and start the server. See
-[Database → Moving to Postgres](/self-hosting/database#moving-to-postgres).
+[Configuration → Moving to Postgres](/reference/configuration#moving-to-postgres).
 
 ### `version`
 

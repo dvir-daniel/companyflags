@@ -171,19 +171,19 @@ test('a setup that fails stops the background work of the plugins set up before 
 });
 
 test('the config: the file’s settings, else the environment’s, else the defaults', () => {
-  const env = { DATABASE_URL: 'postgres://env/db', PORT: '9000', BETTER_AUTH_URL: 'https://env.example.com', CF_ZONE_ID: 'z', CF_API_TOKEN: 't' };
+  const env = { DATABASE_URL: 'postgres://env/db', PORT: '9000', FF_PUBLIC_URL: 'https://env.example.com', CF_ZONE_ID: 'z', CF_API_TOKEN: 't' };
   const none = resolveConfig({}, {});
   assert.deepEqual([none.databaseUrl, none.dataDir, none.port, none.host], [undefined, './data', 8787, '0.0.0.0']);
   assert.deepEqual(ids(none.plugins), ['ofrep', 'flagd', 'cdn-files', 'cloudflare', 'webhooks', 'mcp']);
   const fromEnv = resolveConfig({}, env);
   assert.deepEqual([fromEnv.databaseUrl, fromEnv.port], ['postgres://env/db', 9000]);
-  assert.equal(fromEnv.signIn.kind === 'better-auth' && fromEnv.signIn.settings.baseURL, 'https://env.example.com');
+  assert.equal(fromEnv.signIn.kind === 'accounts' && fromEnv.signIn.settings.baseURL, 'https://env.example.com');
   const fromFile = resolveConfig(defineConfig({
     database: { url: 'postgres://file/db' }, server: { port: 9100 },
     auth: { baseURL: 'https://file.example.com', secret: undefined }, plugins: [ofrep(), flagd()],
   }), env);
   assert.deepEqual([fromFile.databaseUrl, fromFile.port, ids(fromFile.plugins)], ['postgres://file/db', 9100, ['ofrep', 'flagd']]);
-  assert.equal(fromFile.signIn.kind === 'better-auth' && fromFile.signIn.settings.baseURL, 'https://file.example.com');
+  assert.equal(fromFile.signIn.kind === 'accounts' && fromFile.signIn.settings.baseURL, 'https://file.example.com');
   assert.throws(() => resolveConfig({ server: { port: 70000 } }, {}), ConfigError);
   // keep-alive: longer than a load balancer's 60 s; the database's CA file, from the config file's folder or the cwd
   assert.deepEqual([none.keepAliveSeconds, none.databaseCaFile], [65, undefined]);
@@ -194,7 +194,7 @@ test('the config: the file’s settings, else the environment’s, else the defa
   assert.equal(resolveConfig({}, { FF_DATABASE_CA_FILE: '/etc/ssl/rds-global-bundle.pem' }).databaseCaFile, '/etc/ssl/rds-global-bundle.pem');
   // production is NODE_ENV's alone: a file can't turn off the production checks
   const prod = resolveConfig({ auth: { production: false } } as Config, { NODE_ENV: 'production' });
-  assert.equal(prod.signIn.kind === 'better-auth' && prod.signIn.settings.production, true);
+  assert.equal(prod.signIn.kind === 'accounts' && prod.signIn.settings.production, true);
   assert.deepEqual(ids(defaultPlugins()), ['ofrep', 'flagd', 'cdn-files', 'cloudflare', 'webhooks', 'mcp']);
   assert.equal(cloudflare().id, 'cloudflare');
 });

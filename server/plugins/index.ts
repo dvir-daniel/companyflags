@@ -1,5 +1,6 @@
-// The built-in plugins (../plugin.ts). Without a config file, or with one that doesn't list plugins, defaultPlugins()
-// are on; metrics(), cloudfront() and cloudCdn() run only when listed.
+// The built-in plugins (../plugin.ts). Without a config file, or with one that doesn't list plugins, the environment
+// says which run (../integrations.ts): defaultPlugins() less FF_INTEGRATIONS_OFF, and metrics(), cloudfront() and
+// cloudCdn() when their variables are set.
 
 import type { Plugin } from '../plugin.ts';
 import { cdnFiles } from './cdnFiles.ts';
@@ -28,6 +29,6 @@ export type { Snapshot, EvalResult } from '../evaluator.ts';
 export type { Person } from '../access.ts';
 export type { Actor } from '../layers.ts';
 
-/** Every built-in plugin, as an installation without a list of its own gets them (metrics() is listed on its own). */
+/** The built-in plugins on by default (metrics(), cloudfront() and cloudCdn() are turned on on their own). */
 export const defaultPlugins = (o: { cloudflare?: CloudflareOptions; webhooks?: WebhooksOptions } = {}): Plugin[] =>
   [ofrep(), flagd(), cdnFiles(), cloudflare(o.cloudflare), webhooks(o.webhooks), mcp()];

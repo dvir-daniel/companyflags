@@ -61,7 +61,7 @@ const Migration = lazy(() => PAGE_CODE.migration().then((m) => ({ default: m.Mig
 const Webhooks = lazy(() => PAGE_CODE.webhooks().then((m) => ({ default: m.Webhooks })));
 // an admin the sign-in rules ask to set up two-factor sign-in first sees only this (server/access.ts needsTwoFactor)
 const TwoFactorGate = lazy(() => import('./pages/twoFactor.tsx').then((m) => ({ default: m.TwoFactorGate })));
-// signing in needs Better Auth's client; people who are signed in never download it
+// signing in needs the sign-in library's client; people who are signed in never download it
 const SIGN_IN_CODE = () => import('./signin.tsx');
 const SignInPage = lazy(() => SIGN_IN_CODE().then((m) => ({ default: m.SignInPage })));
 const JoinPage = lazy(() => SIGN_IN_CODE().then((m) => ({ default: m.JoinPage })));

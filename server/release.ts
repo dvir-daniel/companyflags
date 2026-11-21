@@ -1,4 +1,4 @@
-// Releases (docs/design/releases.md). A release is a flag of kind 'release' that turns a new feature on step by step,
+// Releases (docs/content/docs/guide/releases.md). A release is a flag of kind 'release' that turns a new feature on step by step,
 // then is removed. Nothing is stored for it beyond the flag: where a release is in one environment is read here from
 // the flag's defaults (its base layer), and each step builds the next defaults, which are saved like any other change
 // to them (now, or as a request where the environment needs review). One pure module shared with the console, like
@@ -22,7 +22,7 @@
 // (two % rules, a % that doesn't start at 0, a default that is neither value, a release that isn't on/off) is custom:
 // it's edited on the flag page. The rules are recognised by their shape, not their names.
 //
-// A version release (docs/design/release-versions.md) has versions for values ("1.0.0", semver.ts isReleaseVersion)
+// A version release (docs/content/docs/guide/releases.md) has versions for values ("1.0.0", semver.ts isReleaseVersion)
 // instead of on and off, and stays: its default is the version an environment is on, and the same two rules serve the
 // version that's moving to it. Not started: a higher version exists and nobody has it; everyone: nothing higher. Its %
 // is salted with the version, so each version reaches new devices first; rolled back is what paused is for on/off.

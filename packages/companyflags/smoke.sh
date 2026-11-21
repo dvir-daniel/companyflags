@@ -41,7 +41,7 @@ export default config;
 EOF
 
 port="$(node -e "const s = require('node:net').createServer().listen(0, '127.0.0.1', () => { console.log(s.address().port); s.close(); })")"
-PORT="$port" HOST=127.0.0.1 npx companyflags start > "$work/start.log" 2>&1 &
+PORT="$port" HOST=127.0.0.1 FF_METRICS=on npx companyflags start > "$work/start.log" 2>&1 &
 pid=$!
 for _ in $(seq 1 60); do
   if curl -sf "http://127.0.0.1:$port/readyz" >/dev/null; then break; fi
@@ -49,7 +49,9 @@ for _ in $(seq 1 60); do
 done
 curl -sf "http://127.0.0.1:$port/readyz"; echo
 curl -sf "http://127.0.0.1:$port/healthz" | grep -q "\"version\":\"$version\"" || { echo 'no version in /healthz' >&2; exit 1; }
-grep -q 'plugins: ofrep, flagd, cdn-files' "$work/start.log" || { cat "$work/start.log" >&2; echo 'the config file was not loaded' >&2; exit 1; }
+grep -q 'integrations: OFREP, flagd, CDN files$' "$work/start.log" || { cat "$work/start.log" >&2; echo 'the config file was not loaded' >&2; exit 1; }
+# the file lists plugins, so FF_METRICS turns nothing on, and the start says so
+grep -q 'FF_METRICS is ignored' "$work/start.log" || { cat "$work/start.log" >&2; echo 'no word that FF_METRICS is ignored' >&2; exit 1; }
 # the CDN files' address is the plugin's (no environment yet: its own 404), not an unknown endpoint
 curl -s "http://127.0.0.1:$port/cdn/v1/flags/dev/web" | grep -q 'environment \\"dev\\" not found' || { echo 'no CDN files at /cdn/v1/flags' >&2; exit 1; }
 curl -sf "http://127.0.0.1:$port/" | grep -q '<title>CompanyFlags</title>' || { echo 'no console page' >&2; exit 1; }

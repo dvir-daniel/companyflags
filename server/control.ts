@@ -260,7 +260,7 @@ export async function upsertVariations(db: Db, flagKey: string, variations: { ke
   });
 }
 
-// A version release's values are its versions (docs/design/release-versions.md), typed in like any free value: each is a
+// A version release's values are its versions (docs/content/docs/guide/releases.md), typed in like any free value: each is a
 // release version (semver.ts) and never changes. The next version, added with + New version, is also higher than every
 // one before it (addVersion); a version typed into a rule (an entity kept on 0.9.0) needn't be.
 function versionsProblem(before: { key: string; value: unknown }[], variations: { key: string; value: unknown }[]) {

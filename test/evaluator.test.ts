@@ -109,7 +109,7 @@ const MODES: (Inherit | null)[] = [null, 'base_rules_then_base_default', 'base_r
 const own = (mode: Inherit, serve: string, rules: Rule[]): Partial<Layer> =>
   ({ inherit: mode, defaultVariation: mode === 'base_rules_then_base_default' ? null : serve, rules });
 
-/** The documented order (docs/design/dimensions.md "The order a request is decided in"), written out plainly for a brand:
+/** The documented order (docs/content/docs/guide/dimensions.mdx), written out plainly for a brand:
  *  each level as [level, owner, set, skipped by], and whose default it ends in. */
 function documented(brand: Inherit | null, company: Inherit | null) {
   const brandStops = brand === 'customer_only';

@@ -1,4 +1,4 @@
-// Better Auth's client, for signing in (signin.tsx) and out (session.ts loads this only when someone signs out).
+// The sign-in library's client, for signing in (signin.tsx) and out (session.ts loads this only when someone signs out).
 // Apart from signin.tsx so that an edit to its components swaps in place in `pnpm dev` (React Fast Refresh).
 import { createAuthClient } from 'better-auth/client';
 import { ssoClient } from '@better-auth/sso/client';

@@ -1,4 +1,4 @@
-// No word left behind (docs/design/dimensions.md "Words"): nothing a console user or a rule author reads says
+// No word left behind (docs/content/docs/guide/dimensions.mdx): nothing a console user or a rule author reads says
 // "customer", "company" or "brand" unless the installation's own dimensions are called that.
 //   - Every sentence the server and the console build, with dimensions called something else entirely, has none.
 //   - The console's and the server's code has none in a string or in JSX text, except the presets.

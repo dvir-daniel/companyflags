@@ -5,7 +5,7 @@ import { REPO } from '@/lib/source';
 import { RESOURCES, resourceHref } from '@/lib/resources';
 
 // The landing page's bar below 1024px (above it, the site's bar takes over): the name, then the parts of the site in
-// small capitals, as better-auth.com's, and light or dark in the phone's menu. No search here: it's on the docs' pages.
+// small capitals, and light or dark in the phone's menu. No search here: it's on the docs' pages.
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <HomeLayout nav={{ title: <Logo />, url: '/' }} searchToggle={{ enabled: false }}

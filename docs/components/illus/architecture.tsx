@@ -1,4 +1,4 @@
-// The architecture, drawn the way better-auth.com draws: a small core, plugins around it, one config file that the
+// The architecture: a small core, plugins around it, one config file that the
 // server and the CLI read (server/plugin.ts; server/configFile.ts reads the file, server/config.ts is its type;
 // server/cli.ts).
 import { Fragment } from 'react';

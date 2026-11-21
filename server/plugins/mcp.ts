@@ -1,4 +1,4 @@
-// The MCP plugin: CompanyFlags for AI agents, over the Model Context Protocol (docs/design/ai.md, section 3).
+// The MCP plugin: CompanyFlags for AI agents, over the Model Context Protocol (docs/content/docs/guide/ai.md).
 //   POST /mcp   JSON-RPC 2.0 in, application/json out (Streamable HTTP, stateless: no sessions, no streams)
 //   GET  /mcp   405: this server doesn't stream
 //

@@ -4,9 +4,42 @@ Every release of the server and console. The Docker image's tags follow these ve
 
 ## Unreleased
 
+**Upgrading:** three sign-in settings have new names. Rename them in your environment, `.env` file or secret store
+before you start this version:
+
+- `BETTER_AUTH_SECRET` is now `FF_SECRET`;
+- `BETTER_AUTH_URL` is now `FF_PUBLIC_URL`;
+- `BETTER_AUTH_TRUSTED_ORIGINS` is now `FF_TRUSTED_ORIGINS`.
+
+A server that finds an old name without its new one refuses to start and says which to rename. Keep the secret's
+value: a new one makes the saved CDN token and webhook secrets unreadable. Everyone signs in again once, as the session
+cookie has a new name (`companyflags.session_token`).
+
+- **Sign-in settings named after CompanyFlags.** `FF_SECRET`, `FF_PUBLIC_URL` and `FF_TRUSTED_ORIGINS`, as above.
+  The server hands them to the sign-in itself, and no other variable can change them. A secret shorter than 32
+  characters, or one with too few different characters, is refused everywhere, not only in production. The server's
+  log says `sign-in: email and password, …`.
+
+- **Docs: Choose Your Setup.** A page in the docs asks where CompanyFlags runs (one server, Kubernetes, AWS, Google
+  Cloud or Azure), its database, its address, sign-in, the CDN and the extras, then shows only that setup's steps and
+  files, each ready to copy, with every secret made by a command. The answers stay in the page's address, so a setup
+  can be shared as a link.
+- **Integrations from environment variables alone.** Without a config file's `plugins`, `FF_METRICS=on` turns on
+  metrics, `FF_CLOUDFRONT_DISTRIBUTION_ID` the CloudFront purge, and `FF_CLOUD_CDN_PROJECT` with `FF_CLOUD_CDN_URL_MAP`
+  the Cloud CDN purge. `FF_INTEGRATIONS_OFF=mcp,webhooks` turns defaults off; an unknown id stops the start. The Docker
+  image and cloud containers no longer need a config file, or an image of their own, for these. A config file that
+  lists `plugins` still wins, and the start names the variables it ignores. The start now logs
+  `integrations: OFREP, flagd, CDN files, …` instead of `plugins: ofrep, flagd, cdn-files, …`.
 - **`auth.clientIp` in the config file reaches the change-event streams too.** Before, the stream limits read only
   `FF_TRUSTED_PROXIES` and `FF_CLIENT_IP_HEADER`, so a proxy set in the file counted every device as the proxy.
 
+- **Docs: Installation, Deploy, Operate and Integrations.** A new Installation page takes you from nothing to an app
+  reading flags in four steps. Each Deploy page is a complete recipe, top to bottom: Docker Compose, Kubernetes (new),
+  AWS, Google Cloud and Azure, with **Choose Your Setup** to pick one. Operate has the Production Checklist,
+  Monitoring, Backups, Upgrading, Sign-In and People, Single Sign-On and Appearance. Integrations replaces Plugins: one
+  short page each for OFREP, flagd, CDN files, CDN purge, webhooks, metrics and AI agents (MCP), turned on with
+  environment variables first. Database, Proxies and Secrets are now part of the recipes and the Configuration
+  reference, and the plugin API is Writing a Plugin. Every old address redirects to its new page.
 - **The Debug tab leads with its answer.** "Test a device" now heads the result box, like a hero, with the inputs
   beside it. On a narrow screen the box comes first.
 
@@ -24,7 +57,7 @@ Every release of the server and console. The Docker image's tags follow these ve
 - **CDN files send `Last-Modified`, and answer `If-Modified-Since` with `304`.** For CDNs that ignore ETags (Azure
   Front Door). The ETag still wins when both are sent.
 - **Cache tags name no entity.** An entity's and a link's tag are now keyed hashes (`e-…`, `l-…`, from
-  `BETTER_AUTH_SECRET`), as some CDNs (Google Cloud CDN) pass `Cache-Tag` on to devices. The environment's stays
+  `FF_SECRET`), as some CDNs (Google Cloud CDN) pass `Cache-Tag` on to devices. The environment's stays
   `env-<env>`. After the upgrade the CDN holds files with the old tags for at most a minute.
 - **A day of outage cover on CDNs that ignore `stale-if-error`.** While a purge runs after each publish (Cloudflare with
   a token, or a plugin that says `purges`), `CDN-Cache-Control` has `stale-while-revalidate=86400`, which Google Cloud
@@ -44,7 +77,7 @@ Every release of the server and console. The Docker image's tags follow these ve
   Apps), the managed Postgres with TLS and its connection budget, pinned secrets, the load balancer's trusted proxies,
   health checks, migrations as a one-off job, and a CDN for the CDN files only. The CDN page now covers Cloudflare,
   CloudFront, Cloud CDN and Azure Front Door: what each honours and how each is purged (Front Door by hand only).
-- **The console's sidebar works like better-auth.com's.** Every item is a short noun in Title Case, and it is the
+- **The console's sidebar, reworked.** Every item is a short noun in Title Case, and it is the
   page's title and its tab's title, word for word. The groups: Flags, Releases, Approvals, History and Compare; then
   **Audience** (your dimensions); then **Developers** (Services, API Keys, Webhooks); then Settings. Migration is in
   Settings (`#/migration` opens it there). Two-factor sign-in and access tokens are on **Account**, from the menu under
@@ -130,7 +163,7 @@ Every release of the server and console. The Docker image's tags follow these ve
   later. A wrong link's `404` says `no-store`.
 - **A failed CDN purge shows in `/readyz` and the metrics.** `/readyz` lists `warnings` (still `200`) and each
   environment's `purgeFailing`; the metrics have `companyflags_purge_failing` and `companyflags_warnings`. A token in
-  Settings → CDN that can't be read after `BETTER_AUTH_SECRET` changed is a failure now, not a quiet "off".
+  Settings → CDN that can't be read after `FF_SECRET` changed is a failure now, not a quiet "off".
 - **Event stream limits don't make load worse.** A client at its stream limit gets answers with no stream, so its
   provider polls instead of retrying about once a second. A refused stream's `Retry-After` is 60 to 120 seconds.
   The docs say streams count per client address and need `FF_TRUSTED_PROXIES` behind a load balancer, and every web
@@ -143,7 +176,7 @@ Every release of the server and console. The Docker image's tags follow these ve
 What a panel of 10 UX and 10 developer-experience reviewers found, fixed.
 
 **Upgrading from 0.8.0:** stop every instance and start them all on 0.9.0 together (0.8.0 can't read the secrets 0.9.0
-seals, and has no `--no-migrate`); from now on, [rolling upgrades](docs/content/docs/self-hosting/upgrading.md) work.
+seals, and has no `--no-migrate`); from now on, [rolling upgrades](docs/content/docs/operate/upgrading.md) work.
 Breaking: the console API says `service` (not `project`) and never picks an environment for you; OFREP refuses dotted
 attributes (nest them); a flags file that lists `services` needs `"owns"` to include them; an admin's access token is
 On call at most; Compose and the docs pin `0.9`.
@@ -152,7 +185,7 @@ On call at most; Compose and the docs pin `0.9`.
 
 - **No npm install yet.** The `companyflags` package isn't published on npm, so the docs, the landing page and the
   README no longer show `npx companyflags`. Run it with Docker or from a clone; the CLI runs as `pnpm cli` there.
-- **The quickstart keeps its secret.** `BETTER_AUTH_SECRET` goes in `.env` first, so starting the container again
+- **The quickstart keeps its secret.** `FF_SECRET` goes in `.env` first, so starting the container again
   with the same file keeps everyone signed in and the setup link the same.
 - **Old addresses work again.** `/guide/apps`, `/guide/flag-sets`, `/guide/backends`, `/sdk/openfeature`,
   `/sdk/app-file` and `/sdk/cdn-file` send you to the page that has their content now (`docs/scripts/redirects.ts`).
@@ -335,8 +368,8 @@ On call at most; Compose and the docs pin `0.9`.
   `companyflags migrate` can run as its own step and the version before keeps running on the new schema. Upgrading
   from 0.8.0, which has no such switch, upgrade the instances together.
 - **Secrets kept for other systems are sealed at rest**: the CDN token and webhooks' headers and signing secrets, with
-  a key from `BETTER_AUTH_SECRET`. The first start seals the ones saved before (migration 0020). Changing
-  `BETTER_AUTH_SECRET` means setting them again.
+  a key from `FF_SECRET`. The first start seals the ones saved before (migration 0020). Changing
+  `FF_SECRET` means setting them again.
 - **Plugins**: a route outside the plugin's own prefixes, or a prefix of the core's (`/oauth`, `/.well-known`,
   `/healthz`, …), stops the start. `hono` is a peer dependency of the npm package, and `pluginRoutes()` makes a
   plugin's routes. Plugins get `secrets` and `publishState`, and console routes get `body(c)`.
@@ -405,7 +438,7 @@ On call at most; Compose and the docs pin `0.9`.
   server or your code deciding), the evaluation context, remote evaluation in apps and in backends (OFREP), and local
   evaluation in apps (the CDN file, formerly the app file) and in backends (flagd).
 
-- **The docs site runs on Next.js and Fumadocs,** as better-auth.com's does, instead of VitePress. The pages are the
+- **The docs site runs on Next.js and Fumadocs,** instead of VitePress. The pages are the
   same, at the same addresses, in `docs/content/docs/`. You get a sidebar of groups that open and close, a search box,
   "Copy Markdown" and "Open in" on every page, and a progress bar on phones. `/llms.txt`, `/llms-full.txt` and each
   page's `.md` are still there. It's still static files on GitHub Pages.
@@ -425,7 +458,7 @@ On call at most; Compose and the docs pin `0.9`.
   the top of every page, a note on the sign-in page, a help link and up to four footer links. The server puts the
   name, icon and colors into the page it sends, so nothing flashes. Images are kept in the database and served with
   a policy that runs nothing. `appearance` in `companyflags.config.ts` sets it in Git, read-only in the console.
-  Changes are in History. Migration 0019. See [Appearance](docs/self-hosting/appearance.md).
+  Changes are in History. Migration 0019. See [Appearance](docs/content/docs/operate/appearance.md).
 
 ## 0.6.0 (2026-11-20)
 
@@ -463,7 +496,7 @@ On call at most; Compose and the docs pin `0.9`.
 
 ## 0.4.0 (2026-11-20)
 
-For AI agents and AI features ([plan](https://github.com/dvir-daniel/companyflags/blob/main/docs/design/ai.md)).
+For AI agents and AI features.
 
 - **An MCP server**, the `mcp()` plugin at `/mcp`: tools to read, explain, change and clean up flags through the
   console's API, with an access token; changes where approval is needed are requests. `companyflags mcp` bridges
@@ -528,7 +561,7 @@ needed first. Changes marked **Breaking** need something from you when you upgra
 
 ## 0.2.0 (2026-11-20)
 
-A review of the architecture, the console, the docs and security, held to Better Auth's standard. Changes marked **Breaking** need something from you when you upgrade.
+A review of the architecture, the console, the docs and security. Changes marked **Breaking** need something from you when you upgrade.
 
 ### Security
 
@@ -536,7 +569,7 @@ A review of the architecture, the console, the docs and security, held to Better
   `make the admin account at <url>/api/setup/<secret>` at every start. Only that link makes the admin account; until
   then nobody joins, `FF_SIGNUP_DOMAINS` and single sign-on included. A database from before accounts needs it too.
   Scripts send the secret in `X-Setup`. See
-  [Sign-in](https://dvir-daniel.github.io/companyflags/self-hosting/sign-in#the-first-account).
+  [Sign-in](https://dvir-daniel.github.io/companyflags/operate/sign-in#the-first-account).
 - **Breaking: `FF_CLIENT_IP_HEADER` needs `FF_TRUSTED_PROXIES`.** The header and `X-Forwarded-For` are believed only
   from those proxies. The server won't start with the header alone, or with a proxy entry that isn't an address.
 - **Breaking: webhooks out reach public addresses only.** Allow origins on your network with
@@ -621,7 +654,7 @@ The first public release.
   1.0.1) with rollbacks by on call.
 - **Change control.** Protected environments with approvals, scheduling, break-glass, an append-only history, restore
   and compare.
-- **Sign-in.** Better Auth: email and password, Google, GitHub, Microsoft, single sign-on with SAML or OIDC, invites,
+- **Sign-in.** Email and password, Google, GitHub, Microsoft, single sign-on with SAML or OIDC, invites,
   roles, password reset links made by an admin. Only admins manage API keys. Sign-in rate limits read the connection's
   address, or a header you trust behind a proxy (`FF_CLIENT_IP_HEADER`, `FF_TRUSTED_PROXIES`).
 - **Plugins and one config file.** A small core, and a plugin for each way flags are read (`ofrep()`, `flagd()`,

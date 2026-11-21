@@ -47,7 +47,7 @@ export function compareSemver(a: SemVer, b: SemVer): number {
   return 0;
 }
 
-// ---- release versions (docs/design/release-versions.md) ------------------------------------------------------------
+// ---- release versions (docs/content/docs/guide/releases.md) ------------------------------------------------------------
 // A version release's values: SemVer 2.0.0, a little stricter, so each version has one spelling. Three whole numbers
 // without leading zeros, an optional lowercase prerelease; no "v" (semver.org: "v1.2.3" is not a semantic version) and
 // no "+build" (semver ignores it when comparing, so 1.0.1+5 and 1.0.1+6 would be the same version). Rules stay

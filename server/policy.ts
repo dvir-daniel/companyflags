@@ -173,7 +173,7 @@ export const mayWithdraw = (person: Pick<Person, 'key'>, cs: Pick<ChangeSetFacts
  *  is the most common thing to go wrong). Turning on stays a request. */
 export const canBreakGlass = (role: string) => roleInfo(role).breaksGlass;
 /** May this role pause a release (its own rules switched off, the % kept for resume), or roll a version release back to
- *  a version it served before, without review in a protected environment (docs/design/release-versions.md): only the safe
+ *  a version it served before, without review in a protected environment (docs/content/docs/guide/releases.md): only the safe
  *  direction. Which changes those are is release.ts isRollback for the console, and layers.ts checks the saved layer. */
 export const canBreakGlassRollback = (kind: string, role: string) => kind === 'release' && roleInfo(role).breaksGlass;
 

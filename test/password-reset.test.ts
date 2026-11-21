@@ -1,11 +1,11 @@
-// Password resets without email (server/access.ts passwordReset, server/betterAuth.ts): an admin makes a reset link in
+// Password resets without email (server/access.ts passwordReset, server/accounts.ts): an admin makes a reset link in
 // People, it works once, it signs the person out everywhere, and nobody can ask for one by email.
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { browser, startApp } from './helpers.ts';
 import type { SignIn } from '../server/identity.ts';
 
-const signIn: SignIn = { kind: 'better-auth', settings: {} };
+const signIn: SignIn = { kind: 'accounts', settings: {} };
 const PASSWORD = 'correct horse battery';
 let ctx: Awaited<ReturnType<typeof startApp>>;
 let call: ReturnType<typeof browser>;

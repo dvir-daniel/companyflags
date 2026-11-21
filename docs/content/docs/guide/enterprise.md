@@ -14,7 +14,7 @@ Workspace, JumpCloud and others). People at your email domains can join by thems
 (Viewer by default), or the role their identity provider groups give. Require single sign-on, and someone removed
 from the identity provider is out of the console within 12 hours; one break-glass admin keeps a password. Email and
 password (with two-factor sign-in, which you can require of admins), Google, GitHub and Microsoft sign-in work too.
-Sign-ins and other security events can go to your SIEM. See [Single Sign-On](/self-hosting/single-sign-on) and [Sign-In](/self-hosting/sign-in).
+Sign-ins and other security events can go to your SIEM. See [Single Sign-On](/operate/single-sign-on) and [Sign-In](/operate/sign-in).
 
 ## Roles and approvals
 
@@ -40,12 +40,12 @@ restore. See [History](/guide/approvals#history) and [Revisions and restore](/gu
 - **Tokens and agents:** access tokens act as their person, and AI agents sign in with OAuth and act with a role you
   choose.
 
-See the [Security model](/guide/security).
+See the [Security model](/reference/security).
 
 ## Your look
 
 Each server can show its own name, logo and colors in the console, and a notice for everyone or a note on the sign-in
-page. You can set it in the console, or in the config file so it's kept in Git. See [Appearance](/self-hosting/appearance).
+page. You can set it in the console, or in the config file so it's kept in Git. See [Appearance](/operate/appearance).
 
 ## Running it at scale
 
@@ -55,14 +55,14 @@ page. You can set it in the console, or in the config file so it's kept in Git. 
   Cloudflare set up, each publish clears it within seconds.
 - **Operations:** health checks and graceful shutdown. Upgrades migrate the database when the server starts.
 
-See the [Self-Hosting Overview](/self-hosting/overview), [Monitoring](/self-hosting/monitoring) and [CDN](/self-hosting/cdn).
+See [Installation](/guide/installation), [Monitoring](/operate/monitoring) and [CDN Files](/integrations/cdn-files).
 
 ## Moving over from another system
 
 Run CompanyFlags next to the system you have now, import its flags, and move one flag at a time. Webhooks keep both the
-same while both run. See [Moving from another system](/guide/migration) and [Webhooks](/guide/webhooks).
+same while both run. See [Moving from another system](/guide/migration) and [Webhooks](/integrations/webhooks).
 
 ## Support
 
 Questions, bugs and feature requests go to [GitHub issues](https://github.com/dvir-daniel/companyflags/issues). Report
-security problems privately, as [Security](/guide/security#reporting-a-vulnerability) says.
+security problems privately, as [Security](/reference/security#reporting-a-vulnerability) says.

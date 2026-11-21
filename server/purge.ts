@@ -33,7 +33,7 @@ export class CloudflareError extends Error {
 
 // The tags are opaque: some CDNs (Google Cloud CDN) pass the Cache-Tag header on to whoever reads the file, and an
 // entity's file must not name the entities above it. An entity's and a link's tag are a keyed hash (HMAC-SHA256 with
-// a key from BETTER_AUTH_SECRET, setTagSecret), so nobody without the secret can tell which entity a tag is, or test
+// a key from FF_SECRET, setTagSecret), so nobody without the secret can tell which entity a tag is, or test
 // a guess. The environment's stays readable (env-<env>): the file's address names it already. Every tag is ASCII
 // letters, digits and dashes, at most 68 characters, and a file carries one per entity above it plus two: well within CloudFront's limits (256 characters, 50 tags) and Cloud CDN's (120 bytes, 50 tags).
 

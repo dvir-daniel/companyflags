@@ -1,5 +1,5 @@
 # CompanyFlags with Postgres.
-#   echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
+#   echo "FF_SECRET=$(openssl rand -base64 32)" > .env
 #   echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)" >> .env
 #   docker compose up -d
 # then docker compose logs companyflags shows a setup link: open it to make the admin account. Settings: .env.example.
@@ -16,8 +16,8 @@ services:
         required: false
     environment:
       DATABASE_URL: postgres://companyflags:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (openssl rand -hex 24)}@postgres:5432/companyflags
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (openssl rand -base64 32)}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:8787}
+      FF_SECRET: ${FF_SECRET:?Set FF_SECRET in .env (openssl rand -base64 32)}
+      FF_PUBLIC_URL: ${FF_PUBLIC_URL:-http://localhost:8787}
     depends_on:
       postgres:
         condition: service_healthy

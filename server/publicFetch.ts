@@ -3,7 +3,7 @@
 // headers and body, so without this a webhook could reach this machine, the network it is on, or a cloud's metadata
 // address (169.254.169.254), and say through its test whether something answers there. An identity provider's
 // settings (sso.ts) are read the same way (publicRead), so adding a connection can't look around the network either,
-// and so are the token, keys and user info addresses a sign-in with it reaches (guardedFetches, betterAuth.ts).
+// and so are the token, keys and user info addresses a sign-in with it reaches (guardedFetches, accounts.ts).
 //
 // The address a name resolves to is checked when the connection is made, by the connection's own lookup, so a name
 // can't resolve to a public address for the check and a private one for the connection (DNS rebinding). Redirects
@@ -104,7 +104,7 @@ export async function publicRead(input: string, o: PublicFetchOptions & { header
 }
 
 /** A whole fetch (method, headers, body; the answer's status, headers and body, at most `maxBytes`) with the same checks
- *  as publicFetch: for code that calls fetch itself and reads what comes back (Better Auth's single sign-on, below).
+ *  as publicFetch: for code that calls fetch itself and reads what comes back (the sign-in's single sign-on, below).
  *  Redirects aren't followed (a redirect is the status it is). The answer isn't compressed: it is asked for as it is. */
 export function publicFetchWhole(o: PublicFetchOptions & { maxBytes?: number; timeoutMs?: number } = {}): typeof fetch {
   const allowed = new Set((o.allowedOrigins ?? []).map(originOf).filter(Boolean));

@@ -15,7 +15,7 @@
 // order any of these steps; they say what changed.
 //
 // Every kind of change is declared in KINDS: what it changes, its after-commit effects, and whether a restore undoes
-// it. Restore undoes flag settings only (docs/design/adr/0001-restore-undoes-flag-settings-only.md). A kind that
+// it. Restore undoes flag settings only. A kind that
 // serves also says whose answers it may change (its `scope`, events.ts PublishScope): the publisher reads it from
 // History, so a publish purges only those files from the CDN and wakes only those devices' event streams (scopeOf).
 

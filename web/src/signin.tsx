@@ -10,7 +10,7 @@ import { field, inviteLookup, lastSignInInfo, rememberSignedIn, SETUP_HINT, sign
 import { codeOf, isAppCode, twoFactorCall } from './pages/twoFactorKit.ts';
 
 /*
- * Signing in, with Better Auth (server/betterAuth.ts): an email and password, single sign-on with the organization's
+ * Signing in (server/accounts.ts): an email and password, single sign-on with the organization's
  * identity provider (SAML or OIDC, set up by an admin in Settings), or Google, GitHub or Microsoft when the server
  * has them set up. A new server makes its first account, the admin's, only through the setup link it prints when it
  * starts: /api/setup/<secret> keeps the secret in a cookie and opens the console, and the server then tells this page
@@ -115,7 +115,7 @@ export function SignInPage() {
   if (second) return <SecondStep email={email.trim()} onBack={() => { setSecond(false); setPassword(''); }} />;
   if (unreachable) return <Frame tab="signin" title="Can’t sign in right now"><Callout tone="error">{unreachable}</Callout></Frame>;
   if (!info) return <SignInSkeleton />;
-  if (info.kind !== 'better-auth') {
+  if (info.kind !== 'accounts') {
     return <Frame tab="signin" title="You’re not signed in"><Callout>This server signs people in another way ({info.kind}). Reload to try again.</Callout></Frame>;
   }
   const first = info.firstPerson;
@@ -303,8 +303,8 @@ export function JoinPage({ token }: { token: string }) {
       if (!done) setBusy(false);
     }
   };
-  const providers = info?.kind === 'better-auth' ? info.providers : [];
-  const sso = info?.kind === 'better-auth' && info.sso;
+  const providers = info?.kind === 'accounts' ? info.providers : [];
+  const sso = info?.kind === 'accounts' && info.sso;
   return (
     <Frame tab="signup" onTab={toSignIn} title={`Join ${lookName()}`} intro={<>You’re invited as <strong className="font-medium text-ink">{invite.email}</strong>.</>}>
       <form className="grid gap-4" onSubmit={submit}>

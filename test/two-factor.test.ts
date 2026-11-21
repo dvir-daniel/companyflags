@@ -1,4 +1,4 @@
-// Two-factor sign-in for password accounts (server/betterAuth.ts, Better Auth's twoFactor plugin): an authenticator
+// Two-factor sign-in for password accounts (server/accounts.ts, the sign-in's twoFactor plugin): an authenticator
 // app's code after the password, recovery codes that work once, the rule that admins with a password set it up first
 // (access.ts needsTwoFactor), a reset link that turns it off, and each sign-in in History and the People list.
 import { after, before, test } from 'node:test';
@@ -9,7 +9,7 @@ import { browser, startApp } from './helpers.ts';
 const PASSWORD = 'correct horse battery';
 let ctx: Awaited<ReturnType<typeof startApp>>;
 let call: ReturnType<typeof browser>;
-before(async () => { ctx = await startApp({ signIn: { kind: 'better-auth', settings: {} } }); call = browser(ctx); });
+before(async () => { ctx = await startApp({ signIn: { kind: 'accounts', settings: {} } }); call = browser(ctx); });
 after(async () => { await ctx.stop(); });
 
 /** An authenticator app's code now, for an otpauth:// address's secret (RFC 6238: base32, HMAC-SHA1, 30 seconds). */
