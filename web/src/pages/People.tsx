@@ -48,7 +48,7 @@ export function People() {
   const [page, setPage] = useState(0);
   const [adding, setAdding] = useState(false);
   const [link, setLink] = useState<{ person: User; invite: string } | null>(null);
-  const [resetFor, setResetFor] = useState<{ person: User; token: string } | null>(null);
+  const [resetFor, setResetFor] = useState<{ person: User; token: string; ssoRequired: boolean } | null>(null);
   // a role on its way: the select shows it, and waits, until the people list has reloaded with it
   const [roleChange, setRoleChange] = useState<{ person: string; role: string } | null>(null);
   const { error, setError, run } = useAsync();
@@ -84,8 +84,8 @@ export function People() {
   };
   const resetLink = async (u: User) => {
     setError(null);
-    const r = await run(() => api<{ token: string }>('POST', `/people/${encodeURIComponent(u.key)}/password-reset`));
-    if (r) setResetFor({ person: u, token: r.token });
+    const r = await run(() => api<{ token: string; ssoRequired?: boolean }>('POST', `/people/${encodeURIComponent(u.key)}/password-reset`));
+    if (r) setResetFor({ person: u, token: r.token, ssoRequired: !!r.ssoRequired });
   };
   const remove = async (u: User) => {
     const { action } = await ask({
@@ -194,7 +194,7 @@ export function People() {
 
       {adding && <PersonDrawer onClose={() => setAdding(false)} onAdded={(person, invite) => { setAdding(false); setLink({ person, invite }); }} />}
       {link && <InviteLink person={link.person} invite={link.invite} onClose={() => setLink(null)} />}
-      {resetFor && <ResetLink person={resetFor.person} token={resetFor.token} onClose={() => setResetFor(null)} />}
+      {resetFor && <ResetLink person={resetFor.person} token={resetFor.token} ssoRequired={resetFor.ssoRequired} onClose={() => setResetFor(null)} />}
     </div>
   );
 }

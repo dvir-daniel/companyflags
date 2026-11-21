@@ -40,6 +40,7 @@ In a protected environment, also:
 - a value the environment serves can't be changed in place: add a new value and point the rules at it (reviewed);
 - nor can a value that a request there uses while it is in review, approved or scheduled. That holds in the console,
   for `flags push` and for imports. Change it once the request is applied, rejected or withdrawn;
+- nor can the flag's [safe value](#the-safe-value), since break-glass serves it without review;
 - a new flag starts off;
 - a flag can be archived only once it is off and in no service there;
 - only admins can move an entity under another parent, since that changes what it gets in every environment at once.
@@ -109,8 +110,10 @@ with a stated reason, in these cases only:
 2. **Serving a kill switch's or ops flag's safe value.** Every device gets that value: the rules for everyone are
    switched off and kept, and the default becomes the safe value. Entities' own settings on the flag get the same, so
    nobody is left out. The answer is an ordinary value (`DEFAULT` or `STATIC`), not `DISABLED`.
-3. **Pausing a release**: its own rules are switched off, so everyone is back on the old value, and the % is kept for
-   **Resume** (a request).
+3. **Pausing a release**: its own rules (early access and the %) are switched off, and the % is kept for **Resume** (a
+   request). Everyone is back on the old value except entities whose own settings serve the new value, such as Acme's
+   rule "Acme gets it everywhere": pausing doesn't change those. The dialog names them and offers **Turn off now**,
+   which stops it for everyone.
 4. **Rolling a version release back** to an older version this environment served while the flag was on. See
    [Releases → Rollbacks](/guide/releases#rollbacks).
 
@@ -128,8 +131,9 @@ offers both ways off, and says what each does:
   code default is the safe one.
 
 Without a safe value, only **Stop sending** is offered. Break-glass serves the safe value without a review, so while
-any environment is protected, only admins name or change it. Changing a flag's purpose to one without a safe value
-drops it.
+any environment is protected, only admins name or change it, and nobody changes its value in place (add a new value
+and make that the safe value). A purpose without a safe value drops it, so only an admin changes the purpose of such a
+flag, in the console. Anyone else, and `flags push`, gets a refusal: remove the safe value first.
 
 A kill switch such as `payments_enabled` with the safe value `off`: on call serves `false` to every app in Production
 without waiting, even an app whose code default is `true`.

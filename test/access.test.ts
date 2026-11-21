@@ -139,12 +139,15 @@ test('a connection that requires single sign-on: no password or provider sign-in
   const bea = (await access.add({ email: 'bea@corp.example', role: 'admin' }, lee)).invite;
   const pat = (await access.add({ email: 'pat@corp.example', role: 'editor' }, lee)).invite;
   await admits(access, [['no break-glass admin yet: an admin uses single sign-on too', passwordSignIn('ann@corp.example'), 'sso_required']]);
+  await admits(access, [['an invite, for an admin who isn’t the break-glass admin yet', password('ann@corp.example', ann), 'sso_required']]);
+  // the break-glass admin needs a password: an admin who signs in only with the identity provider can't break glass
+  await assert.rejects(access.setRules({ breakGlassAdmin: 'ann@corp.example' }, lee), { status: 422, message: /password/ });
+  await joins('ann@corp.example');                     // she has one now (a password link, made in People)
   await access.setRules({ breakGlassAdmin: 'ann@corp.example' }, lee);
   await admits(access, [
     ['a password sign-in, the break-glass admin', passwordSignIn('ann@corp.example'), null],
     ['a password sign-in, another admin', passwordSignIn('bea@corp.example'), 'sso_required'],
     ['a password sign-in, not an admin', passwordSignIn('pat@corp.example'), 'sso_required'],
-    ['an invite, for the break-glass admin', password('ann@corp.example', ann), null],
     ['an invite, for another admin', password('bea@corp.example', bea), 'sso_required'],
     ['an invite, not for an admin', password('pat@corp.example', pat), 'sso_required'],
     ['a provider, the break-glass admin', provider('ann@corp.example'), null],
@@ -223,4 +226,34 @@ test('an admin with a password must set up two-factor first when the rules say s
   await access.setRules({ breakGlassAdmin: 'ann@corp.com' }, lee);
   await access.groupRole('ann@corp.com', 'viewer', 'okta');
   assert.equal((await access.signedIn({ email: 'ann@corp.com', twoFactor: true })).role, 'admin', 'the break-glass admin keeps their role');
+});
+
+test('a password link: for anyone with an account, a first password too; an invite for someone without one', async () => {
+  const { access, joins } = await install([{ id: 'okta', domains: ['corp.example'], requireSso: true }]);
+  await joins('lee@corp.com');
+  const lee = by('lee@corp.com');
+  await access.add({ email: 'pat@corp.example', role: 'editor' }, lee);
+  await access.add({ email: 'kim@corp.com', role: 'editor' }, lee);
+  const link = (key: string) => access.passwordReset(key, lee, async () => 'reset-token');
+  await assert.rejects(link('kim@corp.com'), { status: 409, message: /invite link/ }, 'no account yet: an invite');
+  await joins('pat@corp.example');
+  const made = await link('pat@corp.example');
+  assert.equal(made.token, 'reset-token');
+  assert.equal(made.ssoRequired, true, 'their domain requires single sign-on: the console says the password waits');
+  assert.equal((await link('lee@corp.com')).ssoRequired, false);
+  await assert.rejects(access.invite('pat@corp.example', lee), { status: 409, message: /password link/ }, 'an account: a password link, not an invite');
+});
+
+test('an admin who must set up two-factor sign-in has it pending for tokens and OAuth too, only while the rules ask it', async () => {
+  const { access, joins } = await install();
+  await joins('lee@corp.com');
+  await access.add({ email: 'ann@corp.com', role: 'admin' }, by('lee@corp.com'));
+  await access.add({ email: 'viv@corp.com', role: 'editor' }, by('lee@corp.com'));
+  await joins('ann@corp.com');
+  await joins('viv@corp.com');
+  assert.equal(await access.twoFactorPending('ann@corp.com'), false, 'the rules don’t ask it');
+  await access.setRules({ adminsNeedTwoFactor: true }, by('sso-only@corp.com'));
+  assert.equal(await access.twoFactorPending('ann@corp.com'), true, 'an admin with a password and no second factor');
+  assert.equal(await access.twoFactorPending('viv@corp.com'), false, 'not an admin');
+  assert.equal(await access.twoFactorPending('sso-only@corp.com'), false, 'nobody here');
 });

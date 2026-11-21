@@ -51,7 +51,9 @@ key read out of an app (it is public by design, and reads that service's values 
 scanners with no shown impact.
 
 An agent doing more than an editor, a token above its person's role, a token that makes tokens, or OAuth giving more
-than the person allowed is in scope. What we accept for agents, tokens and OAuth, and why, is listed under
+than the person allowed is in scope. So is getting around a sign-in rule: two-factor sign-in for admins with a token
+or OAuth, approving your own request (an incoming webhook's requests are its owner's), or an OIDC sign-in reaching a
+private address. What we accept for agents, tokens and OAuth, and why, is listed under
 [Agents, tokens and OAuth](docs/guide/security.md#agents-tokens-and-oauth): for example, an OAuth token working on
 `/api` as well as `/mcp`, a client choosing its own name, and a token passed as `--token` showing in the process list.
 

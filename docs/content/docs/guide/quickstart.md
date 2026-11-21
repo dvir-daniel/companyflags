@@ -8,7 +8,7 @@ description: "Run CompanyFlags, set up your first flag, then read it the way an 
 ```bash tab="Docker"
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env
 docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \
-  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags
+  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9
 ```
 
 ```bash tab="Docker Compose"
@@ -45,7 +45,10 @@ can't make themselves its admin. It stops working once the account exists.
 The console then walks you through four steps, as a checklist. It stays above the flags list until each step is
 done, and none of them needs a dimension:
 
-1. **Environments.** Add Development with the key `dev`, and Production with 1 approval needed.
+1. **Environments.** Add Development with the key `dev`, and Production with the key `prod`. Leave **Approvals
+   needed** at 0 for both while you are the only person: nobody approves their own request, so with 1 approval and
+   nobody else to review, nothing could go out in Production (the drawer warns you). Once you invite a second person
+   who reviews (Approver, On call or Admin), raise Production to 1 ([Approvals and history](/guide/approvals)).
 2. **Services.** Add `web`, of the kind **App**: what your web app reads. Add a **Backend** service, such as `api`,
    when a server needs flags too.
 3. **Your first flag.** **Flags → + New flag**: key `new_checkout`, and tick the service `web`. It is **On / off**
@@ -92,6 +95,7 @@ await OpenFeature.setContext({ targetingKey: 'device-1', app: { version: '6.0.0'
 await OpenFeature.setProviderAndWait(new OFREPWebProvider({
   baseUrl: 'http://localhost:8787',
   headers: [['Authorization', 'Bearer ff_dev_web_…']],   // the web service's key
+  pollInterval: 60_000,                                  // when it can't keep a change stream open: once a minute
 }));
 OpenFeature.getClient().getBooleanValue('new_checkout', false);
 ```

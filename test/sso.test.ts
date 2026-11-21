@@ -296,6 +296,34 @@ describe('OIDC, start to finish (in order)', () => {
     assert.equal((await meta(admin)).status, 200, 'the break-glass admin’s password session goes on');
   });
 
+  test('editing a required connection: a new domain signs out only its people; new identity provider details turn the requirement off until a test sign-in', async () => {
+    const admin = await app.admin();
+    const put = (body: unknown) => call('PUT', '/api/sso/okta', { cookie: admin, body });
+    assert.equal((await call('GET', '/api/sso', { cookie: admin })).json.connections[0].requireSso, true, 'required, from before');
+    const pat = await signInWithSso('pat@corp.example', { sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz' });
+    const { invite } = (await call('POST', '/api/people', { cookie: admin, body: { email: 'neo@corp-new.example' } })).json;
+    const neo = await call('POST', '/api/auth/sign-up/email', { headers: { 'x-invite': invite }, body: { email: 'neo@corp-new.example', name: 'Neo', password: PASSWORD } });
+    assert.equal(neo.status, 200, 'a password account, before its domain is the connection’s');
+    const added = await put({ domains: 'corp.example, corp-labs.example, corp-new.example' });
+    assert.equal(added.status, 200, JSON.stringify(added.json));
+    assert.equal(added.json.requireSso, true, 'a new domain keeps it required');
+    assert.equal((await meta(neo.cookie)).status, 401, 'the people at the new domain are signed out');
+    assert.equal((await meta(pat.cookie)).status, 200, 'everyone else stays signed in');
+
+    // a new client secret (a typo, say): the test sign-in is forgotten, and passwords work until it's tested again
+    const typo = await put({ clientSecret: 'idp-secret-typo' });
+    assert.equal(typo.status, 200, JSON.stringify(typo.json));
+    assert.deepEqual([typo.json.requireSso, typo.json.lastSignInAt], [false, null]);
+    const h = ((await call('GET', '/api/history?type=sso.update', { cookie: admin })).json as any[])[0];
+    assert.deepEqual([h.before.requireSso, h.after.requireSso], [true, false], 'History says it was turned off');
+    assert.equal((await put({ clientSecret: 'idp-secret', requireSso: true })).status, 409, 'not required again in the same change');
+    assert.equal((await put({ clientSecret: 'idp-secret' })).status, 200);
+    assert.equal((await put({ requireSso: true })).status, 409, 'not before a test sign-in');
+    assert.equal((await put({ clientSecret: 'idp-secret' })).json.requireSso, false, 'the same secret again changes nothing');
+    await signInWithSso('pat@corp.example', { sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz' });
+    assert.equal((await put({ requireSso: true })).json.requireSso, true, 'tested: required again');
+  });
+
   test('group roles: the identity provider’s groups give a role, each sign-in; none named gives the join role', async () => {
     const admin = await app.admin();
     const set = await call('PUT', '/api/sso/okta', { cookie: admin, body: { groupRoles: { claim: 'groups', roles: { 'flag-approvers': 'approver', 'flag-editors': 'editor' } } } });
@@ -305,10 +333,13 @@ describe('OIDC, start to finish (in order)', () => {
     assert.equal(await role(['flag-editors', 'flag-approvers', 'everyone']), 'approver', 'the highest of their groups');
     assert.equal(await role(['flag-editors']), 'editor');
     assert.equal(await role(['everyone']), 'viewer', 'none named: the join role');
+    assert.equal(await role(['flag-approvers']), 'approver');
+    const noClaim = await signInWithSso('pat@corp.example', { sub: 'u-pat', email: 'pat@corp.example', name: 'Pat Ruiz' });
+    assert.equal((await meta(noClaim.cookie)).json.me.role, 'approver', 'no groups claim at all (a claim named wrong): the role stays');
     const changes = ((await call('GET', '/api/history?type=person.role', { cookie: admin })).json as any[]).filter((r) => r.after?.from === 'groups');
     assert.equal(changes[0].changedBy, 'sso:okta', 'History says the identity provider’s groups did it');
     assert.equal((await call('PUT', '/api/sso/okta', { cookie: admin, body: { groupRoles: null } })).json.groupRoles, null);
-    assert.equal(await role(['flag-editors']), 'viewer', 'without group roles, the role stays as it is');
+    assert.equal(await role(['flag-editors']), 'approver', 'without group roles, the role stays as it is');
   });
 
   test('removing a connection: nobody signs in with it any more, everyone who did is signed out; it’s all in History', async () => {
@@ -330,6 +361,18 @@ describe('OIDC, start to finish (in order)', () => {
     assert.equal((await call('GET', '/api/sign-in')).json.sso, false);
     const types = ((await call('GET', '/api/history', { cookie: admin })).json as any[]).map((h) => h.changeType);
     for (const t of ['sso.add', 'sso.update', 'sso.remove']) assert.ok(types.includes(t), t);
+
+    // pat signed in only with single sign-on: a password link gets them back in
+    assert.equal((await call('POST', '/api/auth/sign-in/email', { body: { email: 'pat@corp.example', password: PASSWORD } })).status, 401, 'no password yet');
+    const link = await call('POST', '/api/people/pat@corp.example/password-reset', { cookie: admin, body: {} });
+    assert.equal(link.status, 200, JSON.stringify(link.json));
+    assert.equal(link.json.ssoRequired, false);
+    assert.equal((await call('POST', '/api/auth/reset-password', { body: { newPassword: PASSWORD, token: link.json.token } })).status, 200);
+    const back = await call('POST', '/api/auth/sign-in/email', { body: { email: 'pat@corp.example', password: PASSWORD } });
+    assert.equal(back.status, 200, 'their first password');
+    assert.equal((await meta(back.cookie)).json.me.key, 'pat@corp.example');
+    const reset = ((await call('GET', '/api/history?type=person.password_reset', { cookie: admin })).json as any[])[0];
+    assert.deepEqual(reset.after, { person: 'pat@corp.example', first: true }, 'History says it was a first password');
   });
 });
 
@@ -392,6 +435,15 @@ test('adding an OIDC connection reads the identity provider’s settings through
   const other = (await add()).json.error;
   assert.equal(other, `the identity provider’s settings at ${at} are for another issuer: check the issuer address`);
   assert.doesNotMatch(other, /someone\.else/, 'nothing the document says is repeated back');
+  for (const [k, v] of [['token_endpoint', 'http://10.0.0.5/token'], ['jwks_uri', 'http://169.254.169.254/keys'], ['userinfo_endpoint', 'http://localhost:8080/me']]) {
+    settingsAt.set(at, { ...settings, [k]: v });
+    const r = await add();
+    assert.equal(r.status, 422, k);
+    assert.match(r.json.error, new RegExp(`give a ${k} that isn’t on the public internet: .*BETTER_AUTH_TRUSTED_ORIGINS`), k);
+    assert.doesNotMatch(r.json.error, /10\.0\.0\.5|169\.254|localhost/, 'the address isn’t repeated back');
+  }
+  settingsAt.set(at, { ...settings, token_endpoint: 'ftp://login.offline.example/token' });
+  assert.match((await add()).json.error, /token_endpoint that isn’t an https address/);
   settingsAt.set(at, settings);
   const added = await add();
   assert.equal(added.status, 201, JSON.stringify(added.json));
@@ -476,3 +528,32 @@ describe('SAML (in order)', () => {
 // a throwaway self-signed certificate and its key, only for the fake identity provider in these tests
 const CERT = 'MIIDBzCCAe+gAwIBAgIUd0dNqZAsnuqP3OO+bLFI0lEPk3wwDQYJKoZIhvcNAQELBQAwEzERMA8GA1UEAwwIdGVzdC1pZHAwHhcNMjYxMTE3MTkyMjEzWhcNMzYxMTE0MTkyMjEzWjATMREwDwYDVQQDDAh0ZXN0LWlkcDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKo9WBCGo+2RLW7HouLKqU7vPTqgz+mKuwQhmvKEaIjsx/csFyP2Q2USTpOn7tKYMFrPkwPwfmdhYCgB/owDuNJLtcJ96kTDz1Hw+BssKZwcd+VVl1KZRxKTPOxRO8+0PgPaecnXT04vvKrpPOI/k0uwERJFZzdYwnNoviX5lOWQSZScERA8rgNasZkjTFKZ9jXw6v7FTbrLvpE8ttUn0Wu/QZLinMDL7WvJFiznaEVFVxV5YRuRAj1jCthP/4e/hFDvNAUyC/5xg6QbCrgR7iF/YB3U5ttzF0I+PvolzLEkINLKPh5WcWVoj/wnuUOR7KnVRfP+oTGxKKOP43+L74kCAwEAAaNTMFEwHQYDVR0OBBYEFOIZY/jzD0u8n0T+c1JVFT4XIeEcMB8GA1UdIwQYMBaAFOIZY/jzD0u8n0T+c1JVFT4XIeEcMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQELBQADggEBAEYYZjoILxE/8mga7q2POhf17K+vBqjf396VcvBlqT0MdNtFcyhBEGumHgED/jXIF1Hy+vgDkxrFRQar2lkvDCmYOdBXP56fHLL0nWuZx9X3KEkCk6EbAWlJY1QvqS1bLAvOjHvpbSFIbtq6o0aHQ4hzCVUbKPIgMfTKNb02i4iOI0CuFlEUYOO0Us0EoRt086+FawfdOGSP7JmXNqVpjKLop/hdtim3DTVg5T7kVHpDUz5KGsOEjkhZVYN7RaYRqh3S5TOZgf8rzIbuM00JWQ5Kl6GoK1hvGRht++h3qfVS+eP7Oz0rNnnKTLi7y3VSawqXqHaxUw6Ce1oKC7Lz9wA=';
 const KEY = 'MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCqPVgQhqPtkS1ux6LiyqlO7z06oM/pirsEIZryhGiI7Mf3LBcj9kNlEk6Tp+7SmDBaz5MD8H5nYWAoAf6MA7jSS7XCfepEw89R8PgbLCmcHHflVZdSmUcSkzzsUTvPtD4D2nnJ109OL7yq6TziP5NLsBESRWc3WMJzaL4l+ZTlkEmUnBEQPK4DWrGZI0xSmfY18Or+xU26y76RPLbVJ9Frv0GS4pzAy+1ryRYs52hFRVcVeWEbkQI9YwrYT/+Hv4RQ7zQFMgv+cYOkGwq4Ee4hf2Ad1ObbcxdCPj76JcyxJCDSyj4eVnFlaI/8J7lDkeyp1UXz/qExsSijj+N/i++JAgMBAAECggEAMYj+/nQG8AH9y824JjCdGjQ/xzbyuHxfFYEnwmhnuGvZdaD1LMgj7R1qEsnbEpko/MuIdi18wl0RqyKFbD1LApn4Ddswlwi44xlwQAvWIbAg7PC+QtEJ3qxMHmE2u6WxI9Lm/CWz1EbMqZiLWDPyiqP1G7FpKrAfiJBSP9+DBVa/dV/AEsIoKbanY0JkiZZamSZe6Kh6qUAgcvYSrMbT4MThQjbLDIIy1t/XUpg5v/oQxJ/owvtMF48u5lWUY65iM0EcVXfnlGkkZ5sPMbKOBZHKSmHB9C2KE3CM9Dom3ZwWej3w5PeuKKLOAb/I6gu/JB5FzqJClMpEQgeQjjlXzwKBgQDweWIbmnOZB3nEu7TWlozOSA6+uPe0yXc+UCntQvIlPlVLOnLLeDsYi3pEX7NJA2a+7qxzBjPLZKGkSGpt1bVUSIhuchzTxKZd23gpoNbJzNlyjLzx/sGuUSDZWjNazrhZLCQDM8bV+YfbXE+PbnlnAlBwqPjozTcNXkNv7u+OHwKBgQC1OxtikzBdcd6kR4kcREkUr19Sog02VFGt3O60/kcJAc6zMA/JuKvL/q9u/17f8AP/pwsKVIoVvKW9ZhRYFJRJsSoT/Ied1QhK1Q3xZe3k2dKPVKRdyhmdZFfPCZ4AxaxDgG/3VpFBs2CnPv7dQRFIon/OghiEvaGzoQSKoZL9VwKBgQCV9ryuBiXs2vKfM4fVAtIQmnNHkUY4oiMQ4yEia0ti2nqKjYqlRPdlmSXImf3OnKZoj6NPoCCQyNLdBqQIluucAhfC+LrtfYdapNFM9Ja+BlfczdPO/lZ+hO19XnkEOkJQqexTauim7BRDQlADXJutF45ek6GWXNPmLFDV7yXJdQKBgQCG0VaY6Sf0i831ZaXw2jeHZMLDpPuxK96rOQx2piZP5AFROXK1PGTI10jIiL6aVmGTID/NSoCClRiyoaqGr6B0hY/o2FZGqoCFsqKxroLfWM8TgwLXJo4RkODliqD4sBRrDrO8SrC6MGe5YtqT22CxKPlstUjqDmupRiIrwvCm9wKBgEzm4cHw5Fkdhss46l1gaAOMkaLFjEULTsgIh6HAKYYyA8SvEqwhXa3AZtu0BeKGjJkFyRs22qH0oGITtRBKmcLefdmnUFu/hLSRxhscHDRW7tdpyHelC2ufKWsbLmmf9JYnQrPhAfXJMQak/ix3DrFBgU1BQpXwNLqdyQtSiuEZ';
+
+test('a sign-in reaches the identity provider’s token, keys and user info addresses through the connection’s own lookup', async (t) => {
+  const port = new URL(IDP).port;
+  const issuer = `http://idp.rebind.example:${port}`;
+  const at = `${issuer}/.well-known/openid-configuration`;
+  settingsAt.set(at, { issuer, authorization_endpoint: `${IDP}/authorize`, token_endpoint: `${issuer}/token`, jwks_uri: `${issuer}/jwks`, userinfo_endpoint: `${issuer}/userinfo` });
+  // the name answers this machine, as a name that rebinds would by the time the sign-in connects
+  const looked: string[] = [];
+  const lookup = ((host: string, _o: unknown, cb: (e: Error | null, a: { address: string; family: number }[]) => void) => {
+    looked.push(host);
+    cb(null, [{ address: '127.0.0.1', family: 4 }]);
+  }) as unknown as typeof dnsLookup;
+  const ctx = await startApp({ signIn: { kind: 'better-auth', settings: { trustedOrigins: [IDP], lookup } }, discover });
+  t.after(() => ctx.stop());
+  const call = browser(ctx, ORIGIN);
+  const first = await call('POST', '/api/auth/sign-up/email', { body: { email: 'ann@rebind.example', name: 'Ann', password: PASSWORD }, headers: { 'x-setup': ctx.setupToken! } });
+  const added = await call('POST', '/api/sso', { cookie: first.cookie, body: { type: 'oidc', id: 'rebind', issuer, clientId: 'console-app', clientSecret: 'idp-secret', domains: 'rebind.example' } });
+  assert.equal(added.status, 201, JSON.stringify(added.json));
+
+  signingInAs = { sub: 'u-kai', email: 'kai@rebind.example', name: 'Kai' };
+  const start = await call('POST', '/api/auth/sign-in/sso', { body: { email: 'kai@rebind.example', callbackURL: '/', errorCallbackURL: '/' } });
+  assert.equal(start.status, 200, JSON.stringify(start.json));
+  const atIdp = await fetch(start.json.url, { redirect: 'manual' });
+  const back = new URL(atIdp.headers.get('location')!);
+  const done = await call('GET', `${back.pathname}${back.search}`, { cookie: start.cookie });
+  assert.ok(looked.includes('idp.rebind.example'), `the token address went through the connection’s own lookup (${looked.join(', ')})`);
+  assert.equal((await call('GET', '/api/meta', { cookie: done.cookie })).status, 401, 'and wasn’t reached: nobody is signed in');
+  assert.equal((await ctx.db.query(`select 1 from auth_user where email = 'kai@rebind.example'`)).rows.length, 0);
+});

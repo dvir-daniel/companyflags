@@ -14,7 +14,11 @@
 // The access token is an agent's access token (tokens.ts): a row in access_token with agent = true, Viewer or Editor,
 // named "<client> (OAuth)", on its person's Access tokens page, where revoking it ends the sign-in. So /mcp and the
 // console's API check it as they check any token. It lasts an hour; the refresh token renews it (in place: same row)
-// for 30 days after its last use. Tokens and codes are kept hashed. Every token is issued for this server's /mcp (the
+// for 30 days after its last use, and never past 90 days from when the person allowed it (GRANT_DAYS): then the client
+// signs in again, and the person allows it again, so an agent's sign-in can't outlast its person's access at the
+// identity provider for good. An admin the sign-in rules ask to set up two-factor sign-in, who hasn't, can't allow a
+// client, and their clients' tokens aren't given or renewed until they have (access.ts twoFactorPending). Tokens and
+// codes are kept hashed. Every token is issued for this server's /mcp (the
 // `resource`, RFC 8707) and nothing else: a request for another resource is refused.
 // Better Auth's own MCP plugin (@better-auth/mcp) isn't used: it needs the jwt plugin, tables of its own and gives
 // JWTs, where an access token row is what the console already checks, lists and revokes.
@@ -36,6 +40,8 @@ const REFRESH_PREFIX = 'cfr_';
 const CLIENT_PREFIX = 'cfc_';
 const ACCESS_SECONDS = 3600;
 const REFRESH_DAYS = 30;
+/** The most days an OAuth sign-in lasts, from when its person allowed the client: refreshing doesn't go past it. */
+export const GRANT_DAYS = 90;
 const CODE_SECONDS = 600;
 /** Registration is open to anyone: a client nobody signed in with goes after a day, and there are at most this many
  *  at once, so registering over and over can't fill the database. */
@@ -123,6 +129,11 @@ export function oauthRoutes({ db, identity, access, baseURL }: Deps) {
       return u.origin === base(c) && (path === '/mcp' || path === '') ? resourceOf(c) : null;
     } catch { return null; }
   };
+
+  const TWO_FACTOR_FIRST = 'set up two-factor sign-in first: your organization asks it of admins who sign in with a password';
+  /** The page for an admin who must set up two-factor sign-in before allowing anything (access.ts needsTwoFactor). */
+  const twoFactorPage = (c: Context) => page(c, 'Two-factor sign-in first',
+    '<h1>Set up two-factor sign-in first</h1><p>Your organization asks it of admins who sign in with a password. Set it up in the console (your account menu → Account), then connect the app again.</p>', 403);
 
   /** The person signed in to the console, if any. */
   const signedIn = async (c: Context): Promise<Person | null> => {
@@ -244,6 +255,7 @@ export function oauthRoutes({ db, identity, access, baseURL }: Deps) {
     if ('page' in checked) return checked.page;
     const { ask } = checked;
     const p = await signedIn(c);
+    if (p?.needsTwoFactor) return twoFactorPage(c);
     if (!p) {
       // to the console's sign-in, and back here after it (the console's page, below)
       const here = new URL(c.req.url);
@@ -280,6 +292,7 @@ ${option('viewer', 'Reads flags only.')}
     const { ask } = checked;
     const p = await signedIn(c);
     if (!p) return page(c, 'Signed out', '<h1>You’re signed out</h1><p>Connect the app again to sign in.</p>', 403);
+    if (p.needsTwoFactor) return twoFactorPage(c);
     const to = new URL(ask.redirectUri);
     if (ask.state !== null) to.searchParams.set('state', ask.state);
     to.searchParams.set('iss', base(c));
@@ -350,18 +363,19 @@ ${option('viewer', 'Reads flags only.')}
         if (resource !== code.resource) return tokenError(c, 'invalid_target', 'resource isn’t the one the code was for');
         if (s256(form.code_verifier) !== code.code_challenge) return tokenError(c, 'invalid_grant', 'the code_verifier doesn’t fit the code');
         if (code.removed || !tokenRoles({ role: code.prole }, true).includes(code.role)) return tokenError(c, 'invalid_grant', 'this person can’t sign this app in any more');
-        const access = secret(TOKEN_PREFIX);
+        if (await access.twoFactorPending(code.person, tx)) return tokenError(c, 'invalid_grant', TWO_FACTOR_FIRST);
+        const token = secret(TOKEN_PREFIX);
         const refresh = secret(REFRESH_PREFIX);
-        const prefix = access.slice(0, TOKEN_PREFIX.length + 6);
+        const prefix = token.slice(0, TOKEN_PREFIX.length + 6);
         const name = `${client.name.slice(0, 72)} (OAuth)`;
         const row = await one<{ id: number }>(tx, `insert into access_token (token_hash, token_prefix, person_id, name, role, agent, expires_at)
           select $1, $2, u.id, $3, $4, true, now() + make_interval(secs => $5) from app_user u where u.key = $6 returning id::int as id`,
-        [sha256(access), prefix, name, code.role, ACCESS_SECONDS, code.person]);
+        [sha256(token), prefix, name, code.role, ACCESS_SECONDS, code.person]);
         await tx.query(`insert into oauth_grant (token_id, client_id, resource, refresh_hash, refresh_expires_at)
           values ($1, $2, $3, $4, now() + make_interval(days => $5))`, [row!.id, client.id, resource, sha256(refresh), REFRESH_DAYS]);
         await tx.query(`update oauth_code set token_id = $1 where code_hash = $2`, [row!.id, sha256(form.code)]);
         await audit(tx, { name: code.person, type: 'user' }, { kind: 'token.create', after: { id: row!.id, prefix, name, role: code.role, agent: true, oauth: client.id } });
-        return issued(c, access, refresh);
+        return issued(c, token, refresh);
       });
     }
 
@@ -369,11 +383,13 @@ ${option('viewer', 'Reads flags only.')}
       if (!form.refresh_token) return tokenError(c, 'invalid_request', 'refresh_token is required');
       const hash = sha256(form.refresh_token);
       return db.transaction(async (tx) => {
-        const g = await one<{ token_id: number; client_id: string; resource: string; current: boolean; expired: boolean; revoked: boolean; role: Role; removed: boolean }>(tx,
-          `select g.token_id::int as token_id, g.client_id, g.resource, g.refresh_hash = $1 as current, g.refresh_expires_at < now() as expired,
-              t.revoked_at is not null as revoked, t.role, u.removed_at is not null as removed
+        // `expired`: 30 days without a refresh, or GRANT_DAYS since the person allowed it (the token row's created_at)
+        const g = await one<{ token_id: number; client_id: string; resource: string; current: boolean; expired: boolean; revoked: boolean; role: Role; removed: boolean; person: string }>(tx,
+          `select g.token_id::int as token_id, g.client_id, g.resource, g.refresh_hash = $1 as current,
+              (g.refresh_expires_at < now() or t.created_at + make_interval(days => $2) < now()) as expired,
+              t.revoked_at is not null as revoked, t.role, u.removed_at is not null as removed, u.key as person
             from oauth_grant g join access_token t on t.id = g.token_id join app_user u on u.id = t.person_id
-            where g.refresh_hash = $1 or g.previous_refresh_hash = $1 for update of g, t`, [hash]);
+            where g.refresh_hash = $1 or g.previous_refresh_hash = $1 for update of g, t`, [hash, GRANT_DAYS]);
         if (!g || g.client_id !== client.id) return tokenError(c, 'invalid_grant', 'unknown refresh token');
         if (!g.current) {
           // an old refresh token back again may have been stolen: the sign-in ends
@@ -382,13 +398,17 @@ ${option('viewer', 'Reads flags only.')}
         }
         if (g.revoked || g.expired || g.removed) return tokenError(c, 'invalid_grant', 'this sign-in has ended: sign in again');
         if (resource !== g.resource) return tokenError(c, 'invalid_target', 'resource isn’t the one this sign-in is for');
-        const access = secret(TOKEN_PREFIX);
+        if (await access.twoFactorPending(g.person, tx)) return tokenError(c, 'invalid_grant', TWO_FACTOR_FIRST);
+        const token = secret(TOKEN_PREFIX);
         const refresh = secret(REFRESH_PREFIX);
-        await tx.query(`update access_token set token_hash = $1, token_prefix = $2, expires_at = now() + make_interval(secs => $3) where id = $4`,
-          [sha256(access), access.slice(0, TOKEN_PREFIX.length + 6), ACCESS_SECONDS, g.token_id]);
-        await tx.query(`update oauth_grant set previous_refresh_hash = refresh_hash, refresh_hash = $1, refresh_expires_at = now() + make_interval(days => $2)
-          where token_id = $3`, [sha256(refresh), REFRESH_DAYS, g.token_id]);
-        return issued(c, access, refresh);
+        // the access token never outlasts the sign-in, nor the refresh token: both end GRANT_DAYS after it was allowed
+        await tx.query(`update access_token set token_hash = $1, token_prefix = $2,
+            expires_at = least(now() + make_interval(secs => $3), created_at + make_interval(days => $5)) where id = $4`,
+          [sha256(token), token.slice(0, TOKEN_PREFIX.length + 6), ACCESS_SECONDS, g.token_id, GRANT_DAYS]);
+        await tx.query(`update oauth_grant g set previous_refresh_hash = refresh_hash, refresh_hash = $1,
+            refresh_expires_at = least(now() + make_interval(days => $2), (select t.created_at from access_token t where t.id = g.token_id) + make_interval(days => $4))
+          where token_id = $3`, [sha256(refresh), REFRESH_DAYS, g.token_id, GRANT_DAYS]);
+        return issued(c, token, refresh);
       });
     }
     return tokenError(c, 'unsupported_grant_type', 'grant_type: authorization_code or refresh_token');

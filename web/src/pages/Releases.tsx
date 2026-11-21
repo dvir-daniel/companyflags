@@ -26,6 +26,7 @@ import { hiddenKey } from '../../../server/evaluator.ts';
 import { useEnvs } from './envs.ts';
 import { StepBar, type ReleaseList, type ReleaseRow } from './releaseParts.tsx';
 import { NoServices } from './setup.tsx';
+import { newFlagServices } from './flagsKit.ts';
 import { roleInfo } from '../../../server/policy.ts';
 
 const MD = 'max-md:hidden';
@@ -158,7 +159,8 @@ function CreateRelease({ onClose, owners }: { onClose: () => void; owners: strin
   const [owner, setOwner] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [removeBy, setRemoveBy] = useState(() => new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10));
-  const [apps, setApps] = useState<string[]>(meta.services.filter((p) => p.kind === 'client').map((p) => p.key));
+  // every service, apps and backends, as a new flag (flagsKit.ts)
+  const [apps, setApps] = useState<string[]>(() => newFlagServices(meta.services));
   const { busy, error, run } = useAsync();
   const keyError = key && !/^[a-z][a-z0-9_]*$/.test(key) ? 'Start with a letter; use lowercase letters, digits and _' : null;
   const tagError = cleanTags(tags).problem;

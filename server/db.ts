@@ -4,6 +4,7 @@
 
 import { PGlite } from '@electric-sql/pglite';
 import { btree_gist } from '@electric-sql/pglite/contrib/btree_gist';
+import { spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import pg from 'pg';
@@ -104,31 +105,36 @@ function wrap(p: PGlite): Db {
 
 /** The embedded database must only ever be open in one process: two writing the same folder damage it.
  *  A lock file next to the folder (data-local → data-local.lock; inside it, Postgres would take the folder for
- *  a database that already exists) names the process that has it. A second server refuses to open the folder,
- *  and a lock left by a process that has ended (a crash) is taken over. Returns the release. */
+ *  a database that already exists) names the process that has it: its PID, and its command line. A second server
+ *  refuses to open the folder. A lock is stale, and taken over, when the process it names has ended (a crash), when
+ *  that PID now runs another program, or when it names this process but this process never took it: a hard stop
+ *  (a kill, an out-of-memory) skips the release, and in Docker the next start is PID 1 again. Returns the release. */
 export class FolderInUseError extends Error {}
+const held = new Set<string>();                               // the lock files this process holds
 export function lockFolder(dataDir: string): () => void {
   const file = `${resolve(dataDir)}.lock`;
   mkdirSync(dirname(file), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const fd = openSync(file, 'wx');                       // fails if the file exists: only one process gets it
-      writeSync(fd, `${process.pid}\n`);
+      writeSync(fd, `${process.pid}\n${commandOf(process.pid) ?? ''}\n`);
       closeSync(fd);
+      held.add(file);
       let released = false;
       const release = () => {
         if (released) return;
         released = true;
+        held.delete(file);
         process.off('exit', release);
-        try { if (Number(readFileSync(file, 'utf8')) === process.pid) unlinkSync(file); } catch { /* already gone */ }
+        try { if (readLock(file).pid === process.pid) unlinkSync(file); } catch { /* already gone */ }
       };
       process.on('exit', release);
       return release;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      const pid = Number(readFileSync(file, 'utf8'));
-      if (pid && running(pid)) {                              // this process too: it has the folder open already
-        throw new FolderInUseError(`another CompanyFlags server (process ${pid}) is using ${dataDir}. `
+      const lock = readLock(file);
+      if (lockInUse(file, lock)) {
+        throw new FolderInUseError(`another CompanyFlags server (process ${lock.pid}) is using ${dataDir}. `
           + 'Stop it first: the embedded database can only be open in one process at a time.');
       }
       try { unlinkSync(file); } catch { /* someone else took it over: try again */ }
@@ -137,9 +143,35 @@ export function lockFolder(dataDir: string): () => void {
   throw new FolderInUseError(`couldn't lock ${dataDir}: another server is starting with it`);
 }
 
+type Lock = { pid: number; command: string };
+function readLock(file: string): Lock {
+  const [pid = '', ...rest] = readFileSync(file, 'utf8').split('\n');
+  return { pid: Number(pid.trim()), command: rest.join('\n').trim() };
+}
+
+/** Whether the process a lock names still has the folder open. */
+function lockInUse(file: string, lock: Lock): boolean {
+  if (!Number.isInteger(lock.pid) || lock.pid <= 0) return false;
+  if (lock.pid === process.pid) return held.has(file);       // this process: in use only if it took the lock itself
+  if (!running(lock.pid)) return false;
+  // the PID runs, but maybe another program now: in use only while it runs the command that took the lock
+  const now = lock.command ? commandOf(lock.pid) : null;
+  return now === null || now === lock.command;               // can't tell: in use, to be safe
+}
+
 function running(pid: number) {
   try { process.kill(pid, 0); return true; }                  // signal 0: only asks whether the process exists
   catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; }
+}
+
+/** A process's command line, or null if this system won't say: /proc on Linux, ps elsewhere. */
+function commandOf(pid: number): string | null {
+  if (process.platform === 'linux') {
+    try { return readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0').join(' ').trim(); } catch { return null; }
+  }
+  if (process.platform === 'win32') return null;
+  const ps = spawnSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8' });
+  return ps.status === 0 && ps.stdout.trim() ? ps.stdout.trim() : null;
 }
 
 // pg returns bigints as strings and dates at local midnight; PGlite returns numbers and UTC midnight.

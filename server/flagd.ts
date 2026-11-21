@@ -23,7 +23,8 @@
 //   it (ofrep.ts); then the backup ID, if the rule has one.
 // - Versions in rules are written in full (6 → 6.0.0, fullVersion): strict semver readers refuse short ones.
 // - "Use the default in the app's code": a branch returns null with no defaultVariant, so the SDK uses its own default.
-//   A flag switched off is flagd's DISABLED, which does the same.
+//   A flag switched off is flagd's DISABLED, which does the same. Its one variant (flagd needs one) is a placeholder,
+//   {"unused": <a value of its type>}, never one of the flag's values: those may be meant for one entity only.
 //
 // What doesn't:
 // - Reasons: flagd says TARGETING_MATCH for any branch (a % too, not SPLIT), DEFAULT for no branch, STATIC with no
@@ -37,7 +38,7 @@
 
 import { BUCKETS, HASH_VERSION } from './hash.ts';
 import { fullVersion } from './semver.ts';
-import { CODE_DEFAULT, HIDDEN_PREFIX, forEntity, sortedFlagKeys, type AnswerException, type Condition, type EntityInfo, type FlagDef, type Op, type Snapshot, type Where } from './evaluator.ts';
+import { CODE_DEFAULT, forEntity, sortedFlagKeys, type AnswerException, type Condition, type EntityInfo, type FlagDef, type Op, type Snapshot, type Where } from './evaluator.ts';
 
 export const FLAGD_SCHEMA = 'https://flagd.dev/schema/v0/flags.json';
 
@@ -46,6 +47,9 @@ export type FlagdFlag = { state: 'ENABLED' | 'DISABLED'; variants: Record<string
 export type FlagdDoc = {
   $schema: string;
   metadata: { flagSetId: string; environment: string; revision: number };
+  /** flagd's shared evaluators, which a flag's targeting names by {"$ref": "<name>"}: only the document for many
+   *  entities has one, UNKNOWN_ENTITY (buildServiceDoc). */
+  $evaluators?: Record<string, Logic>;
   flags: Record<string, FlagdFlag>;
 };
 
@@ -86,7 +90,7 @@ function compileFlag(flag: FlagDef, where: Where, project: string, entity: Entit
   const variants: Record<string, unknown> = {};
   const l = entityLogic(flag, where, project, entity, variants);
   if (l === 'not_sent') return null;
-  if (l === 'off') return { state: 'DISABLED', variants: anyVariant(flag), defaultVariant: null };
+  if (l === 'off') return switchedOff(flag);
   const { lines, fallback } = l;
   // targeting null means "use defaultVariant": with a branch that serves the app's default, that has to be null,
   // so the entity's answer becomes the last branch instead
@@ -97,29 +101,39 @@ function compileFlag(flag: FlagDef, where: Where, project: string, entity: Entit
     defaultVariant: codeDefaultBranch ? null : fallback,
     ...(lines.length ? { targeting: { if: [...lines.flat(), codeDefaultBranch ? fallback : null] } } : {}),
   };
-  if (!Object.keys(variants).length) flagd.variants = anyVariant(flag);   // flagd needs one: every answer is the app's default
+  if (!Object.keys(variants).length) flagd.variants = placeholder(flag);   // flagd needs one: every answer is the app's default
   return flagd;
 }
 
 // ---------------------------------------------------------------- one document for many entities
 // A backend shared by many entities reads one document for its service (GET /sdk/v1/flagd/service, with a secret key
 // for `all` entities or `below` one) instead of one per entity, so one flagd serves it. Each flag's targeting first
-// picks the entity, by the dimension keys the request names, as rules name them ({"brand": "lumen"}), then runs that
-// entity's own logic, the same as in its own document:
+// refuses what OFREP refuses, then picks the entity by the dimension keys the request names, as rules name them
+// ({"brand": "lumen"}), and runs that entity's own logic, the same as in its own document:
 //
-//   { "if": [ {"in": [{"var": "brand"}, ["bolt", "lumen"]]}, <their logic>,        the lowest dimension first
-//             {"in": [{"var": "company"}, ["globex"]]}, <its logic>, …,
+//   { "if": [ {"$ref": "unknown_entity"}, null,                         what OFREP refuses: the app's code default
+//             <brand is "bolt" or "lumen">, <their logic>,              the lowest dimension first
+//             <company is "globex">, <its logic>, …,
 //             <the logic when the request names none of them> ] }
 //
 // The last branch is what a request naming no entity gets: no entity for an `all` key, the key's own entity for a
 // `below` key, as over OFREP. Entities with the same logic share a branch. One whose logic is the last branch's, as
 // is that of every entity above it in the document, has none: a request naming any of them gets the same.
-// The lowest dimension the request names decides, as over OFREP. Where OFREP refuses a request (an entity it doesn't
-// know, a chain that doesn't match), flagd can't: an entity the document doesn't hold gets what the next one up that
-// the request names gets, and with none, the last branch.
+// The lowest dimension the request names decides, as over OFREP.
+//
+// Where OFREP refuses a request (400 INVALID_CONTEXT, so the provider gives the code's defaults), every flag here gives
+// the code default too: an entity the document doesn't hold (outside the key's reach, or added since this document),
+// a chain that doesn't match ({"company": "acme", "brand": "lumen"} when Lumen is Globex's), and a dimension that is
+// "". That check is one shared evaluator (flagd's $evaluators, unknownEntity below), so the keys are written once per
+// document. Keys are compared as text, as OFREP reads them: {"brand": 12} is the entity "12". One difference: flagd
+// can't tell a dimension that is null from one that is absent, so {"brand": null} asks as no entity here, where OFREP
+// refuses it.
 
 /** The flagSetId of a service's one document for many entities: `<environment>/<service>`. */
 export const serviceFlagSetId = (environment: string, service: string) => `${environment}/${service}`;
+
+/** The name of the service document's shared evaluator for what OFREP refuses (flagd's $evaluators). */
+export const UNKNOWN_ENTITY = 'unknown_entity';
 
 /** One service's flags for many entities as one flagd document. `entities`: those it holds (the ones the key may
  *  ask about); `fallback`: who a request that names none of them asks as (null: no entity, for an `all` key). */
@@ -129,13 +143,14 @@ export function buildServiceDoc(snap: Snapshot, project: string, entities: reado
   // the lowest dimension first, each one's entities by key
   const byDimension = [...snap.dimensions].reverse().map((d) => entities.filter((e) => e.dimension === d).sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0)));
   const asLogic = (l: EntityLogic): Logic => (l.lines.length ? { if: [...l.lines.flat(), l.fallback] } : l.fallback);
+  const refuses = snap.dimensions.length > 0;
   for (const key of sortedFlagKeys(snap)) {
     const flag = snap.flags[key];
     if (!flag.delivery.includes(project)) continue;                  // not sent to this backend: FLAG_NOT_FOUND
     const variants: Record<string, unknown> = {};
     const last = entityLogic(flag, snap, project, fallback, variants);
     if (last === 'not_sent') continue;
-    if (last === 'off') { flags[key] = { state: 'DISABLED', variants: anyVariant(flag), defaultVariant: null }; continue; }
+    if (last === 'off') { flags[key] = switchedOff(flag); continue; }
     const lastJson = JSON.stringify(asLogic(last));
     let codeDefault = servesCodeDefault(last);
     const logic = new Map<string, { json: string; logic: Logic }>();
@@ -166,33 +181,75 @@ export function buildServiceDoc(snap: Snapshot, project: string, entities: reado
         const g = groups.get(l.json);
         if (g) g.keys.push(e.key); else groups.set(l.json, { logic: l.logic, keys: [e.key] });
       }
-      for (const g of groups.values()) branches.push({ in: [{ var: dimension }, g.keys] }, g.logic);
+      for (const g of groups.values()) branches.push(isOneOf(dimension, g.keys), g.logic);
     }
-    if (!branches.length) {
+    if (!branches.length && !refuses) {
       // every entity gets what the last branch says: written as that entity's (or no entity's) own document has it
       flags[key] = compileFlag(flag, snap, project, fallback)!;
       continue;
     }
-    // no branch is null unless it serves the app's default, so defaultVariant is null exactly then
-    flags[key] = { state: 'ENABLED', variants, defaultVariant: codeDefault ? null : Object.keys(variants).sort()[0], targeting: { if: [...branches, asLogic(last)] } };
-    if (!Object.keys(variants).length) flags[key].variants = anyVariant(flag);
+    // no branch is null unless it serves the app's default or refuses the request: defaultVariant is null then
+    flags[key] = {
+      state: 'ENABLED', variants, defaultVariant: codeDefault || refuses ? null : Object.keys(variants).sort()[0],
+      targeting: { if: [...(refuses ? [{ $ref: UNKNOWN_ENTITY }, null] : []), ...branches, asLogic(last)] },
+    };
+    if (!Object.keys(variants).length) flags[key].variants = placeholder(flag);
   }
-  return { $schema: FLAGD_SCHEMA, metadata: { flagSetId: serviceFlagSetId(snap.environment, project), environment: snap.environment, revision: snap.revision }, flags };
+  return {
+    $schema: FLAGD_SCHEMA,
+    metadata: { flagSetId: serviceFlagSetId(snap.environment, project), environment: snap.environment, revision: snap.revision },
+    ...(refuses ? { $evaluators: { [UNKNOWN_ENTITY]: unknownEntity(snap.dimensions, entities) } } : {}),
+    flags,
+  };
 }
 
-/** A variant for a flag that never serves one: the first that isn't a typed-in value (one entity's may be private).
- *  A flag with free values may have none: a placeholder of its type, never served. */
-const UNUSED: Record<FlagDef['valueType'], unknown> = { bool: false, string: '', number: 0, json: {} };
-function anyVariant(flag: FlagDef): Record<string, unknown> {
-  const k = Object.keys(flag.variations).filter((v) => v !== CODE_DEFAULT && !v.startsWith(HIDDEN_PREFIX)).sort()[0];
-  return k ? { [k]: flag.variations[k] } : { unused: UNUSED[flag.valueType] };
+/** What OFREP refuses (askingEntity, ofrep.ts) as one check on the dimensions a request names, for a document that
+ *  holds `entities`: a dimension that is "", a key it doesn't hold as the lowest one named (an entity above one it holds
+ *  may only be named with it), and a chain that isn't the held entity's. */
+function unknownEntity(dimensions: readonly string[], entities: readonly EntityInfo[]): Logic {
+  const held = new Set(entities.map((e) => e.key));
+  const sorted = (keys: Iterable<string>) => [...new Set(keys)].sort();
+  const parts: Logic[] = [];
+  dimensions.forEach((d, i) => {
+    const here = entities.filter((e) => e.dimension === d);
+    const lower = dimensions.slice(i + 1);
+    const above = sorted(entities.flatMap((e) => (lower.includes(e.dimension) && Object.hasOwn(e.at, d) && !held.has(e.at[d]) ? [e.at[d]] : [])));
+    parts.push({ in: [{ var: d }, ['']] });
+    parts.push(and([present(d), { '!': { in: [asText(d), sorted([...here.map((e) => e.key), ...above])] } }]));
+    if (above.length) parts.push(and([isOneOf(d, above), ...lower.map(missing)]));
+    // the chain: each held entity of this dimension, against the one above it in each dimension above ("": none there)
+    for (const up of dimensions.slice(0, i)) {
+      const byParent = new Map<string, string[]>();
+      for (const e of here) {
+        const p = Object.hasOwn(e.at, up) ? e.at[up] : '';
+        byParent.set(p, [...(byParent.get(p) ?? []), e.key]);
+      }
+      for (const p of sorted(byParent.keys())) {
+        parts.push(and([isOneOf(d, sorted(byParent.get(p)!)), present(up), ...(p ? [{ '!': { in: [asText(up), [p]] } }] : [])]));
+      }
+    }
+  });
+  return or(parts);
 }
+
+/** A switched-off flag: flagd's DISABLED, so the app uses the default in its code. */
+const switchedOff = (flag: FlagDef): FlagdFlag => ({ state: 'DISABLED', variants: placeholder(flag), defaultVariant: null });
+
+/** The variants of a flag that never serves one (switched off, or every answer is the app's default): flagd needs one,
+ *  so a placeholder of the flag's type, never served. Never one of the flag's own values: a variant named for one
+ *  entity ("globex") may be meant for it alone, and this document may be another entity's, or everyone's. */
+const UNUSED: Record<FlagDef['valueType'], unknown> = { bool: false, string: '', number: 0, json: {} };
+const placeholder = (flag: FlagDef): Record<string, unknown> => ({ unused: UNUSED[flag.valueType] });
 
 const and = (parts: Logic[]): Logic => (parts.length === 0 ? true : parts.length === 1 ? parts[0] : { and: parts });
 const or = (parts: Logic[]): Logic => (parts.length === 1 ? parts[0] : { or: parts });
 /** Absent, null or "": the server's missing (evaluator.ts isMissing), the same in every JsonLogic. */
 const missing = (field: string): Logic => ({ in: [{ var: field }, [null, '']] });
 const present = (field: string): Logic => ({ '!': missing(field) });
+/** The value as text, as the server compares it ("is one of", an entity's key): 12 is "12". */
+const asText = (field: string): Logic => ({ cat: [{ var: field }] });
+/** The value is there and, as text, one of `keys` (JsonLogic's cat writes an absent value differently in each language). */
+const isOneOf = (field: string, keys: readonly string[]): Logic => and([present(field), { in: [asText(field), keys] }]);
 
 /** OpenFeature's targeting key: OFREP reads it as the device ID when there's no device.id (ofrep.ts). */
 const TARGETING_KEY = 'targetingKey';

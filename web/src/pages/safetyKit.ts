@@ -2,6 +2,7 @@
 // change to a % moves, and the open requests of one flag (the flag page's notice, flagNotices.tsx).
 
 import type { Rule } from '../api.ts';
+import { hasSafeValue } from '../../../server/policy.ts';
 
 /** This browser's time zone, as people read it: "Europe/Berlin (UTC+1)". */
 export function localZone(at = new Date()): string {
@@ -71,3 +72,12 @@ export function percentMoves(before: Rule | null | undefined, after: Rule | null
 export type FlagRequest = { id: number; environment: string; status: string; author: string; scheduledAt: string | null };
 /** Still waiting to go out: in review, approved or scheduled. */
 export const isWaiting = (r: { status: string }) => r.status === 'in_review' || r.status === 'approved' || r.status === 'scheduled';
+
+/** What a new purpose does to the flag's safe value (server/control.ts updateFlagMeta), for its Settings: null when
+ *  nothing. Only an admin drops a safe value that way; anyone else removes it first. */
+export function purposeSafeNote(safe: string | null | undefined, nextKind: string, admin: boolean): string | null {
+  if (!safe || hasSafeValue(nextKind)) return null;
+  return admin
+    ? `This purpose has no safe value: saving drops ${safe}, and break-glass can then only stop sending.`
+    : `This purpose has no safe value: remove ${safe} as the safe value first, or ask an admin to change the purpose.`;
+}

@@ -2,7 +2,7 @@
 // restart keeps everything. Runs on the in-memory database, or on a real Postgres with pnpm test:pg.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -146,6 +146,56 @@ test('an embedded data folder opens in one server only; a lock left by a crash i
     assert.ok(await one(third, `select 1 as ok`));
     await third.close();
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(`${dir}.lock`, { force: true });
+  }
+});
+
+test('a stale lock is taken over: its PID is this process (PID 1 again in Docker), or now runs another program', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-lock-'));
+  const others: ReturnType<typeof spawn>[] = [];
+  try {
+    // a hard stop skipped the release, and the next start has the same PID: in Docker, the server is always PID 1
+    writeFileSync(`${dir}.lock`, `${process.pid}\nnode server/index.ts\n`);
+    const own = await connectDb({ dataDir: dir });
+    assert.ok(await one(own, `select 1 as ok`));
+    await assert.rejects(connectDb({ dataDir: dir }), FolderInUseError, 'once this process has it, a second open is refused');
+    await own.close();
+
+    // the PID runs, but another program now (the PID was reused after a crash)
+    const other = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'], { stdio: 'ignore' });
+    others.push(other);
+    writeFileSync(`${dir}.lock`, `${other.pid}\nnode server/index.ts\n`);
+    const reused = await connectDb({ dataDir: dir });
+    await reused.close();
+  } finally {
+    for (const p of others) p.kill('SIGKILL');
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(`${dir}.lock`, { force: true });
+  }
+});
+
+test('another server process holds the lock until it ends; after a hard stop (SIGKILL) the next start takes it over', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-lock-'));
+  const db = new URL('../server/db.ts', import.meta.url).href;
+  const server = spawn(process.execPath, ['--input-type=module', '-e',
+    `const { lockFolder } = await import(${JSON.stringify(db)}); lockFolder(${JSON.stringify(dir)}); console.log('locked'); setTimeout(() => {}, 60_000);`],
+  { stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    await new Promise<void>((done, fail) => {
+      server.stdout!.on('data', (d) => { if (String(d).includes('locked')) done(); });
+      server.on('exit', (code) => fail(new Error(`the other process ended (${code})`)));
+    });
+    await assert.rejects(connectDb({ dataDir: dir }), (e: Error) => e instanceof FolderInUseError && new RegExp(`process ${server.pid}`).test(e.message));
+    const ended = new Promise((done) => server.on('exit', done));
+    server.kill('SIGKILL');
+    await ended;
+    assert.ok(existsSync(`${dir}.lock`), 'a hard stop leaves the lock behind');
+    const next = await connectDb({ dataDir: dir });
+    assert.ok(await one(next, `select 1 as ok`));
+    await next.close();
+  } finally {
+    server.kill('SIGKILL');
     rmSync(dir, { recursive: true, force: true });
     rmSync(`${dir}.lock`, { force: true });
   }

@@ -390,6 +390,32 @@ export function isRollback(s: ReleaseState, change: Change, served: readonly str
     && compareVersions(change.version, s.versions.current) < 0;
 }
 
+/** An entity's own settings on the flag, as the flag page has them (api.ts FlagDetail layers[env].entities). */
+export type OwnSettings = { entity: string; layer: LayerLike & { inherit?: string | null } };
+
+/** The entities whose own settings hand out the value the release is moving to: one of their rules serves it, or their
+ *  own default is it. Pausing switches off only the release's own rules, so these keep getting it (Turn off stops
+ *  everyone). Empty when nothing is moving. */
+export function stillServing(variants: readonly Variant[], base: LayerLike, own: readonly OwnSettings[]): string[] {
+  const s = releaseState(variants, base);
+  if ((s.step !== 'early' && s.step !== 'percent') || !s.newValue) return [];
+  const value = s.newValue;
+  const serves = (r: RuleLike) => !r.disabled && (r.serveVariation === value || (r.split?.ranges ?? []).some((g) => g.variation === value));
+  // "Rules + own default" and "Own settings only" bring a default of their own (evaluator.ts hasOwnDefault)
+  const ownDefault = (l: OwnSettings['layer']) => (l.inherit === 'base_rules_then_customer_default' || l.inherit === 'customer_only') && l.defaultVariation === value;
+  return own.filter((o) => o.layer.rules.some(serves) || ownDefault(o.layer)).map((o) => o.entity);
+}
+
+/** What pausing leaves out, in words: "Acme and Globex still get it: their own settings serve it." null: nobody. */
+export function stillServingText(names: readonly string[]): string | null {
+  if (!names.length) return null;
+  const list = names.length <= 3 ? `${names.slice(0, -1).join(', ')}${names.length > 1 ? ' and ' : ''}${names.at(-1)}`
+    : `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`;
+  return names.length === 1
+    ? `${list} still gets it: its own settings serve it. Turn the flag off to stop it for everyone.`
+    : `${list} still get it: their own settings serve it. Turn the flag off to stop it for everyone.`;
+}
+
 /** Rules that keep older app builds on an older version ("App version is below 5.2.0 → 1.0.0"), in words: they aren't
  *  the release's own, so every step leaves them where they are. */
 export function holdBacks(variants: readonly Variant[], base: LayerLike): string[] {

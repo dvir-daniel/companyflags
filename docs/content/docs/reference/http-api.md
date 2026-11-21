@@ -38,9 +38,10 @@ console's **API Keys** page. Send a credential as `Authorization: Bearer <creden
 - **An app's key reads values only.** flagd JSON gets
   `403 {"error":"an app’s key reads values only (OFREP): the rules as flagd JSON are for a backend’s key"}`, and app
   links get `403 {"error":"an app’s key can’t hand out app links: ask with a backend’s key"}`.
-- **A key's scope** (`entity`, `below` or `all`) says which entities it may ask about. Outside it, `403`. A key
-  scoped to `entity` or `below` gets that same `403` for an entity that doesn't exist, so it can't learn which
-  entities there are; an `all` key gets `404`.
+- **A key's scope** (`entity`, `below` or `all`) says which entities it may ask about. Outside it, flagd JSON and app
+  links get `403`. A key scoped to `entity` or `below` gets that same `403` for an entity that doesn't exist, so it
+  can't learn which entities there are; an `all` key gets `404`. OFREP answers `400 INVALID_CONTEXT` instead, for
+  both: a `401` or `403` would stop OpenFeature's web provider for good.
 
 ## Errors
 
@@ -68,7 +69,7 @@ problems; `currentVersion`, …).
 | `needs_reshuffle` | 422 | a % change moves devices to other values: send it again with `allowReshuffle` |
 | `too_many_requests` | 429 | too many requests: wait and try again |
 | `internal` | 500 | a bug: the server logs it, and the answer says nothing more |
-| `unavailable` | 503 | the database isn't answering, or publishing fails (`/readyz`) |
+| `unavailable` | 503 | the database isn't answering, or this instance has no snapshot loaded (`/readyz`) |
 
 The database's own words never reach an answer: a key that is taken is `409 already_exists`, a value its rules
 refuse is `422 invalid`, and the server's log has the database's message.
@@ -123,9 +124,10 @@ Headers:
 
 | Header | Value |
 |---|---|
-| `Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400` |
+| `Cache-Control` | `public, max-age=0, s-maxage=60, stale-if-error=86400` |
+| `CDN-Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400` |
 | `ETag` | weak, over the flags' values (not the revision) |
-| `Cache-Tag` | `env-<env>` |
+| `Cache-Tag` | `env-<env>`; an entity's file also `env-<env>/<entity>` for it and each entity above it, and `link-<env>/<entity>` |
 | `Vary` | `Accept-Encoding` |
 | `Content-Encoding` | `gzip` when the request accepts it |
 | `Access-Control-Allow-Origin` | `*`, with `Access-Control-Expose-Headers: ETag, CF-IPCountry` |
@@ -278,9 +280,9 @@ Content-Type: application/json
 |---|---|
 | `200` | the answer |
 | `304` | every flag: nothing changed since that ETag |
-| `400` | `PARSE_ERROR`: the body isn't JSON; `INVALID_CONTEXT`: no `context`, an entity that doesn't exist (with an `all` key), or one not under the entity named above it; for one flag, `GENERAL` when it can't be evaluated |
+| `400` | `PARSE_ERROR`: the body isn't JSON; `INVALID_CONTEXT`: no `context`, an entity that doesn't exist or is outside the credential's scope (an app token, or a key scoped to `entity` or `below`, gets the same answer for both), or one not under the entity named above it; for one flag, `GENERAL` when it can't be evaluated |
 | `401` | `{"error":"unknown or replaced app link"}` for a wrong token, `{"error":"unknown, expired or revoked API key"}` for a wrong key, `{"error":"missing API key (Authorization: Bearer <key>)"}` without one |
-| `403` | `GENERAL`: the entity is outside the credential's scope. An app token, or a key scoped to `entity` or `below`, gets this same answer for an entity that doesn't exist. `{"error":"a backend’s key can’t be used from a browser: …"}` for a backend's key with an `Origin` header |
+| `403` | `GENERAL`: the key's own entity is gone. `{"error":"a backend’s key can’t be used from a browser: …"}` for a backend's key with an `Origin` header |
 | `404` | one flag: `FLAG_NOT_FOUND`, the flag doesn't exist or isn't in this service. A backend's key is told which; an app's key gets one answer for both |
 
 **Change events.** The answer for every flag also has `eventStreams`: one server-sent events stream for its service
@@ -288,11 +290,17 @@ and entity, `GET /ofrep/v1/events/<env>/<service>/<entity>/<signature>` (without
 `{"type":"refetchEvaluation","etag":"<revision>"}` after a publish that may change those answers (and a comment every
 25 seconds to keep the connection open); the provider then asks for its flags again. A change to one entity's own
 settings reaches that entity and those under it; one to everyone's settings, a flag's variants or its services reaches
-every entity of those services; a new entity reaches nobody. A publish that changes nothing the server can compare
-(a replaced app link, a flag's description) reaches every stream in the environment. The signature is made with the
+every entity of those services; a new entity, a rename or a flag's description reaches nobody. A replaced app link
+reaches that entity's own streams, so its apps ask again and hear the old token is replaced; replacing every link in
+an environment reaches every stream there. The signature is made with the
 environment's secret, so only someone given it in an answer can listen, and an event says only that answers may have
 changed. A wrong signature is a `404`. `GET /ofrep/v1/events/<env>/<signature>`, from answers before streams had a
 scope, still works and hears every publish in the environment.
+
+Each server keeps at most so many streams open, per environment and per client address
+(`FF_EVENT_STREAMS_PER_ENVIRONMENT`, `FF_EVENT_STREAMS_PER_CLIENT`). At a limit, the answer for every flag lists no
+stream (`"eventStreams": []`), so the provider polls instead, every `pollInterval`. A stream asked for anyway gets
+`429` with `Retry-After` (60 to 120 seconds).
 
 **CORS** is open on `/ofrep/*`: any origin may `POST` with `Authorization`, `Content-Type`, `If-None-Match` and
 `X-API-Key`, and read `ETag`, with an app service's key or an app token. A backend's key is refused from a browser.
@@ -303,17 +311,20 @@ See [Security model](/guide/security#api-keys).
 | Endpoint | Answer |
 |---|---|
 | `GET /healthz` | `200 {"ok":true,"version":"0.9.0"}` while the process runs |
-| `GET /readyz` | `200` while the database answers and every environment publishes; `503` when the database doesn't answer, or a new snapshot can't be built in some environment (it keeps serving the one before) |
+| `GET /readyz` | `200` while this instance can serve: the database answers and it has the snapshots loaded. `503` when the database doesn't answer, or it has no snapshot loaded. Environments whose publish fails are in `failing`; a CDN purge that didn't go through is in `warnings`, and the answer is still `200` |
 
 `/readyz` says, per environment, the version in the database (`revision`), the one this process serves
-(`serving`), how long the oldest publish still waiting has waited (`lagSeconds`) and whether publishing fails:
+(`serving`), how long the oldest publish still waiting has waited (`lagSeconds`), whether publishing fails, and
+whether the CDN purge after its last publish failed (`purgeFailing`). `warnings` lists what needs a look though the
+server serves, in words:
 
 ```json
-{ "ok": true, "version": "0.9.0", "environments": { "prod": { "revision": 42, "serving": 42, "lagSeconds": 0, "failing": false } } }
+{ "ok": true, "version": "0.9.0", "failing": [], "environments": { "prod": { "revision": 42, "serving": 42, "lagSeconds": 0, "failing": false, "purgeFailing": false } }, "warnings": [] }
 ```
 
-A failing one answers `503` with `"ok": false`, `"code": "unavailable"` and the environments that fail in `error`;
-the server's log says why. See [Production](/self-hosting/production#health-checks).
+An environment whose new snapshot can't be built keeps serving the one before. It is listed in `failing`, and the
+answer is still `200`: alert on `failing`, and the server's log says why. See
+[Production](/self-hosting/production#5-health-checks).
 
 ## The stable API (`/api/v1`)
 

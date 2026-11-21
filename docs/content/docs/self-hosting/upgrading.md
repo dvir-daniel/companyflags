@@ -60,4 +60,5 @@ spec:
 
 - `companyflags migrate --check` lists the migrations an upgrade would apply, and exits with `1` when there are some.
 - `companyflags --version`, the first line of the server's log and `GET /healthz` say which version runs.
-- `GET /readyz` answers `200` once every environment publishes ([Production](/self-hosting/production#5-health-checks)).
+- `GET /readyz` answers `200` once the instance can serve, and `failing` is empty once every environment publishes
+  ([Production](/self-hosting/production#5-health-checks)).

@@ -10,6 +10,7 @@ import {
 import { flagdCore, flagdEvaluate, nest, ours, same } from './flagdReference.ts';
 import { withPart } from '../web/src/pages/rolloutKit.ts';
 import { boot } from './helpers.ts';
+import { askingEntity, contextProblem } from '../server/ofrep.ts';
 import { entities, fieldsFor } from './kit.ts';
 
 // ---------------------------------------------------------------- random flags, every entity, random requests
@@ -189,7 +190,7 @@ test('one document for an entity and those under it (a `below` key’s): naming 
   }
 });
 
-test('in one document, an entity it doesn’t hold gets what the next one up the request names gets', () => {
+test('in one document, an entity it doesn’t hold gets the code default, as OFREP refuses it', () => {
   const f: FlagDef = {
     key: 'f', valueType: 'string', kind: 'release', delivery: ['server-ds'], variations: { a: 'A', b: 'B', c: 'C' },
     base: { version: 1, enabled: true, variationWhenOff: CODE_DEFAULT, defaultVariation: 'a', inherit: null, rules: [] },
@@ -203,16 +204,110 @@ test('in one document, an entity it doesn’t hold gets what the next one up the
   assert.equal(value({ brand: 'velvet' }), 'C');
   assert.equal(value({ company: 'tyrell', brand: 'velvet' }), 'C', 'the lowest dimension named decides');
   assert.equal(value({ brand: 'onyx' }), 'B', 'onyx follows tyrell');
-  assert.equal(value({ company: 'tyrell', brand: 'signed-up-a-minute-ago' }), 'B', 'a brand it doesn’t hold: its company’s');
   assert.equal(value({ company: 'wonka' }), 'A');
-  assert.equal(value({ company: 'nobody' }), 'A', 'nothing it holds: what a request naming no entity gets');
-  assert.equal(value({}), 'A');
-  // wonka and vandelay get what everyone gets, with no branch of their own
+  assert.equal(value({}), 'A', 'naming none: what no entity gets');
+  // what OFREP refuses (400 INVALID_CONTEXT), and so the code's defaults there: the code default here too
+  for (const refused of [{ company: 'tyrell', brand: 'signed-up-a-minute-ago' }, { company: 'nobody' }, { company: '' }, { brand: '' },
+    { company: 'wonka', brand: 'velvet' }, { company: 'nobody', brand: 'velvet' }]) {
+    assert.deepEqual(flagdCore(doc, 'f', refused), { codeDefault: true, reason: 'DEFAULT' }, JSON.stringify(refused));
+    assert.equal(same(flagdEvaluate(doc, 'f', refused)), 'code default', JSON.stringify(refused));
+  }
+  // wonka and vandelay get what everyone gets, with no branch of their own; the check is shared by every flag
+  const is = (d: string, keys: string[]) => ({ and: [{ '!': { in: [{ var: d }, [null, '']] } }, { in: [{ cat: [{ var: d }] }, keys] }] });
   assert.deepEqual(doc.flags.f.targeting, { if: [
-    { in: [{ var: 'brand' }, ['onyx']] }, 'b', { in: [{ var: 'brand' }, ['velvet']] }, 'c',
-    { in: [{ var: 'company' }, ['tyrell']] }, 'b',
+    { $ref: 'unknown_entity' }, null,
+    is('brand', ['onyx']), 'b', is('brand', ['velvet']), 'c',
+    is('company', ['tyrell']), 'b',
     'a',
   ] });
+  assert.equal(doc.flags.f.defaultVariant, null);
+  assert.ok(doc.$evaluators?.unknown_entity);
+});
+
+// ---------------------------------------------------------------- the same entity over OFREP and in one document
+// A brand with a number for a key, as a backend passing store or account IDs as numbers has: {"brand": 12}.
+const NUMBERED = entities([['vandelay', 'Vandelay', 'company'], ['wonka', 'Wonka', 'company'], ['tyrell', 'Tyrell', 'company'],
+  ['velvet', 'Velvet', 'brand', 'tyrell'], ['onyx', 'Onyx', 'brand', 'tyrell'], ['12', 'Twelve', 'brand', 'wonka'], ['orphan', 'Orphan', 'brand']]);
+
+/** What OFREP does with a context for a key (ofrep.ts): refuse it (the provider gives the code's defaults), or ask as
+ *  an entity (or none). */
+function ofrepAsks(snap: Snapshot, key: { scope: 'all' | 'below'; entity: string | null }, context: Record<string, unknown>): { refused: true } | { entity: string | null } {
+  if (contextProblem(snap, context)) return { refused: true };
+  try { return { entity: askingEntity(snap, key, context) }; } catch { return { refused: true }; }
+}
+
+test('every context, over OFREP and in one document: the same entity asks, and what OFREP refuses is the code default', () => {
+  const r = random(20261121);
+  const snapWith = (f: FlagDef): Snapshot => ({ environment: 'dev', revision: 1, builtAt: '', flags: { f }, entities: NUMBERED, dimensions: DIMS, fields: FIELDS });
+  const companies = ['vandelay', 'wonka', 'tyrell', 'nobody', '', 'Wonka'];
+  const brands = ['velvet', 'onyx', '12', 12, 'orphan', 'new-brand', '', 13];
+  let refused = 0;
+  let compared = 0;
+  for (let n = 0; n < 150; n++) {
+    const f = { ...randomFlag(r, n), delivery: ['server-ds'] };
+    // the entities' own settings for the numbered brand and the one with no company too
+    if (r.chance(0.5)) f.entities['12'] = { version: 1, enabled: null, variationWhenOff: null, defaultVariation: 'c', inherit: 'customer_only', rules: [] };
+    if (r.chance(0.3)) f.entities.orphan = { version: 1, enabled: null, variationWhenOff: null, defaultVariation: 'b', inherit: 'base_rules_then_customer_default', rules: [] };
+    const snap = snapWith(f);
+    for (const key of [{ scope: 'all' as const, entity: null }, { scope: 'below' as const, entity: 'tyrell' }, { scope: 'below' as const, entity: 'velvet' }]) {
+      const held = Object.values(NUMBERED).filter((e) => key.entity === null || e.path.includes(key.entity));
+      const doc = buildServiceDoc(snap, 'server-ds', held, key.entity ? NUMBERED[key.entity] : null);
+      for (let i = 0; i < 25; i++) {
+        const attrs = randomAttrs(r);
+        const named: Record<string, unknown> = {};
+        if (r.chance(0.6)) named.company = r.pick(companies);
+        if (r.chance(0.6)) named.brand = r.pick(brands);
+        const asks = ofrepAsks(snap, key, named);
+        const want = 'refused' in asks ? { codeDefault: true as const } : ours(snap, 'f', 'server-ds', asks.entity, attrs);
+        if ('refused' in asks) refused++;
+        const context = { ...nest(attrs), ...named };
+        const where = `${JSON.stringify(key)} ${JSON.stringify(named)} → ${JSON.stringify(asks)}\n${JSON.stringify(f)}\n${JSON.stringify(doc)}`;
+        assert.equal(same(flagdCore(doc, 'f', context)), same(want), `flagd-core: ${where}`);
+        assert.equal(same(flagdEvaluate(doc, 'f', context)), same(want), where);
+        compared++;
+      }
+    }
+  }
+  assert.ok(refused > 1000 && compared - refused > 2000, `${refused} refused of ${compared}`);
+});
+
+test('a number for an entity’s key: OFREP and one document both read {"brand": 12} as the brand "12"', () => {
+  const f: FlagDef = {
+    key: 'f', valueType: 'string', kind: 'release', delivery: ['server-ds'], variations: { a: 'A', b: 'B' },
+    base: { version: 1, enabled: true, variationWhenOff: CODE_DEFAULT, defaultVariation: 'a', inherit: null, rules: [] },
+    entities: { 12: { version: 1, enabled: null, variationWhenOff: null, defaultVariation: 'b', inherit: 'base_rules_then_customer_default', rules: [] } },
+  };
+  const snap: Snapshot = { environment: 'dev', revision: 1, builtAt: '', flags: { f }, entities: NUMBERED, dimensions: DIMS, fields: FIELDS };
+  const doc = buildServiceDoc(snap, 'server-ds', Object.values(NUMBERED), null);
+  assert.deepEqual(ofrepAsks(snap, { scope: 'all', entity: null }, { brand: 12 }), { entity: '12' });
+  assert.equal(ours(snap, 'f', 'server-ds', '12', {}).value, 'B');
+  for (const context of [{ brand: 12 }, { brand: '12' }, { company: 'wonka', brand: 12 }]) assert.equal(flagdCore(doc, 'f', context).value, 'B', JSON.stringify(context));
+  assert.equal(flagdCore(doc, 'f', { company: 'tyrell', brand: 12 }).codeDefault, true, 'not under tyrell: refused by both');
+  assert.deepEqual(ofrepAsks(snap, { scope: 'all', entity: null }, { company: 'tyrell', brand: 12 }), { refused: true });
+});
+
+test('a switched-off flag puts none of its values in any document: only a placeholder', () => {
+  const f: FlagDef = {
+    key: 'f', valueType: 'string', kind: 'permission', delivery: ['server-ds', 'web'],
+    variations: { globex: 'only for globex', acme: 'only for acme', 'val-x': 'typed in', [CODE_DEFAULT]: null },
+    base: { version: 1, enabled: false, variationWhenOff: CODE_DEFAULT, defaultVariation: 'globex', inherit: null, rules: [] },
+    entities: { wonka: { version: 1, enabled: null, variationWhenOff: null, defaultVariation: 'acme', inherit: 'customer_only', rules: [] } },
+  };
+  // and a flag that is on, but whose every answer is the app's code default
+  const g: FlagDef = { ...f, key: 'g', base: { ...f.base, enabled: true, defaultVariation: CODE_DEFAULT }, entities: {} };
+  const snap = snapOf({ f, g });
+  const docs = [...[null, ...Object.keys(ENTITIES)].map((e) => buildFlagdDoc(snap, 'web', e ? ENTITIES[e] : null)),
+    buildServiceDoc(snap, 'server-ds', Object.values(ENTITIES), null), buildServiceDoc(snap, 'server-ds', [ENTITIES.tyrell, ENTITIES.velvet, ENTITIES.onyx], ENTITIES.tyrell)];
+  for (const doc of docs) {
+    assert.deepEqual(doc.flags.f, { state: 'DISABLED', variants: { unused: '' }, defaultVariant: null }, doc.metadata.flagSetId);
+    assert.deepEqual(doc.flags.g.variants, { unused: '' }, doc.metadata.flagSetId);
+    assert.doesNotMatch(JSON.stringify(doc), /only for|typed in/, doc.metadata.flagSetId);
+    for (const entity of [{}, { company: 'wonka' }]) {
+      assert.equal(same(flagdCore(doc, 'f', entity)), 'code default');
+      assert.equal(same(flagdCore(doc, 'g', entity)), 'code default');
+    }
+  }
+  assert.equal(same(ours(snap, 'f', 'web', 'wonka', {})), 'code default', 'the server’s answer: the same');
 });
 
 // missing is absent, null or "" in every JsonLogic (flagd.ts)

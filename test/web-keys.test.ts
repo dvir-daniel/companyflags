@@ -2,7 +2,7 @@
 // words (none before a dimension exists), and the ready-to-run code shown once a key is made.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { keySnippets, scopeAnyLabel, scopeHints, type SnippetFacts } from '../web/src/pages/keysKit.ts';
+import { keyDefaults, keySnippets, scopeAnyLabel, scopeHints, type SnippetFacts } from '../web/src/pages/keysKit.ts';
 
 const store = { key: 'store', singular: 'store', plural: 'stores' };
 const region = { key: 'region', singular: 'region', plural: 'regions' };
@@ -48,4 +48,10 @@ test('a backend key comes with the Node OFREP provider, and flagd JSON when it n
 test('without OFREP there is no OFREP snippet', () => {
   assert.deepEqual(keySnippets(facts({ plugins: ['cdn-files'] })), []);
   assert.deepEqual(keySnippets(facts({ plugins: ['flagd'], kind: 'server', flagdPath: '/sdk/v1/flagd/store/lumen' })).map((x) => x.id), ['flagd']);
+});
+
+test('a new app key starts at one entity and a year; a backend key at any, until revoked', () => {
+  assert.deepEqual(keyDefaults('client', 3), { scope: 'entity', days: 365 }, 'an app’s key is public: one entity, a year');
+  assert.deepEqual(keyDefaults('client', 0), { scope: 'all', days: 365 }, 'no entity yet to pick');
+  assert.deepEqual(keyDefaults('server', 3), { scope: 'all', days: 0 }, 'a backend’s key is secret, on the server');
 });

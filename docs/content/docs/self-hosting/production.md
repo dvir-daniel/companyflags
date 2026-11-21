@@ -51,6 +51,9 @@ console only over `https`.
   ranges). From those connections only, the server reads `X-Forwarded-For`, from the right, past the proxies. Add
   `FF_CLIENT_IP_HEADER` to read a header your proxy or CDN sets itself instead (`cf-connecting-ip` behind
   Cloudflare, `x-real-ip` behind many nginx setups).
+- The change-event streams (OFREP's live updates for apps) count each client's address the same way: at most
+  `FF_EVENT_STREAMS_PER_CLIENT` (100) per address on each instance. Without `FF_TRUSTED_PROXIES`, every device
+  behind your load balancer has its address, so only 100 devices get live updates and the rest poll. Set it.
 - A connection from any other address counts as its own address, whatever its headers say. The server refuses to
   start with `FF_CLIENT_IP_HEADER` but no `FF_TRUSTED_PROXIES`, or with a proxy entry that isn't an address or range.
 - `BETTER_AUTH_URL` must be the address people type. Sign-in from another address is refused.
@@ -67,15 +70,24 @@ Put Cloudflare (or another CDN) in front of `/cdn/v1/flags/`, with a cache rule 
 | Address | Answers |
 |---|---|
 | `GET /healthz` | `200 {"ok":true,"version":"…"}` while the process runs |
-| `GET /readyz` | `200` with each environment's publishing (`revision`, `serving`, `lagSeconds`, `failing`) while the database answers and every environment publishes; `503` when the database doesn't answer, or an environment's new snapshot can't be built |
+| `GET /readyz` | `200` while this instance can serve: the database answers and it has the environments' snapshots loaded. It says each environment's publishing (`revision`, `serving`, `lagSeconds`, `failing`, `purgeFailing`), and lists the environments whose publish fails in `failing`. `503` only when this instance can't serve: the database doesn't answer, or it has no snapshot loaded |
 
-Use `/healthz` for liveness (restart the process if it stops answering) and `/readyz` for readiness and alerts. A
-snapshot that can't be built leaves the environment serving what it served before, so nothing else would show it:
-`/readyz` fails, and the log says why (`publishing prod@43 failed …`) on every try, every 30 seconds. Alert on it.
-If every instance fails the same way, a load balancer that takes them out of rotation stops serving the old values
-too: point readiness at `/healthz` and alert on `/readyz` if you'd rather keep serving. The Docker image's own
-health check calls `/healthz` every 30 seconds, on the port the server listens on (also one set with
-`server.port` in a config file: the server writes it to `FF_PORT_FILE`).
+Use `/healthz` for liveness (restart the process if it stops answering) and `/readyz` for readiness. One
+environment's failed publish doesn't take an instance out: every instance reads the same database, so they would all
+go out at once, and stop serving the old values too.
+
+Alert on `failing` instead, and on `warnings` (a CDN purge that didn't go through). A snapshot that can't be built leaves the environment serving what it served before, so
+devices show nothing wrong: `/readyz` puts the environment in `failing` (`{"ok":true,"failing":["prod"],…}`), and the
+log says why (`publishing prod@43 failed …`) on every try, every 30 seconds. Alert when `failing` isn't empty (or on
+`companyflags_publish_failing`, below), and when an environment's `lagSeconds` keeps growing.
+
+The Docker image's own health check calls `/healthz` every 30 seconds, on the port the server listens on (also one set
+with `server.port` in a config file: the server writes it to `FF_PORT_FILE`).
+
+`/readyz` also lists `warnings`, while it still answers `200`: what needs a look though the server serves. A CDN purge
+that didn't go through, or can't run because the token saved in **Settings → CDN** can't be read after
+`BETTER_AUTH_SECRET` changed, is one ([CDN](/self-hosting/cdn#purge-on-publish)): apps reading CDN files then get a
+change only once the CDN's minute is up. Alert on a warning too.
 
 ### Metrics
 
@@ -98,6 +110,8 @@ open to whoever reaches the server. Each instance counts its own requests: scrap
 | `companyflags_event_streams{route}` | live-update streams open now (OFREP's change events, the console's) |
 | `companyflags_publish_lag_seconds{environment}` | how long the oldest publish still waiting has waited |
 | `companyflags_publish_failing{environment}` | `1` while a new snapshot can't be built |
+| `companyflags_purge_failing{environment}` | `1` while the CDN purge after the environment's last publish hasn't gone through |
+| `companyflags_warnings` | how many `warnings` `/readyz` lists |
 | `companyflags_revision{environment}`, `companyflags_serving_revision{environment}` | the version in the database, and the one this instance serves |
 | `companyflags_database_up`, `companyflags_info{version}` | the database answers; the version |
 

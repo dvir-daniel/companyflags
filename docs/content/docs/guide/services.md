@@ -51,6 +51,10 @@ What a key asks about is its scope: one entity (`entity`), one entity and every 
 (`all`). An app built for Acme alone can have a key for Acme only. See
 [Backends](/reading/remote-backends#create-a-service-and-an-api-key).
 
+A new key starts with the safe choice for its service. An app service's key asks about **one entity** (once there is
+one to pick) and works for **1 year**, since anyone can take it out of the app. A backend service's key asks about
+**any** entity and works **until revoked**, since it stays on your server. Change either before you create the key.
+
 ## Read flags with OpenFeature
 
 Apps read their flags with [OpenFeature](/reading/overview): OpenFeature's SDK for the platform, with its OFREP
@@ -64,6 +68,7 @@ await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' 
 await OpenFeature.setProviderAndWait(new OFREPWebProvider({
   baseUrl: 'https://flags.example.com',
   headers: [['Authorization', 'Bearer ff_prod_web_…']],   // the web service's key: public
+  pollInterval: 60_000,                                  // when it can't keep a change stream open: once a minute
 }));
 
 OpenFeature.getClient().getBooleanValue('new_checkout', false);
@@ -100,7 +105,8 @@ session.flagsToken = token;
 ```
 
 The app then sends `Bearer ${session.flagsToken}` instead of its key. The token asks as that entity only: naming
-another in the context gets `403`.
+another in the context gets `400 INVALID_CONTEXT` over OFREP (flagd JSON and app links answer `403` outside a key's
+scope).
 
 The link only changes when someone replaces it (the entity's page → **App link → Replace link**), which stops the old
 token and address at once. So your backend can keep it with the entity. A key with scope **entity** or **below** can

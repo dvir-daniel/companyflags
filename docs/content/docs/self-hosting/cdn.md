@@ -5,7 +5,7 @@ description: "Put Cloudflare in front of the CDN files so it answers almost ever
 
 Apps read one file per environment, service and entity. Every device of an entity reads the same file, so a CDN in
 front of CompanyFlags can answer almost all of those requests. This page sets up Cloudflare; another CDN works the
-same way if it honours `Cache-Control` and can purge by tag.
+same way if it honours `s-maxage` (or `CDN-Cache-Control`) and can purge by tag.
 
 ## What a CDN can cache
 
@@ -21,14 +21,20 @@ country. Each answer has these headers:
 
 | Header | Value |
 |---|---|
-| `Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400` |
+| `Cache-Control` | `public, max-age=0, s-maxage=60, stale-if-error=86400` |
+| `CDN-Cache-Control` | `public, max-age=60, stale-while-revalidate=600, stale-if-error=86400` |
 | `ETag` | a weak ETag of the file's values, e.g. `W/"ndXGg1FVFC0UYASWys_Wj4"` |
-| `Cache-Tag` | `env-<env>`, e.g. `env-prod` |
+| `Cache-Tag` | `env-<env>`; for an entity's file also `env-<env>/<entity>` for it and each entity above it, and `link-<env>/<entity>`. E.g. `env-prod,env-prod/lumen,env-prod/globex,link-prod/lumen` |
 | `Vary` | `Accept-Encoding` (gzip when the request accepts it) |
 | `Access-Control-Allow-Origin` | `*` |
 
+Browsers ask again every time (`max-age=0`), and the CDN answers them, usually with a `304`. So a change reaches a
+device as soon as it reaches the CDN. The CDN keeps a file for a minute (`s-maxage`, or `CDN-Cache-Control` for a CDN
+that reads it, as Cloudflare does), then asks the server again. While it asks, it may answer with the copy it has
+for up to 10 minutes. If the server can't be reached, it keeps serving that copy for a day.
+
 A request with `If-None-Match` and the current ETag gets a `304`. The ETag covers the values only, so a publish that
-doesn't change a file still answers `304` for it.
+doesn't change a file still answers `304` for it. A wrong link is a `404` with `Cache-Control: no-store`.
 
 Everything else is not for a CDN: `/sdk/v1/…` answers are `private, no-cache` or `no-store`, OpenFeature remote
 evaluation (`POST /ofrep/v1/…`) is answered by the server on every request, and the console's `/api` needs a session.
@@ -42,17 +48,25 @@ files:
 2. When: **URI Path** starts with `/cdn/v1/flags/`.
 3. Then: **Eligible for cache**.
 4. Edge TTL: **Use cache-control header if present, bypass cache if not**. The files say how long to keep them, and
-   error answers (a `404` for a wrong link) carry no `Cache-Control`, so they aren't kept. A publish purges by tag, and
-   error answers carry no tag.
-5. Browser TTL: respect the origin's headers.
+   error answers (a `404` for a wrong link) say `no-store`, so they aren't kept.
+5. Browser TTL: **Respect origin TTL**. Browsers then ask every time and get the change as soon as the CDN has it.
 
 Match only that path. Don't use "Cache Everything" on the whole host: the console's API must never be cached.
 
 ## Purge on publish
 
 Without a purge, a change reaches apps once the CDN's copy is a minute old and the CDN asks again (usually a `304`).
-With a purge, CompanyFlags drops the environment's files from Cloudflare right after each publish, so apps get the
-change in seconds.
+With a purge, CompanyFlags drops the files a publish changed from Cloudflare right after it, so apps get the change in
+seconds. It purges only what changed:
+
+| The change | What is purged |
+|---|---|
+| a flag's defaults, variants or services; an environment's links replaced | the environment: `env-<env>` |
+| one entity's own settings, or the entity moved | its files and those of the entities under it: `env-<env>/<entity>` |
+| an entity's app link replaced | its own files: `link-<env>/<entity>` |
+| a new entity, a rename, a flag's name or description | nothing: nobody's answers changed |
+
+More than 30 tags in one purge purges the environment instead.
 
 The purge is the [`cloudflare()` plugin](/reference/plugins#cloudflareoptions). It runs unless your config file
 lists plugins without it, and its zone and token can be set there too: `cloudflare({ zoneId, token })`.
@@ -64,7 +78,7 @@ POST https://api.cloudflare.com/client/v4/zones/<zone id>/purge_cache
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{"tags":["env-prod"]}
+{"tags":["env-prod/globex"]}
 ```
 
 Set it up in one of two ways:
@@ -83,6 +97,9 @@ How the purge runs:
 - after a publish is done, without holding up the next one; whichever instance publishes purges once;
 - it gives up after 5 seconds. A failure is recorded on that publish, and the change still reaches apps within the
   cache's minute;
+- a purge that fails, or can't run because the token saved in the console can't be read (after `BETTER_AUTH_SECRET`
+  changed: save it again), shows in `/readyz` under `warnings` (it still answers `200`) and in the metrics as
+  `companyflags_purge_failing` and `companyflags_warnings` ([Production](/self-hosting/production#5-health-checks));
 - **Settings → CDN** lists the last publishes and whether each purge went through, and has **Purge now** for one
   environment;
 - replacing an entity's app link publishes every environment again, so the old link's file is purged too; replacing

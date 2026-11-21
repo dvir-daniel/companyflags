@@ -157,10 +157,46 @@ describe('through the server', () => {
     await t.settle();
     assert.equal((await t.trace({ environment: 'prod', service: 'web', entity: 'acme', flag: 'payments_enabled' })).reason, 'DISABLED');
 
-    // a purpose without a safe value drops it
+    // a purpose without a safe value drops it: only an admin, in the console, and History says so
     assert.equal((await t.as('dana').put('/flags/payments_enabled/meta', { kind: 'config' })).status, 200);
     assert.equal((await t.as('dana').get('/flags/payments_enabled')).json.safeVariant, null);
+    const [dropped] = await history('flag=payments_enabled&environment=prod');
+    assert.deepEqual([dropped.before.safeVariant, dropped.after.safeVariant], ['off', null]);
     assert.equal((await t.as('dana').put('/flags/payments_enabled/meta', { kind: 'kill_switch' })).status, 200);
+  });
+
+  test('the safe value doesn’t go quietly: a new purpose or a new value of it needs an admin while an environment is protected', async () => {
+    const created = await t.as('dana').post('/flags', {
+      key: 'card_provider', valueType: 'string', kind: 'ops', variations: [{ key: 'primary', value: 'stripe' }, { key: 'backup', value: 'adyen' }, { key: 'spare', value: 'none' }],
+      delivery: { dev: ['web'], prod: ['web'] }, base: { enabled: true, defaultVariation: 'primary', rules: [] },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    assert.equal((await t.as('dana').put('/flags/card_provider/safe-variant', { variant: 'backup' })).status, 200);
+
+    // an editor changing its purpose would drop the safe value: refused, and nothing changes
+    const purpose = await t.as('alice').put('/flags/card_provider/meta', { kind: 'config' });
+    assert.equal(purpose.status, 422, JSON.stringify(purpose.json));
+    assert.match(purpose.json.error, /has a safe value \(backup\).*ask an admin/);
+    assert.equal((await t.as('alice').get('/flags/card_provider')).json.kind, 'ops');
+    assert.equal((await t.as('alice').put('/flags/card_provider/meta', { description: 'Who takes cards' })).status, 200, 'other details are fine');
+    // flags push, even an admin's: the same refusal
+    const file = (await t.as('dana').get('/flags-as-code')).json;
+    file.flags.card_provider.kind = 'config';
+    const pushed = await t.as('dana').post('/flags-as-code/push', file);
+    assert.equal(pushed.status, 422, JSON.stringify(pushed.json));
+    assert.match(pushed.json.error, /has a safe value/);
+    assert.equal((await t.as('alice').get('/flags/card_provider')).json.safeVariant, 'backup');
+
+    // the safe value's value: nobody gets it, but break-glass serves it in prod without review, so it's kept like a served one
+    const put = (who: string, key: string, value: string) => t.as(who).put('/flags/card_provider/variations', { variations: [{ key, value }] });
+    const safe = await put('alice', 'backup', 'evil-pay');
+    assert.equal(safe.status, 409, JSON.stringify(safe.json));
+    assert.match(safe.json.error, /backup is the safe value, which break-glass serves in prod without review/);
+    const file2 = (await t.as('dana').get('/flags-as-code')).json;
+    file2.flags.card_provider.variants.backup = 'evil-pay';
+    assert.equal((await t.as('dana').post('/flags-as-code/push', file2)).status, 409, 'flags push too');
+    assert.equal((await t.as('alice').get('/flags/card_provider')).json.variations.find((v: any) => v.key === 'backup').value, 'adyen');
+    assert.equal((await put('alice', 'spare', 'later')).status, 200, 'a value nobody gets and break-glass doesn’t serve');
   });
 
   test('a time in the past is refused; any reviewer can unschedule (with a reason) or reject a scheduled request', async () => {

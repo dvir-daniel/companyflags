@@ -285,3 +285,26 @@ test('registration: invisible formatting characters leave the name, and unused c
   assert.equal((await t.db.query(`select 1 from oauth_client where id like 'cfc_fill%'`)).rows.length, 0);
   assert.equal((await t.db.query(`select 1 from oauth_client where id = $1`, [kept])).rows.length, 1);
 });
+
+test('a sign-in lasts 90 days from when its person allowed it: refreshing renews it up to then, never past', async () => {
+  const client = await register('Cursor');
+  const { verifier, challenge } = pkce();
+  const first = (await exchange(client, (await authorize(client, challenge)).code, verifier)).json;
+  const refresh = (token: string) => req('POST', '/oauth/token', { form: { grant_type: 'refresh_token', client_id: client, refresh_token: token, resource: RESOURCE } });
+  const row = async () => (await t.db.query<{ id: number; left: number; access: number }>(`select t.id::int as id,
+      floor(extract(epoch from g.refresh_expires_at - now()) / 86400)::int as left, extract(epoch from t.expires_at - now())::int as access
+    from access_token t join oauth_grant g on g.token_id = t.id where t.name = 'Cursor (OAuth)'`)).rows[0];
+  const { id } = await row();
+  // allowed 85 days ago: a refresh gives 5 days more, not 30, and an access token for an hour at most
+  await t.db.query(`update access_token set created_at = now() - interval '85 days' where id = $1`, [id]);
+  const second = await refresh(first.refresh_token);
+  assert.equal(second.status, 200, second.text);
+  const now = await row();
+  assert.ok(now.left >= 4 && now.left <= 5, `the refresh token ends 90 days after consent (${now.left} days left)`);
+  assert.ok(now.access <= 3600);
+  // allowed 91 days ago: refreshing ends, and the client signs in again
+  await t.db.query(`update access_token set created_at = now() - interval '91 days' where id = $1`, [id]);
+  const late = await refresh(second.json.refresh_token);
+  assert.equal(late.json.error, 'invalid_grant', late.text);
+  assert.match(late.json.error_description, /sign in again/);
+});

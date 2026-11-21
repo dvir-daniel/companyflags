@@ -7,12 +7,17 @@ Most apps read flags [remotely, with OpenFeature](/reading/remote-apps). The **C
 downloads its entity's flags once, as [flagd](https://flagd.dev) JSON, and decides each flag itself. The file is the
 same for every device of that entity, so a CDN caches it and no request reaches your server.
 
+It's for web and React Native apps. They read it with OpenFeature's flagd evaluator, `@openfeature/flagd-core`, and a
+short fetch loop of their own. That evaluator isn't an OpenFeature provider: your code calls it directly, not through
+an OpenFeature client. Native Android and iOS apps read with [OFREP](/reading/remote-apps) instead.
+
 It's the same format a backend's [flagd JSON](/reading/local-backends) uses. The difference is what the server puts
 in it:
 
 - **For an app service and one entity:** the server settles everything it already knows (the environment, the
   service, the entity and the levels above it) and leaves in only what the device must check itself: its app
-  version, its platform, its ID for a % of devices. Rules about other entities are never in it.
+  version, its platform, its ID for a % of devices. Rules about other entities are never in it, nor their values: a
+  flag switched off is flagd's `DISABLED` with a placeholder variant, `{ "unused": false }`, never one of its values.
 - **Safe to share:** it's read at a secret link, not with a key, and a CDN may cache it.
 
 The CDN file is the `cdnFiles()` plugin. It runs unless your config file lists plugins without it. See
@@ -64,8 +69,8 @@ for how each part reads.
 
 ## Web apps and React Native
 
-OpenFeature's flagd evaluator, `@openfeature/flagd-core`, reads the file in the browser or in React Native, with no
-code of your own:
+OpenFeature's flagd evaluator, `@openfeature/flagd-core`, reads the file in the browser or in React Native. Your code
+fetches the file, hands it over, and asks it for each flag:
 
 ```bash
 npm install @openfeature/flagd-core
@@ -94,12 +99,9 @@ core.resolveBooleanEvaluation('dark_mode_v2', false, context).value;
 
 ## Android and iOS
 
-OpenFeature has no provider that evaluates flagd JSON on an Android or iOS device. Native apps have two choices:
-
-- **Read remotely** with OpenFeature's OFREP providers for Kotlin and Swift: see
-  [Remote evaluation in apps](/reading/remote-apps#android-and-ios). This is the usual way.
-- **Evaluate the file yourself** with a JsonLogic library, adding flagd's operators: `sem_ver`, `fractional`,
-  `starts_with` and `ends_with` ([flagd's custom operations](https://flagd.dev/reference/custom-operations/)).
+OpenFeature has no provider or evaluator that reads flagd JSON on an Android or iOS device. Native apps read
+remotely, with OpenFeature's OFREP providers for Kotlin and Swift: see
+[Remote evaluation in apps](/reading/remote-apps#android-and-ios).
 
 ## Attributes to report
 

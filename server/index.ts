@@ -25,7 +25,7 @@ import { EventHub } from './events.ts';
 import { AppCache, LinkCache, linkRoutes } from './delivery.ts';
 import { KeyCache } from './auth.ts';
 import { journaled } from './journal.ts';
-import { evaluatorFor, PluginError, publishHooks, setUpPlugins, type OnPublish, type Plugin } from './plugin.ts';
+import { evaluatorFor, PluginError, publishHooks, setUpPlugins, type OnPublish, type Plugin, type PluginParts } from './plugin.ts';
 import { defaultPlugins } from './plugins/index.ts';
 import { syncFields } from './fields.ts';
 import { DataPlane } from './snapshot.ts';
@@ -107,7 +107,7 @@ export async function createApp(opts: AppOptions = {}) {
   const auth = settings ? await createAuth(store, settings, access).catch(async (e) => { await store.close(); throw e; }) : undefined;
   const identity = createIdentity(signIn, access, auth);
   const sso = singleSignOn(db, {
-    access, plugin: auth, discover: opts.discover ?? discoverOverHttp(settings?.trustedOrigins ?? []), baseURL: settings?.baseURL, production: settings?.production,
+    access, plugin: auth, discover: opts.discover ?? discoverOverHttp(settings?.trustedOrigins ?? []), baseURL: settings?.baseURL, production: settings?.production, trustedOrigins: settings?.trustedOrigins,
   });
   // the plugins (plugin.ts): set up once, with what the core shares. `request` is the app's own fetch, bound once the
   // app below is built.
@@ -116,10 +116,23 @@ export async function createApp(opts: AppOptions = {}) {
     if (!built) throw new Error('the server isn’t built yet: call request from a request, not from a plugin’s setup');
     return built.request(input, init);
   };
+  // What /readyz warns of without failing (a purge that didn't go through, the plugins' own warnings), read once the
+  // plugins are set up.
+  let pluginsSetUp: { id: string; parts: PluginParts }[] = [];
+  const warningsOf = async (state?: PublishState[]): Promise<string[]> => {
+    const purges = (state ?? await publishState(store, plane)).filter((s) => s.purgeError)
+      // why is in Settings → CDN and the log, not in a public answer
+      .map((s) => `the CDN purge after ${s.environment}’s last publish didn’t go through: apps reading CDN files get changes only once the CDN’s minute is up (Settings → CDN and the server’s log say why)`);
+    const own = await Promise.all(pluginsSetUp.map(async (p) => {
+      try { return (await p.parts.warnings?.()) ?? []; } catch (e) { return [`${p.id}: ${(e as Error).message}`]; }
+    }));
+    return [...purges, ...own.flat()];
+  };
   const plugins = await setUpPlugins(opts.plugins ?? defaultPlugins({ cloudflare: { fetch: undefined }, webhooks: { fetch: undefined } }), {
     db, plane, hub, evaluate: evaluatorFor(plane), env: opts.env ?? process.env, baseURL: settings?.baseURL, log, request, secrets,
-    publishState: () => publishState(store, plane), keys, links, services: apps,
+    publishState: () => publishState(store, plane), warnings: () => warningsOf(), keys, links, services: apps,
   }).catch(async (e) => { await store.close(); throw e; });
+  pluginsSetUp = plugins;
   const on = new Set(plugins.map((p) => p.id));
   const publisher = startWorkers(db, plane, hub, log, opts.onPublish ?? publishHooks(plugins), {
     onRemoteChange: () => { links.forget(); keys.forget(); apps.forget(); }, publishLogDays: opts.publishLogDays,
@@ -144,8 +157,10 @@ export async function createApp(opts: AppOptions = {}) {
     xFrameOptions: 'DENY', referrerPolicy: 'strict-origin-when-cross-origin',
   }));
   app.use('*', bodyLimits());
-  // For load balancers and orchestrators: /healthz answers while the process runs, /readyz while the database answers
-  // and every environment's publishes go out. Both say the version.
+  // For load balancers and orchestrators: /healthz answers while the process runs, /readyz while this process can serve:
+  // the database answers, and it has the environments' snapshots loaded. Both say the version. For alerting, it lists
+  // the environments whose publish fails (`failing`) and `warnings` (a CDN purge that didn't go through, or can't run),
+  // still answering 200: one broken environment doesn't take every instance out.
   app.get('/healthz', (c) => c.json({ ok: true, version: VERSION }));
   app.get('/flags.schema.json', (c) => c.json(flagsFileSchema()));   // flags as code's file, for editors (flagsAsCode.ts)
   app.get('/readyz', async (c) => {
@@ -153,18 +168,21 @@ export async function createApp(opts: AppOptions = {}) {
     try {
       state = await publishState(store, plane);
     } catch {
-      return c.json({ ok: false, version: VERSION, error: 'the database isn’t answering', code: 'unavailable' }, 503);
+      return c.json({ ok: false, version: VERSION, error: 'the database isn’t answering', code: 'unavailable', failing: [] }, 503);
     }
     // what each environment serves, and how far its publishing is behind. A snapshot that can't be built keeps the old
-    // values serving, and nothing else would say so: then this fails, and the log says why (workers.ts)
+    // values serving: the environment is in `failing` (for alerts), and the log says why (workers.ts). It stays ready:
+    // the publish fails the same way on every instance, and taking them all out would stop serving the old values too.
+    // An environment made a moment ago on another instance has `serving: null` here until the next round loads it.
     const environments = Object.fromEntries(state.map((s) => [s.environment, {
-      revision: s.revision, serving: s.serving, lagSeconds: s.lagSeconds, failing: !!s.error,
+      revision: s.revision, serving: s.serving, lagSeconds: s.lagSeconds, failing: !!s.error, purgeFailing: !!s.purgeError,
     }]));
+    const warnings = await warningsOf(state).catch(() => []);
     const failing = state.filter((s) => s.error).map((s) => s.environment);
-    if (failing.length) {
-      return c.json({ ok: false, version: VERSION, error: `publishing fails in ${failing.join(', ')}: the server’s log says why`, code: 'unavailable', environments }, 503);
+    if (state.length && state.every((s) => s.serving === null)) {
+      return c.json({ ok: false, version: VERSION, error: 'this server serves no environment yet', code: 'unavailable', failing, environments, warnings }, 503);
     }
-    return c.json({ ok: true, version: VERSION, environments });
+    return c.json({ ok: true, version: VERSION, failing, environments, warnings });
   });
   app.route('/api', identity.routes);                    // sign-in pages and Better Auth: open to everyone
   app.route('/api', appearance.routes());                // the name, logo and note the sign-in page shows: open too

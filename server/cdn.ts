@@ -1,6 +1,9 @@
-// Cloudflare, the CDN in front of the CDN files. After a publish the worker drops that environment's files from the
-// CDN's cache (purge.ts, Cache-Tag env-<environment>), so apps get a change in seconds instead of within the cache's
-// minute. Without it nothing breaks: the CDN asks this server again after a minute.
+// Cloudflare, the CDN in front of the CDN files. After a publish the worker drops the files it changed from the CDN's
+// cache (purge.ts: the environment's tag, or only the tags of the entities whose answers or links changed), so apps
+// get a change in seconds instead of within the cache's minute. A publish that changed nobody's answers (a new
+// entity, a flag's description) purges nothing. Without it nothing breaks: the CDN asks this server again after a
+// minute. A purge that can't run (Cloudflare says no, or the saved token can't be read after BETTER_AUTH_SECRET
+// changed) is kept on the publish and shown in /readyz's warnings and the metrics (workers.ts publishState).
 //
 // Which zone and token, first found:
 //   1. the server's: cloudflare()'s options in companyflags.config.ts, else CF_ZONE_ID and CF_API_TOKEN
@@ -12,8 +15,9 @@
 import { all, HttpError, one, type Db } from './db.ts';
 import * as journal from './journal.ts';
 import type { Actor } from './layers.ts';
+import type { PublishScope } from './events.ts';
 import type { OnPublish } from './plugin.ts';
-import { CloudflareError, envTag, purgeTags, type CloudflareZone } from './purge.ts';
+import { CloudflareError, entityTag, envTag, linkTag, MAX_PURGE_TAGS, purgeTags, type CloudflareZone } from './purge.ts';
 import { SealError, type Sealer } from './sealed.ts';
 
 export type CdnSource = 'server' | 'console';
@@ -34,6 +38,15 @@ const asIs: Sealer = { seal: (v) => v, open: (v) => v };
 const ZONE_ID = /^[0-9a-f]{32}$/;
 /** A tag no CDN file carries: purging it checks the zone and the token's permission without dropping anything. */
 const CHECK_TAG = 'companyflags-check';
+/** Said when the token saved in the console was sealed with another BETTER_AUTH_SECRET: nothing is purged until then. */
+export const UNREADABLE_TOKEN = 'The CDN’s API token can’t be read (BETTER_AUTH_SECRET changed), so nothing is purged: save it again in Settings → CDN';
+
+/** The tags a publish purges: the environment's, or only those of what it changed; none when it changed nobody's answers. */
+export function purgeTagsFor(environment: string, scope: PublishScope): string[] {
+  if (!scope) return [envTag(environment)];
+  const tags = [...new Set([...scope.entities.map((k) => entityTag(environment, k)), ...scope.links.map((k) => linkTag(environment, k))])];
+  return tags.length > MAX_PURGE_TAGS ? [envTag(environment)] : tags;
+}
 
 export function createCdn(db: Db, o: CdnOptions = {}) {
   const log = o.log ?? (() => {});
@@ -47,22 +60,33 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
     }
   };
 
+  /** The zone and token; null when none is set up. A saved token that can't be read is an error: purging is off
+   *  without anyone having turned it off. */
   async function zone(): Promise<(CloudflareZone & { source: CdnSource }) | null> {
     if (fromServer) return { ...fromServer, source: 'server' };
     const row = await one<{ zone_id: string; api_token: string }>(db, `select zone_id, api_token from cdn_setting`);
-    const token = row ? tokenOf(row.api_token) : null;
-    if (row && token === null) log('the CDN’s API token can’t be read (BETTER_AUTH_SECRET changed): save it again in Settings → CDN');
-    return row && token !== null ? { zoneId: row.zone_id, token, source: 'console' } : null;
+    if (!row) return null;
+    const token = tokenOf(row.api_token);
+    if (token === null) throw new Error(UNREADABLE_TOKEN);
+    return { zoneId: row.zone_id, token, source: 'console' };
   }
 
-  /** The worker's purger: one environment's files, after its publish. 'off' when no CDN is set up. */
-  const purge: OnPublish = async (environment) => {
+  /** The worker's purger, after a publish: the files it changed (purgeTagsFor). 'off' when there is nothing to purge
+   *  or no CDN is set up. */
+  const purge: OnPublish = async (environment, scope = null) => {
+    const tags = purgeTagsFor(environment, scope);
+    if (!tags.length) return 'off';
     const z = await zone();
     if (!z || !o.fetch) return 'off';
-    await purgeTags(o.fetch, z, [envTag(environment)]);
-    log(`purged ${envTag(environment)} from the Cloudflare cache`);
+    await purgeTags(o.fetch, z, tags);
+    log(`purged ${tags.join(', ')} from the Cloudflare cache`);
     return 'purged';
   };
+
+  /** What an operator should know (index.ts /readyz's warnings, the metrics): a saved token that can't be read. */
+  async function warnings(): Promise<string[]> {
+    try { await zone(); return []; } catch (e) { return [(e as Error).message]; }
+  }
 
   /** Checks a zone and token with Cloudflare before they're saved: the words to show when it says no. */
   async function check(z: CloudflareZone): Promise<void> {
@@ -83,6 +107,7 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
 
   return {
     purge,
+    warnings,
 
     async state(): Promise<CdnState> {
       const row = fromServer ? undefined : await one<{ zone_id: string; api_token: string; updated_at: string; updated_by: string }>(db,
@@ -132,6 +157,8 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
       await db.transaction(async (tx) => {
         const gone = await one<{ zone_id: string }>(tx, `delete from cdn_setting returning zone_id`);
         if (!gone) throw new HttpError(404, 'No CDN is set up.');
+        // the purges that failed with it no longer need a look (/readyz's warnings)
+        await tx.query(`update publish_queue set last_error = null where last_error like 'purge:%'`);
         await journal.audit(tx, actor, { kind: 'cdn.remove', before: { zoneId: gone.zone_id } });
       });
     },
@@ -141,7 +168,8 @@ export function createCdn(db: Db, o: CdnOptions = {}) {
       const env = typeof environment === 'string'
         ? await one<{ id: number; key: string }>(db, `select id, key from environment where key = $1`, [environment]) : undefined;
       if (!env) throw new HttpError(404, 'environment not found');
-      const z = await zone();
+      let z: Awaited<ReturnType<typeof zone>>;
+      try { z = await zone(); } catch (e) { throw new HttpError(409, `${(e as Error).message}.`); }
       if (!z) throw new HttpError(409, 'No CDN is set up: add the zone and token first.');
       if (!o.fetch) throw new HttpError(503, 'This server can’t reach Cloudflare.');
       try {

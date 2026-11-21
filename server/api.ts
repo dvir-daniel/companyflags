@@ -83,6 +83,10 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
       if (c.req.header('origin')) throw new HttpError(403, 'an access token can’t be used from a browser');
       const t = await tokens.resolve(bearer);
       if (!t) throw new HttpError(401, 'unknown, expired or revoked access token');
+      // an admin the sign-in rules ask to set up two-factor sign-in: their tokens wait for it too (access.ts)
+      if (await access.twoFactorPending(t.key)) {
+        throw new HttpError(403, 'this token’s person must set up two-factor sign-in first: your organization asks it of admins who sign in with a password');
+      }
       // an alerts token (tokens.ts) turns kill switches off from an alert tool, and nothing else
       if (t.token.alertsOnly && `${c.req.method} ${c.req.path}` !== ALERTS_ONLY_ROUTE) {
         throw new HttpError(403, 'this token is for alerts only: it turns kill switches off at POST /api/alerts/kill');
@@ -150,7 +154,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   };
   // "Who is asking" for the console's simulations: same rules as real app requests (evaluator.ts)
   const simulate = (snap: Snapshot, project: string, entity: string | null, attrs: Record<string, unknown> | undefined): EvalContext => {
-    try { return contextFor(snap, { project, entity }, attrs, { trust: 'console' }); }
+    try { return contextFor(snap, { project, entity }, attrs); }
     catch (e) { if (e instanceof UnknownEntityError) throw new HttpError(404, e.message); throw e; }
   };
   // the installation's dimensions, top to bottom, with how many entities each has
@@ -339,7 +343,7 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
   });
 
   app.put('/flags/:key/meta', async (c) => {
-    return c.json(await updateFlagMeta(db, c.req.param('key'), await jsonBody(c), actor(c.get('user'))));
+    return c.json(await updateFlagMeta(db, c.req.param('key'), await jsonBody(c), actor(c.get('user')), c.get('user')));
   });
 
   app.post('/flags/:key/archive', async (c) => {
@@ -895,7 +899,8 @@ export function consoleApi({ db, plane, hub, identity, access, sso, tokens, plug
     return c.json(await access.invite(c.req.param('key'), actor(c.get('user'))));
   });
 
-  // a password reset link (`#/reset/<token>`), shown to the admin once: works once, for a day (betterAuth.ts)
+  // a password link (`#/reset/<token>`), shown to the admin once: works once, for a day (betterAuth.ts). It sets a new
+  // password, or a first one for someone who signed in only with single sign-on or a provider (access.ts)
   app.post('/people/:key/password-reset', async (c) => {
     peopleOnly(c.get('user'));
     if (!identity.passwordResetToken) throw new HttpError(409, 'this sign-in has no passwords');

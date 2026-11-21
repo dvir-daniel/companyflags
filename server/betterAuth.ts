@@ -17,10 +17,12 @@ import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { twoFactor } from 'better-auth/plugins/two-factor';
 import { PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, type CompiledQuery, type DatabaseConnection, type Dialect, type Driver, type Kysely, type QueryResult } from 'kysely';
 import { createHmac, randomBytes } from 'node:crypto';
+import type { lookup as dnsLookup } from 'node:dns';
 import { BlockList, isIP } from 'node:net';
 import type { Access, Accounts, Attempt, SignInWay, Who } from './access.ts';
 import { all, HttpError, one, type Db, type Queryable } from './db.ts';
 import { connectionUsed, groupRolesOf, roleFromGroups } from './sso.ts';
+import { guardedFetches } from './publicFetch.ts';
 
 export type Provider = { clientId: string; clientSecret: string };
 export type AuthSettings = {
@@ -47,6 +49,8 @@ export type AuthSettings = {
   clientIp?: { header?: string; trustedProxies?: string[] };
   /** Where single sign-on is required, the most hours a session lasts (FF_SSO_SESSION_HOURS; access.ts). */
   ssoSessionHours?: number;
+  /** How names are resolved when single sign-on reaches an identity provider: the system's, unless a test hands it another. */
+  lookup?: typeof dnsLookup;
 };
 
 /** The header this server sets to the client's address for Better Auth's rate limits, replacing any value a client
@@ -360,8 +364,13 @@ export async function createAuth(db: Db, s: AuthSettings, access: Access): Promi
     },
   });
 
+  // Single sign-on reaches the identity provider from this server (OIDC: its token, keys and user info addresses):
+  // only on the public internet, or at a trusted origin, with the connection's own lookup (publicFetch.ts), as when its
+  // settings were read (sso.ts). Better Auth's own check looks the name up once before; this one is the connection's.
+  const guard = { allowedOrigins: s.trustedOrigins ?? [], lookup: s.lookup };
+  const reachesIdp = (path: string) => path.startsWith('/api/auth/sso/') || path === '/api/auth/sign-in/sso';
   return {
-    handler: (request) => auth.handler(request),
+    handler: (request) => (reachesIdp(new URL(request.url).pathname) ? guardedFetches(guard, () => auth.handler(request)) : auth.handler(request)),
     passwordResetToken: async (email) => {
       const key = email.toLowerCase();
       resetTokens.delete(key);

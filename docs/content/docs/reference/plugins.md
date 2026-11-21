@@ -114,14 +114,15 @@ shows when), or `'off'` when it had nothing to do.
 |---|---|
 | `db` | The server's database. Writing to it doesn't add to History or publish anything, and a plugin has no tables of its own: the migrations are the core's. |
 | `plane` | `plane.snapshots`, read only: what each environment serves now, by environment key. |
-| `hub` | `hub.subscribe((environment, revision) => …)`: every server process hears each publish, for live readers such as an event stream. It returns the way to stop listening. `onPublish` runs once per publish, in one process, for work done once. |
+| `hub` | `hub.subscribe((environment, revision, scope) => …)`: every server process hears each publish, for live readers such as an event stream. `scope` says whose answers it may have changed since the one before: `null` for anyone's, else `{ entities, links }` (these entities and those under them; these entities' replaced app links), both empty for nobody's. It returns the way to stop listening. `onPublish` runs once per publish, in one process, for work done once. |
 | `evaluate` | `evaluate(environment, { service, entity, attrs }, flagKey?)`: the one evaluator, answering as OFREP does. Without `flagKey`, every flag sent to the service. An unknown environment or entity is a `404`. |
 | `env` | The server's environment variables. |
 | `baseURL` | The console's address (`BETTER_AUTH_URL`), for links in what the plugin sends; unset when it isn't known. |
 | `log` | Writes a line to the server's log. |
 | `request` | The server's own fetch for its API: `request('/api/v1/environments/prod/flags', { headers: { authorization } })`. It is answered in the same process. Send the caller's own access token, so their role and the approvals hold. Call it from a request, not from `setup`. Prefer the [stable API](/reference/http-api#the-stable-api-apiv1): the rest of `/api` may change in any release. |
 | `secrets` | `secrets.seal(value)` and `secrets.open(sealed)`: a secret the plugin keeps for another system, sealed before it goes into the database (AES-GCM, with a key from `BETTER_AUTH_SECRET`). `open` throws a `SealError` for one sealed with another secret: ask for it again. |
-| `publishState` | `await publishState()`: per environment, its `revision`, the one this process is `serving`, `lagSeconds` and the `error` of a publish that fails, as `/readyz` reports them. |
+| `publishState` | `await publishState()`: per environment, its `revision`, the one this process is `serving`, `lagSeconds`, the `error` of a publish that fails and the `purgeError` of its last purge, as `/readyz` reports them. |
+| `warnings` | `await warnings()`: what `/readyz` lists under `warnings`. |
 
 `entity` left out (or `null`) asks as no entity: what every device gets before sign-in. `attrs` are what the device
 says about itself, flat (`{ "app.version": "6.0.0" }`); only the attributes an app may report are used.
@@ -136,7 +137,8 @@ All are optional.
 | `prefixes` | Its address prefixes. Its routes live under them, and an unknown address under one answers a JSON 404 instead of the console's page. Each starts with `/` and doesn't end with one. None may be, sit under or hold the core's (`/api`, `/sdk/v1/links`, `/oauth`, `/.well-known`, `/healthz`, `/readyz`, `/assets`, `/index.html`), or overlap another plugin's (the built-ins have `/ofrep`, `/sdk/v1/flagd`, `/cdn`, `/hooks`, `/mcp` and `/metrics`): the server checks at start. |
 | `middleware` | Hono middleware, `async (c, next) => { …; await next(); … }`: it runs on every request, before any route, and sees every answer after `await next()`. For an access log, tracing or metrics (`metrics()` uses it). It may add headers; it must not change who may do what. |
 | `console` | A function that gets `{ actor, adminOnly, body }` and returns routes made with `consoleRoutes()`. `await body(c)` is the request's JSON object (an empty body is a `400 bad_json`; `body(c, true)` makes it `{}`). They're mounted under `/api`, behind the console's sign-in, after the core's own routes, so a core route always answers first. `c.get('user')` is the person asking. A change needs the console's `X-Requested-With: companyflags` header. |
-| `onPublish` | Runs after each publish of an environment, once per publish, with its key. Each plugin's runs whatever the others do. A failure is logged and kept on the publish, with the plugin's name, and never undoes the publish. |
+| `onPublish` | Runs after each publish of an environment, once per publish, with its key and the publish's `scope` (as `hub` gives it), so a cache drops only what changed. Each plugin's runs whatever the others do. A failure is logged and kept on the publish, with the plugin's name, and never undoes the publish. |
+| `warnings` | `() => string[]` (or a promise of them): what an operator should know though the server serves. `/readyz` lists them under `warnings` and still answers `200`; `cloudflare()` warns when its saved token can't be read. |
 | `worker` | Work it does on its own, in the background: `{ wake, stop, drain }`. It runs from `setup`; `stop` is called before the database closes. `webhooks()` sends with one. |
 
 `setup` runs once, when the server starts, in the order of the list. Every entry must be a plugin with an `id` of its

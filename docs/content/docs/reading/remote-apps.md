@@ -39,8 +39,12 @@ last answer's `ETag` (a `304` when nothing changed for this app) and the publish
 within a second or two. Each answer's stream is for its service and entity, so a publish wakes only the apps whose
 answers it may change: a change to Acme's own settings wakes Acme's apps, not Globex's. With several servers, the one
 it asks may not have caught up with that publish yet: it does first, so the answer is never the old one. If the
-stream can't stay open, it polls every `pollInterval` instead. Each server keeps so many streams open at once (see
-[Configuration](/self-hosting/configuration#server)); beyond that the stream gets `429` and the provider polls.
+stream can't stay open, it polls every `pollInterval` instead. **Always set `pollInterval`**: without it (its default
+is 0) the provider never polls, and retries a stream it can't open about once a second. Each server keeps so many
+streams open at once, per environment and per client address (see [Configuration](/self-hosting/configuration#server)).
+At a limit the answer lists no stream, so the provider polls; a stream asked for anyway gets `429`. Behind a load
+balancer, set `FF_TRUSTED_PROXIES`, or every device counts as the load balancer's one address
+([Production](/self-hosting/production#3-https-in-front)).
 Changing the context (`OpenFeature.setContext`) asks again. When answers change it emits `ConfigurationChanged`.
 
 Before sign-in, leave the entity out of the context: a key that asks about any entity then gets what everyone gets.
@@ -83,6 +87,7 @@ await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' 
 OpenFeature.setProvider(new OFREPWebProvider({
   baseUrl: 'https://flags.example.com',
   headers: [['Authorization', 'Bearer ff_prod_web_…']],
+  pollInterval: 60_000,
   cacheKeyGenerator: ({ url, auth, domain, targetingKey, context }) =>
     JSON.stringify([url, auth ?? '', domain ?? '', targetingKey ?? '', context.company ?? '', context.brand ?? '']),
 }));

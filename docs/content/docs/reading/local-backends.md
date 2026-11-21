@@ -56,7 +56,9 @@ full (`6.0.0`), so strict semver readers take them.
 
 - `ETag` and `If-None-Match` → `304`. `Cache-Control: private, no-cache`.
 - A flag that isn't in the key's service isn't in the JSON (`FLAG_NOT_FOUND`). A flag switched off is `DISABLED`, and
-  "use the code default" is a `null` variant: in both cases the provider returns the default in your code.
+  "use the code default" is a `null` variant: in both cases the provider returns the default in your code. flagd needs
+  one variant even then, so a flag that never sends a value has a placeholder, `{ "unused": false }` (or `""`, `0`,
+  `{}` for its type), never one of the flag's own values.
 - `401` without a key or with an unknown or revoked one, `403` outside the key's scope, `404` for an entity or
   dimension that doesn't exist, `400` for an `all` key with no entity in the path.
 - `403` for an app service's key: it reads values only, over OFREP. The rules are for a backend's key. A backend's
@@ -136,29 +138,38 @@ const on = await client.getBooleanValue('new_checkout', false, { company: 'acme'
 const forLumen = await client.getBooleanValue('new_checkout', false, { brand: 'lumen', device: { id: 'd-5' } });
 ```
 
-Each flag's targeting starts with one branch per group of entities that get the same answer, the lowest dimension
-first, then what a request naming no entity gets:
+Each flag's targeting starts with a check of who the context names, shared by every flag (`$evaluators`), then one
+branch per group of entities that get the same answer, the lowest dimension first, then what a request naming no
+entity gets:
 
 ```json
 { "if": [
-  { "in": [ { "var": "brand" }, ["bolt", "lumen"] ] }, "on",
-  { "in": [ { "var": "company" }, ["acme"] ] }, { "if": [ <Acme's rules>, … ] },
+  { "$ref": "unknown_entity" }, null,
+  <brand is "bolt" or "lumen">, "on",
+  <company is "acme">, { "if": [ <Acme's rules>, … ] },
   "off"
 ] }
 ```
 
 - **Naming the entity.** The lowest dimension the context names decides, as over OFREP. Naming the ones above it
-  too (`{ "company": "globex", "brand": "lumen" }`) is fine.
+  too (`{ "company": "globex", "brand": "lumen" }`) is fine. Keys are compared as text: `{ "brand": 12 }` is the
+  entity `12`, as over OFREP.
 - **Naming none.** With an `all` key, what no entity gets (before sign-in). With a `below` key, what its own entity
   gets.
-- **An entity the document doesn't have yet** (one that signed up since the last poll): flagd can't refuse the
-  request as OFREP does. It gets what the next entity up that the context names gets (its company, for a new brand),
-  and with none, what no entity gets. Add entities as they sign up (see
+- **What OFREP refuses gets the code's defaults.** Where OFREP answers `400 INVALID_CONTEXT`, every flag here
+  returns the default in your code: an entity the document doesn't have (outside the key's reach, or one that signed
+  up since the last poll), a chain that doesn't match (`{ "company": "acme", "brand": "lumen" }` when Lumen is
+  Globex's), and a dimension that is `""`. It never gets what no entity gets, so an override such as "Company is
+  Globex → off" can't reach an entity by mistake. Add entities as they sign up (see
   [Entities the server doesn't know yet](/reading/context#entities-the-server-doesnt-know-yet)); the next poll brings
   them.
-- **Size.** The document holds every entity the key may ask about. Entities that get the same answer for a flag
-  share one branch, and those that get what everyone gets have none, so it grows with the entities that have their
-  own settings, or are named in rules.
+- **One difference:** flagd can't tell `null` from a key that isn't there, so `{ "brand": null }` asks as if no brand
+  were named. OFREP refuses it. Leave a dimension out rather than send `null`.
+- **Size.** The document holds every entity the key may ask about: each key once in the shared check, written once
+  per document. In each flag, entities that get the same answer share one branch, and those that get what everyone
+  gets have none, so the flags grow with the entities that have their own settings, or are named in rules. flagd
+  copies the shared check into each flag as it loads the document, so its memory grows with the number of entities
+  times the number of flags.
 
 **One document per entity** still works: `GET /sdk/v1/flagd/<dimension>/<entity>`, each with its own `flagSetId`,
 `<environment>/<service>/<entity>`. Use it when a backend serves one entity, or when one entity's rules must stay

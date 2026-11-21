@@ -1,5 +1,6 @@
-// After a publish, drop the environment's files from Cloudflare's cache so apps get the new values in
-// seconds instead of within a minute. Every CDN file is tagged with its environment (delivery.ts Cache-Tag).
+// After a publish, drop the files it changed from Cloudflare's cache so apps get the new values in seconds instead of
+// within a minute. Every CDN file is tagged (delivery.ts Cache-Tag) with its environment, with its entity and each one
+// above it, and with its own link: a publish purges only the tags of what it changed (cdn.ts, events.ts PublishScope).
 // Which zone and token: cdn.ts (cloudflare()'s options, else CF_ZONE_ID and CF_API_TOKEN, else Settings → CDN).
 // Only the cloudflare plugin's `fetch` reaches Cloudflare: tests hand it a fake, so they never purge a real zone.
 
@@ -30,3 +31,13 @@ export class CloudflareError extends Error {
 
 /** The tag every CDN file of an environment carries (delivery.ts). */
 export const envTag = (environment: string) => `env-${environment}`;
+/** The tag of an entity's files and those of every entity under it, in one environment. */
+export const entityTag = (environment: string, entity: string) => `env-${environment}/${entity}`;
+/** The tag of an entity's own files (its app link), in one environment: not those of the entities under it. */
+export const linkTag = (environment: string, entity: string) => `link-${environment}/${entity}`;
+/** A CDN file's tags: its environment, then for an entity's file, the entity and each one above it (`path`, itself
+ *  first), and its own link. */
+export const fileTags = (environment: string, path: readonly string[] | null): string[] =>
+  [envTag(environment), ...(path?.length ? [...path.map((k) => entityTag(environment, k)), linkTag(environment, path[0])] : [])];
+/** The most tags one purge sends: Cloudflare takes 30 in one call on every plan. More than that purges the environment. */
+export const MAX_PURGE_TAGS = 30;

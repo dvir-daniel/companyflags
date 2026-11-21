@@ -70,7 +70,8 @@ claude mcp add --transport http companyflags https://flags.example.com/mcp
 ```
 
 The sign-in is OAuth 2.1 with PKCE. The client finds it by itself (`/.well-known/oauth-protected-resource`) and
-registers itself. Its token lasts an hour, and the client renews it for as long as it's used. It shows on your
+registers itself. Its token lasts an hour, and the client renews it while it's used, for 90 days at most: then it
+asks you to allow it again. It shows on your
 **Account** page, under access tokens, as "*client* (OAuth)": revoke it there to sign the client out.
 
 ### With an access token
@@ -105,7 +106,7 @@ token:
     "companyflags": {
       "command": "docker",
       "args": ["run", "--rm", "-i", "-e", "COMPANYFLAGS_URL", "-e", "COMPANYFLAGS_TOKEN",
-               "ghcr.io/dvir-daniel/companyflags", "companyflags", "mcp"],
+               "ghcr.io/dvir-daniel/companyflags:0.9", "companyflags", "mcp"],
       "env": { "COMPANYFLAGS_URL": "https://flags.example.com", "COMPANYFLAGS_TOKEN": "cfp_…" }
     }
   }

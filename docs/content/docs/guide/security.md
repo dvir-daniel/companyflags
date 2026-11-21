@@ -70,8 +70,11 @@ Authorization: Bearer ffl_prod.web.acme.<secret>
   the link from `/sdk/v1/links` and hands them to the app at sign-in; the console shows it on the entity's **App
   link** as **OpenFeature token**.
 - A token asks about its own entity only, like an API key with scope `entity`. Naming any other entity in the
-  evaluation context gets the same `403` (`this key can’t ask about "…"`), whether that entity exists or not, so a
-  token can't be used to find out which entities exist. Keys scoped to `entity` or `below` answer the same way.
+  evaluation context gets the same `400 INVALID_CONTEXT` (`"…" isn’t an entity this key can ask about`), whether that
+  entity exists or not, so a token can't be used to find out which entities exist. Keys scoped to `entity` or `below`
+  answer the same way over OFREP. It is a `400`, not a `403`, because a `403` stops OpenFeature's web provider for
+  good; the provider reports the error for that evaluation. flagd JSON and app links answer `403` for an entity
+  outside the key's scope.
 - Replacing the link stops the token at the same moment. Every wrong token gets the same
   `401 {"error":"unknown or replaced app link"}`.
 - Like the link, it is readable by anyone who has the app once it holds it: it gives that entity's values, nothing
@@ -152,7 +155,9 @@ What protects the MCP server (`/mcp`), OAuth sign-in for MCP clients, access tok
 - **OAuth is OAuth 2.1 with PKCE (S256 only).** The redirect URI must match one the client registered: exactly, or
   for `http://127.0.0.1`, `http://[::1]` and `http://localhost`, on any port (RFC 8252). A code works once, for 10
   minutes, for its client, redirect URI and resource; used again, the token it gave is revoked. A refresh token works
-  once; an old one back revokes the sign-in. A revoked, expired or removed sign-in can't be refreshed.
+  once; an old one back revokes the sign-in. A revoked, expired or removed sign-in can't be refreshed. A sign-in lasts
+  **90 days** from when its person allowed it at most: refreshing renews it up to then, never past, and the client
+  signs in again after.
 - **No open redirect.** A request the authorize page can't use is shown on the page, never sent back to the client:
   anyone may register a client, so its redirect URI proves nothing until a person allows it.
 - **The consent page** escapes everything it shows, loads nothing, can't be framed, and takes the answer only from
@@ -193,7 +198,8 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
 - passwords are kept as hashes, and have at least 10 characters;
 - **two-factor sign-in**: anyone with a password can add an authenticator app's code and recovery codes, kept
   encrypted. An admin can require it of admins with a password (**Settings → Single Sign-On**): until they set it up,
-  the API refuses them everything but the setup. A password reset link turns it off for that person;
+  the API refuses them everything but the setup. Their access tokens are refused too, even ones made before, and
+  their MCP clients can't sign in over OAuth or renew a sign-in. A password reset link turns it off for that person;
 - each sign-in and each failed one (a wrong password or code, a refusal) is in History, with how; People shows when
   each person last signed in. Security events can go to a SIEM through a webhook
   ([Webhooks → Security events](/guide/webhooks#security-events));
@@ -204,7 +210,9 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
 - adding an OIDC connection won't read an issuer on a private or loopback address unless an admin trusted its origin
   (`BETTER_AUTH_TRUSTED_ORIGINS`), so it can't be used to look around your network. The address is checked as the
   connection is made (so DNS rebinding can't get past it), redirects aren't followed, and errors never repeat what
-  the address answered;
+  the address answered. The token, keys (JWKS) and user info addresses the issuer's settings give are held to the
+  same rules: `https` in production, not a private or loopback address, and reached at each sign-in through the same
+  checked connection;
 - single sign-on makes accounts only for emails at the connection's domains. Someone an admin added at another
   domain joins with their invite link, so one connection can't claim an account, or its role, elsewhere;
 - password accounts are made only from an admin's invite link for that email, or as the first account;
@@ -212,8 +220,13 @@ Sign-in is [Better Auth](https://www.better-auth.com) (see [Sign-in and single s
   account. Until then nobody else joins, however they sign in. See
   [Sign-in → The first account](/self-hosting/sign-in#the-first-account);
 - where a single sign-on connection requires single sign-on, nobody at its domains but the one **break-glass admin**
-  an admin chose signs in with a password, Google, GitHub or Microsoft. Turning it on asks first, needs a sign-in with
-  the connection before (Test sign-in), and signs the others out at once;
+  an admin chose signs in with a password, Google, GitHub or Microsoft. The break-glass admin must have a password.
+  Turning it on asks first, needs a sign-in with the connection before (Test sign-in), and signs the others out at
+  once. Changing the identity provider's details turns it off again until a new Test sign-in, so a typo can't lock
+  everyone out;
+- someone with no way in (they signed in only with single sign-on, and the connection was removed or the identity
+  provider is down) gets a **password link** from an admin (People → Reset password). Where single sign-on is still
+  required, that password works only for the break-glass admin;
 - people who join without an invite get the join role: Viewer unless an admin chose another (never Admin). Viewers
   read every flag and entity. A connection can give roles from the identity provider's groups instead
   ([Sign-in → Group roles](/self-hosting/sign-in#group-roles)).
@@ -229,7 +242,8 @@ sends no CORS headers, so no other site gets that permission.
 ## Protected environments and history
 
 - An environment with **approvals needed** above 0 is protected: a change there is a request, and it applies only
-  after that many approvals. Nobody approves their own request, and an approval is recorded against the request's
+  after that many approvals. Nobody approves their own request (a request from an incoming webhook is the request of
+  whoever last changed the webhook, or made it), and an approval is recorded against the request's
   exact content, the values of the variants it serves included. A request can't be edited: to change it, its author
   withdraws it and sends a new one. While a request waits, nobody can change a value it uses, and if one changes
   anyway, the request ends as a conflict instead of serving it.

@@ -23,7 +23,8 @@ import { fmtDate, useAsync } from '../uiKit.ts';
 import { useDraft } from '../useDraft.ts';
 import { canBreakGlassRollback, roleInfo } from '../../../server/policy.ts';
 import {
-  applyChange, backChange, changeText, holdBacks, isRollback, isVersionRelease, LADDER, nextChange, readyToCleanUp, releaseState, stepText, type Change, type ReleaseState,
+  applyChange, backChange, changeText, holdBacks, isRollback, isVersionRelease, LADDER, nextChange, readyToCleanUp, releaseState, stepText, stillServing,
+  stillServingText, type Change, type ReleaseState,
 } from '../../../server/release.ts';
 import { bumpVersion, compareVersions, newVersionProblem } from '../../../server/semver.ts';
 import { FlagFacts } from './flagHeader.tsx';
@@ -89,7 +90,11 @@ export function ReleaseRollout({ flag, env, onChanged, onEditRules }: { flag: Fl
   const save = async (change: Change) => {
     let layer: Layer;
     try { layer = applyChange(variants, base, change, flag.key); } catch (e) { toast(e as Error); return; }
-    const words = changeText(state, releaseState(variants, layer)) ?? stepText(releaseState(variants, layer));
+    let words = changeText(state, releaseState(variants, layer)) ?? stepText(releaseState(variants, layer));
+    // pausing switches off the release's own rules only: entities whose own settings serve the new value keep it, so
+    // the dialog names them and offers to turn the flag off instead (that stops it for everyone)
+    const left = change.kind === 'pause' ? stillServingText(stillServing(variants, base, flag.layers[env].entities ?? []).map(name)) : null;
+    const turnOff = () => { layer = { ...base, enabled: false }; words = 'Turned off'; };
     // a step is never drafted (like the switch): unpublished edits of this flag here are discarded first
     const drafted = summary.has(flag.key);
     if (drafted) {
@@ -107,23 +112,36 @@ export function ReleaseRollout({ flag, env, onChanged, onEditRules }: { flag: Fl
       const kept = change.kind === 'pause' ? ` The rollout keeps its ${state.step === 'percent' ? `${state.percent}%` : 'early access'}, so you can resume it.` : '';
       const r = await ask({
         title: versioned ? `Roll back ${where} to ${target}?` : `Pause ${flag.key} in ${where}?`,
-        body: <><p>Every device in {where} gets {target} at its next fetch.{kept}</p>
+        body: <><p>{left ? 'Every other device' : 'Every device'} in {where} gets {target} at its next fetch.{kept}</p>
+          {left && <p>{left}</p>}
           <p className="text-ink-3">You can use break-glass, so you can do this right away. It’s logged for review.</p></>,
         reason: { label: 'Why? (required)', placeholder: versioned ? `INC-123: ${state.versions?.target ?? state.versions?.current ?? 'this version'} crashes on start` : 'INC-123: errors went up at 10%' },
         actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'now', label: versioned ? 'Roll back now' : 'Pause now', tone: 'danger', needsReason: true },
+          ...(!versioned ? [{ id: 'off', label: 'Turn off now', tone: 'danger' as const, needsReason: true }] : []),
           { id: 'request', label: 'Request review', needsReason: true }],
       });
-      if (r.action !== 'now' && r.action !== 'request') return;
+      if (r.action !== 'now' && r.action !== 'off' && r.action !== 'request') return;
       note = r.reason;
-      if (r.action === 'now') bypass = r.reason;
+      if (r.action === 'off') turnOff();
+      if (r.action === 'now' || r.action === 'off') bypass = r.reason;
     } else if (isProtected(env)) {
       const r = await ask({
-        title: `Request: ${words}`, body: <p>{envName(env)} needs approval, so this goes to an approver first. It applies once approved.</p>,
+        title: `Request: ${words}`, body: <><p>{envName(env)} needs approval, so this goes to an approver first. It applies once approved.</p>{left && <p>{left}</p>}</>,
         reason: { label: 'Note for the reviewer (optional)', placeholder: 'Error rates look normal at 5%' },
         actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'request', label: 'Request review', tone: 'primary' }],
       });
       if (r.action !== 'request') return;
       note = r.reason;
+    } else if (left) {
+      // nothing is reviewed here: pausing applies at once, but not for everyone
+      const r = await ask({
+        title: versioned ? `Roll back ${where} to ${state.versions?.current ?? 'the built-in version'}?` : `Pause ${flag.key} in ${where}?`,
+        body: <><p>Every other device in {where} gets {versioned ? state.versions?.current ?? 'the built-in version' : 'the old value'} at its next fetch.</p><p>{left}</p></>,
+        actions: [{ id: 'cancel', label: 'Cancel' }, ...(!versioned ? [{ id: 'off', label: 'Turn off', tone: 'danger' as const }] : []),
+          { id: 'go', label: versioned ? 'Roll back' : 'Pause', tone: 'primary' }],
+      });
+      if (r.action !== 'go' && r.action !== 'off') return;
+      if (r.action === 'off') turnOff();
     }
     if (drafted) drafts.discard([flag.key]);
     setBusy(true);
@@ -270,10 +288,12 @@ function RolloutCard({ flag, env, state, waiting, disabled, onChange, name, onEd
     : state.step === 'early' ? `${state.entities.length.toLocaleString()} in early access` : state.step === 'not_started' ? 'Nobody yet' : 'Custom rules';
   const list = (xs: string[]) => (xs.length <= 3 ? xs.join(', ') : `${xs.slice(0, 3).join(', ')} and ${xs.length - 3} more`);
   const targeted = state.entities.length ? `${list(state.entities.map(name))} on every device` : '';
+  // entities whose own settings serve the new value: pausing doesn't reach them
+  const left = stillServingText(stillServing(flag.variations, flag.layers[env].base, flag.layers[env].entities ?? []).map(name));
   const who = !apps.length ? 'It isn’t in any service here.'
     : off ? 'The flag is off here: nobody gets a value, and every app uses the default in its code. Turn it on (top right) to continue where it was.'
     : state.step === 'custom' ? 'Its rules don’t follow the stages (for example two % rules, or a % that doesn’t start at 0), so they’re edited on the Rules tab.'
-    : state.paused ? 'Nobody new gets it: everyone gets the old value until you resume.'
+    : state.paused ? `Nobody new gets it: everyone gets the old value until you resume.${left ? ` ${left}` : ''}`
     : state.step === 'not_started' ? 'Everyone gets the old value.'
     : state.step === 'everyone' ? 'Every device has it, with a device ID or without.'
     : state.step === 'early' ? `${targeted}. Everyone else gets the old value.`

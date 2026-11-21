@@ -37,7 +37,9 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 3. **Apps and backends ask with OpenFeature.** Each reads a **service**: the flags you put in it. Apps use
    OpenFeature's own OFREP providers (web, Android, iOS) with their service's public key, and backends with their
    secret key. Or they download their entity's flags as [flagd](https://flagd.dev) JSON and decide each flag
-   themselves: a backend in memory, an app from a CDN file your CDN caches. See [Reading flags](/reading/overview).
+   themselves: a backend with OpenFeature's flagd provider, a web or React Native app from a CDN file your CDN caches,
+   read with OpenFeature's flagd evaluator (`flagd-core`, not a provider). Native mobile apps use OFREP. See
+   [Reading flags](/reading/overview).
 
 <IllusHowItWorks />
 
@@ -49,7 +51,8 @@ You run it yourself: one Node.js server with a web console, and Postgres for the
 - **Settings that follow the chain.** A brand follows its company's settings until it has its own; a company follows
   the rules for everyone. Each answer can be traced step by step in the console.
 - **OpenFeature, no SDK of ours.** Apps and backends use OpenFeature's own providers (OFREP, flagd), so you can switch
-  to or from CompanyFlags without touching the code that reads flags.
+  to or from CompanyFlags without touching the code that reads flags. The one exception is the CDN file: a web or
+  React Native app reads it with OpenFeature's flagd evaluator and a short fetch loop of its own.
 - **Privacy by construction.** Over OFREP an app gets values only. Its CDN file holds no list of entities and no
   rule about another entity, only the checks the device makes itself (app version, platform, % group): checks on
   dimensions, services and environments are settled on the server. A signed app link pins an app to its own entity,

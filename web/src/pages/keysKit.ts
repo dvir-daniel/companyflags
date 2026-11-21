@@ -22,6 +22,13 @@ export function scopeHints(dims: Dimensions): Record<string, string> {
 /** The scope choices: "Any company or brand", "Only one", "One and everything under it" ("Any" with no dimension). */
 export const scopeAnyLabel = (dims: Dimensions) => (what(dims) ? `Any ${what(dims)}` : 'Any');
 
+/** What a new key starts with, until it is changed: an app's key is public, so it asks about one entity (when there
+ *  is one to pick) and works for a year; a backend's is secret, kept on the server, and asks about any, until revoked.
+ *  `days` 0: until revoked. */
+export function keyDefaults(kind: 'client' | 'server' | undefined, entities: number): { scope: 'all' | 'entity'; days: number } {
+  return kind === 'client' ? { scope: entities > 0 ? 'entity' : 'all', days: 365 } : { scope: 'all', days: 0 };
+}
+
 /** A flag to show in the snippets: its key and type, or none when the service has no flag yet. */
 export type SnippetFlag = { key: string; valueType: string } | null;
 

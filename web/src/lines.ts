@@ -441,5 +441,5 @@ export function preview(flag: FlagDetail, env: string, draft: Draft, enabled: bo
     dimensions: meta.dimensions.map((d) => d.key),
     fields: Object.fromEntries(meta.fields.map((f) => [f.name, { valueType: f.valueType, comesFrom: f.comesFrom }])),
   };
-  return evaluate(snap, flag.key, contextFor(snap, { project: ctx.project, entity: ctx.entity }, ctx.attrs, { trust: 'console' }));
+  return evaluate(snap, flag.key, contextFor(snap, { project: ctx.project, entity: ctx.entity }, ctx.attrs));
 }

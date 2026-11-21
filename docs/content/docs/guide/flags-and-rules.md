@@ -32,7 +32,8 @@ The purpose says what the flag is for, and sets a few limits:
 
 Only releases and experiments may give a % rule a backup ID (see below). Changing a flag's purpose re-checks its
 settings in every environment, and is refused if any would no longer save, for example a % rule on a flag becoming a
-permission flag.
+permission flag. A kill switch or ops flag with a safe value keeps it: only an admin changes it to a purpose without
+one, in the console, and that drops the safe value.
 
 ## Values: named variants or free values
 
@@ -52,7 +53,8 @@ environment, so publishing saves it for all of them. The Variants tab says how o
 environment you're in. Adding a new variant takes effect at once: nobody gets it until a rule serves it.
 
 A value that an environment needing approval serves can't be changed in place, and neither can one that a request
-waiting there uses. Add a new value and point the rules at it: that change is reviewed.
+waiting there uses, nor the flag's safe value while any environment needs approval. Add a new value and point the
+rules at it: that change is reviewed.
 
 ## A JSON Schema
 

@@ -2,7 +2,7 @@
 // says it, and the schedule field's checks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fromNow, percentMoves, scheduleProblem } from '../web/src/pages/safetyKit.ts';
+import { fromNow, percentMoves, purposeSafeNote, scheduleProblem } from '../web/src/pages/safetyKit.ts';
 
 const pct = (ranges: { variation: string; from: number; to: number }[], salt = 'checkout') => ({
   name: null, locked: false, disabled: false, conditions: [], serveVariation: null, split: { by: 'device.id', fallbackBy: null, salt, hashVersion: 2, ranges },
@@ -27,4 +27,11 @@ test('the schedule field: a time that has passed is refused; how far off it is, 
   assert.equal(fromNow(new Date(now + 5 * 60_000).toISOString(), now), 'in 5 minutes');
   assert.equal(fromNow(new Date(now + 14 * 3600_000).toISOString(), now), 'in 14 hours');
   assert.equal(fromNow(new Date(now + 3 * 86400_000).toISOString(), now), 'in 3 days');
+});
+
+test('a new purpose without a safe value says what happens to the one the flag has', () => {
+  assert.equal(purposeSafeNote('off', 'kill_switch', false), null, 'it keeps its safe value');
+  assert.equal(purposeSafeNote(null, 'config', false), null, 'it has none');
+  assert.match(purposeSafeNote('off', 'config', true)!, /^This purpose has no safe value: saving drops off/);
+  assert.match(purposeSafeNote('off', 'release', false)!, /remove off as the safe value first, or ask an admin/);
 });

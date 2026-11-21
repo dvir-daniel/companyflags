@@ -13,7 +13,7 @@ import { loadLayers } from './snapshot.ts';
 import { CODE_DEFAULT, HIDDEN_PREFIX, hiddenKey } from './evaluator.ts';
 import { needsRemoveBy, cleanTags, flagNameProblem, isVersionFlag, reservedKeyProblem } from './checks.ts';
 import { newVersionProblem, releaseVersionProblem } from './semver.ts';
-import { hasSafeValue, mayMoveEntities, maySetSafeValue, needsReview, type EnvFacts } from './policy.ts';
+import { hasSafeValue, mayMoveEntities, maySetSafeValue, needsReview, roleInfo, type EnvFacts } from './policy.ts';
 import { capital, chainOrder, checkDimensions, cleanDimension, count, type Dimension } from './dimensions.ts';
 import { firstMismatch, schemaProblem, type JsonSchema } from './jsonSchema.ts';
 
@@ -195,7 +195,8 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
 // rule or by a % of devices) can't be changed here, since that would change what the environment serves without a
 // review: add a new value and point the rules at it (that change is reviewed). Nor can a value that a request there
 // waiting to go out (in review, approved or scheduled) uses: its reviewers approved the values they saw (and applying
-// it checks them again, layers.ts applyItemsIn). Every way to change variants comes here: the console, flags push
+// it checks them again, layers.ts applyItemsIn). Nor the flag's safe value, while an environment is protected: break-glass
+// serves it there without review, so changing its value is like changing a served one. Every way to change variants comes here: the console, flags push
 // (flagsAsCode.ts), imports and incoming webhooks (values.ts, which only add variants). A flag with free values only
 // takes typed values (hidden variants). A new typed value changes nothing anyone gets until a rule serves it, so it
 // makes no new version and no history entry: the save that serves it does (each publish builds its snapshot from the
@@ -203,8 +204,9 @@ export async function setDelivery(db: Db, flagKey: string, envKey: string, proje
 export async function upsertVariations(db: Db, flagKey: string, variations: { key: string; value: unknown }[], actor: Actor) {
   if (!Array.isArray(variations)) throw new HttpError(422, 'variations: a list of { key, value }');
   return db.transaction(async (tx) => {
-    const f = await one<{ id: string; kind: string; value_type: string; free_values: boolean; json_schema: JsonSchema | null }>(tx,
-      `select id, kind, value_type, free_values, json_schema from flag where key = $1`, [flagKey]);
+    const f = await one<{ id: string; kind: string; value_type: string; free_values: boolean; json_schema: JsonSchema | null; safe: string | null }>(tx,
+      `select f.id, f.kind, f.value_type, f.free_values, f.json_schema, v.key as safe from flag f
+       left join flag_variation v on v.id = f.safe_variation_id where f.key = $1`, [flagKey]);
     if (!f) throw new HttpError(404, 'flag not found');
     mustMatch(f.json_schema, variations);
     const before = await all<{ key: string; value: unknown }>(tx, `select key, value from flag_variation where flag_id = $1 and not is_code_default order by id for update`, [f.id]);
@@ -213,7 +215,12 @@ export async function upsertVariations(db: Db, flagKey: string, variations: { ke
     if (named) throw new HttpError(422, `${flagKey} takes free values: type them into its rules, or turn variants on in its settings (${named.key})`);
     if (f.kind === 'release' && isVersionFlag({ valueType: f.value_type, variants: before })) versionsProblem(before, variations);
     const changing = variations.filter((v) => was.has(v.key) && was.get(v.key) !== canonical(v.value)).map((v) => v.key);
-    const reviewed = (await protectedEnvs(tx)).map((e) => e.id);
+    const guarded = await protectedEnvs(tx);
+    const reviewed = guarded.map((e) => e.id);
+    if (f.safe && changing.includes(f.safe) && guarded.length) {
+      throw new HttpError(409, `${f.safe} is the safe value, which break-glass serves in ${guarded[0].key} without review: add a new value `
+        + 'and make that the safe value (an admin does that)', { variant: f.safe, environment: guarded[0].key });
+    }
     if (changing.length && reviewed.length) {
       const served = await one<{ variant: string; env: string }>(tx, `select v.key as variant, e.key as env
         from flag_variation v join environment e on e.id = any($3::int[])
@@ -362,13 +369,17 @@ export type FlagMeta = {
   jsonSchema?: JsonSchema | null;
 };
 
-// Edit a flag's details. Audited.
-export async function updateFlagMeta(db: Db, flagKey: string, m: FlagMeta, actor: Actor) {
+// Edit a flag's details. Audited. A purpose without a safe value (policy.ts hasSafeValue) drops the one the flag has,
+// and break-glass then has only "Stop sending": only an admin does that, in the console (`by`: the person; flags push
+// passes none), and History records the dropped safe value. Anyone else removes the safe value first.
+export async function updateFlagMeta(db: Db, flagKey: string, m: FlagMeta, actor: Actor, by: { role: string } | null = null) {
   return db.transaction(async (tx) => {
-    const before = await one<{ id: string; name: string | null; tags: string[]; description: string | null; owner: string | null; kind: string; remove_by: string | null;
-      free_values: boolean; json_schema: JsonSchema | null }>(tx,
-      `select id, name, tags, description, owner, kind, remove_by::text as remove_by, free_values, json_schema from flag where key = $1 and archived_at is null for update`, [flagKey]);
-    if (!before) throw new HttpError(404, 'flag not found');
+    const row = await one<{ id: string; name: string | null; tags: string[]; description: string | null; owner: string | null; kind: string; remove_by: string | null;
+      free_values: boolean; json_schema: JsonSchema | null; safe: string | null }>(tx,
+      `select f.id, f.name, f.tags, f.description, f.owner, f.kind, f.remove_by::text as remove_by, f.free_values, f.json_schema, v.key as safe
+       from flag f left join flag_variation v on v.id = f.safe_variation_id where f.key = $1 and f.archived_at is null for update of f`, [flagKey]);
+    if (!row) throw new HttpError(404, 'flag not found');
+    const { safe, ...before } = row;
     const tags = m.tags !== undefined ? cleanTags(m.tags) : { tags: before.tags, problem: null };
     if (tags.problem) throw new HttpError(422, tags.problem);
     const name = m.name !== undefined ? (m.name?.trim() || null) : before.name;
@@ -400,12 +411,17 @@ export async function updateFlagMeta(db: Db, flagKey: string, m: FlagMeta, actor
       const errors = await flagSetupProblems(tx, { id: before.id, key: flagKey }, next.kind);
       if (errors.length) throw new HttpError(422, `These rules don’t fit a ${next.kind.replace('_', ' ')} flag — change them first`, { errors });
     }
-    // a purpose without a safe value (policy.ts hasSafeValue) drops the one it had
+    const drops = safe !== null && !hasSafeValue(next.kind);
+    if (drops && !(by && roleInfo(by.role).changesSettings)) {
+      throw new HttpError(422, `${flagKey} has a safe value (${safe}), and a ${next.kind.replace('_', ' ')} flag has none: remove the safe value in its `
+        + 'settings first, or ask an admin to change the purpose in the console', { safeVariant: safe });
+    }
     await tx.query(`update flag set name = $2, tags = $3, description = $4, owner = $5, kind = $6, remove_by = $7, free_values = $8, json_schema = $9,
         safe_variation_id = case when $10::bool then safe_variation_id end where id = $1`,
       [before.id, next.name, next.tags, next.description, next.owner, next.kind, next.remove_by, next.free_values,
         next.json_schema === null ? null : JSON.stringify(next.json_schema), hasSafeValue(next.kind)]);
-    await changeEverywhere(tx, actor, { kind: 'flag.update', flag: flagKey, before: { ...before, id: undefined }, after: next });
+    await changeEverywhere(tx, actor, { kind: 'flag.update', flag: flagKey, before: { ...before, id: undefined, ...(drops ? { safeVariant: safe } : {}) },
+      after: { ...next, ...(drops ? { safeVariant: null } : {}) } });
     return next;
   });
 }
@@ -627,16 +643,21 @@ export async function createEnvironment(db: Db, input: EnvironmentInput, actor: 
     if (await one(tx, `select 1 from environment where key = $1`, [key])) throw new HttpError(409, `there is already an environment "${key}"`, {}, 'already_exists');
     const env = (await one<{ id: number }>(tx, `insert into environment (key, name, min_approvals, link_secret) values ($1,$2,$3,$4) returning id`,
       [key, name, minApprovals, randomSecret()]))!;
-    // the flag's off and default variants, from the oldest other environment
+    // the flag's off and default variants, and its services, from the oldest other environment: each flag starts off
+    // here, in the same services, so turning it on is all a later Production needs (a reviewed change there)
+    const from = await one<{ id: number }>(tx, `select id from environment where id <> $1 order by id limit 1`, [env.id]);
     const flags = await all<{ id: string; key: string; kind: string; value_type: string; archived_at: string | null; off: string | null; def: string | null }>(tx,
       `select f.id, f.key, f.kind, f.value_type, f.archived_at, voff.key as off, vdef.key as def
-       from flag f join flag_layer l on l.flag_id = f.id and l.entity_id is null
-         and l.environment_id = (select id from environment where id <> $1 order by id limit 1)
+       from flag f join flag_layer l on l.flag_id = f.id and l.entity_id is null and l.environment_id = $1
        left join flag_variation voff on voff.id = l.variation_when_off_id
-       left join flag_variation vdef on vdef.id = l.default_variation_id`, [env.id]);
+       left join flag_variation vdef on vdef.id = l.default_variation_id`, [from?.id ?? null]);
     for (const f of flags) {
       const layer = await normalizeLayer(tx, f, true, { enabled: false, variationWhenOff: f.off, defaultVariation: f.def, rules: [] } as LayerDoc, null);
       await writeLayer(tx, env.id, f, null, layer, undefined, actor);
+    }
+    if (from) {
+      await tx.query(`insert into flag_delivery (flag_id, project_id, environment_id)
+        select flag_id, project_id, $1 from flag_delivery where environment_id = $2`, [env.id, from.id]);
     }
     await change(tx, { id: env.id, key }, actor, { kind: 'environment.create', after: { key, name, minApprovals } });   // its CDN files are served at once
     return { key, name, minApprovals };

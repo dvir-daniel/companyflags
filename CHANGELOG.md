@@ -10,6 +10,93 @@ Every release of the server and console. The Docker image's tags follow these ve
   Settings (`#/migration` opens it there). Two-factor sign-in and access tokens are on **Account**, from the menu under
   your name. "Set up dimensions" is gone: Settings → Dimensions. Pages no longer repeat their title as a heading, a
   release opened from Releases leads back there, and the sidebar doesn't move while the console loads.
+- **The examples' seed works with a token.** A token is On call at most and never changes settings, so the seed
+  asks for an Editor's token. An admin makes the environment, the dimension and the services in the console first; the
+  seed checks them, says what is missing, and adds the companies and flags. It ends by saying which API keys to make.
+- **Every `docker run` line pins `0.9`.** The README, the quickstart, the examples, the MCP setup and the landing page
+  run `ghcr.io/dvir-daniel/companyflags:0.9`, as Compose does, so a later pull never moves the schema on its own.
+- **The CDN file, said plainly.** Web and React Native apps read it with OpenFeature's flagd evaluator (`flagd-core`)
+  and a short fetch loop: it isn't an OpenFeature provider. Native Android and iOS apps use OFREP.
+- **A hard stop no longer locks the embedded database.** After a kill or an out-of-memory, the lock file stayed, and in
+  Docker the next start (PID 1 again) refused it forever. A lock that names this process, or a process ID that now
+  runs another program, is taken over. Backups and `copy-to-postgres` work after a hard stop too.
+- **`/readyz` says whether this instance can serve.** It answers `503` only when the database doesn't answer or no
+  snapshot is loaded. An environment whose publish fails is listed in `failing`, with a `200`: one failed publish no
+  longer takes every instance out of rotation. Alert on `failing`.
+
+- **Pause says who keeps the new value.** Pausing a release switches off its own rules only, so an entity whose own
+  rule or default serves the new value keeps it. The Pause dialog and the rollout card now name those entities, and
+  the dialog offers **Turn off now** (on call, in a protected environment) or **Turn off**, which stops it for everyone.
+- **The Releases page says on call turns a release off at once.** It used to say that is a reviewed request.
+- **A flag's purpose no longer drops its safe value quietly.** Changing a kill switch or ops flag to a purpose without
+  a safe value is refused (422) unless an admin does it in the console, and History records the dropped value.
+  `flags push` gets the same refusal.
+- **The safe value's value is kept like a served one.** While any environment needs approval, an Editor or
+  `flags push` can't change it in place (409): add a new value and make that the safe value.
+- **A new flag is in every service, backends too.** The New flag and New release dialogs tick every service at first.
+  A new environment copies each flag's services from your first environment, so a Production added later gets the
+  flags once they are turned on there.
+- **The quickstart starts Production at 0 approvals.** Raise it once a second person can review. Saving an
+  environment with more approvals than its reviewers can meet now asks first.
+- **Approvals are promised only where an environment requires them**, in the README and on the landing page.
+
+- **A switched-off flag puts none of its values in any file.** Its flagd JSON (CDN files, backends' downloads) has a
+  placeholder variant, `{"unused": …}`, instead of one of its values, which could be one entity's. The same for a flag
+  whose every answer is the app's code default.
+- **The console checks with what you give it.** Debug, Compare and "who gets what" no longer add a platform for an app
+  service named `web`, `ios` or `android`: real requests don't send one unless the app does. Set it under **Device
+  details**.
+- **A number names an entity in the flagd document for many entities too.** `{"brand": 12}` is the brand `12` there,
+  as over OFREP, not "no brand".
+- **OFREP no longer refuses ordinary keys that look like a dimension.** Only a dimension in another case, plural or
+  with separators (`Store`, `stores`, `store_`) is refused; `state`, `stage`, `branch`, `amount`, `store_id` and
+  misspellings are left alone, like every key nothing reads.
+- **An empty dimension is refused, not read as no entity.** `{"company": ""}` or `null` over OFREP is
+  `400 INVALID_CONTEXT`, so a missing join can't get the answers of no entity, which every override for an entity
+  matches. In the flagd document for many entities, what OFREP refuses (an entity it doesn't hold, a chain that
+  doesn't match, an empty dimension) gets the code's defaults, instead of what the entity above or no entity gets.
+- **An entity added a moment ago on another server is answered at once.** Before refusing an entity it doesn't know,
+  or an app token for one, an OFREP server looks in the database. The docs now say what the web provider shows after a
+  refused context: the previous context's values.
+
+- **Two-factor for admins covers tokens and OAuth.** While an admin must set up two-factor sign-in, their access
+  tokens (made before too) are refused, and their MCP clients can't sign in over OAuth or renew a sign-in.
+- **An OAuth sign-in lasts 90 days at most.** Refreshing renews it up to 90 days after its person allowed it, never
+  past; then the client asks again.
+- **The break-glass admin must have a password, and a password link gets anyone back in.** People → Reset password
+  now also gives a first password to someone who signed in only with single sign-on, for when the connection was
+  removed or the identity provider is down. The link says when single sign-on still blocks it.
+- **Nobody approves a change they sent through their own incoming webhook.** A request from an incoming webhook is
+  the request of whoever last changed it (its settings or its address), or made it (migration 0025).
+- **OIDC sign-ins reach only public addresses.** The token, keys and user info addresses an issuer's settings give
+  must be `https` in production and not private, and each sign-in reaches them through the same checked connection
+  as the settings.
+- **A new app key asks about one entity and works for a year.** Those are the defaults for an app service's key,
+  which is public; a backend's key still starts at any entity, until revoked.
+- **Editing a required SSO connection can't lock everyone out.** A change to the identity provider's details turns
+  the requirement off until a new Test sign-in, and the drawer says so. A new domain signs out only its own people.
+- **Group roles never demote by mistake.** A sign-in without the groups claim leaves the role as it is.
+- **More security events.** Environment settings (approvals), webhooks out and in, and replaced app links go to
+  webhooks with security events, and are in the docs' table.
+
+- **A publish purges and wakes only what changed.** A new entity (also one a backend adds with PUT), a rename or a
+  flag's description purges no CDN file and wakes no event stream. An entity's own settings purge only its files and
+  those under it, and a replaced app link purges and wakes only that entity's. CDN files carry new tags for this:
+  `env-<env>/<entity>` for the entity and each one above it, and `link-<env>/<entity>`.
+- **A new entity is served by every server from its first request.** A server that hasn't caught up with the publish
+  yet looks at the database before it answers that an entity isn't there (CDN files, app links, flagd JSON).
+- **Browsers ask for CDN files every time.** `Cache-Control: public, max-age=0, s-maxage=60`, with
+  `CDN-Cache-Control` for the CDN, so a kill switch reaches devices as soon as it reaches the CDN, not up to 11 minutes
+  later. A wrong link's `404` says `no-store`.
+- **A failed CDN purge shows in `/readyz` and the metrics.** `/readyz` lists `warnings` (still `200`) and each
+  environment's `purgeFailing`; the metrics have `companyflags_purge_failing` and `companyflags_warnings`. A token in
+  Settings → CDN that can't be read after `BETTER_AUTH_SECRET` changed is a failure now, not a quiet "off".
+- **Event stream limits don't make load worse.** A client at its stream limit gets answers with no stream, so its
+  provider polls instead of retrying about once a second. A refused stream's `Retry-After` is 60 to 120 seconds.
+  The docs say streams count per client address and need `FF_TRUSTED_PROXIES` behind a load balancer, and every web
+  snippet sets `pollInterval`.
+- **The docs give OFREP's real status for an entity out of scope:** `400 INVALID_CONTEXT`, not `403` (flagd JSON and
+  app links answer `403`).
 
 ## 0.9.0 (2026-11-20)
 

@@ -6,6 +6,7 @@ import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { gunzipSync } from 'node:zlib';
 import { boot, cdnAnswer } from './helpers.ts';
+import { fileTags } from '../server/purge.ts';
 import { flagdCore, nest, ours, same } from './flagdReference.ts';
 import { buildFlagdDoc } from '../server/flagd.ts';
 import { DIMENSION_GROUP, FIELDS, groupFields, type FieldInfo } from '../server/fields.ts';
@@ -111,12 +112,20 @@ test('country rules stay in the file; the device checks them with the CDN’s co
   assert.deepEqual(cdnAnswer(file, flag, { 'geo.country': 'CA' }).value, serve.value);
 });
 
-test('the link: cacheable for a CDN, tagged with its environment, 304 on the same ETag, gzipped', async () => {
+test('the link: cacheable for a CDN (browsers ask every time), tagged with its environment, entities and link, 304 on the same ETag, gzipped', async () => {
   const ok = await t.cdnFile('dev', 'web', 'acme');
   assert.equal(ok.status, 200, JSON.stringify(ok.json));
-  assert.match(ok.headers.get('cache-control')!, /^public, max-age=60/);
+  assert.match(ok.headers.get('cache-control')!, /^public, max-age=0, s-maxage=60/, 'browsers revalidate each time; the CDN keeps it a minute');
   assert.match(ok.headers.get('cache-control')!, /stale-if-error=86400/);
-  assert.equal(ok.headers.get('cache-tag'), 'env-dev');
+  assert.ok(!/stale-while-revalidate/.test(ok.headers.get('cache-control')!), 'no stale copy in browsers');
+  assert.equal(ok.headers.get('cdn-cache-control'), 'public, max-age=60, stale-while-revalidate=600, stale-if-error=86400');
+  assert.equal(ok.headers.get('cache-tag'), 'env-dev,env-dev/acme,link-dev/acme');
+  assert.deepEqual(fileTags('dev', ['lumen', 'globex']), ['env-dev', 'env-dev/lumen', 'env-dev/globex', 'link-dev/lumen'], 'an entity’s file carries the tags of those above it');
+  const anon = await t.app.request('/cdn/v1/flags/dev/web');
+  assert.equal(anon.headers.get('cache-tag'), 'env-dev', 'the file for everyone: its environment only');
+  const wrong = await t.app.request('/cdn/v1/flags/dev/web/acme/not-the-secret');
+  assert.equal(wrong.status, 404);
+  assert.equal(wrong.headers.get('cache-control'), 'no-store', 'no file: nothing keeps that answer');
   assert.equal(ok.json.$schema, 'https://flagd.dev/schema/v0/flags.json', 'flagd JSON');
   assert.deepEqual(ok.json.metadata, { flagSetId: 'dev/web/acme', environment: 'dev', revision: t.plane.get('dev').revision });
   const etag = ok.headers.get('etag')!;
@@ -124,7 +133,8 @@ test('the link: cacheable for a CDN, tagged with its environment, 304 on the sam
   const notModified = await t.cdnFile('dev', 'web', 'acme', { 'if-none-match': etag });
   assert.equal(notModified.status, 304);
   assert.equal(notModified.headers.get('etag'), etag);
-  assert.match(notModified.headers.get('cache-control')!, /^public, max-age=60/, 'a 304 keeps the caching headers');
+  assert.match(notModified.headers.get('cache-control')!, /^public, max-age=0, s-maxage=60/, 'a 304 keeps the caching headers');
+  assert.ok(notModified.headers.get('cdn-cache-control'), 'and the CDN’s own');
   // what a CDN or a browser may send back: the ETag without W/ (a strong copy), or a list with ours in it
   assert.equal((await t.cdnFile('dev', 'web', 'acme', { 'if-none-match': etag.slice(2) })).status, 304);
   assert.equal((await t.cdnFile('dev', 'web', 'acme', { 'if-none-match': `W/"other", ${etag}` })).status, 304);

@@ -99,6 +99,10 @@ For a SIEM (Splunk, Datadog, Elastic, Sentinel…): tick **Security events**, an
 | `token.create`, `token.revoke` | Access tokens |
 | `api_key.create`, `api_key.revoke` | API keys |
 | `sso.add`, `sso.update`, `sso.remove` | Single sign-on connections (never their secrets) |
+| `environment.update` | An environment's settings, such as its approvals (`before.minApprovals`, `after.minApprovals`) |
+| `environment.links_replaced`, `entity.link_replaced` | App links replaced: every link in an environment, or one entity's. They are also `changes` |
+| `webhook.create`, `webhook.update`, `webhook.delete`, `webhook.secret` | Webhooks out. A deleted webhook is told nothing more: another webhook with security events sees it |
+| `webhook_in.create`, `webhook_in.update`, `webhook_in.delete`, `webhook_in.token` | Incoming webhooks, and their addresses replaced |
 
 ```json
 {

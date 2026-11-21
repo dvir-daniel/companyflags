@@ -2,12 +2,14 @@
 // it reach an origin on their own network (FF_WEBHOOK_ALLOWED_ORIGINS). An admin chooses a webhook's address, method,
 // headers and body, so without this a webhook could reach this machine, the network it is on, or a cloud's metadata
 // address (169.254.169.254), and say through its test whether something answers there. An identity provider's
-// settings (sso.ts) are read the same way (publicRead), so adding a connection can't look around the network either.
+// settings (sso.ts) are read the same way (publicRead), so adding a connection can't look around the network either,
+// and so are the token, keys and user info addresses a sign-in with it reaches (guardedFetches, betterAuth.ts).
 //
 // The address a name resolves to is checked when the connection is made, by the connection's own lookup, so a name
 // can't resolve to a public address for the check and a private one for the connection (DNS rebinding). Redirects
 // are never followed. The answer is its status only: webhooks never read what comes back.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
@@ -99,4 +101,55 @@ export async function publicRead(input: string, o: PublicFetchOptions & { header
     req.on('error', fail);
     req.end();
   });
+}
+
+/** A whole fetch (method, headers, body; the answer's status, headers and body, at most `maxBytes`) with the same checks
+ *  as publicFetch: for code that calls fetch itself and reads what comes back (Better Auth's single sign-on, below).
+ *  Redirects aren't followed (a redirect is the status it is). The answer isn't compressed: it is asked for as it is. */
+export function publicFetchWhole(o: PublicFetchOptions & { maxBytes?: number; timeoutMs?: number } = {}): typeof fetch {
+  const allowed = new Set((o.allowedOrigins ?? []).map(originOf).filter(Boolean));
+  const lookup = publicLookup(o.lookup);
+  const max = o.maxBytes ?? 1024 * 1024;
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const req = new Request(input, init);
+    const url = new URL(req.url);
+    const via = connectionFor(url, allowed, lookup);
+    const body = req.body ? Buffer.from(await req.arrayBuffer()) : undefined;
+    const headers = { ...Object.fromEntries(req.headers.entries()), 'accept-encoding': 'identity' };
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(o.timeoutMs ?? 10_000)]);
+    return new Promise<Response>((done, fail) => {
+      const r = (url.protocol === 'https:' ? httpsRequest : httpRequest)(url, { method: req.method, headers, signal, ...via }, (res) => {
+        const chunks: Buffer[] = [];
+        let size = 0;
+        res.on('data', (c: Buffer) => {
+          size += c.length;
+          if (size > max) return r.destroy(new Error(`more than ${max} bytes`));
+          chunks.push(c);
+        });
+        res.on('end', () => {
+          const status = res.statusCode ?? 0;
+          const h = new Headers();
+          for (let i = 0; i + 1 < res.rawHeaders.length; i += 2) h.append(res.rawHeaders[i], res.rawHeaders[i + 1]);
+          const empty = req.method === 'HEAD' || [101, 204, 205, 304].includes(status);
+          done(new Response(empty ? null : Buffer.concat(chunks), { status: status >= 200 && status <= 599 ? status : 502, headers: h }));
+        });
+        res.on('error', fail);
+      });
+      r.on('error', fail);
+      r.end(body);
+    });
+  }) as typeof fetch;
+}
+
+const guarded = new AsyncLocalStorage<typeof fetch>();
+let fetchSwapped = false;
+/** Runs `run` with every fetch it makes (the global fetch, as libraries call it) going through publicFetchWhole with
+ *  these options: only for what `run` does, while it runs; fetches made anywhere else are as they were. */
+export function guardedFetches<T>(o: PublicFetchOptions, run: () => Promise<T>): Promise<T> {
+  if (!fetchSwapped) {
+    const original = globalThis.fetch;
+    globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => (guarded.getStore() ?? original)(input, init)) as typeof fetch;
+    fetchSwapped = true;
+  }
+  return guarded.run(publicFetchWhole(o), run);
 }

@@ -72,6 +72,30 @@ test('where two approvals are needed, one isn’t enough, and two at the same ti
   assert.equal((await t.as('alice').get(`/change-sets/${two}`)).json.reviews.filter((r: any) => r.decision === 'approve' && r.current).length, 2);
 });
 
+test('an environment added later has every flag off, in the services it is in in the first environment', async () => {
+  assert.equal((await t.as('dana').post('/environments', { key: 'live', name: 'Live', minApprovals: 1 })).status, 201);
+  await t.settle();
+  const list = (await t.as('alice').get('/flags?environment=dev&page=0&size=200')).json.rows;
+  let sent = 0;
+  for (const { key } of list) {
+    const f = (await t.as('alice').get(`/flags/${key}`)).json;
+    if (f.archivedAt) continue;
+    assert.deepEqual([...(f.delivery.live ?? [])].sort(), [...(f.delivery.dev ?? [])].sort(), `${key}: the services it has in dev`);
+    assert.equal(f.layers.live.base.enabled, false, `${key}: off`);
+    sent += (f.delivery.live ?? []).length;
+  }
+  assert.ok(sent > 0, 'some flag is in a service there');
+  // turning one on there is all it takes (a reviewed change)
+  const id = await request({ env: 'live', flag: 'api_base_url', edit: (l) => ({ ...l, enabled: true }) });
+  assert.equal((await review('bob', id)).json.status, 'approved');
+  assert.equal((await t.as('alice').post(`/change-sets/${id}/apply`)).status, 200);
+  await t.settle();
+  const service = (await t.as('alice').get('/flags/api_base_url')).json.delivery.live[0];
+  const r = await t.trace({ environment: 'live', service, entity: null, flag: 'api_base_url' });
+  assert.notEqual(r.reason, 'ERROR', JSON.stringify(r));
+  assert.notEqual(r.reason, 'DISABLED');
+});
+
 test('a request is applied once: a second apply at the same time finds it applied and leaves it so', async () => {
   const id = await request({ flag: 'welcome_message', edit: (l) => ({ ...l, defaultVariation: 'holiday' }) });
   assert.equal((await review('bob', id)).json.status, 'approved');

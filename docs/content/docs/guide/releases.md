@@ -36,7 +36,7 @@ step there turns it on.
 | **Early access** | These entities, on every device, whatever the % | A rule for everyone, "Company or brand is one of …", serving true |
 | **% of devices** | Early access, plus N% of devices | A rule serving true to one range from 0 to N%, by device ID. It may be limited to some services. |
 | **Everyone** | Every device, with a device ID or without | The default is true, and the release's rules are gone |
-| **Paused** | Nobody new | The release's rules are kept but paused, so resuming brings back the same devices |
+| **Paused** | Nobody new, except entities whose own settings serve it | The release's rules are kept but paused, so resuming brings back the same devices |
 | **Off** | Nobody gets a value | The flag's switch: apps use the default in their code |
 | **Custom** | Depends on the rules | Anything else, such as two % rules or a % that doesn't start at 0. Edit it on the Rules tab. |
 
@@ -64,7 +64,8 @@ The release's own rules are rules for everyone, so the chain applies as usual
 `new_checkout` keeps Android builds below 5.0 on the old checkout whatever the step. An entity's own rules come before
 them too: Acme's rule "Acme gets it everywhere" gives Acme and Acme Kids the new checkout on every device the override
 allows. An entity whose own default comes instead of the rules for everyone ("Skip what's above") is never reached
-by the release.
+by the release. Pause doesn't change entities' own settings either: Acme keeps the new checkout while the release is
+paused, and the card and the Pause dialog name it. To stop it for everyone, turn the flag off.
 
 ### How a step is saved
 
@@ -76,7 +77,8 @@ Every step is one save of the flag's defaults, made against the version the page
   instead of the buttons.
 - Steps are never drafted. If you have unpublished edits of the flag in that environment, they are discarded first,
   after a question.
-- Turning a release off in a protected environment is a reviewed request, for on call too.
+- Turning a release off in a protected environment is a request for an editor. On call and admins can turn it off,
+  or pause it, at once with a reason ([Rollbacks](#rollbacks)).
 
 ## Clean up
 
@@ -143,8 +145,9 @@ is break-glass: it applies at once and History marks it as an emergency. It is a
 back on the version everyone else is on (the % kept), or everyone on an older version this environment served while the
 flag was on. Anything else, including **Resume**, is a request. See [Approvals and history](/guide/approvals#break-glass).
 
-An on/off release works the same way: on call sees **Pause now** (everyone back on the old value, the % kept) and can
-turn it off, both at once with a reason.
+An on/off release works the same way: on call sees **Pause now** (everyone back on the old value, the % kept) and
+**Turn off now**, both at once with a reason. Pause leaves entities whose own settings serve the new value on it; the
+dialog names them. Turn off stops it for everyone: apps use the default in their code.
 
 ## Not built yet
 

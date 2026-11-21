@@ -107,8 +107,9 @@ secret shorter than 32 characters, and says which one is wrong.
 | `FF_DATA_DIR` | `./data` | Without `DATABASE_URL`: the folder of the embedded database (PGlite, Postgres compiled to run inside the process). The Docker image sets `/data/db`. |
 
 - Only one process may open an embedded database folder. The server writes a lock file next to the folder (`./data`
-  gets `./data.lock`) with its process ID. A second server on the same folder refuses to start; a lock left by a
-  process that has ended is taken over.
+  gets `./data.lock`) with its process ID and command. A second server on the same folder refuses to start. A lock
+  left behind is taken over: by a process that has ended, by a hard stop (in Docker the next start is PID 1 again),
+  or with a process ID that now runs another program.
 - The first start creates the `btree_gist` extension. On a managed Postgres server the database user needs the right
   to create it, or create it once yourself.
 - The embedded database is PGlite, pinned to one version, which embeds Postgres 18. A folder made by another Postgres
@@ -145,10 +146,10 @@ See [Upgrading](/self-hosting/upgrading).
 | `FF_PORT_FILE` | none | A file the server writes the port it listens on to, once it listens (the Docker image's health check reads `/tmp/companyflags.port`, so it follows `server.port` in a config file). |
 | `HOST` | `0.0.0.0` | The address it listens on. `127.0.0.1` keeps it to this machine, e.g. behind a proxy on the same host. |
 | `NODE_ENV` | none | `production` for real use (see above). Anything else is development mode. `development` and `test` also turn off sign-in rate limits. |
-| `FF_TRUSTED_PROXIES` | none | Your proxies' addresses or ranges, comma-separated (`10.0.0.0/8`). For sign-in rate limits, a connection from one of them is believed about the client's address: `X-Forwarded-For`, read from the right past the proxies, or `FF_CLIENT_IP_HEADER`. Any other connection counts as its own address. |
+| `FF_TRUSTED_PROXIES` | none | Your proxies' addresses or ranges, comma-separated (`10.0.0.0/8`). For sign-in rate limits and the change-event streams' per-client limit, a connection from one of them is believed about the client's address: `X-Forwarded-For`, read from the right past the proxies, or `FF_CLIENT_IP_HEADER`. Any other connection counts as its own address. Behind a load balancer, set it: without it, every device counts as the load balancer's address. |
 | `FF_CLIENT_IP_HEADER` | none | A header your proxy or CDN sets to the client's address (`cf-connecting-ip`, `x-real-ip`), read instead of `X-Forwarded-For`. Needs `FF_TRUSTED_PROXIES`: without it the server refuses to start. |
-| `FF_EVENT_STREAMS_PER_ENVIRONMENT` | `10000` | The most change-event streams (OFREP's server-sent events) this server keeps open for one environment. One more gets `429`, and its provider polls instead. Each instance counts its own. |
-| `FF_EVENT_STREAMS_PER_CLIENT` | `100` | The most it keeps open for one client address: the connection's, or what `FF_TRUSTED_PROXIES` says, as for sign-in rate limits. Many devices behind one office address count together. |
+| `FF_EVENT_STREAMS_PER_ENVIRONMENT` | `10000` | The most change-event streams (OFREP's server-sent events) this server keeps open for one environment. At the limit, answers list no stream and providers poll instead (their `pollInterval`); a stream asked for anyway gets `429`. Each instance counts its own. |
+| `FF_EVENT_STREAMS_PER_CLIENT` | `100` | The most it keeps open for one client address: the connection's, or what `FF_TRUSTED_PROXIES` says, as for sign-in rate limits. Many devices behind one office address count together. Behind a load balancer without `FF_TRUSTED_PROXIES`, every device has the load balancer's address, so only this many devices get streams on each instance: set it. |
 
 Without either, rate limits and event streams count the connection's own address. The server refuses to start when an
 entry in `FF_TRUSTED_PROXIES` isn't an address or a range, or when an `FF_EVENT_STREAMS_…` value isn't a whole number

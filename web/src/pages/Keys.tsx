@@ -20,7 +20,7 @@ import { useEnvs } from './envs.ts';
 import { expiresText } from './tokensKit.ts';
 import { EntityPicker } from './flagParts.tsx';
 import { roleInfo } from '../../../server/policy.ts';
-import { keySnippets, scopeAnyLabel, scopeHints, type Snippet, type SnippetFlag } from './keysKit.ts';
+import { keyDefaults, keySnippets, scopeAnyLabel, scopeHints, type Snippet, type SnippetFlag } from './keysKit.ts';
 
 /*
  * API keys: the dense console list. A sticky page bar (search, filters, New key), a sortable
@@ -309,11 +309,17 @@ function CreateKey({ onClose, onCreated }: { onClose: () => void; onCreated: () 
   const env = meta.environments.some((e) => e.key === envPick) ? envPick : meta.environments[0]?.key ?? '';
   const [projectPick, setProject] = useState('');
   const project = services.some((p) => p.key === projectPick) ? projectPick : services[0]?.key ?? '';
-  const isApp = services.find((p) => p.key === project)?.kind === 'client';
-  const [scope, setScope] = useState('all');
+  const kind = services.find((p) => p.key === project)?.kind;
+  const isApp = kind === 'client';
+  // an app's key starts at one entity and a year, a backend's at any and until revoked (keysKit.ts keyDefaults),
+  // until they are picked here
+  const starts = keyDefaults(kind, meta.entities.length);
+  const [scopePick, setScope] = useState<string | null>(null);
+  const scope = scopePick ?? starts.scope;
   const [entity, setEntity] = useState('');
   const [label, setLabel] = useState('');
-  const [days, setDays] = useState(0);
+  const [daysPick, setDays] = useState<number | null>(null);
+  const days = daysPick ?? starts.days;
   const [created, setCreated] = useState<string | null>(null);
   // a flag this service reads in this environment, for the snippets (null: none yet, they use a placeholder)
   const [sample, setSample] = useState<SnippetFlag>(null);

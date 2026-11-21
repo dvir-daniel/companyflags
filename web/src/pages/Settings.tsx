@@ -149,7 +149,7 @@ export function InviteLink({ person, invite, onClose }: { person: User; invite: 
 }
 
 /** A password reset link an admin made for someone (People → Reset password), shown once. */
-export function ResetLink({ person, token, onClose }: { person: User; token: string; onClose: () => void }) {
+export function ResetLink({ person, token, ssoRequired, onClose }: { person: User; token: string; ssoRequired?: boolean; onClose: () => void }) {
   const { toast } = useApp();
   const url = `${location.origin}${location.pathname}#/reset/${token}`;
   return (
@@ -159,7 +159,8 @@ export function ResetLink({ person, token, onClose }: { person: User; token: str
         <Button onClick={() => void copyText(url, 'the reset link', toast)}>Copy link</Button>
       </Actions>
     }>
-      <p className="m-0 text-sm text-ink-1">Send this to {person.key}. It works once, for a day: they choose a new password and are signed out everywhere. You won’t see it again.</p>
+      <p className="m-0 text-sm text-ink-1">Send this to {person.key}. It works once, for a day: they choose a password and are signed out everywhere. Someone who signed in only with single sign-on gets their first password this way. You won’t see it again.</p>
+      {ssoRequired && <Callout tone="warn">Their email domain requires single sign-on, so the password won’t sign them in yet. It works once single sign-on isn’t required there, or if they become the break-glass admin.</Callout>}
       <Input readOnly value={url} data-autofocus onFocus={(e) => e.currentTarget.select()} className="h-[34px] font-mono text-11" aria-label="Password reset link" />
     </Modal>
   );
@@ -195,6 +196,14 @@ function EnvironmentDrawer({ env, onClose }: { env: Env | null; onClose: () => v
       });
       if (d.action !== 'go') return;
     }
+    // a number nobody here can meet: said again before it's saved, since requests there would wait for good
+    if (shortfall && approvals > (env?.minApprovals ?? 0)) {
+      const d = await ask({
+        title: `Requests in ${name.trim() || key} couldn’t go out`, body: <p>{shortfall}</p>,
+        actions: [{ id: 'cancel', label: 'Keep editing' }, { id: 'go', label: 'Save anyway', tone: 'danger' }],
+      });
+      if (d.action !== 'go') return;
+    }
     const r = await run(() => env
       ? api('PUT', `/environments/${env.key}`, { name, minApprovals: approvals })
       : api('POST', '/environments', { key, name, minApprovals: approvals }));
@@ -205,7 +214,7 @@ function EnvironmentDrawer({ env, onClose }: { env: Env | null; onClose: () => v
   };
   return (
     <Drawer open onClose={onClose} title={env ? `Edit ${env.name}` : 'New environment'} initialFocus={first}
-      subtitle={env ? undefined : 'Every flag gets its own settings here, starting off.'}
+      subtitle={env ? undefined : 'Every flag gets its own settings here, starting off, in the services it is in now.'}
       footer={<>
         <Button disabled={busy || !name.trim() || (!env && !key)} onClick={save}>{busy ? 'Saving…' : env ? 'Save' : 'Add environment'}</Button>
         <Button variant="secondary" onClick={onClose}>Cancel</Button>

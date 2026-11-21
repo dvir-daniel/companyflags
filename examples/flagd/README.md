@@ -18,8 +18,9 @@ last ETag, and usually gets a `304`. Your backends then evaluate in memory, with
    docker compose logs companyflags     # the setup link
    ```
 
-3. Open the setup link and make the admin account. Then make an access token for the seed: your name at the foot of
-   the sidebar → **Access tokens** → **+ New token**, with the role **Admin**. Copy it: it is shown once.
+3. Open the setup link and make the admin account. Make the environment `dev`, the dimension `company` and the
+   services `web` and `api`, then an access token with the role **Editor**: steps 3 and 4 of
+   [the examples' README](../README.md#set-up-a-server-for-them).
 
 4. Run the seed. It is in `examples/`, so go back to the repo's root first:
 
@@ -29,7 +30,8 @@ last ETag, and usually gets a `304`. Your backends then evaluate in memory, with
    cd examples/flagd
    ```
 
-   It prints a key for the `web` service and one for the `api` service. See [the examples' README](../README.md).
+   It adds Acme, Globex and the flags. Then make the `api` service's key for `dev` in the console:
+   **API Keys → + New key**.
 
 5. Add the `api` service's key to `.env`, beside the secret, and start flagd:
 

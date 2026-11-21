@@ -4,7 +4,8 @@
 //   changes  what an environment serves: one message per save, with every entry of it, and `values`: what those flags
 //            are set to now (values.ts), so another system can be kept the same
 //   reviews  a request made, approved, rejected, scheduled or unscheduled, withdrawn, or refused when it was applied
-//   security sign-ins (and failed ones), people and roles, access tokens, API keys, single sign-on, sign-in rules
+//   security sign-ins (and failed ones), people and roles, access tokens, API keys, single sign-on, sign-in rules,
+//            environments' settings (their approvals), webhooks out and in, and replaced app links
 // as signed JSON (Standard Webhooks: webhook-id, webhook-timestamp, webhook-signature), a Slack message, or whatever a
 // JSONata expression makes of the JSON (transform.ts; nothing: that message isn't sent). Each webhook keeps its own
 // place in the history (`cursor`), so it gets every change once and in order; one that fails is tried again later
@@ -17,6 +18,8 @@
 //
 // In: another system posts its values to /hooks/v1/<token>, in one of the import formats; they're imported into the
 // webhook's environment (values.ts applyImport): applied at once, or as a request for review where it needs approval.
+// That request is the person's who last changed the webhook (its settings or its address), else its creator's: they
+// can't approve it themselves, as with any request of theirs (policy.ts reviewRefusal).
 // A value that's already what it says changes nothing, so sending back what a webhook out sent makes no loop.
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -36,10 +39,13 @@ export const METHODS = ['POST', 'PUT', 'PATCH'] as const;
 const REVIEW_KINDS = new Set(['change_set.create', 'change_set.approve', 'change_set.reject', 'change_set.schedule', 'change_set.unschedule',
   'change_set.withdraw', 'change_set.apply_failed']);
 /** Security events, for a SIEM: sign-ins and the ones that didn't go through, people and their roles, access tokens,
- *  API keys, single sign-on and the sign-in rules. Every environment's: the environments a webhook names don't
- *  narrow them. */
+ *  API keys, single sign-on and the sign-in rules, an environment's settings (lowering its approvals), webhooks out and
+ *  in (deleting the SIEM's own webhook), and replaced app links. Every environment's: the environments a webhook names
+ *  don't narrow them. A replaced app link changes what is served too, so it is also one of the changes. */
 export const SECURITY_KINDS = new Set(['sign_in', 'sign_in.failed', 'sign_in.rules', 'person.add', 'person.role', 'person.invite',
-  'person.password_reset', 'person.remove', 'token.create', 'token.revoke', 'api_key.create', 'api_key.revoke', 'sso.add', 'sso.update', 'sso.remove']);
+  'person.password_reset', 'person.remove', 'token.create', 'token.revoke', 'api_key.create', 'api_key.revoke', 'sso.add', 'sso.update', 'sso.remove',
+  'environment.update', 'environment.links_replaced', 'entity.link_replaced',
+  'webhook.create', 'webhook.update', 'webhook.delete', 'webhook.secret', 'webhook_in.create', 'webhook_in.update', 'webhook_in.delete', 'webhook_in.token']);
 export const TIMEOUT_MS = 10_000;
 /** Seconds before each next try of a message that failed; after the last, it's passed over. */
 export const RETRY_AFTER_S = [5, 30, 120, 600, 1800, 3600, 7200];
@@ -63,11 +69,17 @@ export type Filter = { events: readonly string[]; environments: readonly string[
 
 export const eventOf = (r: Pick<HistoryRow, 'kind' | 'revision'>): WebhookEvent | null =>
   r.revision !== null ? 'changes' : REVIEW_KINDS.has(r.kind) ? 'reviews' : SECURITY_KINDS.has(r.kind) ? 'security' : null;
-export const wants = (h: Filter, r: HistoryRow) => {
+/** The events a row is: its own (eventOf), and a security event too for one that also changes what is served (a
+ *  replaced app link). */
+export const eventsOf = (r: Pick<HistoryRow, 'kind' | 'revision'>): WebhookEvent[] => {
   const e = eventOf(r);
-  return !!e && h.events.includes(e)
-    && (e === 'security' || !h.environments || (r.environment !== null && h.environments.includes(r.environment)));
+  return [...(e ? [e] : []), ...(e !== 'security' && SECURITY_KINDS.has(r.kind) ? ['security' as const] : [])];
 };
+/** The event this webhook gets a row as, or null: security events in every environment, the others in its own. */
+export const wantedAs = (h: Filter, r: HistoryRow): WebhookEvent | null =>
+  eventsOf(r).find((e) => h.events.includes(e)
+    && (e === 'security' || !h.environments || (r.environment !== null && h.environments.includes(r.environment)))) ?? null;
+export const wants = (h: Filter, r: HistoryRow) => wantedAs(h, r) !== null;
 // One save's rows share its time (Postgres now() is the transaction's start) and who made it.
 const saveOf = (r: HistoryRow) => `${r.at}|${r.changedBy}`;
 
@@ -139,9 +151,12 @@ export type Message = {
   };
 };
 
-export function buildMessage(rows: readonly HistoryRow[], n: Names, o: { baseURL?: string | null; values?: Record<string, ValuesDoc> } = {}): Message {
+/** The message for one save's rows. `hook`: the webhook it goes to, so a row that is two events (a replaced app link)
+ *  is the one it asked for; without it, each row's own event. */
+export function buildMessage(rows: readonly HistoryRow[], n: Names, o: { baseURL?: string | null; values?: Record<string, ValuesDoc>; hook?: Filter } = {}): Message {
   const first = rows[0];
-  const type: WebhookEvent = rows.some((r) => eventOf(r) === 'changes') ? 'changes' : eventOf(first) === 'security' ? 'security' : 'reviews';
+  const as = (r: HistoryRow) => (o.hook ? wantedAs(o.hook, r) : eventOf(r));
+  const type: WebhookEvent = rows.some((r) => as(r) === 'changes') ? 'changes' : as(first) === 'security' ? 'security' : 'reviews';
   const request = type === 'reviews' ? first.changeSetId : null;
   const base = o.baseURL?.replace(/\/+$/, '');
   return {
@@ -337,7 +352,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
         let sent: Sent;
         try {
           const n = await names(next.message);
-          const m = buildMessage(next.message, n, { baseURL: o.baseURL, values: valuesFor(next.message) });
+          const m = buildMessage(next.message, n, { baseURL: o.baseURL, values: valuesFor(next.message), hook: { events: h.events, environments: h.environments } });
           const out = await render(h, m, n);
           sent = out ? await send(h, `msg_${next.message[0].id}`, out) : { ok: true, status: null, error: null, skipped: true };
         } catch (e) {
@@ -638,8 +653,8 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
       await db.transaction(async (tx) => {
         await tx.query(`update webhook_in set name = coalesce($2, name), environment_id = coalesce($3, environment_id), format = coalesce($4, format),
             expression = case when $5::boolean then $6 else expression end, create_flags = coalesce($7, create_flags), flag_sets = coalesce($8, flag_sets),
-            enabled = coalesce($9, enabled) where id = $1`,
-          [id, v.name ?? null, v.environmentId ?? null, v.format ?? null, v.expression !== undefined, v.expression ?? null, v.createFlags ?? null, v.services ?? null, v.enabled ?? null]);
+            enabled = coalesce($9, enabled), changed_by = $10 where id = $1`,
+          [id, v.name ?? null, v.environmentId ?? null, v.format ?? null, v.expression !== undefined, v.expression ?? null, v.createFlags ?? null, v.services ?? null, v.enabled ?? null, actor.name]);
         const after = (await one<IncomingView>(tx, `select ${IN_COLUMNS} from webhook_in w join environment e on e.id = w.environment_id where w.id = $1`, [id]))!;
         const pick = (x: IncomingView) => ({ name: x.name, environment: x.environment, format: x.format, createFlags: x.createFlags, services: x.services, enabled: x.enabled });
         await journal.audit(tx, actor, { kind: 'webhook_in.update', before: pick(before), after: pick(after) });
@@ -660,7 +675,7 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
       const before = await viewIn(id);
       const { secret, token } = newInToken(id);
       await db.transaction(async (tx) => {
-        await tx.query(`update webhook_in set token_hash = $2 where id = $1`, [id, sha256(secret)]);
+        await tx.query(`update webhook_in set token_hash = $2, changed_by = $3 where id = $1`, [id, sha256(secret), actor.name]);
         await journal.audit(tx, actor, { kind: 'webhook_in.token', after: { name: before.name } });
       });
       return { token };
@@ -671,8 +686,8 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
     async receive(token: string, read: () => Promise<string>): Promise<{ status: number; json: Record<string, unknown> }> {
       const t = parseToken(token);
       const row = t ? await one<{ id: number; name: string; environment: string; format: string; expression: string | null; createFlags: boolean;
-        services: string[]; enabled: boolean; tokenHash: string }>(db, `select w.id::int as id, w.name, e.key as environment, w.format, w.expression,
-          w.create_flags as "createFlags", w.flag_sets as "services", w.enabled, w.token_hash as "tokenHash"
+        services: string[]; enabled: boolean; tokenHash: string; owner: string }>(db, `select w.id::int as id, w.name, e.key as environment, w.format, w.expression,
+          w.create_flags as "createFlags", w.flag_sets as "services", w.enabled, w.token_hash as "tokenHash", coalesce(w.changed_by, w.created_by) as owner
         from webhook_in w join environment e on e.id = w.environment_id where w.id = $1`, [t.id]) : undefined;
       const hash = t ? Buffer.from(sha256(t.secret)) : Buffer.alloc(64);
       if (!t || !row || !timingSafeEqual(hash, Buffer.from(row.tokenHash.padEnd(64).slice(0, 64)))) {
@@ -690,7 +705,9 @@ export function createWebhooks(db: Db, plane: Snapshots, o: WebhookOptions = {})
         const read = await toValues(row.format, input, row.expression);
         if (read.problems.length) return answer(422, { error: 'Nothing was imported: fix these first.', problems: read.problems }, `Refused: ${read.problems[0]}`);
         const actor: Actor = { name: `Webhook: ${row.name}`, type: 'service_token' };
-        const r: Imported = await applyImport(db, read.doc, { environment: row.environment, createFlags: row.createFlags, services: row.services, reason: `From the webhook “${row.name}”` }, actor);
+        // a request is its owner's: whoever last changed the webhook, or made it. They can't approve it themselves, so
+        // an admin can't send a change through their own webhook and approve it alone
+        const r: Imported = await applyImport(db, read.doc, { environment: row.environment, createFlags: row.createFlags, services: row.services, reason: `From the webhook “${row.name}”` }, actor, row.owner);
         const warnings = [...read.warnings, ...r.warnings];
         const what = `${r.created ? `${r.created} new, ` : ''}${r.changed} changed`;
         if (!r.applied) return answer(202, { applied: false, request: r.request, created: r.created, changed: r.changed, warnings }, `Request #${r.request}: ${what}`);

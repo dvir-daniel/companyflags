@@ -27,13 +27,19 @@
 //     (FF_SIGNUP_DOMAINS);
 //   - where a connection requires single sign-on, no password or Google, GitHub or Microsoft sign-ins or accounts at its
 //     domains, except for the one break-glass admin an admin chose (a broken identity provider must not lock everyone
-//     out). There, a session lasts `ssoSessionHours` at most: then they sign in again, and the identity provider says
-//     again whether they still work there.
+//     out): an admin who has a password. There, a session lasts `ssoSessionHours` at most: then they sign in again, and
+//     the identity provider says again whether they still work there.
 // People who join without an invite start with the join role (Viewer unless an admin chose another); an admin gives
 // them a role, or the identity provider's groups do (sso.ts group roles).
 //
 // Admins who have a password must set up two-factor sign-in before they use the console, when the rules say so
-// (`needsTwoFactor`: the console's API refuses them everything else until then).
+// (`needsTwoFactor`: the console's API refuses them everything else until then, their access tokens and OAuth
+// sign-ins too: `twoFactorPending`).
+//
+// Someone with no way in (they signed in only with single sign-on, and its connection was removed or its identity
+// provider is down) gets a password link from an admin (`passwordReset`): it sets a first password, or a new one.
+// Where single sign-on is required, that password signs in only the break-glass admin, so the break-glass admin signs
+// in first, and turns the requirement off if everyone needs passwords for a while.
 
 import { randomBytes } from 'node:crypto';
 import { sameSecret, sha256 } from './auth.ts';
@@ -202,10 +208,10 @@ export function createAccess(db: Db, opts: AccessOptions) {
   const mayMakeFirstAccount = async (q: Queryable, setup: string | undefined) =>
     await setupOpen(q, setup) && !(await one(q, `select 1 from app_user limit 1`));
 
-  /** The break-glass admin, while they are an admin whose access isn't removed. */
+  /** The break-glass admin, while they are an admin whose access isn't removed, with a password to sign in with. */
   const breakGlass = async (q: Queryable) => {
     const key = (await rulesOf(q)).breakGlassAdmin;
-    return key && await activeAdmins(q, key) ? key : null;
+    return key && await activeAdmins(q, key) && await accounts.hasPassword(q, key) ? key : null;
   };
 
   /** The connections that require single sign-on at this email's domain. */
@@ -335,27 +341,31 @@ export function createAccess(db: Db, opts: AccessOptions) {
         await tx.query(`select pg_advisory_xact_lock($1)`, [PEOPLE_LOCK]);
         const cur = await one<{ role: Role; removed: boolean }>(tx, `select role, removed_at is not null as removed from app_user where key = $1`, [key]);
         if (!cur) throw new HttpError(404, `no person "${key}"`);
-        if (!cur.removed && (await accounts.of(tx, [key])).has(key)) throw new HttpError(409, `${key} already has an account: they don’t need an invite`);
+        if (!cur.removed && (await accounts.of(tx, [key])).has(key)) {
+          throw new HttpError(409, `${key} already has an account: make them a password link instead (Reset password)`);
+        }
         await tx.query(`update app_user set invite_hash = $2, invite_expires_at = $3::timestamptz, removed_at = null where key = $1`, [key, hash, inviteUntil()]);
         await audit(tx, actor, { kind: 'person.invite', after: { person: key, role: cur.role } });
         return { key, role: cur.role, invite: token };
       });
     },
 
-    /** A password reset link for someone with a password, made by an admin (this server sends no email). `token` asks
-     *  the sign-in for one (betterAuth.ts passwordResetToken). Someone who signs in only with single sign-on or a
-     *  provider has no password to reset, and someone whose access was removed is invited again instead. */
+    /** A password link for someone with an account, made by an admin (this server sends no email): it sets a new
+     *  password, or a first one for someone who signed in only with single sign-on or a provider (their connection was
+     *  removed, or their identity provider is down). `token` asks the sign-in for one (betterAuth.ts
+     *  passwordResetToken). Someone with no account yet gets an invite link instead, and so does someone whose access
+     *  was removed. `ssoRequired`: their domain requires single sign-on and they aren't the break-glass admin, so the
+     *  password won't sign them in until it no longer does. */
     async passwordReset(key: string, actor: Actor, token: (email: string) => Promise<string | null>) {
       const cur = await one<{ removed: boolean }>(db, `select removed_at is not null as removed from app_user where key = $1`, [key]);
       if (!cur) throw new HttpError(404, `no person "${key}"`);
       if (cur.removed) throw new HttpError(409, `${key}’s access was removed: invite them again instead`);
-      if (!(await accounts.hasPassword(db, key))) {
-        throw new HttpError(409, `${key} has no password to reset: they sign in with single sign-on or a provider`);
-      }
+      if (!(await accounts.of(db, [key])).has(key)) throw new HttpError(409, `${key} has no account yet: send them an invite link instead`);
+      const first = !(await accounts.hasPassword(db, key));
       const t = await token(key);
       if (!t) throw new HttpError(500, 'the sign-in didn’t make a reset link');
-      await db.transaction((tx) => audit(tx, actor, { kind: 'person.password_reset', after: { person: key } }));
-      return { key, token: t };
+      await db.transaction((tx) => audit(tx, actor, { kind: 'person.password_reset', after: { person: key, ...(first ? { first } : {}) } }));
+      return { key, token: t, ssoRequired: await ssoRequired(db, key) };
     },
 
     /** An admin gives someone a role. There is always at least one admin. */
@@ -413,6 +423,15 @@ export function createAccess(db: Db, opts: AccessOptions) {
     /** Whether this setup link's secret works now: it is right, and nobody has an account yet. */
     setupOpen: (setup: string | undefined) => setupOpen(db, setup),
 
+    /** Whether this person is an admin the rules ask to set up two-factor sign-in, who hasn't yet (they have a password
+     *  and no second factor). Their access tokens and OAuth sign-ins are refused until then (api.ts, oauth.ts), as the
+     *  console is: a token made before, or a password alone, doesn't get around the rule. `q`: inside a transaction, its own. */
+    async twoFactorPending(email: string, q: Queryable = db): Promise<boolean> {
+      if (!(await rulesOf(q)).adminsNeedTwoFactor) return false;
+      const p = await one<Person>(q, PERSON, [clean(email)]);
+      return !!p && may(p, 'changesSettings') && await accounts.hasPassword(q, p.key) && !(await accounts.twoFactorOn(q, p.key));
+    },
+
     /** Whether nobody has an account yet: the server then prints the setup link when it starts (index.ts). */
     async needsSetup() {
       return !(await accounts.any(db));
@@ -440,7 +459,8 @@ export function createAccess(db: Db, opts: AccessOptions) {
       return { password: await accounts.hasPassword(db, email), twoFactor: await accounts.twoFactorOn(db, email) };
     },
 
-    /** An admin changes the sign-in rules. The break-glass admin is an admin whose access isn't removed; two-factor for
+    /** An admin changes the sign-in rules. The break-glass admin is an admin whose access isn't removed, with a password
+     *  (the identity provider may be what is down: an admin who signs in only with it can't break glass); two-factor for
      *  admins is turned on by an admin who has set it up (or has no password), so they aren't the first one stopped.
      *  A break-glass admin who no longer is one, at a domain that requires single sign-on, is signed out. */
     async setRules(input: { breakGlassAdmin?: unknown; adminsNeedTwoFactor?: unknown; joinRole?: unknown }, actor: Actor) {
@@ -451,6 +471,9 @@ export function createAccess(db: Db, opts: AccessOptions) {
         if (input.breakGlassAdmin !== undefined) {
           const key = input.breakGlassAdmin === null || input.breakGlassAdmin === '' ? null : clean(input.breakGlassAdmin);
           if (key && !(await activeAdmins(tx, key))) throw new HttpError(422, 'break-glass admin: an admin whose access isn’t removed');
+          if (key && !(await accounts.hasPassword(tx, key))) {
+            throw new HttpError(422, `break-glass admin: an admin with a password. ${key} has none: make them a password link in People first`);
+          }
           next.breakGlassAdmin = key;
         }
         if (input.adminsNeedTwoFactor !== undefined) {

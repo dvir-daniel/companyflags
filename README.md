@@ -53,13 +53,16 @@ without a deploy. See [Flags in the age of AI](https://dvir-daniel.github.io/com
 - **Settings per entity, rules for everyone.** Any region, store or customer can have settings of its own on any flag,
   inherited down the chain. Locked rules apply to everyone, always. The console traces every answer step by step.
 - **OpenFeature, no SDK of ours.** Two OpenFeature standards: OFREP when the server decides, and flagd JSON when your
-  app or backend decides itself (an app's file cached by your CDN). Your flag-reading code stays standard.
+  backend decides itself. Both use OpenFeature's own providers. A web or React Native app can also read a file your
+  CDN caches, with OpenFeature's flagd evaluator (`flagd-core`) and a short fetch loop: that one isn't a provider.
+  Native mobile apps use OFREP.
 - **Nothing private reaches a device.** An app reads with its service's public key. Over OFREP it gets values only;
   its CDN file holds no list of entities and no rule about another entity, only the checks the device makes itself
   (app version, platform, % group). A signed app link from your backend keeps it to its own entity's values.
 - **Made for AI-written code and AI features.** AI-built changes ship off, then to a few, with a kill switch and a
   remove-by date; models, prompts and parameters are JSON flags you roll out per % or per customer, and roll back in
-  seconds. Agents keep flags in `flags.json` with the code; turning one on in production still needs an approval.
+  seconds. Agents keep flags in `flags.json` with the code; where an environment requires approval, turning one on
+  there is a request.
 - **Reviewed changes.** Production can require an approval for every change, with scheduling, break-glass for on
   call, an append-only history, restore, and side-by-side compare.
 - **Releases and version releases.** Give early access to a few, then 1% → 5% → 25% → 50% of devices,
@@ -79,7 +82,7 @@ without a deploy. See [Flags in the age of AI](https://dvir-daniel.github.io/com
 ```bash
 echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env   # keep it: it signs sign-in sessions
 docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \
-  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags
+  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9
 docker logs companyflags   # the setup link: make the admin account at http://localhost:8787/api/setup/…
 ```
 
@@ -97,8 +100,8 @@ docker compose up -d
 docker compose logs companyflags   # the setup link
 ```
 
-It runs the latest release (set `COMPANYFLAGS_VERSION` in `.env` to pin another) and answers on `127.0.0.1:8787`
-only, for a proxy in front of it. See [Docker](https://dvir-daniel.github.io/companyflags/self-hosting/docker).
+Both pin the 0.9 release line: `0.9` gets that line's fixes, never a new schema. In Compose, set
+`COMPANYFLAGS_VERSION` in `.env` to move. It answers on `127.0.0.1:8787` only, for a proxy in front of it. See [Docker](https://dvir-daniel.github.io/companyflags/self-hosting/docker).
 
 Or from source (Node.js 22.18+, pnpm 11):
 
@@ -133,6 +136,7 @@ await OpenFeature.setContext({ targetingKey: installId, app: { version: '6.0.0' 
 await OpenFeature.setProviderAndWait(new OFREPWebProvider({
   baseUrl: 'https://flags.example.com',
   headers: [['Authorization', 'Bearer ff_prod_web_…']],   // the web service's key
+  pollInterval: 60_000,                                  // when it can't keep a change stream open: once a minute
 }));
 
 OpenFeature.getClient().getBooleanValue('new_checkout', false);

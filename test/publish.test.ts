@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import { boot } from './helpers.ts';
 import { purgeTags, PURGE_TIMEOUT_MS } from '../server/purge.ts';
 import { PURGE_AGAIN_MS, ROUND_MS, startWorkers } from '../server/workers.ts';
+import { joinScopes, type PublishScope } from '../server/events.ts';
+import { purgeTagsFor } from '../server/cdn.ts';
 
 type Mode = 'ok' | 'fail' | 'hang';
 let mode: Mode = 'ok';
@@ -170,4 +172,69 @@ test('a snapshot rebuilt before its publish was told (another server published i
   assert.equal(remote, 1);
   await workers.drain();
   assert.deepEqual(heard, [['dev', next]], 'and not again');
+});
+
+test('each publish says whose answers it changed: a new entity, a rename or a description nobody’s; an entity’s settings or link only its own', async (c) => {
+  const heard: [string, PublishScope][] = [];
+  const own = await boot({ onPublish: async (env, scope) => { heard.push([env, scope ?? null]); return 'off' as const; } });
+  c.after(() => own.stop());
+  const told: [string, PublishScope][] = [];
+  c.after(own.hub.subscribe((env, _revision, scope) => told.push([env, scope])));
+  const step = async (r: Promise<{ status: number; json: any }>, status = 200) => {
+    heard.length = 0;
+    told.length = 0;
+    const res = await r;
+    assert.equal(res.status, status, JSON.stringify(res.json));
+    await own.workers.drain();
+    return { heard: [...heard], told: [...told] };
+  };
+  const nobody = { entities: [], links: [] };
+
+  const added = await step(own.as('alice').post('/dimensions/company', { key: 'acme-west', name: 'Acme West' }), 201);
+  assert.deepEqual(added.heard, [['dev', nobody], ['prod', nobody]], 'a new entity: every environment learns of it, nothing to purge');
+  assert.deepEqual(added.told, added.heard, 'and no event stream to wake');
+  assert.ok(Object.hasOwn(own.plane.get('prod').entities, 'acme-west'), 'every environment’s snapshot has it');
+
+  assert.deepEqual((await step(own.as('alice').put('/dimensions/company/acme-west', { name: 'Acme West Coast' }))).heard, [['dev', nobody], ['prod', nobody]], 'a rename');
+  assert.deepEqual((await step(own.as('alice').put('/flags/payments_enabled/meta', { description: 'Takes payments' }))).heard, [['dev', nobody], ['prod', nobody]],
+    'a flag’s description');
+
+  const { version, layer } = await (async () => {
+    const j = (await own.as('alice').get('/flags/ds_backend_config')).json;
+    const { version: v, updatedAt: _u, updatedBy: _b, ...l } = j.layers.dev.entities.find((e: any) => e.entity === 'soylent').layer;
+    return { version: v as number, layer: l };
+  })();
+  assert.deepEqual((await step(own.as('alice').put('/flags/ds_backend_config/layers/dev/soylent', { layer: { ...layer, rules: [] }, expectedVersion: version }))).heard,
+    [['dev', { entities: ['soylent'], links: [] }]], 'an entity’s own settings: it and those under it');
+
+  const rotated = await step(own.as('dana').post(`${await own.entityPath('acme')}/link/rotate?environment=dev`));
+  assert.deepEqual(rotated.heard, [['dev', { entities: [], links: ['acme'] }], ['prod', { entities: [], links: ['acme'] }]], 'a replaced link: its own files');
+
+  assert.deepEqual((await step(own.editBase('payments_enabled', 'dev', (l) => ({ ...l, enabled: false })))).heard, [['dev', null]], 'the defaults: everyone’s');
+});
+
+test('scopes join: anyone’s wins; and the tags a purge sends for each', () => {
+  assert.deepEqual(joinScopes({ entities: ['acme'], links: [] }, { entities: ['acme', 'globex'], links: ['lumen'] }), { entities: ['acme', 'globex'], links: ['lumen'] });
+  assert.equal(joinScopes({ entities: ['acme'], links: [] }, null), null);
+  assert.deepEqual(purgeTagsFor('dev', null), ['env-dev']);
+  assert.deepEqual(purgeTagsFor('dev', { entities: [], links: [] }), [], 'nobody’s: nothing');
+  assert.deepEqual(purgeTagsFor('dev', { entities: ['globex'], links: ['acme'] }), ['env-dev/globex', 'link-dev/acme']);
+  assert.deepEqual(purgeTagsFor('dev', { entities: Array.from({ length: 40 }, (_, i) => `e${i}`), links: [] }), ['env-dev'], 'too many tags: the environment’s');
+});
+
+test('the purge once more, later, covers every publish of the burst, not only the last', async (c) => {
+  const calls: PublishScope[] = [];
+  const hook = async (_env: string, scope?: PublishScope) => { calls.push(scope ?? null); return 'purged' as const; };
+  const own = await boot({ onPublish: hook });
+  await own.workers.stop();
+  const workers = startWorkers(own.db, own.plane, own.hub, () => {}, hook, { purgeAgainAfterMs: 400 });
+  c.after(async () => { await workers.stop(); await own.stop(); });
+  assert.equal((await own.editBase('payments_enabled', 'dev', (l) => ({ ...l, enabled: false }))).status, 200);
+  await workers.drain();
+  assert.equal((await own.as('alice').post('/dimensions/company', { key: 'acme-west', name: 'Acme West' })).status, 201);
+  await workers.drain();
+  for (let i = 0; i < 300 && calls.length < 5; i++) await new Promise((r) => setTimeout(r, 10));
+  // dev: the defaults (null), the new entity (nobody); prod: the new entity; then once more for each environment
+  assert.deepEqual(calls.slice(0, 3), [null, { entities: [], links: [] }, { entities: [], links: [] }]);
+  assert.ok(calls.slice(3).includes(null), 'once more for dev: the defaults’ change too, though the new entity came after');
 });

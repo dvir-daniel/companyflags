@@ -38,6 +38,7 @@ import {
 import { canUsePercent, cleanTags, conditionProblem, flagNameProblem, isVersionFlag, needsRemoveBy, normalizeTag, type FieldFacts } from '../../../server/checks.ts';
 import { groupFields, reportedByApp, suggestedValues } from '../../../server/fields.ts';
 import { searchHit } from '../../../server/listing.ts';
+import { roleInfo } from '../../../server/policy.ts';
 import type { Section } from '../../../server/evaluator.ts';
 import { EntityPicker, DeliveryPanel, GetsText, PowerSwitch, ValueChip, ValueSelect, ValuesPanel } from './flagParts.tsx';
 import { useEnvs } from './envs.ts';
@@ -47,6 +48,7 @@ import { searchable, searchEntities } from './entityPickerKit.ts';
 import { firstMismatch } from '../../../server/jsonSchema.ts';
 import { ReviewDraft } from './draftReview.tsx';
 import { FlagNotices, SafeValueRow } from './flagNotices.tsx';
+import { purposeSafeNote } from './safetyKit.ts';
 import { ManagedInRepo } from './managedInRepo.tsx';
 import { useDraft, useDraftFlag } from '../useDraft.ts';
 
@@ -348,7 +350,7 @@ function RulesTab({ flag, env, draft, dirty, setDraft, setLines, actions, onFlag
             {reported.map(({ name: a, label }) => (
               <label key={a} className="grid min-w-0 gap-1 text-xs text-ink-3">
                 <span className="truncate">{label}</span>
-                <input value={check.attrs[a] ?? ''} placeholder={a === 'device.platform' ? project : 'not sent'} spellCheck={false}
+                <input value={check.attrs[a] ?? ''} placeholder="not sent" spellCheck={false}
                   onChange={(e) => setCheck({ ...check, attrs: { ...check.attrs, [a]: e.target.value } })} className={cn(dense, 'h-8 font-mono')} />
               </label>
             ))}
@@ -728,7 +730,7 @@ const settingField = 'w-[320px] max-sm:w-full';
 type SettingsForm = { name: string; tags: string[]; description: string; owner: string; kind: string; removeBy: string; freeValues: boolean; jsonSchema: string };
 
 function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promise<unknown> }) {
-  const { toast, ask, reload, setDirty } = useApp();
+  const { toast, ask, reload, setDirty, meta } = useApp();
   const init: SettingsForm = { name: flag.name ?? '', tags: flag.tags, description: flag.description ?? '', owner: flag.owner ?? '', kind: flag.kind, removeBy: flag.removeBy ?? '', freeValues: !!flag.freeValues,
     jsonSchema: schemaText(flag.jsonSchema) };
   // a version release's values are its versions: always typed in
@@ -743,6 +745,8 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
   useEffect(() => { setDirty(`settings:${flag.key}`, dirty); return () => setDirty(`settings:${flag.key}`, false); }, [dirty, flag.key, setDirty]);
   // a version release (its values are versions) stays, so it has no remove-by date
   const removeByRequired = needsRemoveBy(f.kind, { valueType: flag.valueType, variants: flag.variations });
+  // a purpose without a safe value drops the one it has: only an admin may (server/control.ts updateFlagMeta)
+  const safeNote = purposeSafeNote(flag.safeVariant, f.kind, roleInfo(meta.me.role).changesSettings);
   const nameError = flagNameProblem(f.name);
   const tagError = cleanTags(f.tags).problem;
   const isJson = flag.valueType === 'json';
@@ -806,6 +810,7 @@ function SettingsTab({ flag, onSaved }: { flag: FlagDetail; onSaved: () => Promi
         <NativeSelect size="sm" aria-label="Purpose" className={settingField} value={f.kind} onChange={(e) => setF({ kind: e.target.value })}>
           {Object.keys(KIND_INFO).map((k) => <option key={k} value={k}>{(KIND_INFO[k] ?? k).split(' — ')[0]}</option>)}
         </NativeSelect>
+        {safeNote && <span className="mt-1 block text-13 text-flag">{safeNote}</span>}
       </SettingRow>
       <SafeValueRow flag={flag} onSaved={onSaved} />
       <SettingRow name={<>Remove by{removeByRequired && <span className="font-normal text-ink-3"> (required)</span>}</>} >
@@ -1283,7 +1288,7 @@ function DebugTab({ flag, env, draft, dirty, initial }: {
   const [device, setDevice] = useState(initial.attrs['device.id'] ?? '');
   const [extra, setExtra] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(initial.attrs).filter(([k]) => !OWN_BOX.has(k))));
   // only what's filled in is sent, as an app leaves out what it doesn't know (an empty version or device is "not sent");
-  // the app's platform is filled in the way the real app sends it (server/evaluator.ts contextFor)
+  // nothing else is filled in, the platform neither: the check asks with what is typed here, as a real request does
   const attrs = useMemo(() => Object.fromEntries(Object.entries({ 'app.version': version, 'device.id': device, ...extra }).filter(([, v]) => v)),
     [version, device, extra]);
   // the result runs on a deferred copy of the rules, so typing never waits for it
@@ -1319,7 +1324,7 @@ function DebugTab({ flag, env, draft, dirty, initial }: {
         <div className="grid grid-cols-2 gap-3 border-t border-grid pt-4">
           {reported.map(({ name: a, label }) => (
             <Field key={a} label={label}>
-              <input value={extra[a] ?? ''} placeholder={a === 'device.platform' ? project : 'not sent'} onChange={(e) => setExtra({ ...extra, [a]: e.target.value })} className={dense} />
+              <input value={extra[a] ?? ''} placeholder="not sent" onChange={(e) => setExtra({ ...extra, [a]: e.target.value })} className={dense} />
             </Field>
           ))}
         </div>

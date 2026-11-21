@@ -1,21 +1,22 @@
-// Sets up a new CompanyFlags server for the examples, through its console API (/api), and prints the keys.
+// Fills a CompanyFlags server with what the examples read, through its console API (/api), with an Editor's token.
 //
 //   FLAGS_URL=http://localhost:8787 FLAGS_TOKEN=cfp_… node examples/seed.ts
 //
-// FLAGS_TOKEN is an admin's access token: in the console, your name at the foot of the sidebar → Access tokens →
-// + New token, with the role Admin.
-// It makes, unless they are there already:
-//   - the environment dev (Development)
-//   - the dimension company, with acme (Acme Corp) and globex (Globex)
-//   - the services web (an app) and api (a backend)
+// FLAGS_TOKEN is an access token with the role Editor: in the console, your name at the foot of the sidebar →
+// Account → + New token. A token never changes settings, so an admin makes these in the console first:
+//   - the environment dev (Settings → Environments)
+//   - the dimension company (Settings → Dimensions)
+//   - the services web (an app) and api (a backend) (Services)
+// The seed checks they are there, and says what is missing. Then it makes, unless they are there already:
+//   - the companies acme (Acme Corp) and globex (Globex)
 //   - the flags new_checkout (on/off), welcome_message (text) and max_upload_mb (a number)
-//   - an API key for web and one for api, in dev
-// Run it again and it makes new keys only. Node 22.18 or later runs it as is.
+// API keys are settings too: it ends by saying which two to make (API Keys → + New key) and where each goes.
+// Node 22.18 or later runs it as is.
 
 const base = (process.env.FLAGS_URL ?? 'http://localhost:8787').replace(/\/+$/, '');
 const token = process.env.FLAGS_TOKEN;
 if (!token) {
-  console.error('Set FLAGS_TOKEN to an admin access token (cfp_…): console → Access tokens → + New token.');
+  console.error('Set FLAGS_TOKEN to an access token with the role Editor (cfp_…): your name → Account → + New token.');
   process.exit(1);
 }
 
@@ -40,25 +41,30 @@ async function make(what: string, path: string, body: unknown, found?: string) {
 }
 
 const ENV = 'dev';
+console.log(`Setting up ${base}`);
+
+// What an admin makes in the console: the seed only checks it.
+const meta = await call('GET', '/meta');
+if (meta.status !== 200) throw new Error(`reading the server: ${meta.status} ${JSON.stringify(meta.body)}`);
+const has = (list: { key: string; kind?: string }[], key: string, kind?: string) => list.some((x) => x.key === key && (!kind || x.kind === kind));
+const missing = [
+  !has(meta.body.environments, ENV) && 'Settings → Environments → add Development, key dev.',
+  !has(meta.body.dimensions, 'company') && 'Settings → Dimensions → add company (one company, many companies).',
+  !has(meta.body.services, 'web', 'client') && 'Services → add web, kind App.',
+  !has(meta.body.services, 'api', 'server') && 'Services → add api, kind Backend.',
+].filter((s): s is string => !!s);
+if (missing.length) {
+  console.error(`\nA token can't change settings. Sign in as an admin and make these first, then run the seed again:\n${missing.map((s) => `  - ${s}`).join('\n')}`);
+  process.exit(1);
+}
+console.log('  environment dev, dimension company, services web and api: there');
+
+await make('company acme', '/dimensions/company', { key: 'acme', name: 'Acme Corp' }, '/dimensions/company/acme');
+await make('company globex', '/dimensions/company', { key: 'globex', name: 'Globex' }, '/dimensions/company/globex');
+
 const rule = (name: string, companies: string[], serveVariation: string) => ({
   ruleKey: crypto.randomUUID(), name, conditions: [{ field: 'company', op: 'in', values: companies }], serveVariation,
 });
-
-console.log(`Setting up ${base}`);
-await make('environment dev', '/environments', { key: ENV, name: 'Development' });
-
-const dims = await call('GET', '/dimensions');
-if (!dims.body.some((d: { key: string }) => d.key === 'company')) {
-  const r = await call('PUT', '/dimensions', { dimensions: [...dims.body, { key: 'company', singular: 'company', plural: 'companies' }] });
-  if (r.status >= 300) throw new Error(`dimension company: ${r.status} ${JSON.stringify(r.body)}`);
-  console.log('  dimension company: made');
-} else console.log('  dimension company: there already');
-await make('company acme', '/dimensions/company', { key: 'acme', name: 'Acme Corp' });
-await make('company globex', '/dimensions/company', { key: 'globex', name: 'Globex' });
-
-await make('service web (app)', '/services', { key: 'web', kind: 'client' });
-await make('service api (backend)', '/services', { key: 'api', kind: 'server' });
-
 await make('flag new_checkout', '/flags', {
   key: 'new_checkout', name: 'New checkout', valueType: 'bool', kind: 'config',
   variations: [{ key: 'on', value: true }, { key: 'off', value: false }],
@@ -78,25 +84,16 @@ await make('flag max_upload_mb', '/flags', {
   base: { enabled: true, defaultVariation: 'standard', rules: [rule('Large uploads', ['acme'], 'large')] },
 }, '/flags/max_upload_mb');
 
-const key = async (project: string) => {
-  const r = await call('POST', '/api-keys', { environment: ENV, service: project, scope: 'all', label: `examples: ${project}` });
-  if (r.status >= 300) throw new Error(`key for ${project}: ${r.status} ${JSON.stringify(r.body)}`);
-  return r.body.key as string;
-};
-const web = await key('web');
-const api = await key('api');
-
 console.log(`
-Done. Each key is shown once.
+Done. Now make the two API keys, as an admin: API Keys → + New key. Each is shown once.
 
-examples/react/.env.local
-  VITE_FLAGS_URL=${base}
-  VITE_FLAGS_KEY=${web}
+  Environment dev, service web → examples/react/.env.local
+    VITE_FLAGS_URL=${base}
+    VITE_FLAGS_KEY=<the web key>
 
-examples/node/.env
-  FLAGS_URL=${base}
-  FLAGS_API_KEY=${api}
-
-examples/flagd/.env (beside BETTER_AUTH_SECRET)
-  FLAGS_API_KEY=${api}
+  Environment dev, service api → examples/node/.env
+    FLAGS_URL=${base}
+    FLAGS_API_KEY=<the api key>
+  and examples/flagd/.env (beside BETTER_AUTH_SECRET)
+    FLAGS_API_KEY=<the api key>
 `);

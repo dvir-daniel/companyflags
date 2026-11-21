@@ -83,7 +83,7 @@ test('the trace explains every level in neutral words, at every depth', () => {
   for (const f of flags) {
     const snap = snapshotOf([f], ents, ODD.map((d) => d.key));
     for (const who of [null, 'w1', 'g1', 'z1', 'z2']) {
-      const r = evaluate(snap, 'f', contextFor(snap, { project: 'web', entity: who }, { 'app.version': '0.5.0' }, { trust: 'console' }));
+      const r = evaluate(snap, 'f', contextFor(snap, { project: 'web', entity: who }, { 'app.version': '0.5.0' }));
       for (const step of r.trace) {
         clean('trace', step.detail);
         for (const c of step.conditions ?? []) if (c.note) clean('trace note', c.note);

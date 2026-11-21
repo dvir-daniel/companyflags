@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CODE_DEFAULT, type FlagDetail } from '../web/src/api.ts';
 import {
-  allMatching, density, flagsCsv, isOverdue, mapLimit, ROW_CLASS, startDefault, startsLine, switchBatches, switchItems, versionsHref,
+  allMatching, density, flagsCsv, isOverdue, mapLimit, newFlagServices, ROW_CLASS, SERVICES_HINT, startDefault, startsLine, switchBatches, switchItems, versionsHref,
   type FlagPage, type Row,
 } from '../web/src/pages/flagsKit.ts';
 
@@ -101,4 +101,11 @@ test('the New flag dialog says where the flag starts on, and what everyone gets 
 test('an environment’s versions are in History', () => {
   assert.equal(versionsHref('prod'), '#/history?view=versions&env=prod');
   assert.equal(versionsHref('a&b'), '#/history?view=versions&env=a%26b');
+});
+
+test('a new flag is in every service at first, apps and backends, and the dialog says a later environment copies them', () => {
+  const services = [{ key: 'web', kind: 'client' }, { key: 'api', kind: 'server' }];
+  assert.deepEqual(newFlagServices(services), ['web', 'api']);
+  assert.match(SERVICES_HINT, /^Every service gets it at first\./);
+  assert.match(SERVICES_HINT, /an environment added later copies them/);
 });

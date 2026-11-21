@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { boot, cdnAnswer, startApp, testDatabase } from './helpers.ts';
 import type { FlagdDoc } from '../server/flagd.ts';
 import { appToken } from '../server/delivery.ts';
+import { createApiKey } from '../server/control.ts';
 
 const needsPg = process.env.FF_TEST_PG ? false : 'needs a Postgres server (pnpm test:pg)';
 
@@ -77,6 +78,66 @@ test('a provider that heard of a publish asks a server still behind: the new fla
     assert.equal(fresh.status, 200, 'b catches up first');
     assert.equal('value' in ((await payments(fresh)) ?? {}), false, 'off: the app’s own default');
     assert.equal(b.plane.get('dev').revision, revision);
+  } finally {
+    await b.db.close();
+    await a.stop();
+    await tdb.drop();
+  }
+});
+
+test('an entity added on one server: another still behind looks in the database before refusing it over OFREP', { skip: needsPg }, async () => {
+  const tdb = await testDatabase();
+  const a = await boot({ databaseUrl: tdb.url });
+  const b = await startApp({ databaseUrl: tdb.url, signIn: { kind: 'test-header' } });
+  await b.workers.stop();                                  // b stays behind: no rounds of its own
+  try {
+    const key = (await a.as('dana').post('/api-keys', { environment: 'dev', service: 'server-ds', scope: 'all' })).json.key as string;
+    const ask = (credential: string, context: Record<string, unknown>) => b.app.request('/ofrep/v1/evaluate/flags', {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${credential}` }, body: JSON.stringify({ context }),
+    });
+    const add = (path: string, body: unknown) => a.app.request(`/sdk/v1/entities/${path}`, {
+      method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` }, body: JSON.stringify(body),
+    });
+    assert.equal((await ask(key, { targetingKey: 'd-1' })).status, 200, 'b answers, and has read its links');
+    assert.equal((await add('company/stark', { name: 'Stark Industries' })).status, 201);
+    assert.equal((await add('brand/stark-west', { parent: 'stark' })).status, 201);
+    assert.equal(Object.hasOwn(b.plane.get('dev').entities, 'stark'), false, 'b hasn’t caught up');
+    const asked = await ask(key, { company: 'stark' });
+    assert.equal(asked.status, 200, await asked.clone().text());
+    assert.equal(((await asked.json()) as { metadata: { entity?: string } }).metadata.entity, 'stark');
+    // an app token for an entity b has only just heard of: not a 401, which would stop the web provider for good
+    const token = await appToken(a.db, 'dev', 'stark-west', 'web');
+    const app = await ask(token, { targetingKey: 'd-1' });
+    assert.equal(app.status, 200, await app.clone().text());
+    assert.equal((await ask(key, { company: 'nobody' })).status, 400, 'one that isn’t there anywhere: refused');
+  } finally {
+    await b.db.close();
+    await a.stop();
+    await tdb.drop();
+  }
+});
+
+test('an entity a backend adds on one server is served by another at once, before its round (delivery.ts caughtUpWith)', { skip: needsPg }, async () => {
+  const tdb = await testDatabase();
+  const a = await boot({ databaseUrl: tdb.url });
+  const b = await startApp({ databaseUrl: tdb.url, signIn: { kind: 'test-header' } });
+  await b.workers.stop();                                  // b stays behind: no rounds of its own
+  try {
+    const key = (await createApiKey(a.db, { environment: 'dev', project: 'server-ds', scope: 'all' }, { name: 'test', type: 'system' })).key;
+    const auth = { authorization: `Bearer ${key}` };
+    const put = await a.app.request('/sdk/v1/entities/company/acme-north', { method: 'PUT', headers: { 'content-type': 'application/json', ...auth }, body: '{"name":"Acme North"}' });
+    assert.equal(put.status, 201, await put.text());
+    assert.ok(!Object.hasOwn(b.plane.get('dev').entities, 'acme-north'), 'b hasn’t caught up');
+
+    // the backend asks b for the app link, and the app reads its file from b
+    const link = await b.app.request('/sdk/v1/links/company/acme-north?service=web', { headers: auth });
+    assert.equal(link.status, 200, await link.clone().text());
+    const { path } = await link.json() as { path: string };
+    const file = await b.app.request(path);
+    assert.equal(file.status, 200, 'its first file, from the server that hadn’t heard of it');
+    assert.equal(((await file.json()) as FlagdDoc).metadata.flagSetId, 'dev/web/acme-north');
+    assert.equal((await b.app.request('/sdk/v1/flagd/company/acme-north', { headers: auth })).status, 200, 'and its flagd JSON');
+    assert.equal((await b.app.request('/sdk/v1/flagd/company/acme-south', { headers: auth })).status, 404, 'one that isn’t there is still a 404');
   } finally {
     await b.db.close();
     await a.stop();

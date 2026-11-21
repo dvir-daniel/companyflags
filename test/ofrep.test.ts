@@ -40,7 +40,7 @@ const post = (path: string, body: unknown, headers: Record<string, string> = {})
 /** What the server's evaluator answers, as OpenFeature returns it: the value, or the default for the code default. */
 function expected(env: string, project: string, entity: string | null, attrs: Record<string, unknown>, key: string, d: unknown) {
   const snap = t.plane.get(env);
-  const r = evaluate(snap, key, contextFor(snap, { project, entity }, attrs, { trust: 'app' }), false);
+  const r = evaluate(snap, key, contextFor(snap, { project, entity }, attrs), false);
   return r.codeDefault || r.errorCode ? d : r.value;
 }
 const tokenFor = (env: string, app: string, entity: string) => appToken(t.db, env, entity, app);
@@ -318,8 +318,18 @@ describe('change-event streams have a limit', () => {
     assert.equal(tooMany.status, 429, 'a third from one address');
     assert.ok(Number(tooMany.headers.get('retry-after')) > 0);
     assert.match((await tooMany.json() as any).error, /too many open event streams/);
+    // an answer to an address at its limit lists no stream, so the provider polls (pollInterval) instead of retrying
+    // a stream it can't have; another address still gets one
+    const streamsFor = async (address: string) => (await (await own.app.request('/ofrep/v1/evaluate/flags', { method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ context: {} }) },
+      { incoming: { socket: { remoteAddress: address } } })).json() as any).eventStreams;
+    assert.deepEqual(await streamsFor('198.51.100.1'), [], 'at its limit: no stream');
+    assert.equal((await streamsFor('198.51.100.2')).length, 1, 'another address: its stream');
     assert.equal((await listen('198.51.100.2')).status, 200, 'another address');
     assert.equal((await listen('198.51.100.3')).status, 429, 'a fourth in the environment');
+    assert.deepEqual(await streamsFor('198.51.100.3'), [], 'the environment at its limit: no stream for anyone');
+    const retry = Number((await listen('198.51.100.3')).headers.get('retry-after'));
+    assert.ok(retry >= 60 && retry < 120, `a minute or two, spread out (${retry})`);
 
     // one closes: there is room again
     await readers.shift()!.cancel();

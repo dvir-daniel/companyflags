@@ -12,7 +12,7 @@
 
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { HttpError, type Db } from './db.ts';
-import type { EventHub } from './events.ts';
+import type { EventHub, PublishScope } from './events.ts';
 import type { KeyCache } from './auth.ts';
 import type { AppCache, LinkCache } from './delivery.ts';
 import type { Person } from './access.ts';
@@ -40,8 +40,9 @@ export type Evaluate = {
 };
 
 /** After an environment publishes: 'purged' when it purged a cache (Settings → CDN shows when), 'off' when it had
- *  nothing to do, and nothing for any other work it did. */
-export type OnPublish = (environment: string) => Promise<void | 'off' | 'purged'>;
+ *  nothing to do, and nothing for any other work it did. `scope`: whose answers the publish may have changed (null:
+ *  anyone's in the environment; events.ts PublishScope), so a cache drops only what changed. */
+export type OnPublish = (environment: string, scope?: PublishScope) => Promise<void | 'off' | 'purged'>;
 
 /** What the core shares with plugins. */
 export type PluginContext = {
@@ -72,6 +73,8 @@ export type PluginContext = {
   secrets: Sealer;
   /** How far each environment's publishing is behind, as /readyz reports it (workers.ts). */
   publishState: () => Promise<PublishState[]>;
+  /** What /readyz warns about without failing: purges that didn't go through, and the plugins' own `warnings`. */
+  warnings: () => Promise<string[]>;
   /** @internal, for the built-in plugins: API keys, app-link secrets and services, kept in memory and cleared when
    *  they change (journal.ts). */
   keys: KeyCache;
@@ -115,6 +118,9 @@ export type PluginParts = {
   /** After an environment publishes, once per publish. A failure is logged with the plugin's name and kept on the
    *  publish; it never undoes the publish, and the other plugins' onPublish still run. */
   onPublish?: OnPublish;
+  /** What an operator should know, though the server serves (a CDN purge that can't run): /readyz lists them under
+   *  `warnings`, still answering 200, and the metrics plugin counts them. */
+  warnings?: () => Promise<string[]> | string[];
   /** Work it does on its own, in the background (sending webhooks): running from setup, stopped before the database
    *  closes. `wake`: something changed, look now; `drain`: let the round under way, and one more, finish (tests). */
   worker?: { wake: () => void; stop: () => Promise<void>; drain: () => Promise<void> };
@@ -203,8 +209,8 @@ export class PublishHookError extends Error {
 export function publishHooks(set: readonly { id: string; parts: PluginParts }[]): OnPublish | undefined {
   const hooks = set.flatMap((s) => (s.parts.onPublish ? [{ id: s.id, run: s.parts.onPublish }] : []));
   if (!hooks.length) return undefined;
-  return async (environment) => {
-    const results = await Promise.allSettled(hooks.map(async (h) => h.run(environment)));
+  return async (environment, scope = null) => {
+    const results = await Promise.allSettled(hooks.map(async (h) => h.run(environment, scope)));
     const purged = results.some((r) => r.status === 'fulfilled' && r.value === 'purged');
     const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [`${hooks[i].id}: ${(r.reason as Error)?.message ?? String(r.reason)}`] : []));
     if (failed.length) throw new PublishHookError(failed.join('; '), purged);
@@ -222,7 +228,7 @@ export function evaluatorFor(plane: Snapshots): Evaluate {
     if (!snap) throw new HttpError(404, `environment "${environment}" not found`);
     let ctx;
     try {
-      ctx = contextFor(snap, { project: who.service, entity: who.entity ?? null }, who.attrs, { trust: 'app' });
+      ctx = contextFor(snap, { project: who.service, entity: who.entity ?? null }, who.attrs);
     } catch (e) {
       if (e instanceof UnknownEntityError) throw new HttpError(404, e.message);
       throw e;

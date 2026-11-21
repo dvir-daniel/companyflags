@@ -570,6 +570,7 @@ create table webhook_in (
   last_result text,
   created_at timestamp with time zone default now() not null,
   created_by text not null,
+  changed_by text,
   constraint webhook_in_expression_check CHECK ((length(expression) <= 10000)),
   constraint webhook_in_format_check CHECK ((format = ANY (ARRAY['values'::text, 'kv'::text, 'flagd'::text, 'jsonata'::text]))),
   constraint webhook_in_name_check CHECK (((length(name) >= 1) AND (length(name) <= 80))),

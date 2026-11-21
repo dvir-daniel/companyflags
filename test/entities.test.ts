@@ -80,7 +80,7 @@ async function setLayer(entity: string, mode: Inherit | null, kind: 'brand' | 'c
   const r = await t.as('dana').put(`/flags/brand_matrix/layers/dev/${entity}`, { layer, expectedVersion: existing?.layer.version ?? null });
   assert.equal(r.status, 200, JSON.stringify(r.json));
 }
-const ctx = (snap: Parameters<typeof contextFor>[0], entity: string | null, lang: string) => contextFor(snap, { project: 'web', entity }, { 'locale.language': lang }, { trust: 'app' });
+const ctx = (snap: Parameters<typeof contextFor>[0], entity: string | null, lang: string) => contextFor(snap, { project: 'web', entity }, { 'locale.language': lang });
 
 test('a brand follows its company, then the defaults; its own settings come first: every combination', async () => {
   let checked = 0;

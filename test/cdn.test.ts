@@ -4,7 +4,8 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot, builtIns } from './helpers.ts';
-import { cloudflare as cloudflarePlugin } from '../server/plugins/index.ts';
+import { cloudflare as cloudflarePlugin, metrics as metricsPlugin } from '../server/plugins/index.ts';
+import { sealer } from '../server/sealed.ts';
 
 const ZONE = '0123456789abcdef0123456789abcdef';
 const TOKEN = 'cf-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1234';
@@ -105,6 +106,80 @@ test('a new zone ID keeps the saved token; purge now; a failed purge shows on th
   assert.equal((await change(3)).status, 200, 'a publish still goes out');
   assert.match((await lastPublish()).error ?? '', /^purge: cloudflare: Cloudflare said 500/, 'kept with the plugin’s name');
   ok();
+});
+
+const settled = async () => { await t.workers.drain(); await new Promise((r) => setTimeout(r, 30)); };
+
+test('a purge drops only what changed: nothing for a new entity or a description, an entity’s tag for its settings', async () => {
+  calls.length = 0;
+  assert.equal((await t.as('alice').post('/dimensions/company', { key: 'acme-east', name: 'Acme East' })).status, 201);
+  await settled();
+  assert.equal(calls.length, 0, 'a new entity: nobody’s answers changed, nothing purged');
+  assert.equal((await t.as('alice').put('/flags/payments_enabled/meta', { description: 'Takes card payments' })).status, 200);
+  await settled();
+  assert.equal(calls.length, 0, 'a flag’s description: nothing purged');
+
+  const j = (await t.as('alice').get('/flags/ds_backend_config')).json;
+  const { version, updatedAt: _u, updatedBy: _b, ...layer } = j.layers.dev.entities.find((e: any) => e.entity === 'soylent').layer;
+  assert.equal((await t.as('alice').put('/flags/ds_backend_config/layers/dev/soylent', { layer: { ...layer, rules: [] }, expectedVersion: version })).status, 200);
+  await settled();
+  assert.deepEqual(calls.map((c) => c.tags), [['env-dev/soylent']], 'its files and those under it');
+
+  calls.length = 0;
+  assert.equal((await t.as('dana').post(`${await t.entityPath('acme')}/link/rotate?environment=dev`)).status, 200);
+  await settled();
+  assert.deepEqual(calls.map((c) => c.tags).sort(), [['link-dev/acme'], ['link-prod/acme']], 'a replaced link: its own files, in each environment');
+});
+
+test('a token that can’t be read (BETTER_AUTH_SECRET changed): the purge fails on the publish, and /readyz warns but answers 200', async () => {
+  const sealedElsewhere = sealer('another-better-auth-secret-0123456789abcdef').seal(TOKEN);
+  await t.db.query(`update cdn_setting set api_token = $1`, [sealedElsewhere]);
+  calls.length = 0;
+  let ready = await t.app.request('/readyz');
+  assert.equal(ready.status, 200);
+  assert.ok(((await ready.json()) as any).warnings.some((w: string) => /token can’t be read/.test(w)), 'said at once, before any publish');
+
+  assert.equal((await change(5)).status, 200);
+  assert.match((await lastPublish()).error ?? '', /^purge: cloudflare: The CDN’s API token can’t be read/);
+  assert.deepEqual(calls, [], 'nothing went to Cloudflare');
+  ready = await t.app.request('/readyz');
+  assert.equal(ready.status, 200, 'still ready: the server serves');
+  const body = await ready.json() as any;
+  assert.equal(body.environments.dev.purgeFailing, true);
+  assert.equal(body.environments.dev.failing, false);
+  assert.ok(body.warnings.some((w: string) => /CDN purge after dev’s last publish didn’t go through/.test(w)));
+  assert.match((await t.as('dana').post('/cdn/purge', { environment: 'dev' })).json.error, /token can’t be read/);
+
+  // saved again: the next purge goes through, and the warnings go
+  assert.equal((await t.as('dana').put('/cdn', { zoneId: ZONE, token: TOKEN })).status, 200);
+  assert.equal((await change(6)).status, 200);
+  assert.ok((await lastPublish()).purged);
+  const after = await (await t.app.request('/readyz')).json() as any;
+  assert.deepEqual(after.warnings, []);
+  assert.equal(after.environments.dev.purgeFailing, false);
+});
+
+test('the metrics: whether the last purge went through, and how many warnings /readyz lists', async (c) => {
+  const own = await boot({ plugins: [...builtIns({ cloudflare: { fetch: cloudflare } }), metricsPlugin()] });
+  c.after(() => own.stop());
+  ok();
+  assert.equal((await own.as('dana').put('/cdn', { zoneId: ZONE, token: TOKEN })).status, 200);
+  answer = { status: 500, body: 'down' };
+  assert.equal((await own.editBase('max_upload_mb', 'dev', (l) => ({ ...l, defaultVariation: 'enterprise' }))).status, 200);
+  await own.workers.drain();
+  for (let i = 0; i < 50; i++) {
+    const row = (await own.db.query<{ e: string | null }>(`select last_error as e from publish_queue order by id desc limit 1`)).rows[0];
+    if (row.e) break;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  ok();
+  const text = await (await own.app.request('/metrics')).text();
+  assert.match(text, /companyflags_purge_failing\{environment="dev"\} 1/);
+  assert.match(text, /companyflags_purge_failing\{environment="prod"\} 0/);
+  assert.match(text, /companyflags_warnings 1/);
+  const ready = await (await own.app.request('/readyz')).json() as any;
+  assert.equal(ready.warnings.length, 1);
+  assert.doesNotMatch(JSON.stringify(ready), /Cloudflare said|down/, 'why is in Settings → CDN and the log, not in a public answer');
 });
 
 test('removed: publishes stop purging; removing again says there’s nothing', async () => {

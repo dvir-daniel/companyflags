@@ -610,22 +610,18 @@ export class UnknownEntityError extends Error {
   constructor(entity: string) { super(`"${entity}" not found`); this.entity = entity; }
 }
 
-const CLIENT_PLATFORMS = ['android', 'ios', 'web'];
-
 // Only attributes the app may report are kept: what the server works out itself (fields.ts: the app, the environment,
 // the entity and every dimension) comes from the link or API key, never from what the request says about itself.
-// trust 'console': a simulation; a client app's platform defaults to the app, as the real app would send it.
-export function contextFor(snap: Snapshot, who: { project: string; entity: string | null },
-  sent: Record<string, unknown> | undefined, opts: { trust: 'app' | 'console' }): EvalContext {
+// The console's simulations (Debug tab, Compare, who gets what) go through here with exactly what they were given,
+// as a real request does: nothing is filled in for them (not even the platform of an app named "web"), so a rule on
+// what the device reports matches in the console only when its "Device details" say so.
+export function contextFor(snap: Snapshot, who: { project: string; entity: string | null }, sent: Record<string, unknown> | undefined): EvalContext {
   const attrs: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(sent ?? {})) {
     const f = Object.hasOwn(snap.fields, k) ? snap.fields[k] : undefined;
     if (!f || !reportedByApp(k, f)) continue;
     if (isMissing(v)) continue;
     attrs[k] = v;
-  }
-  if (opts.trust === 'console' && attrs['device.platform'] === undefined && CLIENT_PLATFORMS.includes(who.project)) {
-    attrs['device.platform'] = who.project;
   }
   let entity: EntityInfo | null = null;
   if (who.entity) {

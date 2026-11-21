@@ -9,9 +9,16 @@
 //
 // A connection can be edited (its domains, its identity provider's details, its group roles). It can be required only
 // once someone has signed in with it (`lastSignInAt`: the console's Test sign-in), so a connection that doesn't work
-// can't lock people out. Group roles: an OIDC claim or a SAML attribute (e.g. "groups") lists the person's groups at
-// the identity provider, and each group named gives a role; they get the highest, each time they sign in with it, and
-// the join role when none of their groups is named (access.ts groupRole).
+// can't lock people out. Changing the identity provider's details starts that over: the test sign-in is forgotten, and
+// a requirement is turned off until someone signs in with it again. Group roles: an OIDC claim or a SAML attribute
+// (e.g. "groups") lists the person's groups at the identity provider, and each group named gives a role; they get the
+// highest, each time they sign in with it, and the join role when none of their groups is named. A sign-in without the
+// claim at all leaves their role as it is (a wrong claim name demotes nobody), and so does one for the break-glass
+// admin or the last admin (access.ts groupRole).
+//
+// An OIDC identity provider's token, keys (JWKS) and user info addresses come from its settings document. They must be
+// https in production and not on this machine or a private network unless their origin is trusted, and the sign-in
+// reaches them only through the same guarded lookup as the settings (publicFetch.ts, betterAuth.ts).
 //
 // Better Auth's own endpoints for managing connections are switched off (any signed-in person could use them);
 // `singleSignOn` is behind the console's admin check instead. What it needs from outside comes in when the app starts
@@ -20,6 +27,7 @@
 
 import type { lookup as dnsLookup } from 'node:dns';
 import { BlockList, isIP } from 'node:net';
+import { allowedOriginsFrom } from './publicFetch.ts';
 import { HttpError, one, type Db, type Queryable } from './db.ts';
 import type { Access, Vouching } from './access.ts';
 import type { Actor } from './layers.ts';
@@ -64,8 +72,10 @@ export type SsoOptions = {
   discover: Discover;
   /** the console's address when it is configured (BETTER_AUTH_URL); otherwise each request's own */
   baseURL?: string;
-  /** issuers must be https */
+  /** issuers, and the addresses their settings give, must be https */
   production?: boolean;
+  /** origins on a private network an admin trusts (BETTER_AUTH_TRUSTED_ORIGINS): an identity provider may be there */
+  trustedOrigins?: readonly string[];
 };
 
 /** Single sign-on connections, for the console's API (api.ts). */
@@ -152,10 +162,12 @@ export async function connectionUsed(q: Queryable, id: string) {
   await q.query(`update sso_provider set last_sign_in_at = now() where provider_id = $1`, [id]);
 }
 
-/** The role this person's groups give, with this connection's group roles (the highest of them), or null when the
- *  connection has none. `groups`: what the claim or attribute said (one group, a list, or a comma-separated list). */
+/** The role this person's groups give, with this connection's group roles (the highest of them), or null to leave
+ *  their role as it is: the connection has none, or the sign-in didn't have the claim at all (a claim named wrong, or
+ *  an identity provider that stopped sending it, must not demote anyone). `groups`: what the claim or attribute said
+ *  (one group, a list, or a comma-separated list); there but naming none of the groups: the join role. */
 export function roleFromGroups(g: GroupRoles | null, groups: unknown, fallback: Role): Role | null {
-  if (!g) return null;
+  if (!g || groups === undefined || groups === null) return null;
   const list = (Array.isArray(groups) ? groups : typeof groups === 'string' ? groups.split(',') : []).map((x) => String(x).trim()).filter(Boolean);
   const given = list.map((x) => g.roles[x]).filter((r): r is Role => isRole(r));
   return given.length ? given.reduce((a, b) => (ROLES.indexOf(b) > ROLES.indexOf(a) ? b : a)) : fallback;
@@ -207,6 +219,10 @@ async function oidcConfigFor(o: SsoOptions, i: { issuer: string; clientId: strin
   if (o.production && !issuer.startsWith('https://')) throw new HttpError(422, 'issuer: must be an https address');
   if (!i.clientId || !i.clientSecret) throw new HttpError(422, 'client ID and client secret: from the app you made for CompanyFlags in the identity provider');
   const doc = await discover(o.discover, issuer);
+  for (const k of ['authorization_endpoint', 'token_endpoint', 'jwks_uri', 'userinfo_endpoint'] as const) {
+    const problem = endpointProblem(k, doc[k], o);
+    if (problem) throw new HttpError(422, `the identity provider’s settings at ${issuer}/.well-known/openid-configuration give a ${problem}`);
+  }
   return {
     issuer: doc.issuer,
     config: {
@@ -218,6 +234,23 @@ async function oidcConfigFor(o: SsoOptions, i: { issuer: string; clientId: strin
       ...(groups ? { mapping: mappingFor(groups) } : {}),
     },
   };
+}
+
+/** Why an address an OIDC identity provider's settings give can't be used, or null. It must be http or https (https in
+ *  production), and not this machine or a private network unless its origin is trusted. Names are checked when the
+ *  sign-in connects to them (betterAuth.ts, publicFetch.ts): here only what is written. What it is isn't repeated. */
+function endpointProblem(name: string, raw: unknown, o: Pick<SsoOptions, 'production' | 'trustedOrigins'>): string | null {
+  if (raw === undefined && name === 'userinfo_endpoint') return null;
+  let u: URL;
+  try { u = new URL(String(raw)); } catch { return `${name} that isn’t an address`; }
+  if (allowedOriginsFrom((o.trustedOrigins ?? []).join(',')).includes(u.origin)) return null;
+  if (u.protocol !== 'https:' && (u.protocol !== 'http:' || o.production)) return `${name} that isn’t an https address`;
+  if (u.username || u.password) return `${name} with a user or password in it`;
+  const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || (isIP(host) && !isPublicAddress(host))) {
+    return `${name} that isn’t on the public internet: if it is on your private network, add its origin to BETTER_AUTH_TRUSTED_ORIGINS`;
+  }
+  return null;
 }
 
 /** A SAML connection's settings, from the identity provider's metadata or its details. */
@@ -284,7 +317,10 @@ async function addConnection(db: Db, o: SsoOptions, { headers, base }: { headers
  *  replaces the old one; left out (or empty), the old one stays. Its protocol and id stay: for another, add a new
  *  connection. Requiring single sign-on needs a sign-in with it first (`lastSignInAt`); required from now, everyone at
  *  its domains but the break-glass admin is signed out, and signs in again with single sign-on (access.ts
- *  ssoNowRequired). */
+ *  ssoNowRequired). A domain added to a connection that is required signs out the people at that domain only.
+ *  Any change to the identity provider's details (OIDC: issuer, client ID or secret, and the addresses its settings
+ *  give; SAML: sign-in URL, entity ID, certificate or metadata) forgets the test sign-in and turns the requirement off,
+ *  until someone signs in with it again: a typo there must not lock everyone out. */
 async function updateConnection(db: Db, o: SsoOptions, id: string, input: NewConnection, actor: Actor) {
   const cur = await one<Row>(db, `${ROW} where provider_id = $1`, [id]);
   if (!cur) throw new HttpError(404, `no connection "${id}"`);
@@ -332,15 +368,35 @@ async function updateConnection(db: Db, o: SsoOptions, id: string, input: NewCon
     }
   }
 
-  await db.query(`update sso_provider set issuer = $2, domain = $3, oidc_config = $4, saml_config = $5, require_sso = $6, group_roles = $7::jsonb
-    where provider_id = $1`, [id, issuer, domains.join(','), oidc, saml, requireSso, groups ? JSON.stringify(groups) : null]);
+  // the identity provider's details changed: a test sign-in again before single sign-on can be required (again)
+  const idpChanged = issuer !== cur.issuer || idpDetails(before.type, oidc, saml) !== idpDetails(before.type, cur.oidc_config, cur.saml_config);
+  if (idpChanged && input.requireSso === true) {
+    throw new HttpError(409, `the identity provider’s details changed: save them, use Test sign-in with ${id}, then require it`);
+  }
+  const required = requireSso && !idpChanged;
+  await db.query(`update sso_provider set issuer = $2, domain = $3, oidc_config = $4, saml_config = $5, require_sso = $6, group_roles = $7::jsonb,
+    last_sign_in_at = case when $8::boolean then null else last_sign_in_at end
+    where provider_id = $1`, [id, issuer, domains.join(','), oidc, saml, required, groups ? JSON.stringify(groups) : null, idpChanged]);
   const after = connectionOf((await one<Row>(db, `${ROW} where provider_id = $1`, [id]))!);
-  if (requireSso && (!before.requireSso || domains.some((d) => !before.domains.includes(d)))) await o.access.ssoNowRequired(db, domains);
+  // required from now: everyone at its domains signs in again with it; already required: only those at new domains
+  if (required) {
+    const signOut = before.requireSso ? domains.filter((d) => !before.domains.includes(d)) : domains;
+    if (signOut.length) await o.access.ssoNowRequired(db, signOut);
+  }
   const said = (c: Connection) => ({ id: c.id, issuer: c.issuer, domains: c.domains, requireSso: c.requireSso, groupRoles: c.groupRoles,
     ...(c.clientId ? { clientId: c.clientId } : {}), ...(c.entryPoint ? { entryPoint: c.entryPoint } : {}) });
   const secret = input.clientSecret !== undefined && str(input.clientSecret) !== '' ? { secretReplaced: true } : {};
   await audit(db, actor, 'sso.update', { before: said(before), after: { ...said(after), ...secret } });
   return after;
+}
+
+/** What a connection's identity provider is, as text to compare: everything but the group roles' mapping. */
+function idpDetails(type: Connection['type'], oidc: string | null, saml: string | null): string {
+  const c = JSON.parse((type === 'oidc' ? oidc : saml) ?? '{}');
+  const pick = type === 'oidc'
+    ? [c.issuer, c.clientId, c.clientSecret, c.authorizationEndpoint, c.tokenEndpoint, c.jwksEndpoint, c.userInfoEndpoint, c.discoveryEndpoint]
+    : [c.entryPoint, c.cert, c.idpMetadata?.metadata, c.idpMetadata?.entityID];
+  return JSON.stringify(pick.map((v) => v ?? null));
 }
 
 /** Removes a connection: nobody signs in with it any more, and everyone who signed in with it is signed out

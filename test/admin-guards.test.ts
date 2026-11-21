@@ -58,6 +58,12 @@ test('the sign-in rules: admins change them signed in; everyone may read them', 
     { breakGlassAdmin: null, adminsNeedTwoFactor: false, joinRole: 'viewer' });
   assert.equal((await t.as('carol').put('/sign-in-rules', { joinRole: 'editor' })).status, 403, 'admins only');
   assert.equal((await t.as('dana').put('/sign-in-rules', { breakGlassAdmin: 'alice' })).status, 422, 'the break-glass admin is an admin');
+  const none = await t.as('dana').put('/sign-in-rules', { breakGlassAdmin: 'dana' });
+  assert.equal(none.status, 422, 'with a password: the identity provider may be what is down');
+  assert.match(none.json.error, /password link/);
+  // dana gets a password (as the sign-in keeps one)
+  await t.db.query(`insert into auth_user (id, name, email, email_verified, updated_at) values ('u-dana', 'Dana', 'dana', true, now())`);
+  await t.db.query(`insert into auth_account (id, account_id, provider_id, user_id, password, updated_at) values ('a-dana', 'u-dana', 'credential', 'u-dana', 'hash', now())`);
   const set = await t.as('dana').put('/sign-in-rules', { breakGlassAdmin: 'dana', joinRole: 'editor' });
   assert.equal(set.status, 200, JSON.stringify(set.json));
   assert.deepEqual([set.json.breakGlassAdmin, set.json.joinRole, set.json.updatedBy], ['dana', 'editor', 'dana']);

@@ -6,7 +6,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFlagdDoc } from '../server/flagd.ts';
-import { cdnAnswer } from './flagdReference.ts';
+import { cdnAnswer, ours } from './flagdReference.ts';
 import {
   answerFor, CODE_DEFAULT, contextFor, entityChain, evaluate, forEntity, UnknownEntityError,
   type Condition, type FlagDef, type Inherit, type Layer, type Rule, type Snapshot,
@@ -81,12 +81,26 @@ test('who is asking: the console simulates exactly what the app would send', () 
   const snap = snapOf(flag({}));
   const sent = { 'app.version': '6.2.0', project: 'spoofed', entity: 'wonka', company: 'wonka', brand: 'velvet',
     environment: 'prod', unknown: 1, 'device.id': '' };
-  const app = contextFor(snap, { project: 'android', entity: 'vandelay' }, { ...sent, 'device.platform': 'android' }, { trust: 'app' });
-  const console_ = contextFor(snap, { project: 'android', entity: 'vandelay' }, sent, { trust: 'console' });
-  assert.deepEqual(console_, app);                       // platform filled in for a client app; spoofed fields dropped
-  assert.deepEqual(app.attrs, { 'app.version': '6.2.0', 'device.platform': 'android' });
-  assert.equal(contextFor(snap, { project: 'server-ds', entity: null }, {}, { trust: 'console' }).attrs['device.platform'], undefined);
-  assert.throws(() => contextFor(snap, { project: 'web', entity: 'nope' }, {}, { trust: 'console' }), UnknownEntityError);
+  const app = contextFor(snap, { project: 'android', entity: 'vandelay' }, sent);
+  assert.deepEqual(app.attrs, { 'app.version': '6.2.0' }, 'spoofed fields dropped, nothing filled in');
+  assert.deepEqual(contextFor(snap, { project: 'android', entity: 'vandelay' }, { ...sent, 'device.platform': 'android' }).attrs,
+    { 'app.version': '6.2.0', 'device.platform': 'android' });
+  assert.throws(() => contextFor(snap, { project: 'web', entity: 'nope' }, {}), UnknownEntityError);
+});
+
+test('one evaluator: a console simulation of an app named "web" gets no platform the request didn’t send', () => {
+  // "Platform is web": a real request from the web app that sends no platform doesn't match it, so the console doesn't
+  const f = flag({ rules: [rule({ serveVariation: 'b', conditions: [{ field: 'device.platform', op: 'in', values: ['web'] }] })], defaultVariation: 'a' });
+  const snap = snapOf(f);
+  const asked = (attrs: Record<string, unknown>) => evaluate(snap, 'f', contextFor(snap, { project: 'web', entity: null }, attrs), false).value;
+  assert.equal(asked({}), ours(snap, 'f', 'web', null, {}).value);
+  assert.equal(asked({}), 'A', 'not sent: no match, in the console as on a device');
+  assert.equal(asked({ 'device.platform': 'web' }), 'B', 'the console’s Device details say it: a match');
+  assert.equal(ours(snap, 'f', 'web', null, { 'device.platform': 'web' }).value, 'B');
+  // and the web app's CDN file, read by flagd
+  const file = buildFlagdDoc(snap, 'web', null);
+  assert.equal(cdnAnswer(file, 'f', {}).value, 'A');
+  assert.equal(cdnAnswer(file, 'f', { 'device.platform': 'web' }).value, 'B');
 });
 
 // ---- the entity chain on company › brand: every brand choice × company choice ------------------

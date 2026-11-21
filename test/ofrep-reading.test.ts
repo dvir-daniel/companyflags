@@ -13,6 +13,7 @@ import { createApiKey, rotateAppLink } from '../server/control.ts';
 import { appToken } from '../server/delivery.ts';
 import { contextProblem, whoseAnswersChanged } from '../server/ofrep.ts';
 import { CODE_DEFAULT, type FlagDef, type Layer } from '../server/evaluator.ts';
+import type { PublishScope } from '../server/events.ts';
 import { entities, snapshotOf } from './kit.ts';
 
 let t: Awaited<ReturnType<typeof startApp>>;
@@ -89,9 +90,9 @@ describe('what an answer says about itself', () => {
 });
 
 describe('contexts that would be read as something else', () => {
-  test('a misspelled dimension, `entity`, or an attribute written dotted: 400 INVALID_CONTEXT, naming the dimensions only', async () => {
+  test('a dimension written another way, `entity`, or an attribute written dotted: 400 INVALID_CONTEXT, naming the dimensions only', async () => {
     const all = await apiKey();
-    for (const context of [{ compnay: 'acme' }, { Company: 'acme' }, { companies: 'acme' }, { brnd: 'lumen', company: 'globex' }, { entity: 'acme' }]) {
+    for (const context of [{ COMPANY: 'acme' }, { Company: 'acme' }, { companies: 'acme' }, { brands: 'lumen', company: 'globex' }, { Brand_: 'lumen' }, { entity: 'acme' }]) {
       const r = await bulk(all, { targetingKey: 'd-1', ...context });
       assert.equal(r.status, 400, JSON.stringify(context));
       assert.equal(r.json.errorCode, 'INVALID_CONTEXT');
@@ -104,22 +105,88 @@ describe('contexts that would be read as something else', () => {
     assert.match(dotted.json.errorDetails, /"app\.version" is written dotted: nest it, \{"app": \{"version": …\}\}/);
     assert.equal((await bulk(all, { device: { 'os.version': '1' } })).status, 200, 'a dotted name that is no attribute is left alone');
     // what isn't a mistake: nested attributes, a dimension, and keys nothing reads
-    for (const context of [{ app: { version: '6.0.0' } }, { company: 'acme' }, { email: 'a@example.com', plan: 'pro', userId: 'u-1' }, { companyId: 42 }]) {
+    for (const context of [{ app: { version: '6.0.0' } }, { company: 'acme' }, { email: 'a@example.com', plan: 'pro', userId: 'u-1' }, { companyId: 42 },
+      { company_id: 'c-981' }, { branch: 'main', brand: 'lumen' }, { compnay: 'acme' }]) {
       assert.equal((await bulk(all, { targetingKey: 'd-1', ...context })).status, 200, JSON.stringify(context));
     }
   });
 
-  test('the checks on their own, for other dimensions', () => {
-    const snap = { dimensions: ['region', 'store'], fields: { region: { valueType: 'string', comesFrom: 'token' }, store: { valueType: 'string', comesFrom: 'token' },
+  test('the checks on their own, for other dimensions: only another case, a plural or separators, never a word that looks alike', () => {
+    const snap = { dimensions: ['region', 'store', 'account', 'country'], fields: { region: { valueType: 'string', comesFrom: 'token' }, store: { valueType: 'string', comesFrom: 'token' },
+      account: { valueType: 'string', comesFrom: 'token' }, country: { valueType: 'string', comesFrom: 'token' },
       entity: { valueType: 'string', comesFrom: 'token' }, 'app.version': { valueType: 'semver', comesFrom: 'sdk' }, 'device.id': { valueType: 'string', comesFrom: 'sdk' } } };
-    assert.match(contextProblem(snap, { stores: 'acme-12' }) ?? '', /"stores" isn’t a dimension: name the entity by its dimension: "region", "store"/);
-    assert.match(contextProblem(snap, { regoin: 'eu' }) ?? '', /"regoin" isn’t a dimension/);
-    assert.match(contextProblem(snap, { Store_: 'acme-12' }) ?? '', /isn’t a dimension/);
+    assert.match(contextProblem(snap, { stores: 'acme-12' }) ?? '', /"stores" isn’t a dimension: name the entity by its dimension: "region", "store", "account", "country"/);
+    assert.match(contextProblem(snap, { countries: 'us' }) ?? '', /"countries" isn’t a dimension/);
+    for (const key of ['Store', 'STORE', 'Store_', 'store-', 'Region']) {
+      assert.match(contextProblem(snap, { [key]: 'acme-12' }) ?? '', /isn’t a dimension/, key);
+      assert.match(contextProblem(snap, { [key]: 12 }) ?? '', /isn’t a dimension/, `${key}: a key can be a number`);
+    }
+    // ordinary keys that look like a dimension stay what they are: keys nothing reads
+    for (const key of ['state', 'stage', 'storey', 'branch', 'amount', 'regoin', 'store_id', 'storeId', 'accountKey', 'county']) {
+      assert.equal(contextProblem(snap, { [key]: 'x' }), null, key);
+    }
+    assert.equal(contextProblem(snap, { stores: 3 }), null, 'a number by a plural is a count');
     assert.equal(contextProblem(snap, { store: 'acme-12', region: 'eu' }), null);
-    assert.equal(contextProblem(snap, { storey: 3 }), null, 'only text can name an entity');
+    assert.equal(contextProblem(snap, { store: 12 }), null, 'a number names an entity too');
     assert.equal(contextProblem(snap, { language: 'en', country: 'US' }), null);
     assert.match(contextProblem(snap, { 'device.id': 'd-1' }) ?? '', /written dotted/);
     assert.match(contextProblem({ dimensions: [], fields: {} }, { entity: 'x' }) ?? '', /no dimensions/);
+  });
+
+  test('a dimension that is there but empty is refused, not asked as no entity (whose answers every override for an entity matches)', async () => {
+    const all = await apiKey();
+    const own = await apiKey('entity', 'acme');
+    for (const key of [all, own]) {
+      for (const context of [{ company: '' }, { company: null }, { brand: '', company: 'globex' }, { company: { key: 'acme' } }, { company: ['acme'] }, { company: true }]) {
+        const r = await bulk(key, { targetingKey: 'd-1', ...context });
+        assert.equal(r.status, 400, JSON.stringify(context));
+        assert.equal(r.json.errorCode, 'INVALID_CONTEXT');
+        assert.match(r.json.errorDetails, /^"(company|brand)" (is empty: give an entity’s key, or leave "(company|brand)" out|names an entity by its key: text or a number)$/);
+      }
+      const one_ = await one(key, 'max_upload_mb', { company: '' });
+      assert.equal(one_.status, 400);
+      assert.equal(one_.json.errorCode, 'INVALID_CONTEXT');
+    }
+    assert.equal((await bulk(all, {})).status, 200, 'left out: no entity, as before');
+    assert.equal((await bulk(own, {})).json.metadata.entity, 'acme', 'left out: the key’s own entity');
+  });
+});
+
+describe('an entity this server doesn’t know yet', () => {
+  // as another server on the same database adds it: in the database, not yet in this server's snapshot
+  const addElsewhere = async (key: string, dimension = 'company', parent: string | null = null) => {
+    await t.db.query(`insert into entity (key, name, dimension_id, parent_id) values ($1, $1, (select id from dimension where key = $2),
+      (select id from entity where key = $3))`, [key, dimension, parent]);
+    assert.equal(Object.hasOwn(t.plane.get('dev').entities, key), false, 'this server doesn’t know it yet');
+  };
+
+  test('over OFREP, the database is asked once before the entity is refused', async () => {
+    const all = await apiKey();
+    await addElsewhere('soylent');
+    const r = await bulk(all, { targetingKey: 'd-1', company: 'soylent' });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.equal(r.json.metadata.entity, 'soylent');
+    assert.ok(Object.hasOwn(t.plane.get('dev').entities, 'soylent'), 'the snapshot has it now');
+    await addElsewhere('soylent-west', 'brand', 'soylent');
+    assert.equal((await one(all, 'max_upload_mb', { brand: 'soylent-west' })).status, 200, 'one flag too');
+
+    // one that isn't there anywhere: refused, and not looked for again at once
+    let looked = 0;
+    const query = t.db.query.bind(t.db);
+    t.db.query = ((sql: string, params?: unknown[]) => { if (/from entity where key = \$1 and archived_at is null/.test(sql)) looked++; return query(sql, params as never); }) as typeof t.db.query;
+    try {
+      for (let i = 0; i < 3; i++) assert.equal((await bulk(all, { company: 'nobody-at-all' })).status, 400);
+    } finally { t.db.query = query; }
+    assert.equal(looked, 1, 'a key that isn’t there: one look, then not again for a moment');
+  });
+
+  test('an app token for an entity added on another server works at once, not 401', async () => {
+    await addElsewhere('pied-piper');
+    const token = await appToken(t.db, 'dev', 'pied-piper', 'web');
+    const r = await bulk(token, { targetingKey: 'd-1' });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.equal(r.json.metadata.entity, 'pied-piper');
+    assert.equal((await bulk(`${token.slice(0, -2)}xx`, { targetingKey: 'd-1' })).status, 401, 'a wrong secret is still a wrong one');
   });
 });
 
@@ -259,7 +326,12 @@ describe('change events reach the streams whose answers changed', () => {
     assert.deepEqual(await heard(), { acme: false, globex: false, lumen: false, none: false, whole: true }, 'a new entity changes nobody’s answers');
     await rotateAppLink(t.db, 'lumen', system);
     await t.workers.drain();
-    assert.deepEqual(await heard(), { acme: true, globex: true, lumen: true, none: true, whole: true }, 'nothing it can see changed (a replaced link): everyone, as before');
+    assert.deepEqual(await heard(), { acme: false, globex: false, lumen: true, none: false, whole: true }, 'a replaced link: only that entity’s own streams');
+    const described = await t.app.request('/api/flags/api_base_url/meta', { method: 'PUT', headers: { 'content-type': 'application/json', 'x-user': 'admin', ...CSRF },
+      body: JSON.stringify({ description: 'Where the app finds the API' }) });
+    assert.equal(described.status, 200, await described.text());
+    await t.workers.drain();
+    assert.deepEqual(await heard(), { acme: false, globex: false, lumen: false, none: false, whole: true }, 'a flag’s description: nobody’s answers');
     for (const s of Object.values(listening)) await s.cancel();
   });
 
@@ -287,7 +359,17 @@ describe('change events reach the streams whose answers changed', () => {
     assert.deepEqual(who(next([flag('f'), flag('g', { delivery: ['ios'] })], moved)), ['web:lumen', 'ios:lumen'], 'an entity moved: its own');
     const more = entities([['acme', 'Acme', 'company'], ['globex', 'Globex', 'company'], ['lumen', 'Lumen', 'brand', 'globex'], ['bolt', 'Bolt', 'brand', 'globex'], ['new', 'New', 'company']]);
     assert.deepEqual(who(next([flag('f'), flag('g', { delivery: ['ios'] })], more)), [], 'a new entity: nobody');
-    assert.equal(who(next([flag('f'), flag('g', { delivery: ['ios'] })])).length, 10, 'nothing visible changed: everyone');
+    assert.equal(who(next([flag('f'), flag('g', { delivery: ['ios'] })])).length, 10, 'nothing visible changed, and no scope: everyone');
+    const scoped = (n: typeof prev, scope: PublishScope) => {
+      const reach = whoseAnswersChanged(prev, n, scope);
+      return ['web', 'ios'].flatMap((s) => [null, 'acme', 'globex', 'lumen', 'bolt'].filter((e) => reach(s, e)).map((e) => `${s}:${e ?? '-'}`));
+    };
+    assert.deepEqual(scoped(next([flag('f'), flag('g', { delivery: ['ios'] })]), { entities: [], links: [] }), [], 'a scope of nobody (a description): nobody');
+    assert.deepEqual(scoped(prev, { entities: [], links: [] }), [], 'the same snapshot, told again: nobody');
+    assert.deepEqual(scoped(next([flag('f'), flag('g', { delivery: ['ios'] })]), { entities: [], links: ['globex'] }), ['web:globex', 'ios:globex'],
+      'a replaced link: that entity’s own streams, not those under it');
+    assert.deepEqual(scoped(next([flag('f', { entities: { acme: layer() } }), flag('g', { delivery: ['ios'] })]), { entities: ['acme'], links: ['bolt'] }),
+      ['web:acme', 'web:bolt', 'ios:bolt'], 'what changed, and the replaced link');
   });
 });
 

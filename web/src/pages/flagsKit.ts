@@ -148,3 +148,8 @@ export function startsLine(envs: readonly { name: string; reviewed: boolean }[],
     shut.length && `Starts off in ${and(shut)} until it’s turned on there, so apps use the default in their code.`,
   ].filter(Boolean).join(' ');
 }
+
+/** The services a new flag is in at first: every one, apps and backends. A backend reads only the flags it is in (server/flagd.ts). */
+export const newFlagServices = (services: readonly { key: string }[]) => services.map((p) => p.key);
+/** The line under the New flag dialog's services. */
+export const SERVICES_HINT = 'Every service gets it at first. These are its services in every environment, and an environment added later copies them.';

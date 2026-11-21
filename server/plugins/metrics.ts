@@ -10,6 +10,8 @@
 //   companyflags_event_streams{route}                            live-update streams open now (OFREP's, the console's)
 //   companyflags_publish_lag_seconds{environment}                how long the oldest publish has waited (0: none)
 //   companyflags_publish_failing{environment}                    1 while an environment's snapshot can't be built
+//   companyflags_purge_failing{environment}                      1 while its last CDN purge hasn't gone through
+//   companyflags_warnings                                        how many warnings /readyz lists (it still answers 200)
 //   companyflags_revision{environment}, companyflags_serving_revision{environment}
 //   companyflags_info{version}
 
@@ -42,7 +44,7 @@ function protocolOf(route: string): string | null {
 
 export const metrics = (o: MetricsOptions = {}) => definePlugin({
   id: 'metrics',
-  setup: ({ env, publishState }) => {
+  setup: ({ env, publishState, warnings }) => {
     const token = o.token ?? (env.FF_METRICS_TOKEN || undefined);
     const requests = new Map<string, { labels: Record<string, string>; n: number }>();
     const flagReads = new Map<string, { labels: Record<string, string>; n: number }>();
@@ -87,6 +89,10 @@ export const metrics = (o: MetricsOptions = {}) => definePlugin({
         for (const s of state) out.push(`companyflags_publish_lag_seconds${labels({ environment: s.environment })} ${s.lagSeconds}`);
         family('companyflags_publish_failing', 'gauge', '1 while an environment’s new snapshot can’t be built (it serves the one before).');
         for (const s of state) out.push(`companyflags_publish_failing${labels({ environment: s.environment })} ${s.error ? 1 : 0}`);
+        family('companyflags_purge_failing', 'gauge', '1 while the CDN purge after an environment’s last publish hasn’t gone through (apps reading CDN files wait for the CDN’s minute).');
+        for (const s of state) out.push(`companyflags_purge_failing${labels({ environment: s.environment })} ${s.purgeError ? 1 : 0}`);
+        family('companyflags_warnings', 'gauge', 'How many warnings /readyz lists: what needs a look though the server serves.');
+        out.push(`companyflags_warnings ${(await warnings()).length}`);
         family('companyflags_revision', 'gauge', 'The environment’s newest version, in the database.');
         for (const s of state) out.push(`companyflags_revision${labels({ environment: s.environment })} ${s.revision}`);
         family('companyflags_serving_revision', 'gauge', 'The version this server process serves.');

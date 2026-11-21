@@ -119,6 +119,6 @@ COMPANYFLAGS_VERSION=dev docker compose up -d
 | Path | Answers |
 |---|---|
 | `GET /healthz` | `200 {"ok":true,"version":"…"}` while the process runs |
-| `GET /readyz` | `200` while the database answers and every environment publishes, `503` when not ([Production](/self-hosting/production#5-health-checks)) |
+| `GET /readyz` | `200` while this instance can serve, with the environments whose publish fails in `failing`; `503` when the database doesn't answer ([Production](/self-hosting/production#5-health-checks)) |
 
 On `SIGTERM` the server stops taking requests, lets open ones finish and closes the database before it exits.

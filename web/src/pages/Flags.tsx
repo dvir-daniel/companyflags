@@ -34,7 +34,7 @@ import { ConditionsTab } from './versions.tsx';
 import { FinishSetup, NoServices } from './setup.tsx';
 import { setupLeft, setupSteps } from './setupKit.ts';
 import {
-  allMatching, density, flagsCsv, isOverdue, mapLimit, ROW_CLASS, startDefault, startsLine, switchBatches, switchItems, today, useFlagView,
+  allMatching, density, flagsCsv, isOverdue, mapLimit, newFlagServices, ROW_CLASS, SERVICES_HINT, startDefault, startsLine, switchBatches, switchItems, today, useFlagView,
   useKeptSelection, versionsHref, type Density, type EnvState, type FlagPage, type Row,
 } from './flagsKit.ts';
 
@@ -461,8 +461,8 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
   const [named, setNamed] = useState(true);
   const free = valueType !== 'bool' && !named;
   const [first, setFirst] = useState('');
-  // a new flag goes to every app (Settings → Apps); backends get it too, as they download every rule
-  const [delivery, setDelivery] = useState<string[]>(meta.services.filter((p) => p.kind === 'client').map((p) => p.key));
+  // a new flag goes to every service, apps and backends: a backend reads only the flags it is in
+  const [delivery, setDelivery] = useState<string[]>(() => newFlagServices(meta.services));
   const { busy, error, run } = useAsync();
 
   const keyError = key && !/^[a-z][a-z0-9_]*$/.test(key) ? 'Start with a letter; use lowercase letters, digits and _' : null;
@@ -615,7 +615,7 @@ function CreateFlag({ onClose, owners, tagsInUse }: { onClose: () => void; owner
               </Switch>
             ))}
           </div>
-          <span className="text-13 text-ink-3">The services this flag is in, in every environment.</span>
+          <span className="text-13 text-ink-3">{SERVICES_HINT}</span>
         </>}
       </div>
       {meta.environments.length > 0 && <p className="m-0 text-13 text-ink-2">{startsLine(meta.environments.map((e) => ({ name: envName(e.key), reviewed: isProtected(e.key) })), served)}</p>}

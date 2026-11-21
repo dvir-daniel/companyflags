@@ -36,6 +36,7 @@ await OpenFeature.setProviderAndWait(new MultiProvider([
   { provider: new OFREPWebProvider({
       baseUrl: 'https://flags.example.com',
       headers: [['Authorization', 'Bearer ff_prod_web_…']],   // the app service's key: see OpenFeature
+      pollInterval: 60_000,                                    // when it can't keep a change stream open
   }) },
   { provider: oldSystemProvider },   // every flag not in this app's service yet
 ], new FirstMatchStrategy()));

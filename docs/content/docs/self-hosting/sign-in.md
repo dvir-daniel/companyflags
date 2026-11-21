@@ -51,7 +51,8 @@ After the first account, nobody makes an account on their own. A person can join
 People who join without an invite get the **join role**: Viewer, unless an admin chose another in **Settings → Single
 sign-on → New people join as** (never Admin). Viewers can see every flag and entity, and change nothing. An admin
 gives them a role in People, or the identity provider's groups do (see [Group roles](#group-roles)). People an admin
-added keep the role the admin chose, however they sign in.
+added keep the role the admin chose, however they sign in, unless they sign in with a connection that gives roles
+from groups: then their groups decide, at each sign-in with it.
 
 Password accounts are only made from an invite link (or as the first account, with the setup link), so nobody can
 claim an address they weren't invited as. Passwords have at least 10 characters.
@@ -68,8 +69,11 @@ The server sends no email, so an admin makes the reset link: **Settings → Peop
 row. Send it to them however you like. It works once, for 24 hours; they choose a new password (at least 10
 characters) and are signed out everywhere. The link is shown once, and History records that it was made.
 
-Only people with a password have one to reset: someone who signs in with single sign-on or a provider resets it
-there. Asking for a reset by email is switched off.
+It also gives a **first password** to someone who signed in only with single sign-on or a provider. That is how
+people get back in when they have no other way: their connection was removed, or their identity provider is down.
+History marks it `first: true`. Where single sign-on is still required at their domain, the password works only for
+the break-glass admin, and the link says so; see [When the identity provider is down](#when-the-identity-provider-is-down).
+Someone with no account yet gets an invite link instead. Asking for a reset by email is switched off.
 
 A reset link also turns off the person's two-factor sign-in, for someone who lost their phone and their recovery
 codes. They set it up again.
@@ -86,7 +90,8 @@ The secret and the recovery codes are kept encrypted with `BETTER_AUTH_SECRET`.
 
 To require it of admins, turn on **Settings → Single Sign-On → Admins with a password use two-factor sign-in**. An
 admin with a password and no second factor then sees only the setup page until they set it up; the API refuses them
-everything else. Turn it on after you set up your own. Admins who sign in only with single sign-on or a provider have
+everything else. Their access tokens are refused too, even ones made before, and their MCP clients can't sign in over
+OAuth or renew a sign-in, until they set it up. Turn it on after you set up your own. Admins who sign in only with single sign-on or a provider have
 no password here: your identity provider asks for its own second factor.
 
 Codes by email or text message are off: the server sends neither.
@@ -127,7 +132,9 @@ On the identity provider's side, the sign-in redirect URI:
 
 When you save, the server reads the issuer's `/.well-known/openid-configuration` and checks that it names the same
 issuer. The issuer must be on the public internet unless its origin is in `BETTER_AUTH_TRUSTED_ORIGINS`: the address
-is checked as the connection is made, and redirects aren't followed. If something is wrong, the message says so
+is checked as the connection is made, and redirects aren't followed. So must the token, keys (JWKS) and user info
+addresses it gives (`https` in production): at each sign-in, the server reaches them through the same checked
+connection, so a name that later points at your network is refused. If something is wrong, the message says so
 without repeating what the address answered. It asks for the `openid`, `email` and `profile` scopes and uses PKCE. In production the issuer must be
 `https`. The client secret stays on the server and is never shown again.
 
@@ -167,6 +174,15 @@ someone last signed in with it.
 certificate or metadata left empty stays as it was. Its protocol and its ID stay: for another, add a new connection.
 History records each change, never the secret.
 
+On a connection that requires single sign-on:
+
+- **A change to the identity provider's details** (OIDC: issuer, client ID or client secret; SAML: metadata, sign-in
+  URL, entity ID or certificate) turns the requirement off and forgets the last test sign-in. Passwords work there
+  again until you use **Test sign-in** and require it again. A typo then can't lock everyone out. The drawer says so
+  before you save.
+- **A new domain** signs out the people at that domain only. Everyone else stays signed in.
+- Changing only the group roles changes nothing else.
+
 ### Require single sign-on
 
 Turn on **Require single sign-on** on a connection's row. It can be turned on only once someone has signed in with
@@ -175,12 +191,24 @@ at its domains (and their subdomains) signs in with a password, Google, GitHub o
 account.
 
 One admin keeps their password there: the **break-glass admin**, chosen in **Settings → Single Sign-On → Break-glass
-admin**, in case the identity provider is down. Every other admin uses single sign-on too. With nobody chosen, nobody
-keeps a password. The break-glass admin counts only while they are an admin; choosing another one signs the old one
-out where single sign-on is required.
+admin**, in case the identity provider is down. They must have a password: give an admin who signs in only with single
+sign-on one first, with a password link (People → Reset password). Every other admin uses single sign-on too. With
+nobody chosen, nobody keeps a password. The break-glass admin counts only while they are an admin with a password;
+choosing another one signs the old one out where single sign-on is required.
 
 Turning it on signs out everyone at its domains but the break-glass admin, at once. They sign in again with single
 sign-on.
+
+### When the identity provider is down
+
+1. The break-glass admin signs in with their password.
+2. If others need in before it's back, they turn **Require single sign-on** off on the connection.
+3. They make each person a password link (People → Reset password). It sets a first password for someone who had
+   only single sign-on.
+4. When the identity provider is back, turn the requirement on again: everyone at its domains signs in with it
+   again.
+
+If the connection was removed, step 3 is all it takes: nothing requires single sign-on there any more.
 
 ### What leaving the identity provider does
 
@@ -207,8 +235,10 @@ flag-editors = editor
 ```
 
 Each time someone signs in with the connection, they get the highest role of their groups that are named, and the
-join role when none is. A role set in People is replaced at their next sign-in. The break-glass admin's role is left
-alone, and the last admin is never made anything else. History records each change, by `sso:<connection id>`.
+join role when the claim lists none of them. A role set in People is replaced at their next sign-in with it. A
+sign-in without the claim at all leaves the role as it is, so a claim named wrong demotes nobody. The break-glass
+admin's role is left alone, and the last admin is never made anything else. History records each change, by
+`sso:<connection id>`.
 
 Make sure the identity provider sends the groups: in the ID token or the user info for OIDC (Okta: a groups claim on
 the app; Entra ID: "Groups claim" in Token configuration), or as an attribute of the SAML answer. Groups give one role

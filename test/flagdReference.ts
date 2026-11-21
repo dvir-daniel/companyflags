@@ -98,6 +98,19 @@ export function run(logic: unknown, data: Data): unknown {
 }
 
 export type Answer = { value?: unknown; codeDefault?: true; notFound?: true; reason?: string };
+
+/** The targeting with each {"$ref": "<name>"} replaced by the document's shared evaluator of that name (flagd's
+ *  $evaluators). An unknown name is an error, as in flagd. */
+function withEvaluators(doc: FlagdDoc, logic: unknown): unknown {
+  if (Array.isArray(logic)) return logic.map((l) => withEvaluators(doc, l));
+  if (logic === null || typeof logic !== 'object') return logic;
+  const o = logic as Record<string, unknown>;
+  if (Object.keys(o).length === 1 && typeof o.$ref === 'string') {
+    assert.ok(doc.$evaluators && Object.hasOwn(doc.$evaluators, o.$ref), `no shared evaluator "${o.$ref}"`);
+    return doc.$evaluators[o.$ref];
+  }
+  return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, withEvaluators(doc, v)]));
+}
 /** flagd's evaluation of one flag (flag definitions reference): DISABLED and a null variant give the code default. */
 export function flagdEvaluate(doc: FlagdDoc, key: string, context: Data): Answer {
   const f = Object.hasOwn(doc.flags, key) ? doc.flags[key] : undefined;
@@ -106,7 +119,7 @@ export function flagdEvaluate(doc: FlagdDoc, key: string, context: Data): Answer
   let variant = f.defaultVariant;
   let reason = variant === null ? 'DEFAULT' : 'STATIC';    // no default variant: the code's default, as flagd-core says
   if (f.targeting !== undefined) {
-    const r = run(f.targeting, context);
+    const r = run(withEvaluators(doc, f.targeting), context);
     if (r === null || r === undefined) reason = 'DEFAULT';
     else {
       assert.ok(typeof r === 'string' && Object.hasOwn(f.variants, r), `targeting returned ${JSON.stringify(r)}, not a variant`);
@@ -166,7 +179,7 @@ export function ours(snap: Snapshot, key: string, project: string, entity: strin
   const { targetingKey, ...rest } = attrs;
   const sent = targetingKey !== undefined && targetingKey !== null && targetingKey !== '' && [undefined, null, ''].includes(rest['device.id'] as never)
     ? { ...rest, 'device.id': String(targetingKey) } : rest;
-  const r = evaluate(snap, key, contextFor(snap, { project, entity }, sent, { trust: 'app' }), false);
+  const r = evaluate(snap, key, contextFor(snap, { project, entity }, sent), false);
   if (r.errorCode === 'FLAG_NOT_FOUND') return { notFound: true };
   return r.codeDefault ? { codeDefault: true } : { value: r.value };
 }

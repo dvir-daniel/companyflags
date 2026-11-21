@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { checkLayer, type FieldFacts } from '../server/checks.ts';
 import type { Layer } from '../server/evaluator.ts';
 import {
-  applyChange, backChange, changeText, holdBacks, isRollback, isVersionRelease, nextChange, ownRules, readyToCleanUp, releaseState, stepText, type Change, type LayerLike, type Variant,
+  applyChange, backChange, changeText, holdBacks, isRollback, isVersionRelease, nextChange, ownRules, readyToCleanUp, releaseState, stepText, stillServing,
+  stillServingText, type Change, type LayerLike, type Variant,
 } from '../server/release.ts';
 import { buildFlagdDoc } from '../server/flagd.ts';
 import { bucketFor, HASH_VERSION } from '../server/hash.ts';
@@ -94,6 +95,24 @@ describe('where a release is', () => {
     const off = step({ ...l, enabled: false }, { kind: 'percent', percent: 25 });
     assert.equal(off.enabled, false);
     assert.equal(stepText(releaseState(variants, off)), 'Off · 25% of devices');
+  });
+
+  test('pause leaves entities whose own settings serve the new value on it, and says so', () => {
+    const l = step(stored(start), { kind: 'percent', percent: 5 });
+    const rule = (serve: string, disabled = false) => ({ ...OTHER, ruleKey: undefined, name: 'Acme gets it everywhere', disabled, conditions: [], serveVariation: serve });
+    const own = [
+      { entity: 'acme', layer: { enabled: null, defaultVariation: null, inherit: 'base_rules_then_base_default', rules: [rule('on')] } },
+      { entity: 'globex', layer: { enabled: null, defaultVariation: 'on', inherit: 'customer_only', rules: [] } },
+      { entity: 'lumen', layer: { enabled: null, defaultVariation: 'on', inherit: 'base_rules_then_base_default', rules: [rule('on', true)] } },
+      { entity: 'bolt', layer: { enabled: null, defaultVariation: null, inherit: null, rules: [rule('off')] } },
+    ];
+    assert.deepEqual(stillServing(variants, l, own), ['acme', 'globex'], 'an own rule or own default that serves it; not a paused rule or a default it doesn’t use');
+    assert.deepEqual(stillServing(variants, step(l, { kind: 'pause' }), own), ['acme', 'globex'], 'paused: still them');
+    assert.deepEqual(stillServing(variants, stored(start), own), [], 'nothing is moving');
+    assert.equal(stillServingText(['Acme']), 'Acme still gets it: its own settings serve it. Turn the flag off to stop it for everyone.');
+    assert.equal(stillServingText(['Acme', 'Globex', 'Lumen']), 'Acme, Globex and Lumen still get it: their own settings serve it. Turn the flag off to stop it for everyone.');
+    assert.match(stillServingText(['a', 'b', 'c', 'd', 'e'])!, /^a, b, c and 2 more still get it/);
+    assert.equal(stillServingText([]), null);
   });
 
   test('rules made on the flag page are read by their shape: a % on some apps, its own name, a backup ID', () => {

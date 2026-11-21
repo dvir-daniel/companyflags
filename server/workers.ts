@@ -3,7 +3,8 @@
 // on the same database.
 
 import { all, type Db } from './db.ts';
-import type { EventHub } from './events.ts';
+import { joinScopes, NOBODY, type EventHub, type PublishScope } from './events.ts';
+import { scopeOfRevisions } from './journal.ts';
 import { applyChangeSet } from './layers.ts';
 import type { DataPlane } from './snapshot.ts';
 import type { OnPublish } from './plugin.ts';
@@ -25,21 +26,35 @@ export type WorkerOptions = {
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
 /** Per environment: the revision it is at (the database's), the one this server serves, and the oldest publish
- *  still waiting, with the error of its last try (a snapshot that can't be built). */
-export type PublishState = { environment: string; revision: number; serving: number | null; waitingSince: string | null; lagSeconds: number; error: string | null };
+ *  still waiting, with the error of its last try (a snapshot that can't be built). `purgeError`: the newest publish
+ *  that had files to purge didn't purge them (the CDN said no, or its token can't be read): apps reading CDN files
+ *  may get the change only when the CDN's minute is up. */
+export type PublishState = {
+  environment: string; revision: number; serving: number | null; waitingSince: string | null; lagSeconds: number; error: string | null;
+  purgeError: string | null;
+};
 
-/** How far each environment's publishing is behind (index.ts /readyz, the metrics plugin). */
+/** How far each environment's publishing is behind, and whether its last purge went through (index.ts /readyz, the
+ *  metrics plugin). */
 export async function publishState(db: Db, plane: Pick<DataPlane, 'snapshots'>): Promise<PublishState[]> {
-  const rows = await all<{ key: string; revision: string; since: string | null; lag: number | null; error: string | null }>(db, `
-    select e.key, e.revision, w.created_at as since, extract(epoch from now() - w.created_at)::float8 as lag, w.last_error as error
+  const rows = await all<{ key: string; revision: string; since: string | null; lag: number | null; error: string | null; purge: string | null }>(db, `
+    select e.key, e.revision, w.created_at as since, extract(epoch from now() - w.created_at)::float8 as lag, w.last_error as error,
+      p.last_error as purge
     from environment e left join lateral (select q.created_at, q.last_error from publish_queue q
       where q.environment_id = e.id and q.published_at is null order by q.id limit 1) w on true
+    left join lateral (select q.last_error from publish_queue q
+      where q.environment_id = e.id and q.published_at is not null and (q.purged_at is not null or q.last_error like 'purge:%')
+      order by q.id desc limit 1) p on true
     order by e.id`);
   return rows.map((r) => ({
     environment: r.key, revision: Number(r.revision), serving: plane.snapshots.get(r.key)?.revision ?? null,
     waitingSince: r.since ? new Date(r.since).toISOString() : null, lagSeconds: Math.max(0, Math.round(Number(r.lag ?? 0))), error: r.error,
+    purgeError: r.purge?.startsWith('purge:') ? r.purge : null,
   }));
 }
+
+/** The revisions after `from` up to `to`, which a listener hasn't heard of (scopeOfRevisions reads at most 500). */
+const after = (from: number, to: number) => Array.from({ length: Math.min(Math.max(0, to - from), 501) }, (_, i) => from + 1 + i);
 
 /** How often each server process runs a round: publishing, scheduled changes, catching up with the others. */
 export const ROUND_MS = 1000;
@@ -50,13 +65,18 @@ export const PURGE_AGAIN_MS = ROUND_MS + 10_000;
 export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: string) => void = () => {}, onPublish?: OnPublish, opts: WorkerOptions = {}) {
   // The revision this process's listeners (the hub) last heard of, per environment. The snapshot can be ahead of it:
   // OFREP catches up on its own when a provider names a newer revision (ofrep.ts), and catchUp still tells everyone.
+  // Each tells them whose answers may have changed since the revision they heard of (journal.ts scopeOfRevisions):
+  // anyone's when History can't say.
   const told = new Map<string, number>();
   for (const [env, snap] of plane.snapshots) told.set(env, snap.revision);
-  const tell = (env: string, revision: number) => {
-    hub.publish(env, revision);
+  const tell = async (env: string, revision: number) => {
+    const from = told.get(env);
+    const scope = from === undefined ? null : revision <= from ? NOBODY
+      : await scopeOfRevisions(db, env, after(from, revision)).catch(() => null);
+    hub.publish(env, revision, scope);
     told.set(env, Math.max(revision, told.get(env) ?? 0));
   };
-  const purgesAgain = new Map<string, ReturnType<typeof setTimeout>>();
+  const purgesAgain = new Map<string, { timer: ReturnType<typeof setTimeout>; scope: PublishScope; ids: string[] }>();
 
   async function publishOnce() {
     // Claim with a lease; messages are idempotent "env is at revision N" signals, so duplicates are harmless.
@@ -78,14 +98,17 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
     }
     for (const [env, list] of byEnv) {
       const ids = list.map((r) => r.id);
+      let scope: PublishScope;
       try {
         const snap = await plane.refresh(db, env);
         await db.query(`update publish_queue set published_at = now() where id = any($1::bigint[])`, [ids]);
-        tell(env, snap.revision);
+        // whose answers these versions changed: the purge drops only their files (cdn.ts)
+        scope = await scopeOfRevisions(db, env, list.map((r) => Number(r.revision))).catch(() => null);
+        await tell(env, snap.revision);
         log(`published ${env}@${snap.revision}`);
       } catch (e) {
         // what an environment serves is stuck at its old snapshot until this works: said in the log every time, and
-        // /readyz fails while any publish waits with an error (index.ts readiness)
+        // /readyz names the environment in `failing` while its publish waits with an error (index.ts readiness)
         const said = (e as Error)?.message ?? String(e);
         const top = list.reduce((a, r) => Math.max(a, Number(r.revision)), 0);
         log(`publishing ${env}@${top} failed (it serves what it served before; trying again in 30 seconds): ${said}`);
@@ -95,31 +118,35 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
       // The plugins' onPublish (a CDN purge) runs on its own, after the rows are marked: a slow or failed purge only
       // delays the change by the CDN's minute, and never holds up this loop (other publishes, scheduled applies).
       if (onPublish) {
-        afterPublish(onPublish, env, ids);
-        purgeAgainLater(onPublish, env, ids);
+        afterPublish(onPublish, env, ids, scope);
+        purgeAgainLater(onPublish, env, ids, scope);
       }
     }
     return rows.length;
   }
 
   // Once more, later: a CDN that refilled from a server still behind gets the new file (PURGE_AGAIN_MS). A publish in
-  // the meantime moves it on, so a burst of them ends with one.
-  function purgeAgainLater(hook: OnPublish, env: string, ids: string[]) {
-    clearTimeout(purgesAgain.get(env));
+  // the meantime moves it on, so a burst of them ends with one, for what all of them changed.
+  function purgeAgainLater(hook: OnPublish, env: string, ids: string[], scope: PublishScope) {
+    const waiting = purgesAgain.get(env);
+    if (waiting) clearTimeout(waiting.timer);
+    const due = waiting ? { scope: joinScopes(waiting.scope, scope), ids: [...waiting.ids, ...ids] } : { scope, ids };
     const timer = setTimeout(() => {
       purgesAgain.delete(env);
-      if (!stopped) afterPublish(hook, env, ids);
+      if (!stopped) afterPublish(hook, env, due.ids, due.scope);
     }, opts.purgeAgainAfterMs ?? PURGE_AGAIN_MS);
     timer.unref?.();
-    purgesAgain.set(env, timer);
+    purgesAgain.set(env, { timer, ...due });
   }
 
-  // Only an answer of 'purged' says a cache was purged (Settings → CDN shows when). A failure is logged, and kept on
-  // the rows as "purge: <plugin>: <what went wrong>", the words Settings → CDN shows (web/src/pages/cdn.tsx).
-  function afterPublish(hook: OnPublish, env: string, ids: string[]) {
-    const purged = () => db.query(`update publish_queue set purged_at = now() where id = any($1::bigint[])`, [ids]).catch(() => {});
+  // Only an answer of 'purged' says a cache was purged (Settings → CDN shows when), and clears a failed purge's error.
+  // A failure is logged, and kept on the rows as "purge: <plugin>: <what went wrong>", the words Settings → CDN shows
+  // (web/src/pages/cdn.tsx) and /readyz warns of (publishState).
+  function afterPublish(hook: OnPublish, env: string, ids: string[], scope: PublishScope) {
+    const purged = () => db.query(`update publish_queue set purged_at = now(),
+        last_error = case when last_error like 'purge:%' then null else last_error end where id = any($1::bigint[])`, [ids]).catch(() => {});
     let p: ReturnType<OnPublish>;
-    try { p = hook(env); } catch (e) { p = Promise.reject(e); }
+    try { p = hook(env, scope); } catch (e) { p = Promise.reject(e); }
     p.then(async (done) => {
       if (done === 'purged') await purged();
     }, async (e) => {
@@ -160,7 +187,7 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
       // rebuilt already: whoever publishes its outbox row tells its own listeners, so wait while one is waiting
       if (current && ((told.get(e.key) ?? cur.revision) >= revision || e.pending)) continue;
       const snap = current ? cur : await plane.refresh(db, e.key);
-      tell(e.key, snap.revision);
+      await tell(e.key, snap.revision);
       changed = true;
     }
     if (changed) opts.onRemoteChange?.();
@@ -200,7 +227,7 @@ export function startWorkers(db: Db, plane: DataPlane, hub: EventHub, log: (m: s
     stop: async () => {
       stopped = true;
       clearInterval(timer);
-      for (const t of purgesAgain.values()) clearTimeout(t);
+      for (const w of purgesAgain.values()) clearTimeout(w.timer);
       purgesAgain.clear();
       if (current) await current.catch(() => {});
     },

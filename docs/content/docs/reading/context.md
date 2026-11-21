@@ -59,16 +59,41 @@ Name the entity in the context by its dimension key. The server fills in the lev
 - **Which entity asks.** If the context names several dimensions (`"company": "globex", "brand": "lumen"`), the
   lowest asks, and the others must be the ones above it. One that isn't under the one named above it is
   `400 INVALID_CONTEXT`. An entity outside the key's scope and one that doesn't exist get the same
-  `400 INVALID_CONTEXT`, with the same words, so a key can't tell which entities exist. The context is wrong, not
-  the key: the provider reports an error for that context and works again with the next one. (A `401` or `403`
-  stops OpenFeature's web provider for good, so those are for a wrong key only.)
+  `400 INVALID_CONTEXT`, with the same words, so a key can't tell which entities exist. (A `401` or `403` stops
+  OpenFeature's web provider for good, so those are for a wrong key only.)
+- **The key as text or a number.** `{ "brand": 12 }` is the entity `12`, the same as `{ "brand": "12" }`, here and
+  in the backends' flagd JSON.
 - **Naming none.** A key for one entity (or `below` one) asks as its own entity. An `all` key asks as no entity: what
-  every device gets before sign-in.
-- **A misspelled dimension.** A key that looks like a dimension but isn't one (`"compnay"`, `"Company"`,
-  `"companies"`), or `"entity"`, is `400 INVALID_CONTEXT`, naming the dimensions:
-  `"compnay" isn’t a dimension: name the entity by its dimension: "company", "brand"`. Without that, the request
-  would quietly ask as no entity. The answer names dimensions only, never an entity. Keys nothing reads
-  (`email`, `plan`) are left alone.
+  every device gets before sign-in. Leave the dimension out to name none: one that is there but empty
+  (`{ "company": "" }`, `{ "company": null }`), or isn't text or a number, is `400 INVALID_CONTEXT`. A missing join
+  would otherwise ask as no entity, and overrides for an entity ("Company is Globex → off") match no entity too.
+- **A dimension written another way.** A key that is a dimension in another case, plural or with separators
+  (`"Company"`, `"COMPANY"`, `"companies"`, `"company_"`), or `"entity"`, is `400 INVALID_CONTEXT`, naming the
+  dimensions: `"companies" isn’t a dimension: name the entity by its dimension: "company", "brand"`. Without that,
+  the request would quietly ask as no entity. The answer names dimensions only, never an entity. Every other key
+  nothing reads is left alone, even one that looks like a dimension: `email`, `plan`, `state` next to a `store`
+  dimension, `branch` next to `brand`, `company_id`, or a misspelling such as `compnay`. Check the spelling of your
+  dimensions: a misspelled one asks as no entity.
+
+### When the server refuses a context
+
+A refused context leaves the app where it was. OpenFeature's web provider reports the error (a provider `Error`
+event; `Stale` after a change event) and **keeps the values it had for the previous context**: after a sign-in that
+names an entity it can't ask about, the app goes on showing what it showed before sign-in, or for the entity signed
+in before. It asks again at the next change of context, the next change event of its old stream, or its next poll.
+A server provider (one flag per request) returns the default in your code for that request.
+
+So name only entities the server knows: add one from your backend before the app asks as it (below), and handle the
+provider's `Error` event if a wrong entity must not keep the old values:
+
+```ts
+import { OpenFeature, ProviderEvents } from '@openfeature/web-sdk';
+
+OpenFeature.addHandler(ProviderEvents.Error, ({ message }) => {
+  // the context was refused: say so, or sign the user out, or set the context again once the entity is added
+  console.warn('flags: context refused', message);
+});
+```
 - **The rest of the context** is what the request knows about itself, nested (`{"app": {"version": "6.0.0"}}`).
   `targetingKey` is the device or user a % of devices is decided for, unless the context has `device.id`. Anything it
   says about the service or the environment is ignored: those come from the key.
@@ -84,7 +109,7 @@ PUT /sdk/v1/entities/<dimension>/<entity>
 Authorization: Bearer ff_prod_api_…
 Content-Type: application/json
 
-{ "name": "Stark Industries", "parent": "globex" }
+{ "name": "Stark Industries" }
 ```
 
 ```json
@@ -97,7 +122,10 @@ Content-Type: application/json
   entity follows its parent's settings, or everyone's, until it has its own. An entity that is there already keeps its
   parent: a different one is `409`, because moving an entity changes what it gets. Move it in the console.
 - **At once.** The key's environment answers for the new entity as soon as the answer comes back; the other
-  environments, and other servers on the same database, within about a second.
+  environments, and other servers on the same database, within about a second. Before that, an OFREP request (or an
+  app token) naming it on another server is not refused: a server looks in the database for an entity it doesn't
+  know before it refuses it. The backends' flagd JSON has it at its next poll; until then it gives the code's
+  defaults there.
 - Entity keys are unique across every dimension: a key in another dimension is `409`. A key that isn't lowercase
   letters, digits and dashes is `422`, a parent that isn't there `422`, a dimension that isn't there `404`.
 - `403` for a key with any other scope, an app service's key, or a request from a browser. History shows the key that
@@ -155,7 +183,8 @@ it asks.
 | The flag isn't in this service, or there is no such flag | `FLAG_NOT_FOUND` (404 for one flag; left out of the bulk answer) |
 | A chain that doesn't match | `400 INVALID_CONTEXT` |
 | An entity outside the credential's reach, or one that doesn't exist: the same answer for both | `400 INVALID_CONTEXT` |
-| A misspelled dimension, `entity`, or an attribute written dotted | `400 INVALID_CONTEXT`, saying which |
+| A dimension written another way, `entity`, or an attribute written dotted | `400 INVALID_CONTEXT`, saying which |
+| A dimension that is `""` or `null` | `400 INVALID_CONTEXT` |
 | A backend's key sent from a browser (with an `Origin` header) | `403` |
 | No credential, or a wrong or replaced one | `401` |
 

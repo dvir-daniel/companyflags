@@ -5,7 +5,7 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { boot, builtIns, changed } from './helpers.ts';
-import { nextMessage, sign, type HistoryRow } from '../server/webhooks.ts';
+import { buildMessage, nextMessage, sign, type HistoryRow } from '../server/webhooks.ts';
 
 // ---------------------------------------------------------------- which rows make a message (pure)
 
@@ -25,6 +25,19 @@ test('a message is one save: rows with the same time and person, the ones the we
 test('rows it doesn’t want move the cursor without a message; other environments are left out', () => {
   const n = nextMessage([row(11, { environment: 'prod', at: 'a' }), row(12, { kind: 'sso.add', revision: null, at: 'b' })], { ...hook, environments: ['dev'] }, null, 0);
   assert.deepEqual([n.message.length, n.cursor], [0, 12]);
+});
+
+test('security events: approvals lowered, webhooks and replaced app links too; a replaced link is also a change', () => {
+  const security = { events: ['security'], environments: ['prod'], cursor: 10 };
+  for (const kind of ['environment.update', 'webhook.delete', 'webhook.secret', 'webhook_in.create', 'webhook_in.token']) {
+    assert.deepEqual(nextMessage([row(11, { kind, revision: null, environment: 'dev' })], security, null, 0).message.map((r) => r.id), [11], kind);
+  }
+  const link = row(11, { kind: 'entity.link_replaced', environment: 'dev' });
+  assert.deepEqual(nextMessage([link], security, null, 0).message.map((r) => r.id), [11], 'a replaced link, in any environment');
+  assert.deepEqual(nextMessage([link], hook, null, 0).message.map((r) => r.id), [11], 'and a change, for a changes webhook');
+  const names = { person: new Map(), entity: new Map(), environment: new Map() };
+  assert.equal(buildMessage([link], names, { hook: security }).type, 'security', 'as the event the webhook asked for');
+  assert.equal(buildMessage([link], names, { hook }).type, 'changes');
 });
 
 test('security events: sign-ins, people, tokens, keys and single sign-on, in every environment', () => {
@@ -130,8 +143,9 @@ test('a SIEM gets security events: a role changed and a token made, as type "sec
   assert.equal((await t.as('alice').post('/tokens', { name: 'CI' })).status, 201);
   await flush();
   const sent = calls.map((c) => JSON.parse(c.body));
-  assert.deepEqual(sent.map((m) => [m.type, m.data.changes[0].kind]), [['security', 'person.role'], ['security', 'token.create']], 'not the flag change');
-  assert.equal(sent[1].data.by.key, 'alice');
+  assert.deepEqual(sent.map((m) => [m.type, m.data.changes[0].kind]), [['security', 'webhook.create'], ['security', 'person.role'], ['security', 'token.create']],
+    'its own making too (a webhook deleted is one), not the flag change');
+  assert.equal(sent[2].data.by.key, 'alice');
   await t.as('dana').put('/people/bob', { role: 'approver' });
   await removeAll();
 });
@@ -277,5 +291,25 @@ test('incoming into an environment that needs approval: a request for review', a
   assert.ok(r.json.request);
   assert.deepEqual(r.json.warnings, ['max_upload_mb: its targeting isn’t brought over, only its default and on/off. Add rules in the console.']);
   const cs = (await t.as('bob').get(`/change-sets/${r.json.request}`)).json;
-  assert.equal(cs.author ?? cs.changeSet?.author, 'Webhook: Old prod');
+  assert.equal(cs.author ?? cs.changeSet?.author, 'dana', 'the request is its creator’s');
+});
+
+test('a request through an incoming webhook is its owner’s: whoever last changed it can’t approve it', async () => {
+  // with 1 approval in prod, an admin must not send a change through their own webhook and approve it alone
+  const { token, webhook } = (await t.as('dana').post('/webhooks/in', { name: 'Self-serve', environment: 'prod', format: 'kv' })).json;
+  const review = (who: string, id: number) => t.as(who).post(`/change-sets/${id}/review`, { decision: 'approve' });
+  const first = await send(token, { max_upload_mb: 1000 });
+  assert.equal(first.status, 202, JSON.stringify(first.json));
+  const own = await review('dana', first.json.request);
+  assert.equal(own.status, 403, JSON.stringify(own.json));
+  assert.match(own.json.error, /your own request/);
+
+  // another admin replaces its address: the webhook is theirs now
+  assert.equal((await t.as('dana').post('/people', { email: 'erin@example.com', role: 'admin' })).status, 201);
+  const { token: next } = (await t.as('erin@example.com').post(`/webhooks/in/${webhook.id}/token`)).json;
+  const second = await send(next, { max_upload_mb: 5000 });
+  assert.equal(second.status, 202, JSON.stringify(second.json));
+  assert.equal((await review('erin@example.com', second.json.request)).status, 403, 'not by whoever changed it last');
+  assert.equal((await review('dana', second.json.request)).status, 200, 'another reviewer can');
+  await t.as('dana').post(`/change-sets/${first.json.request}/cancel`, {});
 });

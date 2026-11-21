@@ -15,9 +15,12 @@
 // order any of these steps; they say what changed.
 //
 // Every kind of change is declared in KINDS: what it changes, its after-commit effects, and whether a restore undoes
-// it. Restore undoes flag settings only (docs/design/adr/0001-restore-undoes-flag-settings-only.md).
+// it. Restore undoes flag settings only (docs/design/adr/0001-restore-undoes-flag-settings-only.md). A kind that
+// serves also says whose answers it may change (its `scope`, events.ts PublishScope): the publisher reads it from
+// History, so a publish purges only those files from the CDN and wakes only those devices' event streams (scopeOf).
 
 import { all, one, type Db, type Queryable, type Tx } from './db.ts';
+import { joinScopes, NOBODY, type PublishScope } from './events.ts';
 import type { Actor } from './layers.ts';
 import { isReleaseVersion } from './semver.ts';
 
@@ -42,6 +45,8 @@ type Kind = {
   then?: Exclude<Effect, 'wake'>[];
   /** the change in words, for what a restore leaves alone; `name` gives an entity's name */
   says?: (e: Said, name: (entity: string) => string) => string;
+  /** whose answers it may change (events.ts PublishScope); left out: anyone's in the environment */
+  scope?: (e: Said) => PublishScope;
 };
 
 const settingsOf = (e: Said, name: (k: string) => string) => `${e.flag}${e.entity ? ` for ${name(e.entity)}` : ''}`;
@@ -65,6 +70,15 @@ const entityChanged = (e: Said, n: (k: string) => string) => {
   return `Changed ${who}`;
 };
 const linkReplaced = (e: Said, n: (k: string) => string) => `Replaced the app link of ${n(e.entity ?? '')}`;
+// An entity's own settings change what it and the entities under it get; the defaults (no entity), everyone's.
+const settingsScope = (e: Said): PublishScope => (e.entity ? { entities: [e.entity], links: [] } : null);
+// Only a flag's kind is in what's served (evaluator.ts FlagDef): its name, description, tags, owner, remove-by date,
+// free values, JSON schema and safe value aren't, so changing those changes nobody's answers.
+const flagDetailsScope = (e: Said): PublishScope =>
+  ((e.before as { kind?: string } | null)?.kind === (e.after as { kind?: string } | null)?.kind ? NOBODY : null);
+// A rename changes nobody's answers; a move changes what the entity and those under it get.
+const entityScope = (e: Said): PublishScope =>
+  (parentOf(e.before as EntityState) === parentOf(e.after as EntityState) ? NOBODY : { entities: e.entity ? [e.entity] : [], links: [] });
 // how someone signed in (access.ts SignInWay): "a password", "single sign-on (okta)"
 const wayOf = (after: unknown) => {
   const w = (after ?? {}) as { with?: string; connection?: string; provider?: string };
@@ -75,9 +89,9 @@ const wayOf = (after: unknown) => {
 
 export const KINDS = {
   // flag settings (layers.ts applyItems): the only kinds a restore undoes
-  'layer.create': { serves: 'environment', restore: true, says: (e, n) => `Added settings on ${settingsOf(e, n)}` },
-  'layer.update': { serves: 'environment', restore: true, says: (e, n) => `Changed settings on ${settingsOf(e, n)}` },
-  'layer.delete': { serves: 'environment', restore: true, says: (e, n) => `Removed settings on ${settingsOf(e, n)}` },
+  'layer.create': { serves: 'environment', restore: true, scope: settingsScope, says: (e, n) => `Added settings on ${settingsOf(e, n)}` },
+  'layer.update': { serves: 'environment', restore: true, scope: settingsScope, says: (e, n) => `Changed settings on ${settingsOf(e, n)}` },
+  'layer.delete': { serves: 'environment', restore: true, scope: settingsScope, says: (e, n) => `Removed settings on ${settingsOf(e, n)}` },
 
   // the rest of what's served, in one environment
   'flag.create': { serves: 'environment', restore: false, says: (e) => `Created ${e.flag}` },
@@ -88,7 +102,7 @@ export const KINDS = {
   'environment.links_replaced': { serves: 'environment', restore: false, then: ['forgetClientLinks'], says: () => 'Replaced every app link in this environment' },
 
   // in every environment: a restore of one environment can't undo these cleanly
-  'flag.update': { serves: 'everywhere', restore: false, says: (e) => `Changed the details of ${e.flag}` },
+  'flag.update': { serves: 'everywhere', restore: false, scope: flagDetailsScope, says: (e) => `Changed the details of ${e.flag}` },
   'flag.archive': { serves: 'everywhere', restore: false, says: (e) => `Archived ${e.flag}` },
   // the same flag back from the archive, as it was (control.ts unarchiveFlag)
   'flag.unarchive': { serves: 'everywhere', restore: false, says: (e) => `Restored ${e.flag} from the archive` },
@@ -97,11 +111,14 @@ export const KINDS = {
     const added = (e.after as { key: string; value: unknown }[] | null ?? []).filter((v) => !(e.before as { key: string }[] | null ?? []).some((b) => b.key === v.key));
     return added.length === 1 && isReleaseVersion(added[0].value) ? `Added version ${added[0].value} to ${e.flag}` : `Changed the variants of ${e.flag}`;
   } },
-  'entity.create': { serves: 'everywhere', restore: false, then: ['forgetClientLinks'], says: entityAdded },
+  // every server learns of it (each environment's new snapshot has it), but nobody's answers change: nobody asks as it
+  // yet. No file is purged and no event stream woken.
+  'entity.create': { serves: 'everywhere', restore: false, then: ['forgetClientLinks'], scope: () => NOBODY, says: entityAdded },
   // a new parent changes what it (and every entity under it) gets
-  'entity.update': { serves: 'everywhere', restore: false, says: entityChanged },
-  // the old link's file stops being served: every environment publishes (and purges the CDN) again
-  'entity.link_replaced': { serves: 'everywhere', restore: false, then: ['forgetClientLinks'], says: linkReplaced },
+  'entity.update': { serves: 'everywhere', restore: false, scope: entityScope, says: entityChanged },
+  // the old link's file stops being served: every environment publishes, purging that entity's files from the CDN, and
+  // its event streams are woken, so its apps ask again with the old token and hear it's replaced
+  'entity.link_replaced': { serves: 'everywhere', restore: false, then: ['forgetClientLinks'], scope: (e) => ({ entities: [], links: e.entity ? [e.entity] : [] }), says: linkReplaced },
 
   // nothing served changes: history only
   'api_key.create': { serves: null, restore: false },
@@ -214,6 +231,37 @@ export async function notRolledBack(q: Queryable, envId: number, revision: numbe
     revision: r.revision, kind: r.kind, flag: r.flag, entity: r.entity,
     text: kindOf(r.kind)?.says?.(r, name) ?? `${r.kind}${r.flag ? ` ${r.flag}` : ''}${r.entity ? ` (${name(r.entity)})` : ''}`,
   }));
+}
+
+/** Whose answers these changes may change, together (events.ts PublishScope): null when any of them may change anyone's. */
+export function scopeOf(entries: readonly (Pick<Said, 'entity' | 'before' | 'after'> & { kind: string; flag?: string | null })[]): PublishScope {
+  let scope: PublishScope = NOBODY;
+  for (const e of entries) {
+    const k = kindOf(e.kind);
+    if (!k?.serves) continue;
+    scope = joinScopes(scope, k.scope ? k.scope({ flag: e.flag ?? null, entity: e.entity ?? null, before: e.before ?? null, after: e.after ?? null }) : null);
+    if (!scope) return null;
+  }
+  return scope;
+}
+
+/** The most revisions scopeOfRevisions reads at once: a process further behind than that reloads everything. */
+const MAX_SCOPE_REVISIONS = 500;
+/** Whose answers an environment's versions (`revisions`) may have changed, from what History says each one holds.
+ *  null (anyone's) when a version holds nothing (History doesn't say), or there are too many to read. */
+export async function scopeOfRevisions(q: Queryable, environment: string, revisions: readonly number[]): Promise<PublishScope> {
+  const wanted = [...new Set(revisions)];
+  if (!wanted.length) return NOBODY;
+  if (wanted.length > MAX_SCOPE_REVISIONS) return null;
+  const rows = await all<{ revision: string; kind: string; entity: string | null; before: unknown; after: unknown }>(q,
+    `select h.revision, h.change_type as kind, h.entity,
+        case when h.change_type in ('flag.update', 'entity.update') then h.before end as before,
+        case when h.change_type in ('flag.update', 'entity.update') then h.after end as after
+      from change_history h join environment e on e.id = h.environment_id
+      where e.key = $1 and h.revision = any($2::bigint[])`, [environment, wanted]);
+  const seen = new Set(rows.map((r) => Number(r.revision)));
+  if (wanted.some((r) => !seen.has(r))) return null;
+  return scopeOf(rows);
 }
 
 /** The app's database: a transaction on it runs the after-commit effects of what it recorded, once each, after it

@@ -13,7 +13,7 @@ const install = {
   Docker: [
     'echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)" > .env',
     'docker run -d --name companyflags -p 8787:8787 -v companyflags:/data --env-file .env \\',
-    '  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags',
+    '  -e BETTER_AUTH_URL=http://localhost:8787 ghcr.io/dvir-daniel/companyflags:0.9',
   ],
   'Docker Compose': [
     'curl -O https://raw.githubusercontent.com/dvir-daniel/companyflags/main/docker-compose.yml',
@@ -47,6 +47,7 @@ const usage = {
       'await OpenFeature.setProviderAndWait(new OFREPWebProvider({',
       "  baseUrl: 'https://flags.example.com',",
       "  headers: [['Authorization', 'Bearer ff_prod_web_…']], // the web service’s key: public",
+      '  pollInterval: 60_000, // when it can’t keep a change stream open',
       '}))',
       '',
       "OpenFeature.getClient().getBooleanValue('new_checkout', false)",
@@ -130,11 +131,11 @@ const features: { title: string; text: string; chips: string[] }[] = [
   { title: 'Move over one flag at a time.', text: 'Run it next to the system you have now. Import its values; apps read the old one for every flag not moved yet.', chips: ['import', 'side by side', 'JSONata'] },
   { title: 'Releases.', text: 'Early access, then 1% → 5% → 25% → 50% of devices, then everyone; or versions 1.0.0 → 1.0.1. On call rolls back.', chips: ['1%', '5%', '25%', '1.0.1'] },
   { title: 'Made for AI.', text: 'AI-written code ships off, then to a few, with a kill switch. Models and prompts are JSON flags you roll out and roll back.', chips: ['kill switch', 'model', 'prompt'] },
-  { title: 'Reviewed changes.', text: 'Production can require an approval for every change, with scheduling and break-glass for on call.', chips: ['approve', 'schedule', 'break-glass'] },
+  { title: 'Reviewed changes.', text: 'Where an environment requires approval, every change there is reviewed, with scheduling and break-glass for on call.', chips: ['approve', 'schedule', 'break-glass'] },
   { title: 'History and restore.', text: 'An append-only history, versions of every environment, restore, and two entities compared flag by flag.', chips: ['history', 'restore', 'compare'] },
   { title: 'Your sign-in.', text: 'Email and password, Google, GitHub, Microsoft, and single sign-on with SAML or OIDC, through Better Auth.', chips: ['SAML', 'OIDC', 'invites'] },
   { title: 'Webhooks out and in.', text: 'Each change to Slack, CI or the old system, signed; and the old system’s changes in, while both run.', chips: ['Slack', 'signed', 'JSONata'] },
-  { title: 'Flags as code, and plugins.', text: 'Keep flags in a file reviewed with your code, and run only the plugins you need, from one typed config file.', chips: ['pull', 'plan', 'push'] },
+  { title: 'Flags as code, and plugins.', text: 'Keep flags in a file reviewed with your code; where an environment requires approval, a push makes requests there. Run only the plugins you need.', chips: ['pull', 'plan', 'push'] },
 ];
 
 const runIt: { label: string; text: string }[] = [

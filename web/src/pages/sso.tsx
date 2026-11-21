@@ -85,7 +85,7 @@ export function SingleSignOn() {
   const remove = async (c: Connection) => {
     const { action } = await ask({
       title: `Remove the ${c.id} connection?`,
-      body: <p>Nobody at {c.domains.join(', ')} can sign in with it any more, and everyone who did is signed out. People keep their roles; anyone without a password needs an invite link to get back in.</p>,
+      body: <p>Nobody at {c.domains.join(', ')} can sign in with it any more, and everyone who did is signed out. People keep their roles. Anyone without a password gets back in with a password link: People → Reset password.</p>,
       actions: [{ id: 'cancel', label: 'Cancel' }, { id: 'remove', label: 'Remove connection', tone: 'danger' }],
     });
     if (action !== 'remove') return;
@@ -145,7 +145,10 @@ export function SingleSignOn() {
       {rules && <Rules rules={rules} admin={admin} onSaved={setRules} />}
       {/* mounted only while open: once it closes, the client secret and the certificate typed in are gone from memory */}
       {state && drawer && <ConnectionDrawer base={state.base} editing={drawer.editing} onClose={() => setDrawer(null)}
-        onSaved={async (c, added) => { setDrawer(null); await load(); toast(added ? `${c.id} added. Test sign-in with it next.` : `${c.id} saved`); }} />}
+        onSaved={async (c, added, wasRequired) => {
+          setDrawer(null); await load();
+          toast(added ? `${c.id} added. Test sign-in with it next.` : wasRequired && !c.requireSso ? `${c.id} saved. Single sign-on is no longer required: Test sign-in, then require it again.` : `${c.id} saved`);
+        }} />}
     </section>
   );
 }
@@ -164,7 +167,7 @@ function Rules({ rules, admin, onSaved }: { rules: SignInRules; admin: boolean; 
   return (
     <div className="mt-4 grid gap-4 border border-grid p-4">
       <span className="text-13 font-medium text-ink">Sign-in rules</span>
-      <Field label="Break-glass admin" hint="The one admin who keeps their password where single sign-on is required, for when your identity provider is down. Every other admin signs in with single sign-on there.">
+      <Field label="Break-glass admin" hint="The one admin who keeps their password where single sign-on is required, for when your identity provider is down. They need a password: make one with People → Reset password. Every other admin signs in with single sign-on there.">
         <NativeSelect className={selectField} value={rules.breakGlassAdmin ?? ''} disabled={!admin} aria-label="Break-glass admin"
           onChange={(e) => void save({ breakGlassAdmin: e.target.value || null }, e.target.value ? `${nameOf(e.target.value)} is the break-glass admin` : 'No break-glass admin')}>
           <option value="">Nobody</option>
@@ -202,7 +205,7 @@ function Copyable({ label, value }: { label: string; value: string }) {
 
 /** A connection's form: a new one, or one to edit (its protocol and id stay; a secret left empty stays as it was). It's
  *  mounted only while open, so each opening starts a fresh form. */
-function ConnectionDrawer({ base, editing, onClose, onSaved }: { base: string; editing: Connection | null; onClose: () => void; onSaved: (c: Connection, added: boolean) => void }) {
+function ConnectionDrawer({ base, editing, onClose, onSaved }: { base: string; editing: Connection | null; onClose: () => void; onSaved: (c: Connection, added: boolean, wasRequired: boolean) => void }) {
   const first = useRef<HTMLSelectElement>(null);
   const [type, setType] = useState<'oidc' | 'saml'>(editing?.type ?? 'oidc');
   const [id, setId] = useState(editing?.id ?? '');
@@ -233,7 +236,7 @@ function ConnectionDrawer({ base, editing, onClose, onSaved }: { base: string; e
     const r = editing
       ? await run(() => api<Connection>('PUT', `/sso/${editing.id}`, { domains, groupRoles, ...fields }))
       : await run(() => api<Connection>('POST', '/sso', { type, id: key, domains, ...(groupRoles ? { groupRoles } : {}), ...fields }));
-    if (r) onSaved(r, !editing);
+    if (r) onSaved(r, !editing, !!editing?.requireSso);
   };
   const keep = editing ? 'Leave empty to keep the one saved.' : undefined;
   return (
@@ -319,6 +322,7 @@ function ConnectionDrawer({ base, editing, onClose, onSaved }: { base: string; e
         </Collapsible>
 
         {!editing && <p className="m-0 text-13 text-ink-3">Once it’s added, use Test sign-in. Then you can require single sign-on for these domains.</p>}
+        {editing?.requireSso && <Callout tone="warn">Single sign-on is required here. Changing the identity provider’s details turns that off, and passwords work again, until you use Test sign-in and require it again. Changing only the domains or group roles keeps it on, and signs out only the people at new domains.</Callout>}
         <ErrorList error={error} />
       </div>
     </Drawer>

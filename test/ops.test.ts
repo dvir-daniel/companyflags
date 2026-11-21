@@ -1,4 +1,4 @@
-// What an operator sees and runs: the version, /readyz with publish lag (failing when a snapshot can't be built),
+// What an operator sees and runs: the version, /readyz with publish lag (naming an environment whose snapshot can't be built),
 // the metrics plugin, the publish log's retention, a server that doesn't migrate, the embedded database's version,
 // backups and the move to Postgres, secrets sealed at rest, and the config's settings for all of it.
 import { test } from 'node:test';
@@ -33,17 +33,20 @@ test('the version: /healthz, /readyz and /api/meta say it', async () => {
   } finally { await t.stop(); }
 });
 
-test('/readyz reports each environment’s publishing, and fails while a snapshot can’t be built; the log says why', async () => {
+test('/readyz: ready while this server can serve; an environment whose snapshot can’t be built is in `failing`, and the log says why', async () => {
   const logs: string[] = [];
   const t = await boot({ log: (m) => logs.push(m) });
   try {
     const ok = await t.app.request('/readyz');
     assert.equal(ok.status, 200);
     const body = await ok.json() as any;
+    assert.deepEqual(body.failing, []);
     assert.deepEqual(Object.keys(body.environments).sort(), ['dev', 'prod']);
-    assert.deepEqual(Object.keys(body.environments.dev).sort(), ['failing', 'lagSeconds', 'revision', 'serving']);
+    assert.deepEqual(Object.keys(body.environments.dev).sort(), ['failing', 'lagSeconds', 'purgeFailing', 'revision', 'serving']);
+    assert.deepEqual(body.warnings, [], 'nothing to warn of');
     assert.equal(body.environments.dev.failing, false);
 
+    // one environment's publish fails: it keeps serving the old values, and so does every instance, so they stay ready
     const refresh = t.plane.refresh.bind(t.plane);
     t.plane.refresh = async () => { throw new Error('the snapshot broke'); };
     try {
@@ -51,16 +54,30 @@ test('/readyz reports each environment’s publishing, and fails while a snapsho
       await t.settle();
       assert.ok(logs.some((l) => /publishing dev@\d+ failed .*the snapshot broke/.test(l)), logs.join('\n'));
       const failing = await t.app.request('/readyz');
-      assert.equal(failing.status, 503);
+      assert.equal(failing.status, 200, 'still ready: it serves dev’s old values and prod as it is');
       const said = await failing.json() as any;
-      assert.deepEqual([said.ok, said.code, said.environments.dev.failing, said.environments.prod.failing], [false, 'unavailable', true, false]);
+      assert.deepEqual([said.ok, said.failing, said.environments.dev.failing, said.environments.prod.failing], [true, ['dev'], true, false]);
+      assert.ok(said.environments.dev.serving < said.environments.dev.revision, 'dev serves the revision before');
       assert.doesNotMatch(JSON.stringify(said), /the snapshot broke/, 'the reason is in the log, not in a public answer');
     } finally {
       t.plane.refresh = refresh;
     }
     await t.db.query(`update publish_queue set claimed_until = null where published_at is null`);
     await t.settle();
-    assert.equal((await t.app.request('/readyz')).status, 200, 'once it builds again');
+    const again = await (await t.app.request('/readyz')).json() as any;
+    assert.deepEqual(again.failing, [], 'once it builds again');
+
+    // this server can't serve: it has no environment's snapshot loaded
+    const snapshots = new Map(t.plane.snapshots);
+    t.plane.snapshots.clear();
+    try {
+      const none = await t.app.request('/readyz');
+      assert.equal(none.status, 503);
+      assert.equal((await none.json() as any).code, 'unavailable');
+    } finally {
+      for (const [k, v] of snapshots) t.plane.snapshots.set(k, v);
+    }
+    assert.equal((await t.app.request('/readyz')).status, 200);
   } finally { await t.stop(); }
 });
 
